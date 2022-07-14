@@ -1,0 +1,58 @@
+[tasks.reboot-to-bootloader]
+command = "sam"
+args = ["bootloader"]
+
+[tasks.build]
+command = "rustup"
+args = [
+    "run",
+    "nightly",
+    "cargo",
+    "build",
+    "--release",
+]
+
+[tasks.test]
+disabled = true
+
+[tasks.objcopy]
+command = "rustup"
+args = [
+    "run",
+    "nightly",
+    "cargo",
+    "objcopy",
+    "--release",
+    "--",
+    "-O", "binary",
+    "target/thumbv7em-none-eabihf/release/dfu-rs.bin"
+]
+dependencies = ["build"]
+
+[tasks.dfu]
+command = "dfu-util"
+args = [
+    "-d", "0483:df11",
+    "-a", "0",
+    "-s", "0x08000000:leave",
+    "-D", "target/thumbv7em-none-eabihf/release/dfu-rs.bin",
+    "-w"
+]
+dependencies = ["objcopy", "reboot-to-bootloader"]
+
+[tasks.dfu-log]
+command = "sam"
+args = ["logcat"]
+dependencies = ["dfu"]
+
+[tasks.swd]
+command = "rustup"
+args = [
+    "run",
+    "nightly",
+    "cargo",
+    "embed",
+    "--release",
+    #"--chip=stm32f401rctx"
+    "--chip=stm32f411ceux"
+]

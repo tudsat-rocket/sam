@@ -1,0 +1,47 @@
+[package]
+name = "euroc_fc_firmware"
+version = "0.1.0"
+authors = ["KoffeinFlummi <koffeinflummi@protonmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+opt-level = "z"
+lto = true
+
+[profile.dev]
+opt-level = "z"
+
+[dependencies]
+fugit = "0.3.5"
+embedded-hal = "0.2"
+num-traits = { version = "0.2", default-features = false }
+nb = "1"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+alloc-cortex-m = { version = "0.4", optional = true } # Only load this for no_std, since it forces us to use nightly
+panic-halt = "0.2"
+rtt-target = {version = "0.2", features = ["cortex-m"]}
+stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"]}
+#stm32f4xx-hal = {version = "0.13.0", features = ["stm32f405"]}
+usbd-serial = "0.1.0"
+usb-device ="0.2.2"
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+postcard = "0.7.2"
+icm20689 = "0.1"
+bmp280-rs = "0.1"
+crc = "2"
+#ahrs = { version = "0.5", default-features = false }
+ahrs = { path = "../ahrs-rs", default-features = false }
+nalgebra = { version = "0.31", default-features = false, features = ["alloc"] }
+#filter = "0.2"
+filter = { path = "../filter-rs" }
+embedded-sdmmc = "0.3.0"
+bytes = { version = "1.1", optional = true }
+ublox = { version = "0.4", default-features = false }
+
+[features]
+default = ["no_std"]
+std = ["bytes"]
+no_std = ["alloc-cortex-m"]
