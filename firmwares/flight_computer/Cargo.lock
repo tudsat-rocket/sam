@@ -320,6 +320,7 @@ dependencies = [
  "nb 1.0.0",
  "num-traits",
  "panic-halt",
+ "panic-rtt-target",
  "postcard",
  "rtt-target",
  "serde",
@@ -580,6 +581,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
 
 [[package]]
+name = "panic-rtt-target"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d6ab67bc881453e4c90f958c657c1303670ea87bc1a16e87fd71a40f656dce9"
+dependencies = [
+ "cortex-m 0.7.4",
+ "rtt-target",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -675,11 +686,11 @@ dependencies = [
 
 [[package]]
 name = "rtt-target"
-version = "0.2.2"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0869b4c5b6a6d8c5583fc473f9eb3423a170f77626b8c8a7fb18eddcda5770e2"
+checksum = "065d6058bb1204f51a562a67209e1817cf714759d5cf845aa45c75fa7b0b9d9b"
 dependencies = [
- "cortex-m 0.6.7",
+ "cortex-m 0.7.4",
  "ufmt-write",
 ]
 

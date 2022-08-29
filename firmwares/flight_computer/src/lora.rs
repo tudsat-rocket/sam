@@ -6,12 +6,12 @@ use alloc::sync::Arc;
 use stm32f4xx_hal as hal;
 use hal::spi::{Spi, Master, TransferModeNormal};
 use hal::pac::SPI1;
-use hal::gpio::{Pin, Output, Alternate};
+use hal::gpio::{Pin, Input, Output, Alternate};
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::prelude::*;
 
+use crate::prelude::*;
 use crate::telemetry::*;
-use crate::log;
 
 type RawSpi = Spi<SPI1, (
     Pin<'A', 5, Alternate<5>>,
@@ -19,6 +19,8 @@ type RawSpi = Spi<SPI1, (
     Pin<'A', 7, Alternate<5>>,
 ), TransferModeNormal, Master>;
 type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
+type CsPin = Pin<'A', 1, Output>;
+type BusyPin = Pin<'C', 1, Input>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RadioState {
@@ -31,20 +33,21 @@ enum RadioState {
 pub struct LoRaRadio {
     state: RadioState,
     spi: SharedSpi,
-    cs: Pin<'A', 1, Output>
+    cs: CsPin,
+    busy: BusyPin
 }
 
-// both RX and TX get half of the available 128 bytes
+// both RX and TX get half of the available 256 bytes
 const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 128;
 
 impl LoRaRadio {
-    pub fn init(spi: SharedSpi, mut cs: Pin<'A', 1, Output>) -> Self {
-        cs.set_high();
+    pub fn init(spi: SharedSpi, mut cs: CsPin, busy: BusyPin) -> Self {
         Self {
             state: RadioState::Init,
             spi,
-            cs
+            cs,
+            busy
         }
     }
 
@@ -53,21 +56,21 @@ impl LoRaRadio {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
 
-            let mut msg = Vec::with_capacity(response_len + params.len() + 1);
-            msg.push(opcode as u8);
-            msg.append(&mut params.to_vec());
-            msg.append(&mut [0x00].repeat(response_len));
+            let mut msg = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
             self.cs.set_low();
-            let response = spi.transfer(&mut msg)?;
-            self.cs.set_high();
 
-            let response = response[(1 + params.len())..].to_vec();
-            if response.len() > 0 {
-                log!(Info, "{:02x?}", response);
+            // At 10MHz SPI freq, the setup commands seem to require some
+            // extra delay between cs going low and the SCK going high
+            // TODO: make this prettier
+            for _i in 0..=u16::MAX {
+                core::hint::spin_loop()
             }
 
-            Ok(response)
+            let response = spi.transfer(&mut msg);
+            self.cs.set_high();
+
+            Ok(response?[(1 + params.len())..].to_vec())
         })
     }
 
@@ -103,16 +106,30 @@ impl LoRaRadio {
         };
         self.command(LLCC68OpCode::SetPaConfig, &[duty_cycle, hp_max, 0x00, 0x01], 0)?;
         self.command(LLCC68OpCode::SetTxParams, &[output_power as u8, ramp_time as u8], 0)?;
+        //self.command(LLCC68OpCode::SetTxParams, &[0, ramp_time as u8], 0)?;
         Ok(())
     }
 
     fn set_lora_mod_params(
         &mut self,
         bandwidth: LLCC68LoRaModulationBandwidth,
-        spreading_factor: LLCC68LoRaSpreadingFactor,
+        mut spreading_factor: LLCC68LoRaSpreadingFactor,
         coding_rate: LLCC68LoRaCodingRate,
         low_data_rate_optimization: bool
     ) -> Result<(), hal::spi::Error> {
+        if bandwidth == LLCC68LoRaModulationBandwidth::Bw125 && (
+            spreading_factor == LLCC68LoRaSpreadingFactor::SF10 ||
+            spreading_factor == LLCC68LoRaSpreadingFactor::SF11
+        ) {
+            spreading_factor = LLCC68LoRaSpreadingFactor::SF9;
+        }
+
+        if bandwidth == LLCC68LoRaModulationBandwidth::Bw250 &&
+            spreading_factor == LLCC68LoRaSpreadingFactor::SF11
+        {
+            spreading_factor = LLCC68LoRaSpreadingFactor::SF10;
+        }
+
         self.command(LLCC68OpCode::SetModulationParams, &[
             spreading_factor as u8,
             bandwidth as u8,
@@ -143,32 +160,28 @@ impl LoRaRadio {
     }
 
     fn set_buffer_base_addresses(&mut self, tx_address: u8, rx_address: u8) -> Result<(), hal::spi::Error> {
-        self.command(LLCC68OpCode::SetBufferBaseAddress, &[TX_BASE_ADDRESS, RX_BASE_ADDRESS], 0)?;
-        Ok(())
-    }
-
-    fn set_sync_word(&mut self, sync_word: u64) -> Result<(), hal::spi::Error> {
+        self.command(LLCC68OpCode::SetBufferBaseAddress, &[tx_address, rx_address], 0)?;
         Ok(())
     }
 
     fn configure_tx(&mut self) -> Result<(), hal::spi::Error> {
         self.command(LLCC68OpCode::GetStatus, &[], 1)?;
         self.set_packet_type(LLCC68PacketType::LoRa)?;
-        self.set_rf_frequency(434_000_000)?;
-        self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R200U)?;
+        self.set_rf_frequency(868_000_000)?;
+        self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R3400U)?;
         self.set_lora_mod_params(
-            LLCC68LoRaModulationBandwidth::Bw125,
-            LLCC68LoRaSpreadingFactor::SF6,
-            LLCC68LoRaCodingRate::CR46,
-            false
+            LLCC68LoRaModulationBandwidth::Bw250,
+            LLCC68LoRaSpreadingFactor::SF5,
+            LLCC68LoRaCodingRate::CR4of6,
+            true
         )?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
 
         // write data to buffer
         // set dio irq params
-            // define sync word (write reg) (lora?)
+        // define sync word (write reg) (lora?)
         // settx
-        // wait for irq txdone 
+        // wait for irq txdone
         // clear irq txdone
         Ok(())
     }
@@ -184,12 +197,14 @@ impl LoRaRadio {
     }
 
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), hal::spi::Error> {
-        self.set_lora_packet_params(16, false, msg.len() as u8, true, false)?;
+        let msg: [u8; 120] = [0; 120];
+
+        self.set_lora_packet_params(12, false, msg.len() as u8, true, false)?;
         let mut params = Vec::with_capacity(msg.len() + 1);
         params.push(TX_BASE_ADDRESS);
         params.append(&mut msg.to_vec());
         self.command(LLCC68OpCode::WriteBuffer, &params, 0)?;
-        self.set_tx_mode(5000);
+        self.set_tx_mode(5000)?;
         Ok(())
     }
 
@@ -201,6 +216,7 @@ impl LoRaRadio {
 
         if let Some(m) = msg {
             let serialized = m.wrap(0);
+            log!(Debug, "{:?}", serialized);
             self.send_packet(&serialized);
         }
 
@@ -209,6 +225,7 @@ impl LoRaRadio {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68OpCode {
     // Operational Modes (11.1, page 57)
     SetSleep = 0x84,
@@ -259,12 +276,14 @@ enum LLCC68OpCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68PacketType {
     GFSK = 0x00,
     LoRa = 0x01,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68OutputPower {
     P14dBm = 14,
     P17dBm = 17,
@@ -273,6 +292,7 @@ enum LLCC68OutputPower {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68RampTime {
     R10u = 0x00,
     R20u = 0x01,
@@ -285,6 +305,7 @@ enum LLCC68RampTime {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68LoRaModulationBandwidth {
     Bw125 = 0x04,
     Bw250 = 0x05,
@@ -292,6 +313,7 @@ enum LLCC68LoRaModulationBandwidth {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68LoRaSpreadingFactor {
     SF5 = 0x05,
     SF6 = 0x06,
@@ -303,9 +325,10 @@ enum LLCC68LoRaSpreadingFactor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum LLCC68LoRaCodingRate {
-    CR45 = 0x01,
-    CR46 = 0x02,
-    CR47 = 0x03,
-    CR48 = 0x04
+    CR4of5 = 0x01,
+    CR4of6 = 0x02,
+    CR4of7 = 0x03,
+    CR4of8 = 0x04
 }

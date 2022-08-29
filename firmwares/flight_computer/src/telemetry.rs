@@ -83,8 +83,9 @@ pub struct TelemetryRawSensors {
     pub accelerometer1: (f32, f32, f32),
     pub accelerometer2: (f32, f32, f32),
     pub magnetometer: (f32, f32, f32),
-    pub altitude_baro: f32,
     pub temperature_baro: f32,
+    pub pressure_baro: f32,
+    pub altitude_baro: f32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -109,9 +110,8 @@ pub struct TelemetryKalman {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryDiagnostics {
     pub time: u32,
-    // loop runtime?
     pub loop_runtime: u16,
-    pub temperature_core: u16,
+    pub temperature_core: i16,
     pub cpu_voltage: u16,
 }
 
@@ -232,53 +232,8 @@ impl DownlinkMessage {
         wrap_msg(serialized, packet_counter)
     }
 
-    #[cfg(feature = "std")]
-    pub fn read_valid_bytes(buf: &mut BytesMut) -> Option<(u16, Self)> {
-        while buf.len() > 0 {
-            if buf[0] == 0x42 {
-                if buf.len() < 6 {
-                    return None;
-                }
-
-                let len = buf[3] as usize;
-                if buf.len() < 6 + len {
-                    return None;
-                }
-
-                let crc = ((buf[len + 4] as u16) << 8) + (buf[len + 5] as u16);
-
-                let mut digest = X25.digest();
-                digest.update(&buf[0..(len + 4)]);
-                let true_crc = digest.finalize();
-
-                if crc == true_crc {
-                    break;
-                }
-            }
-
-            let _ = buf.split_to(1);
-        }
-
-        if buf.len() == 0 {
-            return None;
-        }
-
-        let len = buf[3] as usize;
-        let packet_counter = ((buf[1] as u16) << 8) + (buf[2] as u16);
-        let result = postcard::from_bytes::<DownlinkMessage>(&buf[4..(len + 4)])
-            .ok()
-            .map(|x| (packet_counter, x));
-
-        let _ = buf.split_to(len + 6);
-
-        result
-    }
-
     pub fn read_valid(buf: &mut Vec<u8>) -> Option<(u16, Self)> {
         while buf.len() > 0 {
-            //#[cfg(feature = "std")]
-            //println!("buf len: {:?}", buf.len());
-
             if buf[0] == 0x42 {
                 if buf.len() < 6 {
                     return None;
@@ -289,18 +244,11 @@ impl DownlinkMessage {
                     return None;
                 }
 
-                //#[cfg(feature = "std")]
-                //println!("{:02x?}", &buf[0..(len + 4)]);
-                //println!("{:02x?}", &buf);
-
                 let crc = ((buf[len + 4] as u16) << 8) + (buf[len + 5] as u16);
 
                 let mut digest = X25.digest();
                 digest.update(&buf[0..(len + 4)]);
                 let true_crc = digest.finalize();
-
-                //#[cfg(feature = "std")]
-                //println!("{:?} {:?}", crc, true_crc);
 
                 if crc == true_crc {
                     break;

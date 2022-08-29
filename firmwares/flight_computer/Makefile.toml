@@ -53,6 +53,5 @@ args = [
     "cargo",
     "embed",
     "--release",
-    #"--chip=stm32f401rctx"
-    "--chip=stm32f411ceux"
+    "--chip=stm32f401rctx"
 ]
