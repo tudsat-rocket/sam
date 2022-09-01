@@ -206,11 +206,11 @@ impl Into<TelemetryRawSensors> for &Vehicle {
             time: self.time,
             gyro: self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0)),
             accelerometer1: self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
+            accelerometer2: self.acc.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
             magnetometer: self.compass.magnetometer().unwrap_or((0.0, 0.0, 0.0)),
             temperature_baro: self.barometer.temperature().unwrap_or(0.0),
             pressure_baro: self.barometer.pressure().unwrap_or(0.0),
             altitude_baro: self.barometer.altitude().unwrap_or(0.0),
-            ..Default::default()
         }
     }
 }

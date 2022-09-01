@@ -164,11 +164,16 @@ fn main() -> ! {
     let spi2 = dp.SPI2.spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 20.MHz(), &clocks);
     let flash = Flash::init(spi2, spi2_cs_flash);
 
+    let spi_mode = Mode {
+        polarity: Polarity::IdleHigh,
+        phase: Phase::CaptureOnSecondTransition
+    };
+
     let spi3_sck = gpioc.pc10.into_alternate();
     let spi3_miso = gpioc.pc11.into_alternate();
     let spi3_mosi = gpioc.pc12.into_alternate();
     let spi3 = dp.SPI3.spi((spi3_sck, spi3_miso, spi3_mosi), spi_mode, 5.MHz(), &clocks);
-    let acc = Accelerometer::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High));
+    let acc = Accelerometer::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High)).unwrap();
 
     // Initialize GPS
     let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
