@@ -22,6 +22,7 @@ args = [
     "nightly",
     "cargo",
     "objcopy",
+    "--quiet",
     "--release",
     "--",
     "-O", "binary",
@@ -52,7 +53,7 @@ args = [
     "-s", "0x08000000:leave",
     "-D", "target/thumbv7em-none-eabihf/release/dfu-rs.bin",
 ]
-dependencies = ["objcopy"] # TODO: get sam to run on Windows
+dependencies = ["objcopy", "reboot-to-bootloader"]
 
 [tasks.dfu-log]
 command = "sam"
