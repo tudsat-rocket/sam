@@ -1,6 +1,8 @@
 [tasks.reboot-to-bootloader]
 command = "sam"
 args = ["bootloader"]
+# Try to keep going, e.g. if the device already is in bootloader mode
+ignore_errors = true
 
 [tasks.build]
 command = "rustup"
