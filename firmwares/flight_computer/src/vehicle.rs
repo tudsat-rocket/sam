@@ -1,6 +1,9 @@
 use stm32f4xx_hal as hal;
 use hal::rcc::Clocks;
 
+use nalgebra::{Vector3, UnitQuaternion};
+use ahrs::Ahrs;
+
 use crate::telemetry::*;
 use crate::usb::*;
 use crate::bootloader::*;
@@ -21,6 +24,8 @@ pub struct Vehicle {
     radio: LoRaRadio,
     gps: GPS,
     power: PowerMonitor,
+    ahrs: ahrs::Madgwick<f32>,
+    orientation: Option<UnitQuaternion<f32>>,
     pub time: u32,
     mode: FlightMode,
     loop_runtime: u16,
@@ -53,6 +58,8 @@ impl<'a> Vehicle {
             power,
             mode: FlightMode::Idle,
             gps,
+            ahrs: ahrs::Madgwick::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MADGEWICK_BETA),
+            orientation: None,
             time: 0,
             loop_runtime: 0,
             usb_telem_counter: 0,
@@ -103,7 +110,14 @@ impl<'a> Vehicle {
         self.gps.tick(self.time, &self.clocks);
         self.power.tick();
 
-        // TODO: state estimation
+        let gyro_vector = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
+        let acc_vector = self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2));
+        let mag_vector = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
+        if gyro_vector.is_some() && acc_vector.is_some() && mag_vector.is_some() {
+            self.orientation = self.ahrs.update(&gyro_vector.unwrap(), &acc_vector.unwrap(), &mag_vector.unwrap()).ok().map(|q| *q);
+        } else {
+            self.orientation = None;
+        }
 
         if let Some(new_mode) = self.tick_mode() {
             self.mode = new_mode;
@@ -181,7 +195,7 @@ impl Into<TelemetryMain> for &Vehicle {
         TelemetryMain {
             time: self.time,
             mode: self.mode.clone(),
-            orientation: (1.0, 0.0, 0.0, 0.0),
+            orientation: self.orientation.clone(),
             ..Default::default()
         }
     }
@@ -192,7 +206,7 @@ impl Into<TelemetryState> for &Vehicle {
         // TODO: send options?
         TelemetryState {
             time: self.time,
-            orientation: (1.0, 0.0, 0.0, 0.0),
+            orientation: self.orientation.clone(),
             gyroscope: self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0)),
             acceleration: self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
             ..Default::default()

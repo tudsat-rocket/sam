@@ -53,6 +53,7 @@ use flash::*;
 mod prelude {
     pub use crate::{log, log_every_nth_time};
     pub use crate::logging::*;
+    pub use crate::params::*;
 }
 
 const HEAP_SIZE: usize = 8192;

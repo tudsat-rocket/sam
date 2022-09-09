@@ -33,11 +33,9 @@ postcard = "0.7.2"
 icm20689 = "0.1"
 bmp280-rs = "0.1"
 crc = "2"
-#ahrs = { version = "0.5", default-features = false }
-ahrs = { path = "../ahrs-rs", default-features = false }
-nalgebra = { version = "0.31", default-features = false, features = ["alloc"] }
-#filter = "0.2"
-filter = { path = "../filter-rs" }
+ahrs = { version = "0.5", default-features = false }
+nalgebra = { version = "0.30", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
+filter = "0.2"
 embedded-sdmmc = "0.3.0"
 bytes = { version = "1.1", optional = true }
 ublox = { version = "0.4", default-features = false }

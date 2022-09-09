@@ -14,6 +14,7 @@ use core::iter::Extend;
 use bytes::BytesMut;
 use crc::Crc;
 use serde::{Deserialize, Serialize};
+use nalgebra::UnitQuaternion;
 
 pub use LogLevel::*;
 
@@ -56,7 +57,7 @@ impl Default for GPSFixType {
 pub struct TelemetryMain {
     pub time: u32,
     pub mode: FlightMode,
-    pub orientation: (f32, f32, f32, f32),
+    pub orientation: Option<UnitQuaternion<f32>>,
     pub vertical_speed: f32,
     pub altitude_baro: u16,
     pub altitude: u16,
@@ -65,7 +66,7 @@ pub struct TelemetryMain {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryState {
     pub time: u32,
-    pub orientation: (f32, f32, f32, f32),
+    pub orientation: Option<UnitQuaternion<f32>>,
     pub gyroscope: (f32, f32, f32),
     pub acceleration: (f32, f32, f32),
     pub acceleration_world: (f32, f32, f32),
