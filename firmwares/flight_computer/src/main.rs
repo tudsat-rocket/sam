@@ -58,7 +58,7 @@ mod prelude {
     pub use crate::params::*;
 }
 
-const HEAP_SIZE: usize = 8192;
+const HEAP_SIZE: usize = 16384;
 static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] =
     [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
 
