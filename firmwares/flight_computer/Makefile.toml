@@ -30,6 +30,10 @@ args = [
 dependencies = ["build"]
 
 [tasks.dfu]
+linux_alias = "dfu_linux"
+windows_alias = "dfu_win"
+
+[tasks.dfu_linux]
 command = "dfu-util"
 args = [
     "-d", "0483:df11",
@@ -39,6 +43,16 @@ args = [
     "-w"
 ]
 dependencies = ["objcopy", "reboot-to-bootloader"]
+
+[tasks.dfu_win]
+command = "./dfu-util.exe"
+args = [
+    "-d", "0483:df11",
+    "-a", "0",
+    "-s", "0x08000000:leave",
+    "-D", "target/thumbv7em-none-eabihf/release/dfu-rs.bin",
+]
+dependencies = ["objcopy"] # TODO: get sam to run on Windows
 
 [tasks.dfu-log]
 command = "sam"
