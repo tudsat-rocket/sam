@@ -38,6 +38,7 @@ mod params;
 mod watchdog;
 mod lora;
 mod flash;
+mod buzzer;
 
 use telemetry::*;
 use vehicle::*;
@@ -49,6 +50,7 @@ use params::*;
 use watchdog::*;
 use lora::*;
 use flash::*;
+use buzzer::*;
 
 mod prelude {
     pub use crate::{log, log_every_nth_time};
@@ -177,10 +179,7 @@ fn main() -> ! {
     // Initialize GPS
     let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
 
-    // TODO
-    let mut buzzer = dp.TIM4.pwm_hz(gpiob.pb9.into_alternate(), 1.kHz(), &clocks);
-    buzzer.set_duty(hal::timer::Channel::C4, buzzer.get_max_duty() / 2);
-    //buzzer.enable(hal::timer::Channel::C4);
+    let buzzer = Buzzer::init(dp.TIM4, gpiob.pb9.into_alternate::<2>(), &clocks);
 
     //let mut gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
     //let mut gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
@@ -218,7 +217,8 @@ fn main() -> ! {
         gps,
         flash,
         radio,
-        power
+        power,
+        buzzer
     );
 
     log!(Info, "Starting main loop.");

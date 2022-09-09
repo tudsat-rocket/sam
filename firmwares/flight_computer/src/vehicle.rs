@@ -27,6 +27,7 @@ pub struct Vehicle {
     usb_link: UsbLink,
     radio: LoRaRadio,
     flash: Flash,
+    buzzer: Buzzer,
 
     ahrs: ahrs::Madgwick<f32>,
     orientation: Option<UnitQuaternion<f32>>,
@@ -49,7 +50,8 @@ impl<'a> Vehicle {
         gps: GPS,
         flash: Flash,
         radio: LoRaRadio,
-        power: PowerMonitor
+        power: PowerMonitor,
+        buzzer: Buzzer,
     ) -> Self {
         Self {
             clocks,
@@ -64,6 +66,7 @@ impl<'a> Vehicle {
             usb_link,
             flash,
             radio,
+            buzzer,
 
             ahrs: ahrs::Madgwick::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MADGEWICK_BETA),
             orientation: None,
@@ -131,6 +134,8 @@ impl<'a> Vehicle {
         if let Some(new_mode) = self.tick_mode() {
             self.mode = new_mode;
         }
+
+        self.buzzer.tick(self.time);
 
         // TODO: write to flash, sd card
         // TODO: write to radio
