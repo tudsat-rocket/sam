@@ -122,8 +122,6 @@ fn main() -> ! {
     let usb_link = UsbLink::init(usb);
     log!(Info, "USB initialized.");
 
-    reset_watchdog();
-
     cp.DCB.enable_trace();
     cp.DWT.enable_cycle_counter();
 
@@ -188,7 +186,6 @@ fn main() -> ! {
     //let mut gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
 
     // TODO: radio gpio
-    // TODO: adc
     // TODO: sd
     // TODO: auxiliary IO
 

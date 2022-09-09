@@ -12,20 +12,25 @@ use crate::logging::*;
 use crate::params::*;
 use crate::lora::*;
 use crate::flash::*;
+use crate::buzzer::*;
 
 pub struct Vehicle {
     clocks: Clocks,
-    usb_link: UsbLink,
+
     imu: Imu,
     acc: Accelerometer,
     compass: Compass,
     barometer: Barometer,
-    flash: Flash,
-    radio: LoRaRadio,
     gps: GPS,
     power: PowerMonitor,
+
+    usb_link: UsbLink,
+    radio: LoRaRadio,
+    flash: Flash,
+
     ahrs: ahrs::Madgwick<f32>,
     orientation: Option<UnitQuaternion<f32>>,
+
     pub time: u32,
     mode: FlightMode,
     loop_runtime: u16,
@@ -48,19 +53,23 @@ impl<'a> Vehicle {
     ) -> Self {
         Self {
             clocks,
-            usb_link,
+
             imu,
             acc,
             compass,
             barometer,
+            gps,
+            power,
+
+            usb_link,
             flash,
             radio,
-            power,
-            mode: FlightMode::Idle,
-            gps,
+
             ahrs: ahrs::Madgwick::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MADGEWICK_BETA),
             orientation: None,
+
             time: 0,
+            mode: FlightMode::Idle,
             loop_runtime: 0,
             usb_telem_counter: 0,
             lora_telem_counter: 0,

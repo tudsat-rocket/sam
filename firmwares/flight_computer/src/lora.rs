@@ -22,7 +22,8 @@ type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
 type CsPin = Pin<'A', 1, Output>;
 type BusyPin = Pin<'C', 1, Input>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[allow(dead_code)] // TODO
 enum RadioState {
     Init,
     Idle,
@@ -42,7 +43,7 @@ const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 128;
 
 impl LoRaRadio {
-    pub fn init(spi: SharedSpi, mut cs: CsPin, busy: BusyPin) -> Self {
+    pub fn init(spi: SharedSpi, cs: CsPin, busy: BusyPin) -> Self {
         Self {
             state: RadioState::Init,
             spi,
@@ -93,7 +94,7 @@ impl LoRaRadio {
     fn set_rf_frequency(&mut self, frequency: u32) -> Result<(), hal::spi::Error> {
         let pll = self.freq_to_pll_steps(frequency);
         let params = [(pll >> 24) as u8, (pll >> 16) as u8, (pll >> 8) as u8, pll as u8];
-        self.command(LLCC68OpCode::SetRfFrequency, &params, 0);
+        self.command(LLCC68OpCode::SetRfFrequency, &params, 0)?;
         Ok(())
     }
 
@@ -197,8 +198,6 @@ impl LoRaRadio {
     }
 
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), hal::spi::Error> {
-        let msg: [u8; 120] = [0; 120];
-
         self.set_lora_packet_params(12, false, msg.len() as u8, true, false)?;
         let mut params = Vec::with_capacity(msg.len() + 1);
         params.push(TX_BASE_ADDRESS);
@@ -210,14 +209,20 @@ impl LoRaRadio {
 
     pub fn tick(&mut self, msg: Option<DownlinkMessage>) -> Option<UplinkMessage> {
         if self.state == RadioState::Init {
-            self.configure_tx();
-            self.state = RadioState::Idle;
+            if let Err(e) = self.configure_tx() {
+                log!(Error, "Error configuring LoRa transceiver: {:?}", e);
+            } else {
+                self.state = RadioState::Idle;
+            }
         }
 
         if let Some(m) = msg {
             let serialized = m.wrap(0);
             log!(Debug, "{:?}", serialized);
-            self.send_packet(&serialized);
+            if let Err(e) = self.send_packet(&serialized) {
+                log!(Error, "Error sending LoRa packet: {:?}", e);
+                // TODO: some kind of failure counter?
+            }
         }
 
         None

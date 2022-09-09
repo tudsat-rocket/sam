@@ -58,7 +58,7 @@ impl Flash {
         })
     }
 
-    pub fn tick(&mut self, time: u32, data: Option<bool>) {
+    pub fn tick(&mut self, _time: u32, _data: Option<bool>) {
         // TODO
     }
 }

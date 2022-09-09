@@ -75,11 +75,6 @@ impl Compass {
         })
     }
 
-    fn read_u8(&mut self, address: BMM150Register) -> Result<u8, hal::spi::Error> {
-        let response = self.read_registers(address, 1)?;
-        Ok(response[0])
-    }
-
     fn write_u8(&mut self, address: BMM150Register, value: u8) -> Result<(), hal::spi::Error> {
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();

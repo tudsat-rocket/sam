@@ -9,6 +9,8 @@ use hal::gpio::{Pin, Alternate, Output};
 use hal::spi::{Spi, TransferModeNormal, Master};
 use cortex_m::interrupt::{free, Mutex};
 
+use crate::prelude::*;
+
 type RawSpi = Spi<SPI1, (
     Pin<'A', 5, Alternate<5>>,
     Pin<'B', 4, Alternate<5>>,
@@ -125,9 +127,10 @@ impl Imu {
     }
 
     pub fn tick(&mut self) {
-        if let Err(_) = self.read_sensor_data() {
+        if let Err(e) = self.read_sensor_data() {
             self.gyro = None;
             self.accel = None;
+            log!(Error, "{:?}", e);
         }
     }
 

@@ -10,10 +10,8 @@ use usb_device::prelude::*;
 use usb_device::class_prelude::*;
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
-use crate::MAIN_LOOP_FREQ_HERTZ;
-use crate::logging::*;
+use crate::prelude::*;
 use crate::telemetry::*;
-use crate::params::*;
 
 static mut USB_BUFFER: [u32; 1024] = [0; 1024];
 static mut USB_BUS: Option<UsbBusAllocator<UsbBus<USB>>> = None;
@@ -65,7 +63,7 @@ impl UsbLink {
         self.device.poll(&mut [&mut self.serial])
     }
 
-    fn send_message(&mut self, msg: DownlinkMessage) {
+    fn send_message(&mut self, msg: DownlinkMessage) -> Result<(), UsbError> {
         let wrapped = msg.wrap(self.downlink_counter.0);
         self.downlink_counter += 1;
 
@@ -74,6 +72,8 @@ impl UsbLink {
             self.serial.write(&chunk);
             self.serial.flush();
         }
+
+        Ok(())
     }
 
     pub fn tick(&mut self, time: u32, telemetry_msg: Option<DownlinkMessage>) -> Option<UplinkMessage> {
@@ -87,13 +87,17 @@ impl UsbLink {
         }
 
         if let Some(msg) = telemetry_msg {
-            self.send_message(msg);
+            if let Err(e) = self.send_message(msg) {
+                log!(Error, "Failed to send telemetry message: {:?}", e);
+            }
         }
 
         if self.log_counter >= (MAIN_LOOP_FREQ_HERTZ / USB_LOG_FREQ_HERTZ) {
             if self.last_heartbeat.map(|t| self.time - t < 750).unwrap_or(false) {
                 if let Some((t, l, ll, m)) = Logger::next_usb() {
-                    self.send_message(DownlinkMessage::Log(t, l, ll, m));
+                    if let Err(e) = self.send_message(DownlinkMessage::Log(t, l, ll, m)) {
+                        log!(Error, "Failed to send log messages: {:?}", e);
+                    }
                 }
             }
             self.log_counter = 0;

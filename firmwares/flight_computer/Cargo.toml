@@ -1,8 +1,11 @@
 [package]
 name = "euroc_fc_firmware"
 version = "0.1.0"
-authors = ["KoffeinFlummi <koffeinflummi@protonmail.com>"]
-edition = "2018"
+authors = [
+    # Feel free to add yourself here
+    "Felix Wiegand <felix-wiegand@protonmail.ch>"
+]
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,7 +17,6 @@ lto = true
 opt-level = "z"
 
 [dependencies]
-fugit = "0.3.5"
 embedded-hal = "0.2"
 num-traits = { version = "0.2", default-features = false }
 nb = "1"
@@ -25,22 +27,16 @@ panic-halt = "0.2"
 panic-rtt-target = {version = "0.1.1", features = ["cortex-m"]}
 rtt-target = {version = "0.3", features = ["cortex-m"]}
 stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"]}
-#stm32f4xx-hal = {version = "0.13.0", features = ["stm32f405"]}
 usbd-serial = "0.1.0"
 usb-device ="0.2.2"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 postcard = "0.7.2"
-icm20689 = "0.1"
-bmp280-rs = "0.1"
 crc = "2"
 ahrs = { version = "0.5", default-features = false }
 nalgebra = { version = "0.30", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
 filter = "0.2"
-embedded-sdmmc = "0.3.0"
-bytes = { version = "1.1", optional = true }
 ublox = { version = "0.4", default-features = false }
 
 [features]
 default = ["no_std"]
-std = ["bytes"]
 no_std = ["alloc-cortex-m"]

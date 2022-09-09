@@ -1,17 +1,15 @@
 #[cfg(not(feature = "std"))]
-use alloc::string::String;
+use alloc::string::{String, ToString};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 #[cfg(feature = "std")]
-use std::string::String;
+use std::string::{String, ToString};
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
 use core::iter::Extend;
 
-#[cfg(feature = "std")]
-use bytes::BytesMut;
 use crc::Crc;
 use serde::{Deserialize, Serialize};
 use nalgebra::UnitQuaternion;
@@ -20,7 +18,7 @@ pub use LogLevel::*;
 
 pub const X25: Crc<u16> = Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum FlightMode {
     Idle,
     HardwareArmed,
@@ -37,7 +35,7 @@ impl Default for FlightMode {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum GPSFixType {
     NoFix,
     AutonomousFix,
@@ -170,8 +168,7 @@ pub enum UplinkMessage { // TODO: attach HMAC?
     RebootToBootloader,
 }
 
-#[cfg(feature = "std")]
-impl std::string::ToString for LogLevel {
+impl ToString for LogLevel {
     fn to_string(&self) -> String {
         match self {
             Debug => "DEBUG",
@@ -183,30 +180,21 @@ impl std::string::ToString for LogLevel {
     }
 }
 
-#[cfg(not(feature = "std"))]
-impl alloc::string::ToString for LogLevel {
-    fn to_string(&self) -> String {
-        match self {
-            Debug => "DEBUG",
-            Info => "INFO",
-            Warning => "WARNING",
-            Error => "ERROR",
-            Critical => "CRITICAL",
-        }.to_string()
-    }
-}
-
-pub fn wrap_msg(msg: &[u8], packet_counter: u16) -> Vec<u8> {
+pub fn wrap_msg(msg: &[u8], packet_counter: Option<u16>) -> Vec<u8> {
     // TODO: messages longer than 255?
     // TODO: packet counter size
 
-    let mut wrapped: Vec<u8> = [
-        0x42,
-        (packet_counter >> 8) as u8,
-        (packet_counter & 0xff) as u8,
-        msg.len() as u8,
-    ]
-    .to_vec();
+    let mut wrapped: Vec<u8> = if let Some(pc) = packet_counter {
+        [
+            0x42,
+            (pc >> 8) as u8,
+            (pc & 0xff) as u8,
+            msg.len() as u8,
+        ].to_vec()
+    } else {
+        [0x42, msg.len() as u8].to_vec()
+    };
+
     wrapped.extend(msg);
 
     let mut digest = X25.digest();
@@ -219,10 +207,10 @@ pub fn wrap_msg(msg: &[u8], packet_counter: u16) -> Vec<u8> {
 }
 
 impl UplinkMessage {
-    pub fn wrap(&self, packet_counter: u16) -> Vec<u8> {
+    pub fn wrap(&self) -> Vec<u8> {
         let mut buf = [0u8; 256];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        wrap_msg(serialized, packet_counter)
+        wrap_msg(serialized, None)
     }
 }
 
@@ -230,7 +218,7 @@ impl DownlinkMessage {
     pub fn wrap(&self, packet_counter: u16) -> Vec<u8> {
         let mut buf = [0u8; 512];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        wrap_msg(serialized, packet_counter)
+        wrap_msg(serialized, Some(packet_counter))
     }
 
     pub fn read_valid(buf: &mut Vec<u8>) -> Option<(u16, Self)> {

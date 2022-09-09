@@ -93,7 +93,10 @@ impl Accelerometer {
     }
 
     pub fn tick(&mut self) {
-        self.read_sensor_data();
+        if let Err(e) = self.read_sensor_data() {
+            self.acc = None;
+            log!(Error, "{:?}", e);
+        }
     }
 
     pub fn accelerometer(&self) -> Option<(f32, f32, f32)> {
