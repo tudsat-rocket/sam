@@ -36,10 +36,8 @@ impl UsbLink {
 
         let mut serial = unsafe { SerialPort::new(USB_BUS.as_ref().unwrap()) };
         let mut device = unsafe {
-            UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0xdead, 0xbeef))
-                .manufacturer("TUDSat")
+            UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x0483, 0x5740))
                 .product("AthenaFC")
-                .serial_number("TEST")
                 .device_class(USB_CLASS_CDC)
                 .build()
         };
