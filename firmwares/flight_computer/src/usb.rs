@@ -61,7 +61,7 @@ impl UsbLink {
         self.device.poll(&mut [&mut self.serial])
     }
 
-    fn send_message(&mut self, msg: DownlinkMessage) -> Result<(), UsbError> {
+    pub fn send_message(&mut self, msg: DownlinkMessage) {
         let wrapped = msg.wrap(self.downlink_counter.0);
         self.downlink_counter += 1;
 
@@ -70,11 +70,9 @@ impl UsbLink {
             self.serial.write(&chunk);
             self.serial.flush();
         }
-
-        Ok(())
     }
 
-    pub fn tick(&mut self, time: u32, telemetry_msg: Option<DownlinkMessage>) -> Option<UplinkMessage> {
+    pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
         self.time = time;
         self.poll_counter += 1;
         self.log_counter += 1;
@@ -84,18 +82,10 @@ impl UsbLink {
             self.poll_counter = 0;
         }
 
-        if let Some(msg) = telemetry_msg {
-            if let Err(e) = self.send_message(msg) {
-                log!(Error, "Failed to send telemetry message: {:?}", e);
-            }
-        }
-
         if self.log_counter >= (MAIN_LOOP_FREQ_HERTZ / USB_LOG_FREQ_HERTZ) {
             if self.last_heartbeat.map(|t| self.time - t < 750).unwrap_or(false) {
                 if let Some((t, l, ll, m)) = Logger::next_usb() {
-                    if let Err(e) = self.send_message(DownlinkMessage::Log(t, l, ll, m)) {
-                        log!(Error, "Failed to send log messages: {:?}", e);
-                    }
+                    self.send_message(DownlinkMessage::Log(t, l, ll, m));
                 }
             }
             self.log_counter = 0;

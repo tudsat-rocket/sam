@@ -108,6 +108,7 @@ impl<'a> Vehicle {
     }
 
     /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
+    #[cfg(not(feature = "gcs"))]
     pub fn tick(&mut self) {
         let cycles_before = hal::pac::DWT::cycle_count();
 
@@ -115,12 +116,13 @@ impl<'a> Vehicle {
         Logger::update_time(self.time);
 
         // TODO: sensor readings
-        self.imu.tick();
         self.acc.tick();
-        self.compass.tick();
         self.barometer.tick();
         self.gps.tick(self.time, &self.clocks);
         self.power.tick();
+
+        self.imu.tick();
+        self.compass.tick();
 
         let gyro_vector = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
         let acc_vector = self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2));
@@ -140,20 +142,32 @@ impl<'a> Vehicle {
         // TODO: write to flash, sd card
         // TODO: write to radio
 
-        //if let Some(msg) = self.radio.tick(self.next_lora_telem()) {
-        //    // TODO
-        //}
+        if let Some(msg) = self.radio.tick() {
+            match msg {
+                UplinkMessage::Heartbeat => {}
+                UplinkMessage::Reboot => reboot(),
+                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
+            }
+        }
 
         // Handle incoming USB messages
-        if let Some(msg) = self.usb_link.tick(self.time, self.next_usb_telem()) {
+        if let Some(msg) = self.usb_link.tick(self.time) {
             match msg {
-                UplinkMessage::Heartbeat => {},
+                UplinkMessage::Heartbeat => {}
                 UplinkMessage::Reboot => reboot(),
-                UplinkMessage::RebootToBootloader => reboot_to_bootloader()
+                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
             }
         }
 
         self.flash.tick(self.time, None);
+
+        if let Some(msg) = self.next_usb_telem() {
+            self.usb_link.send_message(msg);
+        }
+
+        if let Some(msg) = self.next_lora_telem() {
+            self.radio.send_message(msg);
+        }
 
         self.usb_telem_counter = (self.usb_telem_counter + 1) % 1000;
         self.lora_telem_counter = (self.lora_telem_counter + 1) % 1000; // TODO: do we need only one?
@@ -161,6 +175,31 @@ impl<'a> Vehicle {
         let cycles_elapsed = hal::pac::DWT::cycle_count().wrapping_sub(cycles_before);
         // TODO: maybe take the max over the last N iterations so we catch spikes?
         self.loop_runtime = (cycles_elapsed / CLOCK_FREQ_MEGA_HERTZ) as u16;
+    }
+
+    #[cfg(feature = "gcs")]
+    pub fn tick(&mut self) {
+        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
+        Logger::update_time(self.time);
+
+        self.buzzer.tick(self.time);
+
+        let downlink_msg = self.radio.tick();
+
+        let uplink_msg = self.usb_link.tick(self.time).map(|msg| {
+            match msg {
+                UplinkMessage::Heartbeat => Some(UplinkMessage::Heartbeat),
+                UplinkMessage::Reboot => { reboot(); None }, // TODO: passthrough reboot?
+                UplinkMessage::RebootToBootloader => { reboot_to_bootloader(); None },
+            }
+        });
+
+        if let Some((pc, msg)) = downlink_msg {
+            log!(Debug, "{:?}", msg);
+            self.usb_link.send_message(msg); // TODO: pass through pc
+        }
+
+        // TODO: uplink messages
     }
 
     fn next_usb_telem(&self) -> Option<DownlinkMessage> {

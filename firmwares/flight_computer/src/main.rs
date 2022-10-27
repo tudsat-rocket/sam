@@ -155,8 +155,10 @@ fn main() -> ! {
     let imu = Imu::init(spi1.clone(), spi1_cs_imu).unwrap();
     let compass = Compass::init(spi1.clone(), spi1_cs_mag, &mut delay).unwrap();
     let barometer = Barometer::init(spi1.clone(), spi1_cs_baro).unwrap();
+    let radio_irq = gpioc.pc0.into_input();
     let radio_busy = gpioc.pc1.into_input();
-    let radio = LoRaRadio::init(spi1, spi1_cs_radio, radio_busy);
+    let radio_dma_streams = hal::dma::StreamsTuple::new(dp.DMA2);
+    let radio = LoRaRadio::init(spi1, spi1_cs_radio, radio_irq, radio_busy, radio_dma_streams);
 
     let spi2_sck = gpiob.pb13.into_alternate();
     let spi2_miso = gpioc.pc2.into_alternate();

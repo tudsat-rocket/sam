@@ -221,7 +221,51 @@ impl DownlinkMessage {
         wrap_msg(serialized, Some(packet_counter))
     }
 
-    pub fn read_valid(buf: &mut Vec<u8>) -> Option<(u16, Self)> {
+    pub fn read_valid(buf: &[u8]) -> Option<(u16, Self)> {
+        if buf.len() == 0 {
+            return None;
+        }
+
+        if buf[0] != 0x42 {
+            return None;
+        }
+
+        if buf.len() < 6 {
+            return None;
+        }
+
+        let len = buf[3] as usize;
+        if buf.len() < 6 + len {
+            return None;
+        }
+
+        let crc = ((buf[len + 4] as u16) << 8) + (buf[len + 5] as u16);
+
+        let mut digest = X25.digest();
+        digest.update(&buf[0..(len + 4)]);
+        let true_crc = digest.finalize();
+
+        rtt_target::rprintln!("{:?} {:?}", true_crc, crc);
+
+        if crc != true_crc {
+            // TODO
+        }
+
+        let len = buf[3] as usize;
+        let packet_counter = ((buf[1] as u16) << 8) + (buf[2] as u16);
+
+        //rtt_target::rprintln!("{:02x?}", &buf);
+        //rtt_target::rprintln!("{:02x?}", &buf[4..(len + 4)]);
+
+        let r = postcard::from_bytes::<DownlinkMessage>(&buf[4..(len + 4)])
+            .ok()
+            .map(|x| (packet_counter, x));
+
+        rtt_target::rprintln!("{:?}", r);
+        r
+    }
+
+    pub fn pop_valid(buf: &mut Vec<u8>) -> Option<(u16, Self)> {
         while buf.len() > 0 {
             if buf[0] == 0x42 {
                 if buf.len() < 6 {
