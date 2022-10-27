@@ -4,6 +4,6 @@
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
-pub mod telemetry;
 mod params;
+pub mod telemetry;
 pub use params::*;

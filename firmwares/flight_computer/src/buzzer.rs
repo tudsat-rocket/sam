@@ -1,8 +1,8 @@
 use alloc::vec::Vec;
 
-use stm32f4xx_hal as hal;
 use hal::prelude::*;
 use hal::rcc::Clocks;
+use stm32f4xx_hal as hal;
 
 use num_traits::Float;
 
@@ -15,6 +15,7 @@ type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<3>, Pin>;
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
 
 #[allow(dead_code)]
+#[rustfmt::skip]
 const REMNANTS: [Note; 40] = [
     Note::note(E, 3, 200), Note::pause(10),
     Note::note(D, 3, 200), Note::pause(10),
@@ -42,6 +43,7 @@ const REMNANTS: [Note; 40] = [
 ];
 
 #[allow(dead_code)]
+#[rustfmt::skip]
 const THUNDERSTRUCK: [Note; 64] = [
     Note::note(B, 4, 100), Note::pause(10),
     Note::note(B, 3, 100), Note::pause(10),
@@ -79,6 +81,7 @@ const THUNDERSTRUCK: [Note; 64] = [
 ];
 
 #[allow(dead_code)]
+#[rustfmt::skip]
 const STAR_TREK: [Note; 20] = [
     Note::note(D, 4, 600), Note::pause(10),
     Note::note(E, 4, 200), Note::pause(10),
@@ -94,6 +97,7 @@ const STAR_TREK: [Note; 20] = [
 ];
 
 #[allow(dead_code)]
+#[rustfmt::skip]
 const SHIRE: [Note; 14] = [
     Note::note(A, 3, 200), Note::pause(20),
     Note::note(B, 3, 300), Note::pause(20),
@@ -105,6 +109,7 @@ const SHIRE: [Note; 14] = [
 ];
 
 #[allow(dead_code)]
+#[rustfmt::skip]
 const E1M1: [Note; 56] = [
     Note::note(E, 2, 100), Note::pause(10),
     Note::note(E, 2, 100), Note::pause(10),
@@ -148,7 +153,7 @@ pub struct Buzzer {
     pwm: Pwm,
     current_melody: Vec<Note>,
     current_index: usize,
-    time_note_change: u32
+    time_note_change: u32,
 }
 
 impl Buzzer {
@@ -193,22 +198,19 @@ impl Buzzer {
 #[derive(Clone)]
 struct Note {
     pitch: Option<Pitch>,
-    duration: u32
+    duration: u32,
 }
 
 impl Note {
     const fn note(semitone: Semitone, octave: u8, duration: u32) -> Self {
         Self {
             pitch: Some(Pitch { semitone, octave }),
-            duration
+            duration,
         }
     }
 
     const fn pause(duration: u32) -> Self {
-        Self {
-            pitch: None,
-            duration
-        }
+        Self { pitch: None, duration }
     }
 
     fn freq(&self) -> Option<f32> {
@@ -245,5 +247,5 @@ enum Semitone {
     Gs = 8,
     A = 9,
     As = 10,
-    B = 11
+    B = 11,
 }

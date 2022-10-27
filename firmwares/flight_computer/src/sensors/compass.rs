@@ -1,21 +1,26 @@
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::ops::DerefMut;
-use alloc::vec::Vec;
-use alloc::sync::Arc;
 
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
-use hal::pac::SPI1;
-use hal::gpio::{Pin, Alternate, Output};
-use hal::spi::{Spi, TransferModeNormal, Master};
-use hal::timer::SysDelay;
 use cortex_m::interrupt::{free, Mutex};
+use hal::gpio::{Alternate, Output, Pin};
+use hal::pac::SPI1;
+use hal::prelude::*;
+use hal::spi::{Master, Spi, TransferModeNormal};
+use hal::timer::SysDelay;
+use stm32f4xx_hal as hal;
 
-type RawSpi = Spi<SPI1, (
-    Pin<'A', 5, Alternate<5>>,
-    Pin<'B', 4, Alternate<5>>,
-    Pin<'A', 7, Alternate<5>>,
-), TransferModeNormal, Master>;
+type RawSpi = Spi<
+    SPI1,
+    (
+        Pin<'A', 5, Alternate<5>>,
+        Pin<'B', 4, Alternate<5>>,
+        Pin<'A', 7, Alternate<5>>,
+    ),
+    TransferModeNormal,
+    Master,
+>;
 type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
 type CsPin = hal::gpio::Pin<'B', 14, Output>;
 
@@ -30,14 +35,14 @@ struct BMM150TrimData {
     z4: i16,
     xy1: u8,
     xy2: i8,
-    xyz1: u16
+    xyz1: u16,
 }
 
 pub struct Compass {
     spi: SharedSpi,
     cs: CsPin,
     trim_data: Option<BMM150TrimData>,
-    mag: Option<(f32, f32, f32)>
+    mag: Option<(f32, f32, f32)>,
 }
 
 impl Compass {
@@ -46,7 +51,7 @@ impl Compass {
             spi,
             cs,
             trim_data: None,
-            mag: None
+            mag: None,
         };
 
         bmm.set_power_control(true)?;
@@ -108,7 +113,7 @@ impl Compass {
             z4: ((trim_xyz[1] as i16) << 8) + (trim_xyz[0] as i16),
             xy1: trim_xy1xy2[9],
             xy2: trim_xy1xy2[8] as i8,
-            xyz1: (((trim_xy1xy2[5] & 0x7f) as u16) << 8) + (trim_xy1xy2[4] as u16)
+            xyz1: (((trim_xy1xy2[5] & 0x7f) as u16) << 8) + (trim_xy1xy2[4] as u16),
         });
 
         Ok(())
@@ -217,7 +222,7 @@ enum BMM150Register {
     DigZ3L = 0x6e,
     DigZ3H = 0x6f,
     DigXY2 = 0x70,
-    DigXY1 = 0x71
+    DigXY1 = 0x71,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -225,7 +230,7 @@ enum BMM150Register {
 enum BMM150OpMode {
     Normal = 0b00,
     Forced = 0b01,
-    Sleep = 0b11
+    Sleep = 0b11,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -238,5 +243,5 @@ enum BMM150DataRate {
     Odr15Hz = 0b100,
     Odr20Hz = 0b101,
     Odr25Hz = 0b110,
-    Odr30Hz = 0b111
+    Odr30Hz = 0b111,
 }

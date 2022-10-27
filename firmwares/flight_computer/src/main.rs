@@ -10,57 +10,56 @@ use panic_rtt_target as _;
 // an allocator.
 extern crate alloc;
 
+use alloc::sync::Arc;
 use core::cell::{Cell, RefCell};
 use core::ops::DerefMut;
-use alloc::sync::Arc;
 use cortex_m::interrupt::{free, Mutex};
-use rtt_target::{rtt_init_print, rprintln};
+use rtt_target::{rprintln, rtt_init_print};
 
 use alloc_cortex_m::CortexMHeap;
 use cortex_m;
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
-use hal::spi::{Mode, Phase, Polarity};
-use hal::pac::{interrupt, Interrupt, TIM2};
+use hal::adc::config::AdcConfig;
+use hal::adc::Adc;
 use hal::gpio::PinState;
 use hal::otg_fs::USB;
+use hal::pac::{interrupt, Interrupt, TIM2};
+use hal::prelude::*;
+use hal::spi::{Mode, Phase, Polarity};
 use hal::timer::{CounterHz, Event};
-use hal::adc::Adc;
-use hal::adc::config::AdcConfig;
+use stm32f4xx_hal as hal;
 
-mod telemetry;
-mod vehicle;
-mod usb;
 mod bootloader;
-mod sensors;
-mod logging;
-mod params;
-mod watchdog;
-mod lora;
-mod flash;
 mod buzzer;
+mod flash;
+mod logging;
+mod lora;
+mod params;
+mod sensors;
+mod telemetry;
+mod usb;
+mod vehicle;
+mod watchdog;
 
-use telemetry::*;
-use vehicle::*;
-use usb::*;
 use bootloader::*;
-use sensors::*;
-use logging::*;
-use params::*;
-use watchdog::*;
-use lora::*;
-use flash::*;
 use buzzer::*;
+use flash::*;
+use logging::*;
+use lora::*;
+use params::*;
+use sensors::*;
+use telemetry::*;
+use usb::*;
+use vehicle::*;
+use watchdog::*;
 
 mod prelude {
-    pub use crate::{log, log_every_nth_time};
     pub use crate::logging::*;
     pub use crate::params::*;
+    pub use crate::{log, log_every_nth_time};
 }
 
 const HEAP_SIZE: usize = 16384;
-static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] =
-    [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
+static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
 
 static LOOP_INTERRUPT_FLAG: Mutex<Cell<bool>> = Mutex::new(Cell::new(false));
 static LOOP_TIMER: Mutex<RefCell<Option<CounterHz<TIM2>>>> = Mutex::new(RefCell::new(None));
@@ -140,7 +139,7 @@ fn main() -> ! {
     // Initialize SPI peripherals
     let spi_mode = Mode {
         polarity: Polarity::IdleLow,
-        phase: Phase::CaptureOnFirstTransition
+        phase: Phase::CaptureOnFirstTransition,
     };
 
     let spi1_sck = gpioa.pa5.into_alternate();
@@ -151,7 +150,12 @@ fn main() -> ! {
     let spi1_cs_mag = gpiob.pb14.into_push_pull_output_in_state(PinState::High);
     let spi1_cs_radio = gpioa.pa1.into_push_pull_output_in_state(PinState::High);
     let _spi1_cs_sd = gpioa.pa15.into_push_pull_output_in_state(PinState::High);
-    let spi1 = Arc::new(Mutex::new(RefCell::new(dp.SPI1.spi((spi1_sck, spi1_miso, spi1_mosi), spi_mode, 10.MHz(), &clocks))));
+    let spi1 = Arc::new(Mutex::new(RefCell::new(dp.SPI1.spi(
+        (spi1_sck, spi1_miso, spi1_mosi),
+        spi_mode,
+        10.MHz(),
+        &clocks,
+    ))));
     let imu = Imu::init(spi1.clone(), spi1_cs_imu).unwrap();
     let compass = Compass::init(spi1.clone(), spi1_cs_mag, &mut delay).unwrap();
     let barometer = Barometer::init(spi1.clone(), spi1_cs_baro).unwrap();
@@ -164,18 +168,22 @@ fn main() -> ! {
     let spi2_miso = gpioc.pc2.into_alternate();
     let spi2_mosi = gpioc.pc3.into_alternate();
     let spi2_cs_flash = gpiob.pb12.into_push_pull_output_in_state(PinState::High);
-    let spi2 = dp.SPI2.spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 20.MHz(), &clocks);
+    let spi2 = dp
+        .SPI2
+        .spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 20.MHz(), &clocks);
     let flash = Flash::init(spi2, spi2_cs_flash);
 
     let spi_mode = Mode {
         polarity: Polarity::IdleHigh,
-        phase: Phase::CaptureOnSecondTransition
+        phase: Phase::CaptureOnSecondTransition,
     };
 
     let spi3_sck = gpioc.pc10.into_alternate();
     let spi3_miso = gpioc.pc11.into_alternate();
     let spi3_mosi = gpioc.pc12.into_alternate();
-    let spi3 = dp.SPI3.spi((spi3_sck, spi3_miso, spi3_mosi), spi_mode, 5.MHz(), &clocks);
+    let spi3 = dp
+        .SPI3
+        .spi((spi3_sck, spi3_miso, spi3_mosi), spi_mode, 5.MHz(), &clocks);
     let acc = Accelerometer::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High)).unwrap();
 
     // Initialize GPS
@@ -207,20 +215,12 @@ fn main() -> ! {
     });
 
     // Enable main loop interrupt
-    unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::TIM2); }
+    unsafe {
+        cortex_m::peripheral::NVIC::unmask(Interrupt::TIM2);
+    }
 
     let mut vehicle = Vehicle::init(
-        clocks,
-        usb_link,
-        imu,
-        acc,
-        compass,
-        barometer,
-        gps,
-        flash,
-        radio,
-        power,
-        buzzer
+        clocks, usb_link, imu, acc, compass, barometer, gps, flash, radio, power, buzzer,
     );
 
     log!(Info, "Starting main loop.");

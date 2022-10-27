@@ -11,8 +11,8 @@ use std::vec::Vec;
 use core::iter::Extend;
 
 use crc::Crc;
-use serde::{Deserialize, Serialize};
 use nalgebra::UnitQuaternion;
+use serde::{Deserialize, Serialize};
 
 pub use LogLevel::*;
 
@@ -42,7 +42,7 @@ pub enum GPSFixType {
     DifferentialFix,
     RTKFix,
     RTKFloat,
-    DeadReckoningFix
+    DeadReckoningFix,
 }
 
 impl Default for GPSFixType {
@@ -131,7 +131,7 @@ pub enum LogLevel {
     Info,
     Warning,
     Error,
-    Critical
+    Critical,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -156,13 +156,14 @@ impl DownlinkMessage {
             DownlinkMessage::TelemetryKalman(tm) => tm.time,
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.time,
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
-            DownlinkMessage::Log(t, _, _, _) => *t
+            DownlinkMessage::Log(t, _, _, _) => *t,
         }
     }
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub enum UplinkMessage { // TODO: attach HMAC?
+pub enum UplinkMessage {
+    // TODO: attach HMAC?
     Heartbeat,
     Reboot,
     RebootToBootloader,
@@ -176,7 +177,8 @@ impl ToString for LogLevel {
             Warning => "WARNING",
             Error => "ERROR",
             Critical => "CRITICAL",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -185,12 +187,7 @@ pub fn wrap_msg(msg: &[u8], packet_counter: Option<u16>) -> Vec<u8> {
     // TODO: packet counter size
 
     let mut wrapped: Vec<u8> = if let Some(pc) = packet_counter {
-        [
-            0x42,
-            (pc >> 8) as u8,
-            (pc & 0xff) as u8,
-            msg.len() as u8,
-        ].to_vec()
+        [0x42, (pc >> 8) as u8, (pc & 0xff) as u8, msg.len() as u8].to_vec()
     } else {
         [0x42, msg.len() as u8].to_vec()
     };

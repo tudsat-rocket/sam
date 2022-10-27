@@ -1,6 +1,6 @@
-use stm32f4xx_hal as hal;
 use hal::pac::{PWR, RCC, RTC};
 use hal::rcc::Enable;
+use stm32f4xx_hal as hal;
 
 use cortex_m::interrupt::free;
 use rtt_target::rprintln;
@@ -41,8 +41,8 @@ pub fn jump_to_bootloader() {
 }
 
 pub fn reboot() {
-    free(|_cs| {
-        loop { cortex_m::peripheral::SCB::sys_reset(); }
+    free(|_cs| loop {
+        cortex_m::peripheral::SCB::sys_reset();
     })
 }
 

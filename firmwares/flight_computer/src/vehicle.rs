@@ -1,18 +1,20 @@
-use stm32f4xx_hal as hal;
 use hal::rcc::Clocks;
+use stm32f4xx_hal as hal;
 
-use nalgebra::{Vector3, UnitQuaternion};
 use ahrs::Ahrs;
+use nalgebra::{UnitQuaternion, Vector3};
 
+use crate::prelude::*;
+
+use crate::bootloader::*;
+use crate::buzzer::*;
+use crate::flash::*;
+use crate::logging::*;
+use crate::lora::*;
+use crate::params::*;
+use crate::sensors::*;
 use crate::telemetry::*;
 use crate::usb::*;
-use crate::bootloader::*;
-use crate::sensors::*;
-use crate::logging::*;
-use crate::params::*;
-use crate::lora::*;
-use crate::flash::*;
-use crate::buzzer::*;
 
 pub struct Vehicle {
     clocks: Clocks,
@@ -83,22 +85,22 @@ impl<'a> Vehicle {
         match self.mode {
             FlightMode::Idle => {
                 // TODO: Detect hardware arm
-            },
+            }
             FlightMode::HardwareArmed => {
                 // TODO: Detect software arm (however that looks like)
-            },
+            }
             FlightMode::Armed => {
                 // TODO: Detect liftoff
-            },
+            }
             FlightMode::Flight => {
                 // TODO: Detect apogee
-            },
+            }
             FlightMode::RecoveryDrogue => {
                 // TODO: Detect alt < MAIN_THRESHOLE
-            },
+            }
             FlightMode::RecoveryMain => {
                 // TODO: Detect landing
-            },
+            }
             FlightMode::Landed => {
                 // TODO: Buzz
             }
@@ -128,7 +130,11 @@ impl<'a> Vehicle {
         let acc_vector = self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2));
         let mag_vector = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
         if gyro_vector.is_some() && acc_vector.is_some() && mag_vector.is_some() {
-            self.orientation = self.ahrs.update(&gyro_vector.unwrap(), &acc_vector.unwrap(), &mag_vector.unwrap()).ok().map(|q| *q);
+            self.orientation = self
+                .ahrs
+                .update(&gyro_vector.unwrap(), &acc_vector.unwrap(), &mag_vector.unwrap())
+                .ok()
+                .map(|q| *q);
         } else {
             self.orientation = None;
         }
@@ -189,8 +195,14 @@ impl<'a> Vehicle {
         let uplink_msg = self.usb_link.tick(self.time).map(|msg| {
             match msg {
                 UplinkMessage::Heartbeat => Some(UplinkMessage::Heartbeat),
-                UplinkMessage::Reboot => { reboot(); None }, // TODO: passthrough reboot?
-                UplinkMessage::RebootToBootloader => { reboot_to_bootloader(); None },
+                UplinkMessage::Reboot => {
+                    reboot();
+                    None
+                } // TODO: passthrough reboot?
+                UplinkMessage::RebootToBootloader => {
+                    reboot_to_bootloader();
+                    None
+                }
             }
         });
 
@@ -309,7 +321,7 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             time: self.time,
             loop_runtime: self.loop_runtime,
             temperature_core: self.power.temperature().unwrap_or(0),
-            cpu_voltage: self.power.cpu_voltage().unwrap_or(0)
+            cpu_voltage: self.power.cpu_voltage().unwrap_or(0),
         }
     }
 }
@@ -323,7 +335,7 @@ impl Into<TelemetryGPS> for &Vehicle {
             num_satellites: self.gps.num_satellites,
             latitude: self.gps.latitude,
             longitude: self.gps.longitude,
-            altitude_asl: self.gps.altitude
+            altitude_asl: self.gps.altitude,
         }
     }
 }

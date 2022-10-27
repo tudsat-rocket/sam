@@ -1,13 +1,13 @@
-use core::num::Wrapping;
 use alloc::vec::Vec;
+use core::num::Wrapping;
 
-use stm32f4xx_hal as hal;
 use hal::otg_fs::{UsbBus, USB};
+use stm32f4xx_hal as hal;
 //use hal::pac::{interrupt, Interrupt, TIM2};
 //use cortex_m::interrupt::{free, Mutex};
 
-use usb_device::prelude::*;
 use usb_device::class_prelude::*;
+use usb_device::prelude::*;
 use usbd_serial::{SerialPort, USB_CLASS_CDC};
 
 use crate::prelude::*;
@@ -25,7 +25,7 @@ pub struct UsbLink {
     //uplink_counter: Wrapping<u16>,
     uplink_buffer: Vec<u8>,
     time: u32,
-    last_heartbeat: Option<u32>
+    last_heartbeat: Option<u32>,
 }
 
 impl UsbLink {

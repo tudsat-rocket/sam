@@ -1,22 +1,27 @@
+use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::ops::DerefMut;
-use alloc::vec::Vec;
-use alloc::sync::Arc;
 
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
-use hal::pac::SPI1;
-use hal::gpio::{Pin, Alternate, Output};
-use hal::spi::{Spi, TransferModeNormal, Master};
 use cortex_m::interrupt::{free, Mutex};
+use hal::gpio::{Alternate, Output, Pin};
+use hal::pac::SPI1;
+use hal::prelude::*;
+use hal::spi::{Master, Spi, TransferModeNormal};
+use stm32f4xx_hal as hal;
 
 use num_traits::float::Float;
 
-type RawSpi = Spi<SPI1, (
-    Pin<'A', 5, Alternate<5>>,
-    Pin<'B', 4, Alternate<5>>,
-    Pin<'A', 7, Alternate<5>>,
-), TransferModeNormal, Master>;
+type RawSpi = Spi<
+    SPI1,
+    (
+        Pin<'A', 5, Alternate<5>>,
+        Pin<'B', 4, Alternate<5>>,
+        Pin<'A', 7, Alternate<5>>,
+    ),
+    TransferModeNormal,
+    Master,
+>;
 type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
 type CsPin = hal::gpio::Pin<'C', 6, Output>;
 
@@ -50,7 +55,7 @@ impl Barometer {
             dt: None,
             temp: None,
             raw_pressure: None,
-            pressure: None
+            pressure: None,
         };
 
         baro.read_calibration_values()?;
@@ -87,7 +92,7 @@ impl Barometer {
             temp_coef_pressure_sensitivity: ((c3[0] as u16) << 8) + (c3[1] as u16),
             temp_coef_pressure_offset: ((c4[0] as u16) << 8) + (c4[1] as u16),
             reference_temperature: ((c5[0] as u16) << 8) + (c5[1] as u16),
-            temp_coef_temperature: ((c6[0] as u16) << 8) + (c6[1] as u16)
+            temp_coef_temperature: ((c6[0] as u16) << 8) + (c6[1] as u16),
         });
 
         Ok(())
@@ -95,9 +100,7 @@ impl Barometer {
 
     fn read_sensor_data(&mut self) -> Result<(), hal::spi::Error> {
         let response = self.command(MS5611Command::ReadAdc, 3)?;
-        let value = ((response[0] as i32) << 16) +
-            ((response[1] as i32) << 8) +
-            (response[2] as i32);
+        let value = ((response[0] as i32) << 16) + ((response[1] as i32) << 8) + (response[2] as i32);
 
         let cal = self.calibration_data.as_ref().unwrap();
 
@@ -114,8 +117,10 @@ impl Barometer {
             let dt = self.dt.unwrap();
             let raw_pressure = self.raw_pressure.unwrap();
 
-            let offset = ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
-            let sens = ((cal.pressure_sensitivity as i64) << 15) + ((cal.temp_coef_pressure_sensitivity as i64 * dt as i64) >> 8);
+            let offset =
+                ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
+            let sens = ((cal.pressure_sensitivity as i64) << 15)
+                + ((cal.temp_coef_pressure_sensitivity as i64 * dt as i64) >> 8);
             let p = (raw_pressure as i64 * (sens >> 21) - offset) >> 15;
             self.pressure = Some(p as i32);
 
@@ -164,9 +169,8 @@ impl Barometer {
     }
 
     pub fn altitude(&self) -> Option<f32> {
-        self.pressure().map(|p| {
-            44307.694 * (1.0 - (p / 1013.25).powf(0.190284))
-        })
+        self.pressure()
+            .map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)))
     }
 }
 
@@ -177,7 +181,7 @@ enum MS5611Command {
     StartPressureConversion(MS5611OSR),
     StartTempConversion(MS5611OSR),
     ReadAdc,
-    ReadProm(u8)
+    ReadProm(u8),
 }
 
 impl Into<u8> for MS5611Command {
@@ -187,7 +191,7 @@ impl Into<u8> for MS5611Command {
             Self::StartPressureConversion(osr) => 0x40 + ((osr as u8) << 1),
             Self::StartTempConversion(osr) => 0x50 + ((osr as u8) << 1),
             Self::ReadAdc => 0x00,
-            Self::ReadProm(adr) => 0xa0 + (adr << 1)
+            Self::ReadProm(adr) => 0xa0 + (adr << 1),
         }
     }
 }
@@ -199,5 +203,5 @@ enum MS5611OSR {
     OSR512 = 0b001,
     OSR1024 = 0b010,
     OSR2048 = 0b011,
-    OSR4096 = 0b100
+    OSR4096 = 0b100,
 }

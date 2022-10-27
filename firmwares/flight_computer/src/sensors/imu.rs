@@ -1,21 +1,26 @@
+use alloc::sync::Arc;
 use core::cell::RefCell;
 use core::ops::DerefMut;
-use alloc::sync::Arc;
 
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
-use hal::pac::SPI1;
-use hal::gpio::{Pin, Alternate, Output};
-use hal::spi::{Spi, TransferModeNormal, Master};
 use cortex_m::interrupt::{free, Mutex};
+use hal::gpio::{Alternate, Output, Pin};
+use hal::pac::SPI1;
+use hal::prelude::*;
+use hal::spi::{Master, Spi, TransferModeNormal};
+use stm32f4xx_hal as hal;
 
 use crate::prelude::*;
 
-type RawSpi = Spi<SPI1, (
-    Pin<'A', 5, Alternate<5>>,
-    Pin<'B', 4, Alternate<5>>,
-    Pin<'A', 7, Alternate<5>>,
-), TransferModeNormal, Master>;
+type RawSpi = Spi<
+    SPI1,
+    (
+        Pin<'A', 5, Alternate<5>>,
+        Pin<'B', 4, Alternate<5>>,
+        Pin<'A', 7, Alternate<5>>,
+    ),
+    TransferModeNormal,
+    Master,
+>;
 type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
 type CsPin = hal::gpio::Pin<'B', 15, Output>;
 
@@ -47,15 +52,12 @@ impl Imu {
         // TODO: check status register?
         //self.read_u8(LSM6RRegister::StatusReg);
 
-        imu.configure_gyroscope(
-            LSM6GyroscopeMode::HighPerformance1660Hz,
-            gyro_scale,
-        )?;
+        imu.configure_gyroscope(LSM6GyroscopeMode::HighPerformance1660Hz, gyro_scale)?;
 
         imu.configure_accelerometer(
             LSM6AccelerometerMode::HighPerformance1660Hz,
             accel_scale,
-            false // TODO
+            false, // TODO
         )?;
 
         Ok(imu)
@@ -111,7 +113,7 @@ impl Imu {
         &mut self,
         mode: LSM6AccelerometerMode,
         scale: LSM6AccelerometerScale,
-        high_res: bool
+        high_res: bool,
     ) -> Result<(), hal::spi::Error> {
         let reg = ((mode as u8) << 4) + ((scale as u8) << 2) + ((high_res as u8) << 1);
         self.write_u8(LSM6RRegister::Ctrl1Xl, reg)
@@ -165,7 +167,7 @@ enum LSM6AccelerometerScale {
     Max2G = 0b00,
     Max4G = 0b10,
     Max8G = 0b11,
-    Max16G = 0b01
+    Max16G = 0b01,
 }
 
 impl LSM6AccelerometerScale {
@@ -203,7 +205,7 @@ enum LSM6GyroscopeScale {
     Max500Dps = 0b0100,
     Max1000Dps = 0b1000,
     Max2000Dps = 0b1100,
-    Max4000Dps = 0b0001
+    Max4000Dps = 0b0001,
 }
 
 impl LSM6GyroscopeScale {

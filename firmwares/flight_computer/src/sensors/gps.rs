@@ -1,18 +1,18 @@
-use core::cell::RefCell;
-use core::ops::DerefMut;
-use core::convert::{TryFrom, TryInto};
-use alloc::vec::Vec;
-use alloc::string::{String, ToString};
 use alloc::format;
+use alloc::string::{String, ToString};
+use alloc::vec::Vec;
+use core::cell::RefCell;
+use core::convert::{TryFrom, TryInto};
+use core::ops::DerefMut;
 
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
-use hal::pac::{interrupt, Interrupt, USART2};
-use hal::gpio::{Pin, Alternate};
-use hal::rcc::Clocks;
-use hal::serial::Serial;
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::serial::Read;
+use hal::gpio::{Alternate, Pin};
+use hal::pac::{interrupt, Interrupt, USART2};
+use hal::prelude::*;
+use hal::rcc::Clocks;
+use hal::serial::Serial;
+use stm32f4xx_hal as hal;
 
 use ublox::{AlignmentToReferenceTime, CfgPrtUartBuilder, CfgRateBuilder, UartPortId};
 
@@ -42,7 +42,7 @@ impl TryFrom<&str> for GPSFixType {
             "4" => Ok(GPSFixType::RTKFix),
             "5" => Ok(GPSFixType::RTKFloat),
             "6" => Ok(GPSFixType::DeadReckoningFix),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }
@@ -51,15 +51,15 @@ impl TryFrom<&str> for GPSFixType {
 enum GPSState {
     Init,
     Active,
-    Error
+    Error,
 }
 
 pub struct GPS {
     state: GPSState,
     utc_time: Option<String>,
-    pub latitude: Option<f32>, // TODO: type?
+    pub latitude: Option<f32>,  // TODO: type?
     pub longitude: Option<f32>, // TODO: type?
-    pub altitude: Option<f32>, // TODO: unit/type?
+    pub altitude: Option<f32>,  // TODO: unit/type?
     pub fix: GPSFixType,
     pub num_satellites: u8,
     pub hdop: u16, // hdop * 100
@@ -68,7 +68,7 @@ pub struct GPS {
 }
 
 impl GPS {
-    pub fn init(dp_uart: USART2, tx: Pin<'A', 2,>, rx: Pin<'A', 3>, clocks: &Clocks) -> Self {
+    pub fn init(dp_uart: USART2, tx: Pin<'A', 2>, rx: Pin<'A', 3>, clocks: &Clocks) -> Self {
         let tx = tx.into_alternate::<7>();
         let rx = rx.into_alternate::<7>();
         let baud = BAUD_RATE_OPTIONS[0];
@@ -85,10 +85,14 @@ impl GPS {
         });
 
         // Initialize NMEA buffer for interrupt
-        unsafe { NMEA_BUFFER.replace(Vec::with_capacity(256)); }
+        unsafe {
+            NMEA_BUFFER.replace(Vec::with_capacity(256));
+        }
 
         // Enable RX interrupt
-        unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::USART2); }
+        unsafe {
+            cortex_m::peripheral::NVIC::unmask(Interrupt::USART2);
+        }
 
         Self {
             state: GPSState::Init,
@@ -100,12 +104,12 @@ impl GPS {
             num_satellites: 0,
             hdop: 9999,
             last_baud_change: 0,
-            baud_rate: baud
+            baud_rate: baud,
         }
     }
 
     fn send_message(&mut self, buf: &[u8]) -> Result<(), hal::serial::Error> {
-        let mut uart = free(|cs| { UART.borrow(cs).replace(None) }).unwrap();
+        let mut uart = free(|cs| UART.borrow(cs).replace(None)).unwrap();
 
         uart.bwrite_all(buf)?;
         uart.bflush()?;
@@ -118,7 +122,7 @@ impl GPS {
     }
 
     fn change_baud_rate(&mut self, clocks: &Clocks, new_baud_rate: u32) {
-        let uart = free(|cs| { UART.borrow(cs).replace(None) }).unwrap();
+        let uart = free(|cs| UART.borrow(cs).replace(None)).unwrap();
         let (dp_uart, (tx, rx)) = uart.release();
         let config = hal::serial::config::Config::default()
             .baudrate(new_baud_rate.bps())
@@ -148,32 +152,40 @@ impl GPS {
             self.send_message(&msg.into_bytes())?;
 
             // Now that the RX is listening for UBX, set the baud rate.
-            self.send_message(&CfgPrtUartBuilder {
-                portid: UartPortId::Uart1,
-                reserved0: 0,
-                tx_ready: 0,
-                mode: 0x8c0,
-                baud_rate: DESIRED_BAUD_RATE,
-                in_proto_mask: 0x07,
-                out_proto_mask: 0x03,
-                flags: 0,
-                reserved5: 0,
-            }.into_packet_bytes())?;
+            self.send_message(
+                &CfgPrtUartBuilder {
+                    portid: UartPortId::Uart1,
+                    reserved0: 0,
+                    tx_ready: 0,
+                    mode: 0x8c0,
+                    baud_rate: DESIRED_BAUD_RATE,
+                    in_proto_mask: 0x07,
+                    out_proto_mask: 0x03,
+                    flags: 0,
+                    reserved5: 0,
+                }
+                .into_packet_bytes(),
+            )?;
 
             self.change_baud_rate(clocks, DESIRED_BAUD_RATE);
         }
 
         // Apply non-baud-related config items, such as measurement rate
         log!(Info, "Setting GPS measurement frequency...");
-        self.send_message(&CfgRateBuilder {
-            measure_rate_ms: MEASUREMENT_RATE_MS,
-            nav_rate: 1,
-            time_ref: AlignmentToReferenceTime::Gps
-        }.into_packet_bytes())?;
+        self.send_message(
+            &CfgRateBuilder {
+                measure_rate_ms: MEASUREMENT_RATE_MS,
+                nav_rate: 1,
+                time_ref: AlignmentToReferenceTime::Gps,
+            }
+            .into_packet_bytes(),
+        )?;
 
         log!(Info, "GPS successfully initialized.");
 
-        unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::USART2); }
+        unsafe {
+            cortex_m::peripheral::NVIC::unmask(Interrupt::USART2);
+        }
 
         Ok(())
     }
@@ -188,12 +200,14 @@ impl GPS {
 
         cortex_m::peripheral::NVIC::mask(Interrupt::USART2);
         self.change_baud_rate(clocks, BAUD_RATE_OPTIONS[i + 1]);
-        unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::USART2); }
+        unsafe {
+            cortex_m::peripheral::NVIC::unmask(Interrupt::USART2);
+        }
     }
 
     pub fn tick(&mut self, time: u32, clocks: &Clocks) {
         // No NMEA line is ready yet
-        if !free(|cs| { NMEA_READY.borrow(cs).replace(false) }) {
+        if !free(|cs| NMEA_READY.borrow(cs).replace(false)) {
             // We are in the setup phase and it's been a while, maybe we need
             // to change baud rates.
             if self.state == GPSState::Init && time - self.last_baud_change > 1500 {
@@ -208,7 +222,9 @@ impl GPS {
         // possible.
         let nmea: Option<String> = free(|_cs| {
             let buffer = unsafe { NMEA_BUFFER.as_mut().unwrap() };
-            buffer.iter().position(|b| *b == '\n' as u8)
+            buffer
+                .iter()
+                .position(|b| *b == '\n' as u8)
                 .map(|i| buffer.drain(0..=i).collect::<Vec<u8>>())
                 .map(|b| String::from_utf8_lossy(&b).to_string())
         });
@@ -228,11 +244,15 @@ impl GPS {
 
             // Latitude needs to converted from degrees and minutes to decimal degrees
             // Lat: DDMM.MM... Lng: DDDMM.MM...
-            self.latitude = (segments[2].len() > 0).then(|| segments[2].split_at(2))
-                .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok())).flatten()
+            self.latitude = (segments[2].len() > 0)
+                .then(|| segments[2].split_at(2))
+                .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
+                .flatten()
                 .map(|(d, m)| (d + m / 60.0) * if segments[3] == "N" { 1.0 } else { -1.0 });
-            self.longitude = (segments[4].len() > 0).then(|| segments[4].split_at(3))
-                .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok())).flatten()
+            self.longitude = (segments[4].len() > 0)
+                .then(|| segments[4].split_at(3))
+                .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
+                .flatten()
                 .map(|(d, m)| (d + m / 60.0) * if segments[5] == "E" { 1.0 } else { -1.0 });
             self.altitude = segments[9].parse::<f32>().ok();
 
@@ -240,7 +260,10 @@ impl GPS {
             self.num_satellites = segments[7].parse().unwrap_or(0);
             self.hdop = (segments[8].parse::<f32>().unwrap_or(99.99) * 100.0) as u16;
 
-            log_every_nth_time!(100, Debug, "{:?}, Lat/Lng: ({},{})°, Alt: {}m, Sats: {}, HDOP: {}",
+            log_every_nth_time!(
+                100,
+                Debug,
+                "{:?}, Lat/Lng: ({},{})°, Alt: {}m, Sats: {}, HDOP: {}",
                 self.fix,
                 self.latitude.map(|x| x.to_string()).unwrap_or("".to_string()),
                 self.longitude.map(|x| x.to_string()).unwrap_or("".to_string()),

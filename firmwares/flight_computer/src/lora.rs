@@ -5,12 +5,12 @@ use core::ops::DerefMut;
 
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::prelude::*;
-use hal::dma::{MemoryToPeripheral, Stream3, StreamX, StreamsTuple, Transfer};
 use hal::dma::config::DmaConfig;
 use hal::dma::traits::{Stream, StreamISR};
+use hal::dma::{MemoryToPeripheral, Stream3, StreamX, StreamsTuple, Transfer};
 use hal::gpio::{Alternate, Input, Output, Pin};
 use hal::interrupt::{DMA2_STREAM3, DMA2_STREAM4};
-use hal::pac::{DMA1, DMA2, NVIC, SPI1, interrupt, Interrupt};
+use hal::pac::{interrupt, Interrupt, DMA1, DMA2, NVIC, SPI1};
 use hal::spi::{Master, Spi, TransferModeNormal, Tx};
 use stm32f4xx_hal as hal;
 
@@ -156,11 +156,7 @@ impl LoRaRadio {
         })
     }
 
-    fn command_dma(
-        &mut self,
-        opcode: LLCC68OpCode,
-        params: &[u8]
-    ) -> () {
+    fn command_dma(&mut self, opcode: LLCC68OpCode, params: &[u8]) -> () {
         if params.len() > DMA_BUFFER_SIZE - 1 {
             return;
         }
@@ -254,12 +250,7 @@ impl LoRaRadio {
 
         self.command(
             LLCC68OpCode::SetModulationParams,
-            &[
-                spreading_factor as u8,
-                bandwidth as u8,
-                coding_rate as u8,
-                low_data_rate_optimization as u8,
-            ],
+            &[spreading_factor as u8, bandwidth as u8, coding_rate as u8, low_data_rate_optimization as u8],
             0,
         )?;
         Ok(())
@@ -313,7 +304,11 @@ impl LoRaRadio {
     }
 
     fn set_dio1_interrupt(&mut self, irq_mask: u16, dio1_mask: u16) -> Result<(), hal::spi::Error> {
-        self.command(LLCC68OpCode::SetDioIrqParams, &[(irq_mask >> 8) as u8, irq_mask as u8, (dio1_mask >> 8) as u8, dio1_mask as u8, 0, 0, 0, 0], 0)?;
+        self.command(
+            LLCC68OpCode::SetDioIrqParams,
+            &[(irq_mask >> 8) as u8, irq_mask as u8, (dio1_mask >> 8) as u8, dio1_mask as u8, 0, 0, 0, 0],
+            0,
+        )?;
         Ok(())
     }
 
@@ -325,7 +320,10 @@ impl LoRaRadio {
 
     fn configure_rx(&mut self) -> Result<(), hal::spi::Error> {
         self.configure_common()?;
-        self.set_dio1_interrupt((LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16), LLCC68Interrupt::RxDone as u16)?;
+        self.set_dio1_interrupt(
+            (LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16),
+            LLCC68Interrupt::RxDone as u16,
+        )?;
 
         self.set_lora_packet_params(10, false, 0xff, true, false)?; // TODO
         self.set_rx_mode(0);
@@ -391,7 +389,8 @@ impl LoRaRadio {
         }
 
         // Get IRQ status to allow checking for CrcErr
-        let irq_status = self.command(LLCC68OpCode::GetIrqStatus, &[], 3)
+        let irq_status = self
+            .command(LLCC68OpCode::GetIrqStatus, &[], 3)
             .map(|r| ((r[1] as u16) << 8) + (r[2] as u16))
             .unwrap_or(0);
 
@@ -406,7 +405,13 @@ impl LoRaRadio {
         // get rx buffer status
         let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3).unwrap(); // TODO
 
-        let buffer = self.command(LLCC68OpCode::ReadBuffer, &[rx_buffer_status[2]], rx_buffer_status[1] as usize + 1).unwrap();
+        let buffer = self
+            .command(
+                LLCC68OpCode::ReadBuffer,
+                &[rx_buffer_status[2]],
+                rx_buffer_status[1] as usize + 1,
+            )
+            .unwrap();
 
         log!(Debug, "{:02x?}", buffer);
 
@@ -416,7 +421,7 @@ impl LoRaRadio {
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
-        let result = free(|cs| { DMA_RESULT.borrow(cs).replace(None) });
+        let result = free(|cs| DMA_RESULT.borrow(cs).replace(None));
         if result.is_some() {
             self.cs.set_high();
         }
@@ -530,7 +535,7 @@ enum LLCC68OpCode {
     GetDeviceErrors = 0x17,
     ClearDeviceErrors = 0x07,
     GetStats = 0x10,
-    ResetStats = 0x00
+    ResetStats = 0x00,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -546,7 +551,7 @@ enum LLCC68OutputPower {
     P14dBm = 14,
     P17dBm = 17,
     P20dBm = 20,
-    P22dBm = 22
+    P22dBm = 22,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -559,7 +564,7 @@ enum LLCC68RampTime {
     R200U = 0x04,
     R800U = 0x05,
     R1700U = 0x06,
-    R3400U = 0x07
+    R3400U = 0x07,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -567,7 +572,7 @@ enum LLCC68RampTime {
 enum LLCC68LoRaModulationBandwidth {
     Bw125 = 0x04,
     Bw250 = 0x05,
-    Bw500 = 0x06
+    Bw500 = 0x06,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -579,7 +584,7 @@ enum LLCC68LoRaSpreadingFactor {
     SF8 = 0x08,
     SF9 = 0x09,
     SF10 = 0x0a,
-    SF11 = 0x0B
+    SF11 = 0x0B,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -588,5 +593,5 @@ enum LLCC68LoRaCodingRate {
     CR4of5 = 0x01,
     CR4of6 = 0x02,
     CR4of7 = 0x03,
-    CR4of8 = 0x04
+    CR4of8 = 0x04,
 }

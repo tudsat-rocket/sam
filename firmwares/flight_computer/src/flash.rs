@@ -1,10 +1,10 @@
 use alloc::vec::Vec;
 
-use stm32f4xx_hal as hal;
-use hal::pac::SPI2;
-use hal::gpio::{Alternate, Output, Pin};
 use cortex_m::interrupt::free;
 use embedded_hal::prelude::*;
+use hal::gpio::{Alternate, Output, Pin};
+use hal::pac::SPI2;
+use stm32f4xx_hal as hal;
 
 use crate::prelude::*;
 
@@ -17,23 +17,19 @@ type Spi = hal::spi::Spi<SPI2, (SclPin, MisoPin, MosiPin)>;
 pub struct Flash {
     spi: Spi,
     cs: CsPin,
-    size: usize
+    size: usize,
 }
 
 impl Flash {
     pub fn init(spi: Spi, cs: CsPin) -> Self {
-        let mut flash = Self {
-            spi,
-            cs,
-            size: 0
-        };
+        let mut flash = Self { spi, cs, size: 0 };
 
         let ids = flash.command(W25OpCode::JedecId, &[], 3).unwrap_or([0; 3].to_vec());
         let (man_id, dev_id) = (ids[0], ((ids[1] as u16) << 8) + (ids[2] as u16));
         let (name, size_mbit) = match (man_id, dev_id) {
             (0xef, 0x4019) => ("Winbond W25Q256JV-IQ", 256),
             (0xef, 0x7019) => ("Winbond W25Q256JV-IM", 256),
-            _ => ("unknown", 0)
+            _ => ("unknown", 0),
         };
 
         if size_mbit > 0 {

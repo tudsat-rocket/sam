@@ -1,5 +1,5 @@
-use stm32f4xx_hal as hal;
 use hal::pac::IWDG;
+use stm32f4xx_hal as hal;
 
 pub fn init_watchdog() {
     let iwdg = unsafe { &(*IWDG::ptr()) };

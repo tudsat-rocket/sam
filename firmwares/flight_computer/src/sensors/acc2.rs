@@ -1,18 +1,23 @@
 use alloc::vec::Vec;
 
-use stm32f4xx_hal as hal;
-use hal::prelude::*;
+use hal::gpio::{Alternate, Output, Pin};
 use hal::pac::SPI3;
-use hal::gpio::{Pin, Alternate, Output};
-use hal::spi::{TransferModeNormal, Master};
+use hal::prelude::*;
+use hal::spi::{Master, TransferModeNormal};
+use stm32f4xx_hal as hal;
 
 use crate::prelude::*;
 
-type Spi = hal::spi::Spi<SPI3, (
-    Pin<'C', 10, Alternate<6>>,
-    Pin<'C', 11, Alternate<6>>,
-    Pin<'C', 12, Alternate<6>>,
-), TransferModeNormal, Master>;
+type Spi = hal::spi::Spi<
+    SPI3,
+    (
+        Pin<'C', 10, Alternate<6>>,
+        Pin<'C', 11, Alternate<6>>,
+        Pin<'C', 12, Alternate<6>>,
+    ),
+    TransferModeNormal,
+    Master,
+>;
 type CsPin = hal::gpio::Pin<'D', 2, Output>;
 
 const G_TO_MS2: f32 = 9.80665;
@@ -20,16 +25,12 @@ const G_TO_MS2: f32 = 9.80665;
 pub struct Accelerometer {
     spi: Spi,
     cs: CsPin,
-    acc: Option<(f32, f32, f32)>
+    acc: Option<(f32, f32, f32)>,
 }
 
 impl Accelerometer {
     pub fn init(spi: Spi, cs: CsPin) -> Result<Self, hal::spi::Error> {
-        let mut acc2 = Self {
-            spi,
-            cs,
-            acc: None
-        };
+        let mut acc2 = Self { spi, cs, acc: None };
 
         acc2.configure_power(ADXL375Mode::Measure)?;
         acc2.write_u8(ADXL375Register::DataFormat, 0b00001011)?;
@@ -77,7 +78,11 @@ impl Accelerometer {
         let y = ((response[3] as i16) << 8) + (response[2] as i16);
         let z = ((response[5] as i16) << 8) + (response[4] as i16);
 
-        self.acc = Some((x as f32 * 0.049 * G_TO_MS2, z as f32 * 0.049 * G_TO_MS2, -y as f32 * 0.049 * G_TO_MS2));
+        self.acc = Some((
+            x as f32 * 0.049 * G_TO_MS2,
+            z as f32 * 0.049 * G_TO_MS2,
+            -y as f32 * 0.049 * G_TO_MS2,
+        ));
 
         Ok(())
     }
@@ -134,7 +139,7 @@ enum ADXL375Register {
     DataZL = 0x36, // TODO: L/H?
     DataZH = 0x37, // TODO: L/H?
     FifoControl = 0x38,
-    FifoStatus = 0x39
+    FifoStatus = 0x39,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -162,5 +167,5 @@ enum ADXL375DataRate {
 #[allow(dead_code)]
 enum ADXL375Mode {
     Measure = 0b10,
-    Sleep = 0b01
+    Sleep = 0b01,
 }

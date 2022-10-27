@@ -1,8 +1,8 @@
-use core::cell::RefCell;
-use core::ops::DerefMut;
 use alloc::collections::VecDeque;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
+use core::cell::RefCell;
+use core::ops::DerefMut;
 
 use cortex_m::interrupt::{free, Mutex};
 use rtt_target::rprintln;
@@ -15,16 +15,13 @@ static LOGGER: Mutex<RefCell<Option<Logger>>> = Mutex::new(RefCell::new(None));
 
 pub struct Logger {
     pub time: u32,
-    usb_msg_queue: VecDeque<(u32, String, LogLevel, String)>
+    usb_msg_queue: VecDeque<(u32, String, LogLevel, String)>,
 }
 
 impl Logger {
     pub fn new() -> Self {
         let usb_msg_queue = VecDeque::with_capacity(QUEUE_SIZE);
-        Self {
-            time: 0,
-            usb_msg_queue
-        }
+        Self { time: 0, usb_msg_queue }
     }
 
     pub fn push_usb_message(&mut self, location: &str, log_level: LogLevel, msg: String) {
@@ -47,7 +44,8 @@ impl Logger {
             self.usb_msg_queue.remove(i);
         }
 
-        self.usb_msg_queue.push_back((self.time, location.to_string(), log_level, msg));
+        self.usb_msg_queue
+            .push_back((self.time, location.to_string(), log_level, msg));
     }
 
     pub fn pop_usb_message(&mut self) -> Option<(u32, String, LogLevel, String)> {
