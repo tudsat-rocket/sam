@@ -10,23 +10,55 @@ use std::vec::Vec;
 
 use core::iter::Extend;
 
-use crc::Crc;
 use nalgebra::UnitQuaternion;
 use serde::{Deserialize, Serialize};
 
 pub use LogLevel::*;
 
-pub const X25: Crc<u16> = Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[allow(non_camel_case_types)]
+pub struct f8 {
+    raw: u8,
+}
+
+impl From<f32> for f8 {
+    fn from(x: f32) -> Self {
+        let bits = x.to_bits();
+        let sign = bits >> 31;
+        let exponent = (bits >> 23) & 0xff;
+        let fraction = bits & 0x7fffff;
+
+        let expo_small = (((exponent as i32) - 0x80).clamp(-7, 8) + 7) as u32;
+        let fraction_small = fraction >> 20;
+
+        let raw = ((sign << 7) | (expo_small << 3) | fraction_small) as u8;
+        Self { raw }
+    }
+}
+
+impl Into<f32> for f8 {
+    fn into(self) -> f32 {
+        let sign = self.raw >> 7;
+        let exponent = (self.raw & 0x7f) >> 3;
+        let fraction = self.raw & 0x7;
+
+        let expo_large = ((exponent as i32) - 7 + 0x80) as u32;
+        let fraction_large = (fraction as u32) << 20;
+
+        let bits = ((sign as u32) << 31) | (expo_large << 23) | fraction_large;
+        f32::from_bits(bits)
+    }
+}
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum FlightMode {
-    Idle,
-    HardwareArmed,
-    Armed,
-    Flight,
-    RecoveryDrogue,
-    RecoveryMain,
-    Landed,
+    Idle = 0,
+    HardwareArmed = 1,
+    Armed = 2,
+    Flight = 3,
+    RecoveryDrogue = 4,
+    RecoveryMain = 5,
+    Landed = 6,
 }
 
 impl Default for FlightMode {
@@ -57,22 +89,18 @@ pub struct TelemetryMain {
     pub mode: FlightMode,
     pub orientation: Option<UnitQuaternion<f32>>,
     pub vertical_speed: f32,
-    pub altitude_baro: u16,
-    pub altitude: u16,
+    pub altitude_baro: f32,
+    pub altitude: f32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryState {
-    pub time: u32,
-    pub orientation: Option<UnitQuaternion<f32>>,
-    pub gyroscope: (f32, f32, f32),
-    pub acceleration: (f32, f32, f32),
-    pub acceleration_world: (f32, f32, f32),
-    pub vertical_speed: f32,
+pub struct TelemetryMainCompressed {
+    pub time: u32, // TODO: combine these two?
+    pub mode: FlightMode,
+    pub orientation: (u8, u8, u8, u8),
+    pub vertical_speed: f8,
     pub altitude_baro: u16,
-    pub altitude_gps: u16,
-    pub altitude: u16,
-    pub altitude_ground: u16,
+    pub altitude: u16
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -84,12 +112,26 @@ pub struct TelemetryRawSensors {
     pub magnetometer: (f32, f32, f32),
     pub temperature_baro: f32,
     pub pressure_baro: f32,
-    pub altitude_baro: f32,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryPower {
+pub struct TelemetryRawSensorsCompressed {
     pub time: u32,
+    pub gyro: (f8, f8, f8),
+    pub accelerometer1: (f8, f8, f8),
+    pub accelerometer2: (f8, f8, f8),
+    pub magnetometer: (f8, f8, f8),
+    pub temperature_baro: i8,
+    pub pressure_baro: u16, // TODO: compress this further
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TelemetryDiagnostics {
+    // TODO: compress
+    pub time: u32,
+    pub loop_runtime: u16,
+    pub temperature_core: i16,
+    pub cpu_voltage: u16,
     /// Battery voltage in mV
     pub battery_voltage: u16,
     /// Voltage behind arm switch in mV
@@ -101,21 +143,8 @@ pub struct TelemetryPower {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryKalman {
-    pub time: u32,
-    // TODO
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryDiagnostics {
-    pub time: u32,
-    pub loop_runtime: u16,
-    pub temperature_core: i16,
-    pub cpu_voltage: u16,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryGPS {
+    // TODO: compress
     pub time: u32,
     pub fix: GPSFixType,
     pub hdop: u16,
@@ -123,6 +152,14 @@ pub struct TelemetryGPS {
     pub latitude: Option<f32>,
     pub longitude: Option<f32>,
     pub altitude_asl: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TelemetryGCS {
+    pub time: u32,
+    pub lora_rssi: u8,
+    pub lora_rssi_signal: u8,
+    pub lora_snr: u8,
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,12 +174,12 @@ pub enum LogLevel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownlinkMessage {
     TelemetryMain(TelemetryMain),
-    TelemetryState(TelemetryState),
+    TelemetryMainCompressed(TelemetryMainCompressed),
     TelemetryRawSensors(TelemetryRawSensors),
-    TelemetryPower(TelemetryPower),
-    TelemetryKalman(TelemetryKalman),
+    TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed),
     TelemetryDiagnostics(TelemetryDiagnostics),
     TelemetryGPS(TelemetryGPS),
+    TelemetryGCS(TelemetryGCS),
     Log(u32, String, LogLevel, String),
 }
 
@@ -150,12 +187,12 @@ impl DownlinkMessage {
     pub fn time(&self) -> u32 {
         match self {
             DownlinkMessage::TelemetryMain(tm) => tm.time,
-            DownlinkMessage::TelemetryState(tm) => tm.time,
+            DownlinkMessage::TelemetryMainCompressed(tm) => tm.time,
             DownlinkMessage::TelemetryRawSensors(tm) => tm.time,
-            DownlinkMessage::TelemetryPower(tm) => tm.time,
-            DownlinkMessage::TelemetryKalman(tm) => tm.time,
+            DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.time,
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.time,
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
+            DownlinkMessage::TelemetryGCS(tm) => tm.time,
             DownlinkMessage::Log(t, _, _, _) => *t,
         }
     }
@@ -182,43 +219,22 @@ impl ToString for LogLevel {
     }
 }
 
-pub fn wrap_msg(msg: &[u8], packet_counter: Option<u16>) -> Vec<u8> {
-    // TODO: messages longer than 255?
-    // TODO: packet counter size
-
-    let mut wrapped: Vec<u8> = if let Some(pc) = packet_counter {
-        [0x42, (pc >> 8) as u8, (pc & 0xff) as u8, msg.len() as u8].to_vec()
-    } else {
-        [0x42, msg.len() as u8].to_vec()
-    };
-
-    wrapped.extend(msg);
-
-    let mut digest = X25.digest();
-    digest.update(&wrapped);
-    let crc = digest.finalize();
-    wrapped.push((crc >> 8) as u8);
-    wrapped.push((crc & 0xff) as u8);
-
-    wrapped
-}
-
 impl UplinkMessage {
     pub fn wrap(&self) -> Vec<u8> {
         let mut buf = [0u8; 256];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        wrap_msg(serialized, None)
+        [&[0x42, serialized.len() as u8], &*serialized].concat()
     }
 }
 
 impl DownlinkMessage {
-    pub fn wrap(&self, packet_counter: u16) -> Vec<u8> {
+    pub fn wrap(&self) -> Vec<u8> {
         let mut buf = [0u8; 512];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        wrap_msg(serialized, Some(packet_counter))
+        [&[0x42, serialized.len() as u8], &*serialized].concat()
     }
 
-    pub fn read_valid(buf: &[u8]) -> Option<(u16, Self)> {
+    pub fn read_valid(buf: &[u8]) -> Option<Self> {
         if buf.len() == 0 {
             return None;
         }
@@ -227,84 +243,46 @@ impl DownlinkMessage {
             return None;
         }
 
-        if buf.len() < 6 {
+        if buf.len() < 2 {
             return None;
         }
 
-        let len = buf[3] as usize;
-        if buf.len() < 6 + len {
+        let len = buf[1] as usize;
+        if buf.len() < 2 + len {
             return None;
         }
 
-        let crc = ((buf[len + 4] as u16) << 8) + (buf[len + 5] as u16);
-
-        let mut digest = X25.digest();
-        digest.update(&buf[0..(len + 4)]);
-        let true_crc = digest.finalize();
-
-        rtt_target::rprintln!("{:?} {:?}", true_crc, crc);
-
-        if crc != true_crc {
-            // TODO
-        }
-
-        let len = buf[3] as usize;
-        let packet_counter = ((buf[1] as u16) << 8) + (buf[2] as u16);
-
-        //rtt_target::rprintln!("{:02x?}", &buf);
-        //rtt_target::rprintln!("{:02x?}", &buf[4..(len + 4)]);
-
-        let r = postcard::from_bytes::<DownlinkMessage>(&buf[4..(len + 4)])
-            .ok()
-            .map(|x| (packet_counter, x));
-
-        rtt_target::rprintln!("{:?}", r);
-        r
+        postcard::from_bytes::<DownlinkMessage>(&buf[2..(len + 2)]).ok()
     }
 
-    pub fn pop_valid(buf: &mut Vec<u8>) -> Option<(u16, Self)> {
+    pub fn pop_valid(buf: &mut Vec<u8>) -> Option<Self> {
         while buf.len() > 0 {
             if buf[0] == 0x42 {
-                if buf.len() < 6 {
+                if buf.len() < 2 {
                     return None;
                 }
 
-                let len = buf[3] as usize;
-                if buf.len() < 6 + len {
+                let len = buf[1] as usize;
+                if buf.len() < 2 + len {
                     return None;
                 }
 
-                let crc = ((buf[len + 4] as u16) << 8) + (buf[len + 5] as u16);
-
-                let mut digest = X25.digest();
-                digest.update(&buf[0..(len + 4)]);
-                let true_crc = digest.finalize();
-
-                if crc == true_crc {
-                    break;
-                }
+                break;
             }
 
             buf.remove(0);
         }
 
-        if buf.len() == 0 {
+        if buf.len() < 2 {
             return None;
         }
 
-        let len = buf[3] as usize;
-        let packet_counter = ((buf[1] as u16) << 8) + (buf[2] as u16);
-        let result = postcard::from_bytes::<DownlinkMessage>(&buf[4..(len + 4)])
-            .ok()
-            .map(|x| (packet_counter, x));
+        let len = buf[1] as usize;
+        let result = postcard::from_bytes::<DownlinkMessage>(&buf[2..(len + 2)]).ok();
 
-        for _i in 0..(len + 6) {
+        for _i in 0..(len + 2) {
             buf.remove(0);
         }
-
-        //if crc != true_crc {
-        //    return None; // TODO: result
-        //}
 
         result
     }

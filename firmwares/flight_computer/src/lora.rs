@@ -46,12 +46,10 @@ type SpiDmaTransfer = Transfer<
 >;
 
 static DMA_TRANSFER: Mutex<RefCell<Option<SpiDmaTransfer>>> = Mutex::new(RefCell::new(None));
-
 static DMA_RESULT: Mutex<RefCell<Option<Result<(), ()>>>> = Mutex::new(RefCell::new(None));
-
 static mut DMA_BUFFER: [u8; DMA_BUFFER_SIZE] = [0; DMA_BUFFER_SIZE];
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 #[allow(dead_code)] // TODO
 enum RadioState {
     Init,
@@ -62,11 +60,16 @@ enum RadioState {
 }
 
 pub struct LoRaRadio {
+    time: u32,
     state: RadioState,
+    state_time: u32,
     spi: SharedSpi,
     cs: CsPin,
     irq: IrqPin,
     busy: BusyPin,
+    pub rssi: u8,
+    pub rssi_signal: u8,
+    pub snr: u8,
 }
 
 #[interrupt]
@@ -113,6 +116,7 @@ impl LoRaRadio {
                 )
             };
 
+            #[cfg(not(feature = "gc"))]
             transfer.start(|_tx| {});
 
             // Hand off transfer to interrupt handler
@@ -120,11 +124,16 @@ impl LoRaRadio {
         });
 
         Self {
+            time: 0,
             state: RadioState::Init,
+            state_time: 0,
             spi,
             cs,
             irq,
             busy,
+            rssi: 255,
+            rssi_signal: 255,
+            snr: 0,
         }
     }
 
@@ -145,7 +154,7 @@ impl LoRaRadio {
             // At 10MHz SPI freq, the setup commands seem to require some
             // extra delay between cs going low and the SCK going high
             // TODO: make this prettier
-            for _i in 0..400 {
+            for _i in 0..1000 {
                 core::hint::spin_loop()
             }
 
@@ -341,13 +350,12 @@ impl LoRaRadio {
         Ok(())
     }
 
-    fn set_tx_mode_dma(&mut self, timeout_us: u32) -> Result<(), hal::spi::Error> {
+    fn set_tx_mode_dma(&mut self, timeout_us: u32) {
         let timeout = ((timeout_us as f32) / 15.625) as u32;
         self.command_dma(
             LLCC68OpCode::SetTx,
             &[(timeout >> 16) as u8, (timeout >> 8) as u8, timeout as u8],
         );
-        Ok(())
     }
 
     fn set_rx_mode(&mut self, timeout_us: u32) -> Result<(), hal::spi::Error> {
@@ -360,32 +368,37 @@ impl LoRaRadio {
         Ok(())
     }
 
+    fn set_state(&mut self, state: RadioState) {
+        self.state = state;
+        self.state_time = self.time;
+    }
+
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), hal::spi::Error> {
         if self.state != RadioState::Idle {
             return Ok(()); // TODO
         }
 
-        log!(Debug, "{:02x?}", msg);
         self.set_lora_packet_params(10, false, msg.len() as u8, true, false)?;
         let mut params = Vec::with_capacity(msg.len() + 1);
         params.push(TX_BASE_ADDRESS);
         params.append(&mut msg.to_vec());
         self.command_dma(LLCC68OpCode::WriteBuffer, &params);
-        self.state = RadioState::Writing;
+        self.set_state(RadioState::Writing);
         Ok(())
     }
 
     pub fn send_message(&mut self, msg: DownlinkMessage) {
-        let serialized = msg.wrap(0); // TODO
+        let serialized = msg.wrap();
         if let Err(e) = self.send_packet(&serialized) {
             log!(Error, "Error sending LoRa packet: {:?}", e);
         }
     }
 
-    pub fn receive_message(&mut self) -> Option<(u16, DownlinkMessage)> {
+    #[cfg(feature = "gcs")]
+    fn receive_message(&mut self) -> Result<Option<DownlinkMessage>, hal::spi::Error> {
         // No RxDone interrupt, do nothing
         if !self.irq.is_high() {
-            return None;
+            return Ok(None);
         }
 
         // Get IRQ status to allow checking for CrcErr
@@ -394,30 +407,32 @@ impl LoRaRadio {
             .map(|r| ((r[1] as u16) << 8) + (r[2] as u16))
             .unwrap_or(0);
 
-        self.command(LLCC68OpCode::ClearIrqStatus, &[0xff, 0xff], 0);
+        self.command(LLCC68OpCode::ClearIrqStatus, &[0xff, 0xff], 0)?;
 
-        log!(Debug, "{:?}", irq_status);
+        //log!(Debug, "{:?}", irq_status);
 
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
             log!(Error, "CRC Error.");
         }
 
         // get rx buffer status
-        let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3).unwrap(); // TODO
+        let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3)?;
 
-        let buffer = self
-            .command(
-                LLCC68OpCode::ReadBuffer,
-                &[rx_buffer_status[2]],
-                rx_buffer_status[1] as usize + 1,
-            )
-            .unwrap();
+        let buffer = self.command(LLCC68OpCode::ReadBuffer, &[rx_buffer_status[2]], rx_buffer_status[1] as usize + 1)?;
 
-        log!(Debug, "{:02x?}", buffer);
+        let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
+        self.rssi = packet_status[1];
+        self.rssi_signal = packet_status[3];
+        self.snr = packet_status[2];
 
-        self.set_rx_mode(0);
+        self.set_rx_mode(0)?;
 
-        DownlinkMessage::read_valid(&buffer[1..])
+        let decoded = DownlinkMessage::read_valid(&buffer[1..]);
+        if decoded.is_none() {
+            log!(Error, "Failed to decode message: {:02x?}", buffer);
+        }
+
+        Ok(decoded)
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
@@ -428,28 +443,37 @@ impl LoRaRadio {
         result
     }
 
-    fn tick_common(&mut self) {
+    fn tick_common(&mut self, time: u32) {
+        self.time = time;
+
         if self.state == RadioState::Writing {
             if let Some(_result) = self.check_dma_result() {
+                //log!(Debug, "Setting TX mode.");
                 self.set_tx_mode_dma(5000);
-                self.state = RadioState::Transmitting;
+                self.set_state(RadioState::Transmitting);
             }
         } else if self.state == RadioState::Transmitting {
             if let Some(_result) = self.check_dma_result() {
-                self.state = RadioState::Idle;
+                //log!(Debug, "Returning to Idle");
+                self.set_state(RadioState::Idle);
             }
+        }
+
+        if (self.state == RadioState::Writing || self.state == RadioState::Transmitting) && ((self.state_time + 100) < self.time) {
+            rtt_target::rprintln!("schinken");
+            self.set_state(RadioState::Idle);
         }
     }
 
     #[cfg(not(feature = "gcs"))]
-    pub fn tick(&mut self) -> Option<UplinkMessage> {
-        self.tick_common();
+    pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
+        self.tick_common(time);
 
         if self.state == RadioState::Init {
             if let Err(e) = self.configure_tx() {
                 log!(Error, "Error configuring LoRa transceiver: {:?}", e);
             } else {
-                self.state = RadioState::Idle;
+                self.set_state(RadioState::Idle);
             }
         }
 
@@ -457,18 +481,23 @@ impl LoRaRadio {
     }
 
     #[cfg(feature = "gcs")]
-    pub fn tick(&mut self) -> Option<(u16, DownlinkMessage)> {
-        self.tick_common();
+    pub fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
+        self.tick_common(time);
 
         if self.state == RadioState::Init {
             if let Err(e) = self.configure_rx() {
                 log!(Error, "Error configuring LoRa transceiver: {:?}", e);
             } else {
-                self.state = RadioState::Idle;
+                self.set_state(RadioState::Idle);
             }
         }
 
-        self.receive_message()
+        let result = self.receive_message();
+        if let Err(e) = result {
+            log!(Error, "Error receiving message: {:?}", e);
+        }
+
+        result.unwrap_or(None)
     }
 }
 

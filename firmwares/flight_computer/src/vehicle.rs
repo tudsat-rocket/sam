@@ -148,7 +148,7 @@ impl<'a> Vehicle {
         // TODO: write to flash, sd card
         // TODO: write to radio
 
-        if let Some(msg) = self.radio.tick() {
+        if let Some(msg) = self.radio.tick(self.time) {
             match msg {
                 UplinkMessage::Heartbeat => {}
                 UplinkMessage::Reboot => reboot(),
@@ -190,7 +190,7 @@ impl<'a> Vehicle {
 
         self.buzzer.tick(self.time);
 
-        let downlink_msg = self.radio.tick();
+        let downlink_msg = self.radio.tick(self.time);
 
         let uplink_msg = self.usb_link.tick(self.time).map(|msg| {
             match msg {
@@ -206,9 +206,18 @@ impl<'a> Vehicle {
             }
         });
 
-        if let Some((pc, msg)) = downlink_msg {
-            log!(Debug, "{:?}", msg);
-            self.usb_link.send_message(msg); // TODO: pass through pc
+        if let Some(msg) = downlink_msg {
+            //log!(Debug, "{:?}", msg);
+
+            let gcs_message = DownlinkMessage::TelemetryGCS(TelemetryGCS {
+                time: msg.time(),
+                lora_rssi: self.radio.rssi,
+                lora_rssi_signal: self.radio.rssi_signal,
+                lora_snr: self.radio.snr,
+            });
+
+            self.usb_link.send_message(msg); // TODO: pass through pc?
+            self.usb_link.send_message(gcs_message);
         }
 
         // TODO: uplink messages
@@ -217,14 +226,8 @@ impl<'a> Vehicle {
     fn next_usb_telem(&self) -> Option<DownlinkMessage> {
         if self.usb_telem_counter % 20 == 0 {
             Some(DownlinkMessage::TelemetryMain(self.into()))
-        } else if self.usb_telem_counter % 20 == 5 {
-            Some(DownlinkMessage::TelemetryState(self.into()))
         } else if self.usb_telem_counter % 20 == 10 {
             Some(DownlinkMessage::TelemetryRawSensors(self.into()))
-        } else if self.usb_telem_counter % 200 == 2 {
-            Some(DownlinkMessage::TelemetryPower(self.into()))
-        } else if self.usb_telem_counter % 20 == 15 {
-            Some(DownlinkMessage::TelemetryKalman(self.into()))
         } else if self.usb_telem_counter % 100 == 1 {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
         } else if self.usb_telem_counter % 100 == 2 {
@@ -236,24 +239,20 @@ impl<'a> Vehicle {
 
     fn next_lora_telem(&self) -> Option<DownlinkMessage> {
         if self.lora_telem_counter % 1000 == 0 {
-            Some(DownlinkMessage::TelemetryMain(self.into()))
+            Some(DownlinkMessage::TelemetryGPS(self.into()))
+        } else if self.lora_telem_counter % 100 == 0 {
+            Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
+        } else if self.lora_telem_counter % 40 == 20 {
+            Some(DownlinkMessage::TelemetryMainCompressed(self.into()))
+        } else if self.lora_telem_counter % 40 == 0 {
+            Some(DownlinkMessage::TelemetryRawSensorsCompressed(self.into()))
         } else {
             None
         }
-
-        //if self.lora_telem_counter % 100 == 0 {
-        //    Some(DownlinkMessage::TelemetryMain(self.into()))
-        //} else if self.lora_telem_counter % 200 == 5 {
-        //    Some(DownlinkMessage::TelemetryState(self.into()))
-        //} else if self.lora_telem_counter == 550 {
-        //    Some(DownlinkMessage::TelemetryPower(self.into()))
-        //} else if self.lora_telem_counter == 50 {
-        //    Some(DownlinkMessage::TelemetryGPS(self.into()))
-        //} else {
-        //    None
-        //}
     }
 }
+
+// TODO: move these trait implementations to telemetry.rs?
 
 impl Into<TelemetryMain> for &Vehicle {
     fn into(self) -> TelemetryMain {
@@ -261,19 +260,22 @@ impl Into<TelemetryMain> for &Vehicle {
             time: self.time,
             mode: self.mode.clone(),
             orientation: self.orientation.clone(),
+            altitude_baro: self.barometer.altitude().unwrap_or(0.0),
             ..Default::default()
         }
     }
 }
 
-impl Into<TelemetryState> for &Vehicle {
-    fn into(self) -> TelemetryState {
-        // TODO: send options?
-        TelemetryState {
+impl Into<TelemetryMainCompressed> for &Vehicle {
+    fn into(self) -> TelemetryMainCompressed {
+        let quat = self.orientation.clone()
+            .map(|q| q.coords)
+            .map(|q| ((127.0 + q.x * 127.0) as u8, (127.0 + q.y * 127.0) as u8, (127.0 + q.z * 127.0) as u8, (127.0 + q.w * 127.0) as u8));
+        TelemetryMainCompressed {
             time: self.time,
-            orientation: self.orientation.clone(),
-            gyroscope: self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0)),
-            acceleration: self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
+            mode: self.mode.clone(),
+            orientation: quat.unwrap_or((127, 127, 127, 127)),
+            altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
             ..Default::default()
         }
     }
@@ -289,28 +291,24 @@ impl Into<TelemetryRawSensors> for &Vehicle {
             magnetometer: self.compass.magnetometer().unwrap_or((0.0, 0.0, 0.0)),
             temperature_baro: self.barometer.temperature().unwrap_or(0.0),
             pressure_baro: self.barometer.pressure().unwrap_or(0.0),
-            altitude_baro: self.barometer.altitude().unwrap_or(0.0),
         }
     }
 }
 
-impl Into<TelemetryPower> for &Vehicle {
-    fn into(self) -> TelemetryPower {
-        TelemetryPower {
+impl Into<TelemetryRawSensorsCompressed> for &Vehicle {
+    fn into(self) -> TelemetryRawSensorsCompressed {
+        let gyro = self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0));
+        let acc1 = self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0));
+        let acc2 = self.acc.accelerometer().unwrap_or((0.0, 0.0, 0.0));
+        let mag = self.compass.magnetometer().unwrap_or((0.0, 0.0, 0.0));
+        TelemetryRawSensorsCompressed {
             time: self.time,
-            battery_voltage: self.power.battery_voltage().unwrap_or(0),
-            arm_voltage: self.power.arm_voltage().unwrap_or(0),
-            current: self.power.battery_current().unwrap_or(0),
-            ..Default::default()
-        }
-    }
-}
-
-impl Into<TelemetryKalman> for &Vehicle {
-    fn into(self) -> TelemetryKalman {
-        TelemetryKalman {
-            time: self.time,
-            ..Default::default()
+            gyro: ((gyro.0 * 10.0).into(), (gyro.1 * 10.0).into(), (gyro.2 * 10.0).into()),
+            accelerometer1: ((acc1.0 * 100.0).into(), (acc1.1 * 100.0).into(), (acc1.2 * 100.0).into()),
+            accelerometer2: ((acc2.0 * 10.0).into(), (acc2.1 * 10.0).into(), (acc2.2 * 10.0).into()),
+            magnetometer: ((mag.0 * 10.0).into(), (mag.1 * 10.0).into(), (mag.2 * 10.0).into()),
+            temperature_baro: (self.barometer.temperature().unwrap_or(0.0) * 2.0) as i8,
+            pressure_baro: (self.barometer.pressure().unwrap_or(0.0) * 10.0) as u16,
         }
     }
 }
@@ -322,6 +320,10 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             loop_runtime: self.loop_runtime,
             temperature_core: self.power.temperature().unwrap_or(0),
             cpu_voltage: self.power.cpu_voltage().unwrap_or(0),
+            battery_voltage: self.power.battery_voltage().unwrap_or(0),
+            arm_voltage: self.power.arm_voltage().unwrap_or(0),
+            current: self.power.battery_current().unwrap_or(0),
+            ..Default::default()
         }
     }
 }
@@ -336,6 +338,17 @@ impl Into<TelemetryGPS> for &Vehicle {
             latitude: self.gps.latitude,
             longitude: self.gps.longitude,
             altitude_asl: self.gps.altitude,
+        }
+    }
+}
+
+impl Into<TelemetryGCS> for &Vehicle {
+    fn into(self) -> TelemetryGCS {
+        TelemetryGCS {
+            time: self.time,
+            lora_rssi: self.radio.rssi,
+            lora_rssi_signal: self.radio.rssi_signal,
+            lora_snr: self.radio.snr,
         }
     }
 }

@@ -21,8 +21,6 @@ pub struct UsbLink {
     serial: SerialPort<'static, UsbBus<USB>>,
     poll_counter: u32,
     log_counter: u32,
-    downlink_counter: Wrapping<u16>,
-    //uplink_counter: Wrapping<u16>,
     uplink_buffer: Vec<u8>,
     time: u32,
     last_heartbeat: Option<u32>,
@@ -49,8 +47,6 @@ impl UsbLink {
             serial,
             poll_counter: 0,
             log_counter: 0,
-            downlink_counter: Wrapping(0),
-            //uplink_counter: Wrapping(0),
             uplink_buffer: Vec::with_capacity(128),
             time: 0,
             last_heartbeat: None,
@@ -62,8 +58,7 @@ impl UsbLink {
     }
 
     pub fn send_message(&mut self, msg: DownlinkMessage) {
-        let wrapped = msg.wrap(self.downlink_counter.0);
-        self.downlink_counter += 1;
+        let wrapped = msg.wrap();
 
         // USB only allows packet sizes up to 64 bytes
         for chunk in wrapped.chunks(64) {
