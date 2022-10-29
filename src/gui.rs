@@ -234,10 +234,10 @@ impl eframe::App for Sam {
                         ui,
                         "Power",
                         vec![
-                            ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage.map(|mv| mv as f32 * 1000.0))),
-                            ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage.map(|mv| mv as f32 * 1000.0))),
-                            ("Current [A]", Box::new(|vs| vs.current.map(|ma| ma as f32 * 1000.0))),
-                            ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage.map(|mv| mv as f32 * 1000.0))),
+                            ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage.map(|mv| mv as f32 / 1000.0))),
+                            ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage.map(|mv| mv as f32 / 1000.0))),
+                            ("Current [A]", Box::new(|vs| vs.current.map(|ma| ma as f32 / 1000.0))),
+                            ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage.map(|mv| mv as f32 / 1000.0))),
                         ],
                     );
 
