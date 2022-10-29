@@ -36,7 +36,6 @@ pub fn downlink_port(
 
     let mut buffer: Vec<u8> = vec![0; 1024];
     let mut downlink_buffer: Vec<u8> = Vec::new();
-    let mut downlink_counter = 0;
 
     let mut now = Instant::now();
     let mut last_heartbeat = Instant::now() - Duration::from_millis(1000);
@@ -49,21 +48,22 @@ pub fn downlink_port(
             last_heartbeat = now;
         }
 
-        for i in 0..port.read(&mut buffer)? {
+        let read_bytes = match port.read(&mut buffer) {
+            Ok(x) => Ok(x),
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::TimedOut => Ok(0),
+                _ => Err(e)
+            }
+        }?;
+
+        for i in 0..read_bytes {
             if !downlink_buffer.is_empty() || buffer[i] == 0x42 {
                 downlink_buffer.push(buffer[i]);
             }
         }
 
-        while let Some((pc, msg)) = DownlinkMessage::read_valid(&mut downlink_buffer) {
+        while let Some(msg) = DownlinkMessage::pop_valid(&mut downlink_buffer) {
             downlink_tx.send(msg)?;
-
-            let lost = pc.wrapping_sub(downlink_counter).saturating_sub(1);
-            if lost > 0 {
-                println!("Missed {} packets.", lost);
-            }
-
-            downlink_counter = pc;
             last_message = now;
         }
 
