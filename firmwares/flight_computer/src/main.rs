@@ -3,6 +3,7 @@
 #![feature(default_alloc_error_handler)]
 
 // Halt on panic
+#[cfg(not(test))]
 use panic_rtt_target as _;
 
 // This is why we need nightly, default_alloc_error_handler is (still) not
