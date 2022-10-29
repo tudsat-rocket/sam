@@ -48,7 +48,6 @@ use logging::*;
 use lora::*;
 use params::*;
 use sensors::*;
-use telemetry::*;
 use usb::*;
 use vehicle::*;
 use watchdog::*;

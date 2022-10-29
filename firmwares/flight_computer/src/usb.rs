@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use core::num::Wrapping;
 
 use hal::otg_fs::{UsbBus, USB};
 use stm32f4xx_hal as hal;
@@ -57,13 +56,21 @@ impl UsbLink {
         self.device.poll(&mut [&mut self.serial])
     }
 
+    fn send_data(&mut self, data: &[u8]) -> Result<(), UsbError> {
+        // USB only allows packet sizes up to 64 bytes
+        for chunk in data.chunks(64) {
+            self.serial.write(&chunk)?;
+            self.serial.flush()?;
+        }
+
+        Ok(())
+    }
+
     pub fn send_message(&mut self, msg: DownlinkMessage) {
         let wrapped = msg.wrap();
-
-        // USB only allows packet sizes up to 64 bytes
-        for chunk in wrapped.chunks(64) {
-            self.serial.write(&chunk);
-            self.serial.flush();
+        if let Err(e) = self.send_data(&wrapped) {
+            // Since USB doesn't seem to work, we only try to send this via SWD
+            rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
         }
     }
 

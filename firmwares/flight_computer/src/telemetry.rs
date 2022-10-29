@@ -8,8 +8,6 @@ use std::string::{String, ToString};
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
-use core::iter::Extend;
-
 use nalgebra::UnitQuaternion;
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +24,10 @@ fn test_f8() {
     let values: Vec<f32> = alloc::vec![-0.00001, 0.008, -0.125, 0.5, 1.0, -10.0, 100.0, 1000.0];
     let compressed: Vec<f8> = values.iter().map(|x| (*x).into()).collect();
     let recovered: Vec<f32> = compressed.iter().map(|x| (*x).into()).collect();
-    assert_eq!(recovered, alloc::vec![-0.01953125, 0.015625, -0.125, 0.5, 1.0, -10.0, 96.0, 960.0]);
+    assert_eq!(
+        recovered,
+        alloc::vec![-0.01953125, 0.015625, -0.125, 0.5, 1.0, -10.0, 96.0, 960.0]
+    );
 }
 
 impl From<f32> for f8 {
@@ -108,7 +109,7 @@ pub struct TelemetryMainCompressed {
     pub orientation: (u8, u8, u8, u8),
     pub vertical_speed: f8,
     pub altitude_baro: u16,
-    pub altitude: u16
+    pub altitude: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -1,9 +1,13 @@
 use hal::rcc::Clocks;
 use stm32f4xx_hal as hal;
 
+#[cfg(not(feature = "gcs"))]
 use ahrs::Ahrs;
-use nalgebra::{UnitQuaternion, Vector3};
+use nalgebra::UnitQuaternion;
+#[cfg(not(feature = "gcs"))]
+use nalgebra::Vector3;
 
+#[allow(unused_imports)]
 use crate::prelude::*;
 
 use crate::bootloader::*;
@@ -16,6 +20,7 @@ use crate::sensors::*;
 use crate::telemetry::*;
 use crate::usb::*;
 
+#[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
     clocks: Clocks,
 
@@ -192,7 +197,7 @@ impl<'a> Vehicle {
 
         let downlink_msg = self.radio.tick(self.time);
 
-        let uplink_msg = self.usb_link.tick(self.time).map(|msg| {
+        let _uplink_msg = self.usb_link.tick(self.time).map(|msg| {
             match msg {
                 UplinkMessage::Heartbeat => Some(UplinkMessage::Heartbeat),
                 UplinkMessage::Reboot => {
@@ -223,6 +228,7 @@ impl<'a> Vehicle {
         // TODO: uplink messages
     }
 
+    #[cfg(not(feature = "gcs"))]
     fn next_usb_telem(&self) -> Option<DownlinkMessage> {
         if self.usb_telem_counter % 20 == 0 {
             Some(DownlinkMessage::TelemetryMain(self.into()))
@@ -237,6 +243,7 @@ impl<'a> Vehicle {
         }
     }
 
+    #[cfg(not(feature = "gcs"))]
     fn next_lora_telem(&self) -> Option<DownlinkMessage> {
         if self.lora_telem_counter % 1000 == 0 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
@@ -268,9 +275,14 @@ impl Into<TelemetryMain> for &Vehicle {
 
 impl Into<TelemetryMainCompressed> for &Vehicle {
     fn into(self) -> TelemetryMainCompressed {
-        let quat = self.orientation.clone()
-            .map(|q| q.coords)
-            .map(|q| ((127.0 + q.x * 127.0) as u8, (127.0 + q.y * 127.0) as u8, (127.0 + q.z * 127.0) as u8, (127.0 + q.w * 127.0) as u8));
+        let quat = self.orientation.clone().map(|q| q.coords).map(|q| {
+            (
+                (127.0 + q.x * 127.0) as u8,
+                (127.0 + q.y * 127.0) as u8,
+                (127.0 + q.z * 127.0) as u8,
+                (127.0 + q.w * 127.0) as u8,
+            )
+        });
         TelemetryMainCompressed {
             time: self.time,
             mode: self.mode.clone(),
@@ -304,7 +316,11 @@ impl Into<TelemetryRawSensorsCompressed> for &Vehicle {
         TelemetryRawSensorsCompressed {
             time: self.time,
             gyro: ((gyro.0 * 10.0).into(), (gyro.1 * 10.0).into(), (gyro.2 * 10.0).into()),
-            accelerometer1: ((acc1.0 * 100.0).into(), (acc1.1 * 100.0).into(), (acc1.2 * 100.0).into()),
+            accelerometer1: (
+                (acc1.0 * 100.0).into(),
+                (acc1.1 * 100.0).into(),
+                (acc1.2 * 100.0).into(),
+            ),
             accelerometer2: ((acc2.0 * 10.0).into(), (acc2.1 * 10.0).into(), (acc2.2 * 10.0).into()),
             magnetometer: ((mag.0 * 10.0).into(), (mag.1 * 10.0).into(), (mag.2 * 10.0).into()),
             temperature_baro: (self.barometer.temperature().unwrap_or(0.0) * 2.0) as i8,

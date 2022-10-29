@@ -6,11 +6,9 @@ use core::ops::DerefMut;
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::prelude::*;
 use hal::dma::config::DmaConfig;
-use hal::dma::traits::{Stream, StreamISR};
-use hal::dma::{MemoryToPeripheral, Stream3, StreamX, StreamsTuple, Transfer};
+use hal::dma::{MemoryToPeripheral, Stream3, StreamsTuple, Transfer};
 use hal::gpio::{Alternate, Input, Output, Pin};
-use hal::interrupt::{DMA2_STREAM3, DMA2_STREAM4};
-use hal::pac::{interrupt, Interrupt, DMA1, DMA2, NVIC, SPI1};
+use hal::pac::{interrupt, Interrupt, DMA2, NVIC, SPI1};
 use hal::spi::{Master, Spi, TransferModeNormal, Tx};
 use stm32f4xx_hal as hal;
 
@@ -65,7 +63,9 @@ pub struct LoRaRadio {
     state_time: u32,
     spi: SharedSpi,
     cs: CsPin,
+    #[allow(dead_code)] // TODO
     irq: IrqPin,
+    #[allow(dead_code)] // TODO
     busy: BusyPin,
     pub rssi: u8,
     pub rssi_signal: u8,
@@ -77,8 +77,7 @@ fn DMA2_STREAM3() {
     cortex_m::peripheral::NVIC::unpend(Interrupt::DMA2_STREAM3);
 
     free(|cs| {
-        let mut transfer = &mut *DMA_TRANSFER.borrow(cs).borrow_mut();
-
+        let transfer = &mut *DMA_TRANSFER.borrow(cs).borrow_mut();
         if let Some(ref mut transfer) = transfer.as_mut() {
             transfer.clear_fifo_error_interrupt();
             transfer.clear_transfer_complete_interrupt();
@@ -180,7 +179,7 @@ impl LoRaRadio {
         }
 
         free(|cs| {
-            let mut msg = [&[opcode as u8], params, &[0].repeat(DMA_BUFFER_SIZE - params.len() - 1)].concat();
+            let msg = [&[opcode as u8], params, &[0].repeat(DMA_BUFFER_SIZE - params.len() - 1)].concat();
 
             let mut transfer = DMA_TRANSFER.borrow(cs).borrow_mut();
             if let Some(ref mut transfer) = transfer.as_mut() {
@@ -222,6 +221,7 @@ impl LoRaRadio {
         Ok(())
     }
 
+    #[cfg(not(feature = "gcs"))]
     fn set_output_power(
         &mut self,
         output_power: LLCC68OutputPower,
@@ -312,6 +312,7 @@ impl LoRaRadio {
         Ok(())
     }
 
+    #[cfg(feature = "gcs")]
     fn set_dio1_interrupt(&mut self, irq_mask: u16, dio1_mask: u16) -> Result<(), hal::spi::Error> {
         self.command(
             LLCC68OpCode::SetDioIrqParams,
@@ -321,12 +322,14 @@ impl LoRaRadio {
         Ok(())
     }
 
+    #[cfg(not(feature = "gcs"))]
     fn configure_tx(&mut self) -> Result<(), hal::spi::Error> {
         self.configure_common()?;
         self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R800U)?;
         Ok(())
     }
 
+    #[cfg(feature = "gcs")]
     fn configure_rx(&mut self) -> Result<(), hal::spi::Error> {
         self.configure_common()?;
         self.set_dio1_interrupt(
@@ -335,18 +338,8 @@ impl LoRaRadio {
         )?;
 
         self.set_lora_packet_params(10, false, 0xff, true, false)?; // TODO
-        self.set_rx_mode(0);
+        self.set_rx_mode(0)?;
 
-        Ok(())
-    }
-
-    fn set_tx_mode(&mut self, timeout_us: u32) -> Result<(), hal::spi::Error> {
-        let timeout = ((timeout_us as f32) / 15.625) as u32;
-        self.command(
-            LLCC68OpCode::SetTx,
-            &[(timeout >> 16) as u8, (timeout >> 8) as u8, timeout as u8],
-            0,
-        )?;
         Ok(())
     }
 
@@ -358,8 +351,9 @@ impl LoRaRadio {
         );
     }
 
-    fn set_rx_mode(&mut self, timeout_us: u32) -> Result<(), hal::spi::Error> {
-        let timeout = 0;
+    #[cfg(feature = "gcs")]
+    fn set_rx_mode(&mut self, _timeout_us: u32) -> Result<(), hal::spi::Error> {
+        let timeout = 0; // TODO
         self.command(
             LLCC68OpCode::SetRx,
             &[(timeout >> 16) as u8, (timeout >> 8) as u8, timeout as u8],
@@ -418,7 +412,11 @@ impl LoRaRadio {
         // get rx buffer status
         let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3)?;
 
-        let buffer = self.command(LLCC68OpCode::ReadBuffer, &[rx_buffer_status[2]], rx_buffer_status[1] as usize + 1)?;
+        let buffer = self.command(
+            LLCC68OpCode::ReadBuffer,
+            &[rx_buffer_status[2]],
+            rx_buffer_status[1] as usize + 1,
+        )?;
 
         let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
         self.rssi = packet_status[1];
@@ -459,7 +457,9 @@ impl LoRaRadio {
             }
         }
 
-        if (self.state == RadioState::Writing || self.state == RadioState::Transmitting) && ((self.state_time + 100) < self.time) {
+        if (self.state == RadioState::Writing || self.state == RadioState::Transmitting)
+            && ((self.state_time + 100) < self.time)
+        {
             rtt_target::rprintln!("schinken");
             self.set_state(RadioState::Idle);
         }
