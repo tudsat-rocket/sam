@@ -247,7 +247,16 @@ impl eframe::App for Sam {
                         vec![("Loop Runtime [µs]", Box::new(|vs| vs.loop_runtime.map(|lr| lr as f32)))],
                     );
 
-                    self.plot(ui, "Signal Strength?", Vec::new());
+                    #[rustfmt::skip]
+                    self.plot(
+                        ui,
+                        "Signal",
+                        vec![
+                            ("RSSI [dBm]", Box::new(|vs| vs.lora_rssi.map(|x| x as f32 / -2.0))),
+                            ("Signal RSSI [-dBm]", Box::new(|vs| vs.lora_rssi_signal.map(|x| x as f32 / -2.0))),
+                            ("SNR [dB]", Box::new(|vs| vs.lora_snr.map(|x| x as f32 / 4.0))),
+                        ],
+                    );
                 });
 
             ui.separator();
