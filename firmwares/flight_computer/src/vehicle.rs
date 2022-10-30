@@ -131,6 +131,8 @@ impl<'a> Vehicle {
         self.imu.tick();
         self.compass.tick();
 
+        self.flash.tick(self.time, None);
+
         let gyro_vector = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
         let acc_vector = self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2));
         let mag_vector = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
@@ -169,8 +171,6 @@ impl<'a> Vehicle {
                 UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
             }
         }
-
-        self.flash.tick(self.time, None);
 
         if let Some(msg) = self.next_usb_telem() {
             self.usb_link.send_message(msg);
