@@ -70,7 +70,7 @@ impl UsbLink {
         let wrapped = msg.wrap();
         if let Err(e) = self.send_data(&wrapped) {
             // Since USB doesn't seem to work, we only try to send this via SWD
-            rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
+            //rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
         }
     }
 
