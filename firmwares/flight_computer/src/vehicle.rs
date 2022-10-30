@@ -36,7 +36,7 @@ pub struct Vehicle {
     flash: Flash,
     buzzer: Buzzer,
 
-    ahrs: ahrs::Madgwick<f32>,
+    ahrs: ahrs::Mahony<f32>,
     orientation: Option<UnitQuaternion<f32>>,
 
     pub time: u32,
@@ -75,7 +75,7 @@ impl<'a> Vehicle {
             radio,
             buzzer,
 
-            ahrs: ahrs::Madgwick::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MADGEWICK_BETA),
+            ahrs: ahrs::Mahony::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MAHONY_KP, MAHONY_KI),
             orientation: None,
 
             time: 0,
