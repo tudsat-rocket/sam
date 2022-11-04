@@ -10,6 +10,7 @@ use std::vec::Vec;
 
 use nalgebra::UnitQuaternion;
 use serde::{Deserialize, Serialize};
+use serde::de::DeserializeOwned;
 
 pub use LogLevel::*;
 
@@ -149,6 +150,7 @@ pub struct TelemetryDiagnostics {
     pub current: u16,
     /// Battery capacity consumed in mAh
     pub consumed: u16,
+    pub lora_rssi: u8,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -228,22 +230,20 @@ impl ToString for LogLevel {
     }
 }
 
-impl UplinkMessage {
-    pub fn wrap(&self) -> Vec<u8> {
-        let mut buf = [0u8; 256];
-        let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        [&[0x42, serialized.len() as u8], &*serialized].concat()
-    }
+pub trait Transmit: Sized {
+    fn wrap(&self) -> Vec<u8>;
+    fn read_valid(buf: &[u8]) -> Option<Self>;
+    fn pop_valid(buf: &mut Vec<u8>) -> Option<Self>;
 }
 
-impl DownlinkMessage {
-    pub fn wrap(&self) -> Vec<u8> {
+impl<M: Serialize + DeserializeOwned> Transmit for M {
+    fn wrap(&self) -> Vec<u8> {
         let mut buf = [0u8; 512];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
         [&[0x42, serialized.len() as u8], &*serialized].concat()
     }
 
-    pub fn read_valid(buf: &[u8]) -> Option<Self> {
+    fn read_valid(buf: &[u8]) -> Option<Self> {
         if buf.len() == 0 {
             return None;
         }
@@ -261,10 +261,10 @@ impl DownlinkMessage {
             return None;
         }
 
-        postcard::from_bytes::<DownlinkMessage>(&buf[2..(len + 2)]).ok()
+        postcard::from_bytes::<Self>(&buf[2..(len + 2)]).ok()
     }
 
-    pub fn pop_valid(buf: &mut Vec<u8>) -> Option<Self> {
+    fn pop_valid(buf: &mut Vec<u8>) -> Option<Self> {
         while buf.len() > 0 {
             if buf[0] == 0x42 {
                 if buf.len() < 2 {
@@ -287,12 +287,11 @@ impl DownlinkMessage {
         }
 
         let len = buf[1] as usize;
-        let result = postcard::from_bytes::<DownlinkMessage>(&buf[2..(len + 2)]).ok();
-
+        let head = buf[2..(len+2)].to_vec();
         for _i in 0..(len + 2) {
             buf.remove(0);
         }
 
-        result
+        postcard::from_bytes::<Self>(&head).ok()
     }
 }

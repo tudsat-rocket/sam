@@ -42,8 +42,6 @@ pub struct Vehicle {
     pub time: u32,
     mode: FlightMode,
     loop_runtime: u16,
-    usb_telem_counter: u16,
-    lora_telem_counter: u16,
 }
 
 impl<'a> Vehicle {
@@ -81,8 +79,6 @@ impl<'a> Vehicle {
             time: 0,
             mode: FlightMode::Idle,
             loop_runtime: 0,
-            usb_telem_counter: 0,
-            lora_telem_counter: 0,
         }
     }
 
@@ -112,6 +108,14 @@ impl<'a> Vehicle {
         }
 
         None
+    }
+
+    fn handle_uplink_message(&mut self, msg: UplinkMessage) {
+        match msg {
+            UplinkMessage::Heartbeat => {}
+            UplinkMessage::Reboot => reboot(),
+            UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
+        }
     }
 
     /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
@@ -146,42 +150,28 @@ impl<'a> Vehicle {
             self.orientation = None;
         }
 
+        // TODO: write to flash, sd card
+
+        // Handle incoming messages
+        if let Some(msg) = self.radio.tick(self.time) {
+            self.handle_uplink_message(msg);
+        }
+        if let Some(msg) = self.usb_link.tick(self.time) {
+            self.handle_uplink_message(msg);
+        }
+
         if let Some(new_mode) = self.tick_mode() {
             self.mode = new_mode;
         }
 
         self.buzzer.tick(self.time);
 
-        // TODO: write to flash, sd card
-        // TODO: write to radio
-
-        if let Some(msg) = self.radio.tick(self.time) {
-            match msg {
-                UplinkMessage::Heartbeat => {}
-                UplinkMessage::Reboot => reboot(),
-                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
-            }
-        }
-
-        // Handle incoming USB messages
-        if let Some(msg) = self.usb_link.tick(self.time) {
-            match msg {
-                UplinkMessage::Heartbeat => {}
-                UplinkMessage::Reboot => reboot(),
-                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
-            }
-        }
-
         if let Some(msg) = self.next_usb_telem() {
             self.usb_link.send_message(msg);
         }
-
         if let Some(msg) = self.next_lora_telem() {
-            self.radio.send_message(msg);
+            self.radio.send_downlink_message(msg);
         }
-
-        self.usb_telem_counter = (self.usb_telem_counter + 1) % 1000;
-        self.lora_telem_counter = (self.lora_telem_counter + 1) % 1000; // TODO: do we need only one?
 
         let cycles_elapsed = hal::pac::DWT::cycle_count().wrapping_sub(cycles_before);
         // TODO: maybe take the max over the last N iterations so we catch spikes?
@@ -193,17 +183,11 @@ impl<'a> Vehicle {
         self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
         Logger::update_time(self.time);
 
-        self.buzzer.tick(self.time);
-
         let downlink_msg = self.radio.tick(self.time);
-
-        let _uplink_msg = self.usb_link.tick(self.time).map(|msg| {
+        let uplink_msg = self.usb_link.tick(self.time).and_then(|msg| {
             match msg {
-                UplinkMessage::Heartbeat => Some(UplinkMessage::Heartbeat),
-                UplinkMessage::Reboot => {
-                    reboot();
-                    None
-                } // TODO: passthrough reboot?
+                UplinkMessage::Heartbeat => None,
+                UplinkMessage::Reboot => Some(UplinkMessage::Reboot),
                 UplinkMessage::RebootToBootloader => {
                     reboot_to_bootloader();
                     None
@@ -211,9 +195,13 @@ impl<'a> Vehicle {
             }
         });
 
-        if let Some(msg) = downlink_msg {
-            //log!(Debug, "{:?}", msg);
+        self.buzzer.tick(self.time);
 
+        if let Some(msg) = uplink_msg {
+            self.radio.queue_uplink_message(msg);
+        }
+
+        if let Some(msg) = downlink_msg {
             let gcs_message = DownlinkMessage::TelemetryGCS(TelemetryGCS {
                 time: msg.time(),
                 lora_rssi: self.radio.rssi,
@@ -221,22 +209,20 @@ impl<'a> Vehicle {
                 lora_snr: self.radio.snr,
             });
 
-            self.usb_link.send_message(msg); // TODO: pass through pc?
+            self.usb_link.send_message(msg);
             self.usb_link.send_message(gcs_message);
         }
-
-        // TODO: uplink messages
     }
 
     #[cfg(not(feature = "gcs"))]
     fn next_usb_telem(&self) -> Option<DownlinkMessage> {
-        if self.usb_telem_counter % 20 == 0 {
+        if self.time % 20 == 0 {
             Some(DownlinkMessage::TelemetryMain(self.into()))
-        } else if self.usb_telem_counter % 20 == 10 {
+        } else if self.time % 20 == 10 {
             Some(DownlinkMessage::TelemetryRawSensors(self.into()))
-        } else if self.usb_telem_counter % 100 == 1 {
+        } else if self.time % 100 == 1 {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
-        } else if self.usb_telem_counter % 100 == 2 {
+        } else if self.time % 100 == 2 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
         } else {
             None
@@ -245,13 +231,13 @@ impl<'a> Vehicle {
 
     #[cfg(not(feature = "gcs"))]
     fn next_lora_telem(&self) -> Option<DownlinkMessage> {
-        if self.lora_telem_counter % 1000 == 0 {
+        if self.time % 1000 == 0 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
-        } else if self.lora_telem_counter % 100 == 0 {
+        } else if (self.time % 1000) % 160 == 80 {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
-        } else if self.lora_telem_counter % 40 == 20 {
+        } else if (self.time % 1000) % 80 == 40 {
             Some(DownlinkMessage::TelemetryMainCompressed(self.into()))
-        } else if self.lora_telem_counter % 40 == 0 {
+        } else if (self.time % 1000) % 40 == 20 {
             Some(DownlinkMessage::TelemetryRawSensorsCompressed(self.into()))
         } else {
             None
@@ -339,6 +325,7 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             battery_voltage: self.power.battery_voltage().unwrap_or(0),
             arm_voltage: self.power.arm_voltage().unwrap_or(0),
             current: self.power.battery_current().unwrap_or(0),
+            lora_rssi: self.radio.rssi,
             ..Default::default()
         }
     }

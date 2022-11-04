@@ -16,9 +16,16 @@ use crate::prelude::*;
 use crate::telemetry::*;
 
 // both RX and TX get half of the available 256 bytes
-const TX_BASE_ADDRESS: u8 = 3;
+const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 64;
+
 const DMA_BUFFER_SIZE: usize = 32;
+
+const FREQUENCY: u32 = 868_000_000;
+
+const RX_RETURN_DELAY: u32 = 10;
+const MESSAGE_INTERVAL: u32 = 20;
+const UPLINK_MODULO: u32 = 160;
 
 type RawSpi = Spi<
     SPI1,
@@ -61,6 +68,7 @@ pub struct LoRaRadio {
     time: u32,
     state: RadioState,
     state_time: u32,
+    last_sync: u32,
     spi: SharedSpi,
     cs: CsPin,
     #[allow(dead_code)] // TODO
@@ -70,6 +78,8 @@ pub struct LoRaRadio {
     pub rssi: u8,
     pub rssi_signal: u8,
     pub snr: u8,
+    #[cfg(feature="gcs")]
+    uplink_message: Option<UplinkMessage>,
 }
 
 #[interrupt]
@@ -115,7 +125,6 @@ impl LoRaRadio {
                 )
             };
 
-            #[cfg(not(feature = "gc"))]
             transfer.start(|_tx| {});
 
             // Hand off transfer to interrupt handler
@@ -126,6 +135,7 @@ impl LoRaRadio {
             time: 0,
             state: RadioState::Init,
             state_time: 0,
+            last_sync: 0,
             spi,
             cs,
             irq,
@@ -133,6 +143,8 @@ impl LoRaRadio {
             rssi: 255,
             rssi_signal: 255,
             snr: 0,
+            #[cfg(feature="gcs")]
+            uplink_message: None,
         }
     }
 
@@ -153,7 +165,7 @@ impl LoRaRadio {
             // At 10MHz SPI freq, the setup commands seem to require some
             // extra delay between cs going low and the SCK going high
             // TODO: make this prettier
-            for _i in 0..1000 {
+            for _i in 0..2000 {
                 core::hint::spin_loop()
             }
 
@@ -203,39 +215,38 @@ impl LoRaRadio {
         Ok(())
     }
 
-    fn freq_to_pll_steps(&self, freq: u32) -> u32 {
+    fn set_rf_frequency(&mut self, frequency: u32) -> Result<(), hal::spi::Error> {
         const XTAL_FREQ: u32 = 32_000_000;
         const PLL_STEP_SHIFT_AMOUNT: u32 = 14;
         const PLL_STEP_SCALED: u32 = XTAL_FREQ >> (25 - PLL_STEP_SHIFT_AMOUNT);
 
-        let int = freq / PLL_STEP_SCALED;
-        let frac = freq / (int * PLL_STEP_SCALED);
+        let int = frequency / PLL_STEP_SCALED;
+        let frac = frequency / (int * PLL_STEP_SCALED);
 
-        (int << PLL_STEP_SHIFT_AMOUNT) + ((frac << PLL_STEP_SHIFT_AMOUNT) + (PLL_STEP_SCALED >> 1)) / PLL_STEP_SCALED
-    }
+        let pll = (int << PLL_STEP_SHIFT_AMOUNT) + ((frac << PLL_STEP_SHIFT_AMOUNT) + (PLL_STEP_SCALED >> 1)) / PLL_STEP_SCALED;
 
-    fn set_rf_frequency(&mut self, frequency: u32) -> Result<(), hal::spi::Error> {
-        let pll = self.freq_to_pll_steps(frequency);
         let params = [(pll >> 24) as u8, (pll >> 16) as u8, (pll >> 8) as u8, pll as u8];
         self.command(LLCC68OpCode::SetRfFrequency, &params, 0)?;
         Ok(())
     }
 
-    #[cfg(not(feature = "gcs"))]
     fn set_output_power(
         &mut self,
         output_power: LLCC68OutputPower,
         ramp_time: LLCC68RampTime,
     ) -> Result<(), hal::spi::Error> {
         let (duty_cycle, hp_max) = match output_power {
+
             LLCC68OutputPower::P14dBm => (0x02, 0x02),
             LLCC68OutputPower::P17dBm => (0x02, 0x03),
             LLCC68OutputPower::P20dBm => (0x03, 0x05),
             LLCC68OutputPower::P22dBm => (0x04, 0x07),
         };
         self.command(LLCC68OpCode::SetPaConfig, &[duty_cycle, hp_max, 0x00, 0x01], 0)?;
-        self.command(LLCC68OpCode::SetTxParams, &[output_power as u8, ramp_time as u8], 0)?;
+        self.command(LLCC68OpCode::SetTxParams, &[22, ramp_time as u8], 0)?;
         //self.command(LLCC68OpCode::SetTxParams, &[0, ramp_time as u8], 0)?;
+
+        // TODO: also set txclampconfig
         Ok(())
     }
 
@@ -294,25 +305,6 @@ impl LoRaRadio {
         Ok(())
     }
 
-    fn configure_common(&mut self) -> Result<(), hal::spi::Error> {
-        self.command(LLCC68OpCode::GetStatus, &[], 1)?;
-        self.set_packet_type(LLCC68PacketType::LoRa)?;
-        self.set_rf_frequency(868_000_000)?;
-        self.set_lora_mod_params(
-            LLCC68LoRaModulationBandwidth::Bw500,
-            LLCC68LoRaSpreadingFactor::SF5,
-            //LLCC68LoRaSpreadingFactor::SF8,
-            LLCC68LoRaCodingRate::CR4of6,
-            //LLCC68LoRaCodingRate::CR4of8,
-            //true,
-            false,
-        )?;
-        // TODO: use larger TX buffer on vehicle, since downlink msgs > uplink msgs ?
-        self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
-        Ok(())
-    }
-
-    #[cfg(feature = "gcs")]
     fn set_dio1_interrupt(&mut self, irq_mask: u16, dio1_mask: u16) -> Result<(), hal::spi::Error> {
         self.command(
             LLCC68OpCode::SetDioIrqParams,
@@ -322,24 +314,29 @@ impl LoRaRadio {
         Ok(())
     }
 
-    #[cfg(not(feature = "gcs"))]
-    fn configure_tx(&mut self) -> Result<(), hal::spi::Error> {
-        self.configure_common()?;
-        self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R800U)?;
+    fn switch_to_rx(&mut self) -> Result<(), hal::spi::Error> {
+        self.set_lora_packet_params(12, false, 0xff, true, false)?; // TODO
+        self.set_rx_mode(0)?;
         Ok(())
     }
 
-    #[cfg(feature = "gcs")]
-    fn configure_rx(&mut self) -> Result<(), hal::spi::Error> {
-        self.configure_common()?;
+    fn configure(&mut self) -> Result<(), hal::spi::Error> {
+        self.command(LLCC68OpCode::GetStatus, &[], 1)?;
+        self.set_packet_type(LLCC68PacketType::LoRa)?;
+        self.set_rf_frequency(FREQUENCY)?;
+        self.set_lora_mod_params(
+            LLCC68LoRaModulationBandwidth::Bw500,
+            LLCC68LoRaSpreadingFactor::SF5,
+            LLCC68LoRaCodingRate::CR4of5,
+            false,
+        )?;
+        self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
+        self.set_output_power(LLCC68OutputPower::P17dBm, LLCC68RampTime::R200U)?;
         self.set_dio1_interrupt(
             (LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16),
             LLCC68Interrupt::RxDone as u16,
         )?;
-
-        self.set_lora_packet_params(10, false, 0xff, true, false)?; // TODO
-        self.set_rx_mode(0)?;
-
+        self.switch_to_rx()?;
         Ok(())
     }
 
@@ -351,7 +348,6 @@ impl LoRaRadio {
         );
     }
 
-    #[cfg(feature = "gcs")]
     fn set_rx_mode(&mut self, _timeout_us: u32) -> Result<(), hal::spi::Error> {
         let timeout = 0; // TODO
         self.command(
@@ -369,10 +365,11 @@ impl LoRaRadio {
 
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), hal::spi::Error> {
         if self.state != RadioState::Idle {
+            log!(Error, "skipping");
             return Ok(()); // TODO
         }
 
-        self.set_lora_packet_params(10, false, msg.len() as u8, true, false)?;
+        self.set_lora_packet_params(12, false, msg.len() as u8, true, false)?;
         let mut params = Vec::with_capacity(msg.len() + 1);
         params.push(TX_BASE_ADDRESS);
         params.append(&mut msg.to_vec());
@@ -381,15 +378,30 @@ impl LoRaRadio {
         Ok(())
     }
 
-    pub fn send_message(&mut self, msg: DownlinkMessage) {
+    #[cfg(not(feature="gcs"))]
+    pub fn send_downlink_message(&mut self, msg: DownlinkMessage) {
+        if let DownlinkMessage::TelemetryGPS(_) = msg {
+            self.last_sync = self.time;
+        }
+
         let serialized = msg.wrap();
         if let Err(e) = self.send_packet(&serialized) {
             log!(Error, "Error sending LoRa packet: {:?}", e);
         }
     }
 
-    #[cfg(feature = "gcs")]
-    fn receive_message(&mut self) -> Result<Option<DownlinkMessage>, hal::spi::Error> {
+    #[cfg(feature="gcs")]
+    fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), hal::spi::Error> {
+        let serialized = msg.wrap();
+        self.send_packet(&serialized)
+    }
+
+    #[cfg(feature="gcs")]
+    pub fn queue_uplink_message(&mut self, msg: UplinkMessage) {
+        self.uplink_message = Some(msg);
+    }
+
+    fn receive_data(&mut self) -> Result<Option<Vec<u8>>, hal::spi::Error> {
         // No RxDone interrupt, do nothing
         if !self.irq.is_high() {
             return Ok(None);
@@ -402,8 +414,6 @@ impl LoRaRadio {
             .unwrap_or(0);
 
         self.command(LLCC68OpCode::ClearIrqStatus, &[0xff, 0xff], 0)?;
-
-        //log!(Debug, "{:?}", irq_status);
 
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
             log!(Error, "CRC Error.");
@@ -425,12 +435,29 @@ impl LoRaRadio {
 
         self.set_rx_mode(0)?;
 
-        let decoded = DownlinkMessage::read_valid(&buffer[1..]);
+        Ok(Some(buffer))
+    }
+
+    fn receive_message<M: Transmit>(&mut self) -> Result<Option<M>, hal::spi::Error> {
+        let buffer = self.receive_data()?;
+        if buffer.is_none() {
+            return Ok(None);
+        }
+
+        let decoded = buffer.as_ref().and_then(|b| M::read_valid(&b[1..]));
         if decoded.is_none() {
-            log!(Error, "Failed to decode message: {:02x?}", buffer);
+            log!(Error, "Failed to decode uplink message: {:02x?}", buffer);
         }
 
         Ok(decoded)
+    }
+
+    fn is_uplink_window(&self, time: u32, first_only: bool) -> bool {
+        let mut t = time.saturating_sub(self.last_sync) % 1000;
+        if !first_only {
+            t -= t % MESSAGE_INTERVAL;
+        }
+        t != 0 && (t % UPLINK_MODULO) == 0
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
@@ -444,23 +471,56 @@ impl LoRaRadio {
     fn tick_common(&mut self, time: u32) {
         self.time = time;
 
-        if self.state == RadioState::Writing {
+        if self.state == RadioState::Init {
+            if let Err(e) = self.configure() {
+                log!(Error, "Error configuring LoRa transceiver: {:?}", e);
+            } else {
+                self.set_state(RadioState::Idle);
+            }
+        } else if self.state == RadioState::Writing {
             if let Some(_result) = self.check_dma_result() {
-                //log!(Debug, "Setting TX mode.");
                 self.set_tx_mode_dma(5000);
                 self.set_state(RadioState::Transmitting);
             }
         } else if self.state == RadioState::Transmitting {
             if let Some(_result) = self.check_dma_result() {
-                //log!(Debug, "Returning to Idle");
                 self.set_state(RadioState::Idle);
             }
         }
 
+        // Return to rx mode after transmission. A delay is necessary in order
+        // to allow the LLCC68 to actually finish the transmission
+        if self.state == RadioState::Idle && time == self.state_time + RX_RETURN_DELAY {
+            // The ground station only sends single messages, so always go
+            // back to receiving
+            #[cfg(feature="gcs")]
+            {
+                for _i in 0..3 { // TODO: why is this necessary?
+                    if let Err(_e) = self.switch_to_rx() {
+                        //log!(Error, "Failed to return to RX mode: {:?}", e);
+                    } else {
+                        break
+                    }
+                }
+            }
+
+            // The vehicle switches to RX mode if the next radio interval
+            // is an uplink window
+            #[cfg(not(feature="gcs"))]
+            {
+                let next_msg = self.time + MESSAGE_INTERVAL - (self.time % MESSAGE_INTERVAL);
+                if self.is_uplink_window(next_msg, false) {
+                    if let Err(_e) = self.switch_to_rx() {
+                        //log!(Error, "Failed to return to RX mode: {:?}", e);
+                    }
+                }
+            }
+        }
+
         if (self.state == RadioState::Writing || self.state == RadioState::Transmitting)
-            && ((self.state_time + 100) < self.time)
+            && ((self.state_time + 20) < self.time)
         {
-            rtt_target::rprintln!("schinken");
+            log!(Error, "LoRa DMA timeout");
             self.set_state(RadioState::Idle);
         }
     }
@@ -469,35 +529,41 @@ impl LoRaRadio {
     pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
         self.tick_common(time);
 
-        if self.state == RadioState::Init {
-            if let Err(e) = self.configure_tx() {
-                log!(Error, "Error configuring LoRa transceiver: {:?}", e);
-            } else {
-                self.set_state(RadioState::Idle);
+        if self.is_uplink_window(time, false) {
+            let result: Result<Option<UplinkMessage>, _> = self.receive_message();
+            if let Err(e) = result {
+                log!(Error, "Error receiving message: {:?}", e);
             }
+            result.unwrap_or(None)
+        } else {
+            None
         }
-
-        None // TODO
     }
 
     #[cfg(feature = "gcs")]
     pub fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
         self.tick_common(time);
 
-        if self.state == RadioState::Init {
-            if let Err(e) = self.configure_rx() {
-                log!(Error, "Error configuring LoRa transceiver: {:?}", e);
-            } else {
-                self.set_state(RadioState::Idle);
+        if self.last_sync > 0 && (time - self.last_sync) < 5000 && self.is_uplink_window(time + 5, true) {
+            let msg = self.uplink_message.take().unwrap_or(UplinkMessage::Heartbeat);
+            if let Err(e) = self.send_uplink_message(msg) {
+                log!(Error, "Failed to send uplink message: {:?}", e);
             }
-        }
 
-        let result = self.receive_message();
-        if let Err(e) = result {
-            log!(Error, "Error receiving message: {:?}", e);
-        }
+            None
+        } else {
+            let result: Result<Option<DownlinkMessage>, _> = self.receive_message();
+            match &result {
+                Ok(msg) => {
+                    if let Some(DownlinkMessage::TelemetryGPS(_)) = msg {
+                        self.last_sync = time;
+                    }
+                }
+                Err(e) => log!(Error, "Error receiving message: {:?}", e),
+            }
 
-        result.unwrap_or(None)
+            result.unwrap_or(None)
+        }
     }
 }
 
@@ -586,9 +652,9 @@ enum LLCC68OutputPower {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
 enum LLCC68RampTime {
-    R10u = 0x00,
-    R20u = 0x01,
-    R40u = 0x02,
+    R10U = 0x00,
+    R20U = 0x01,
+    R40U = 0x02,
     R80U = 0x03,
     R200U = 0x04,
     R800U = 0x05,
