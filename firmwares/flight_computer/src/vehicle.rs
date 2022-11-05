@@ -271,7 +271,8 @@ impl<'a> Vehicle {
                 UplinkMessage::RebootToBootloader => {
                     reboot_to_bootloader();
                     None
-                }
+                },
+                UplinkMessage::SetFlightMode(fm) => Some(UplinkMessage::SetFlightMode(fm)),
             }
         });
 

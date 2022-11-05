@@ -60,7 +60,7 @@ impl Into<f32> for f8 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
 pub enum FlightMode {
     Idle = 0,
     HardwareArmed = 1,
@@ -219,6 +219,7 @@ pub enum UplinkMessage {
     Heartbeat,
     Reboot,
     RebootToBootloader,
+    SetFlightMode(FlightMode),
 }
 
 impl ToString for LogLevel {
