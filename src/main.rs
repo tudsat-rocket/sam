@@ -38,8 +38,9 @@ enum CliCommand {
 
 fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     let (downlink_tx, downlink_rx) = channel::<DownlinkMessage>();
+    let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>();
     let (serial_status_tx, serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
-    spawn_downlink_monitor(serial_status_tx, downlink_tx);
+    spawn_downlink_monitor(serial_status_tx, downlink_tx, uplink_rx);
 
     loop {
         for (status, port) in serial_status_rx.try_iter() {

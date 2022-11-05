@@ -29,29 +29,33 @@ pub struct VehicleState {
     pub altitude: Option<f32>,
     pub altitude_ground: Option<f32>,
     pub vertical_speed: Option<f32>,
+    pub vertical_accel: Option<f32>,
+    pub vertical_accel_filtered: Option<f32>,
     // temps
     pub temperature_core: Option<f32>,
     pub temperature_baro: Option<f32>,
     // power
-    pub battery_voltage: Option<u16>,
-    pub cpu_voltage: Option<u16>,
-    pub arm_voltage: Option<u16>,
-    pub current: Option<u16>,
-    pub consumed: Option<u16>,
-    // gcs
-    pub lora_rssi: Option<u8>,
-    pub lora_rssi_signal: Option<u8>,
-    pub lora_snr: Option<u8>,
+    pub battery_voltage: Option<f32>,
+    pub cpu_voltage: Option<f32>,
+    pub arm_voltage: Option<f32>,
+    pub current: Option<f32>,
+    //pub consumed: Option<u16>,
+    // signal
+    pub vehicle_lora_rssi: Option<u8>,
+    pub gcs_lora_rssi: Option<u8>,
+    pub gcs_lora_rssi_signal: Option<u8>,
+    pub gcs_lora_snr: Option<u8>,
 }
 
 impl VehicleState {
     pub fn incorporate_telemetry(&mut self, msg: &DownlinkMessage) {
-        println!("{:?}", msg);
         match msg {
             DownlinkMessage::TelemetryMain(tm) => {
                 self.mode = Some(tm.mode);
                 self.orientation = tm.orientation;
                 self.vertical_speed = Some(tm.vertical_speed);
+                self.vertical_accel = Some(tm.vertical_accel);
+                self.vertical_accel_filtered = Some(tm.vertical_accel_filtered);
                 self.altitude_baro = Some(tm.altitude_baro as f32); // TODO: units
                 self.altitude = Some(tm.altitude as f32); // TODO: units
             }
@@ -60,12 +64,13 @@ impl VehicleState {
                 let quat_raw = Quaternion {
                     coords: vector![((x as f32) - 127.0) / 127.0, ((y as f32) - 127.0) / 127.0, ((z as f32) - 127.0) / 127.0, ((w as f32) - 127.0) / 127.0],
                 };
-
                 self.mode = Some(tm.mode);
                 self.orientation = Some(UnitQuaternion::from_quaternion(quat_raw));
-                self.vertical_speed = Some(tm.vertical_speed.into());
-                self.altitude_baro = Some((tm.altitude_baro as f32) / 10.0); // TODO: units
-                self.altitude = Some(tm.altitude as f32); // TODO: units
+                self.vertical_speed = Some(<f8 as Into<f32>>::into(tm.vertical_speed) / 100.0);
+                self.vertical_accel = Some(<f8 as Into<f32>>::into(tm.vertical_accel) / 100.0);
+                self.vertical_accel_filtered = Some(<f8 as Into<f32>>::into(tm.vertical_accel_filtered) / 100.0);
+                self.altitude_baro = Some((tm.altitude_baro as f32) / 10.0);
+                self.altitude = Some((tm.altitude as f32) / 10.0);
             }
             DownlinkMessage::TelemetryRawSensors(tm) => {
                 self.gyroscope = Some(tm.gyro);
@@ -74,7 +79,6 @@ impl VehicleState {
                 self.magnetometer = Some(tm.magnetometer);
                 self.temperature_baro = Some(tm.temperature_baro);
                 self.pressure = Some(tm.pressure_baro);
-                self.altitude_baro = Some(tm.temperature_baro);
             }
             DownlinkMessage::TelemetryRawSensorsCompressed(tm) => {
                 let gyro: (f32, f32, f32) = (tm.gyro.0.into(), tm.gyro.1.into(), tm.gyro.2.into());
@@ -91,10 +95,11 @@ impl VehicleState {
             DownlinkMessage::TelemetryDiagnostics(tm) => {
                 self.loop_runtime = Some(tm.loop_runtime);
                 self.temperature_core = Some(tm.temperature_core as f32 / 100.0);
-                self.cpu_voltage = Some(tm.cpu_voltage);
-                self.battery_voltage = Some(tm.battery_voltage);
-                self.current = Some(tm.current);
-                self.arm_voltage = Some(tm.arm_voltage);
+                self.cpu_voltage = Some(tm.cpu_voltage as f32 / 1000.0);
+                self.battery_voltage = Some(tm.battery_voltage as f32 / 1000.0);
+                self.current = Some(tm.current as f32 / 1000.0);
+                self.arm_voltage = Some(tm.arm_voltage as f32 / 1000.0);
+                self.vehicle_lora_rssi = Some(tm.lora_rssi);
                 // TODO
             }
             DownlinkMessage::TelemetryGPS(tm) => {
@@ -103,12 +108,12 @@ impl VehicleState {
                 self.num_satellites = Some(tm.num_satellites);
                 self.latitude = tm.latitude;
                 self.longitude = tm.longitude;
-                // TODO: altitude
+                self.altitude_gps = tm.altitude_asl;
             }
             DownlinkMessage::TelemetryGCS(tm) => {
-                self.lora_rssi = Some(tm.lora_rssi);
-                self.lora_rssi_signal = Some(tm.lora_rssi_signal);
-                self.lora_snr = Some(tm.lora_snr);
+                self.gcs_lora_rssi = Some(tm.lora_rssi);
+                self.gcs_lora_rssi_signal = Some(tm.lora_rssi_signal);
+                self.gcs_lora_snr = Some(tm.lora_snr);
             }
             _ => {} // TODO
         }

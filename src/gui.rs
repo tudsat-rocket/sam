@@ -1,8 +1,10 @@
-use std::sync::mpsc::Receiver;
+use std::collections::VecDeque;
+use std::sync::mpsc::{Receiver, Sender};
+use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Ui};
 use egui::widgets::plot::{Corner, Legend, Line};
-use egui::{Color32, Layout, RichText, Vec2};
+use egui::{Color32, Layout, Modifiers, Key, RichText, Stroke, Vec2};
 
 use euroc_fc_firmware::telemetry::*;
 
@@ -16,11 +18,13 @@ const RAD_TO_DEG: f32 = 180.0 / std::f32::consts::PI;
 struct Sam {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     downlink_rx: Receiver<DownlinkMessage>,
+    uplink_tx: Sender<UplinkMessage>,
 
     serial_port: Option<String>,
     serial_status: SerialStatus,
 
     vehicle_states: Vec<VehicleState>,
+    message_receipt_times: VecDeque<Instant>,
     log_messages: Vec<(u32, String, LogLevel, String)>,
 
     zoom_level: usize,
@@ -32,20 +36,28 @@ impl Sam {
     pub fn init(
         serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
         downlink_rx: Receiver<DownlinkMessage>,
+        uplink_tx: Sender<UplinkMessage>,
     ) -> Self {
         Self {
             serial_status_rx,
             downlink_rx,
+            uplink_tx,
             serial_port: None,
             serial_status: SerialStatus::Init,
+            message_receipt_times: VecDeque::new(),
             vehicle_states: Vec::new(),
             log_messages: Vec::new(),
             zoom_level: ZOOM_LEVELS.iter().position(|zl| *zl == 10000).unwrap(),
-            logo: egui_extras::RetainedImage::from_svg_bytes("athena.svg", include_bytes!("athena.svg")).unwrap(),
+            logo: egui_extras::RetainedImage::from_image_bytes("logo.png", include_bytes!("logo.png")).unwrap(),
         }
     }
 
     fn process_telemetry(&mut self, msg: DownlinkMessage) {
+        match msg {
+            DownlinkMessage::TelemetryGCS(_) => self.message_receipt_times.push_back(Instant::now()),
+            _ => {}
+        }
+
         let time = msg.time();
 
         // Clear history if this seems to be a new run
@@ -121,6 +133,46 @@ impl Sam {
                 });
         });
     }
+
+    fn last_value<T>(&self, callback: Box<dyn Fn(&VehicleState) -> Option<T>>) -> Option<T> {
+        self.vehicle_states.iter()
+            .rev()
+            .find_map(|vs| callback(vs))
+    }
+
+    fn text_indicator(&self, ui: &mut Ui, label: &str, value: Option<String>) {
+        ui.horizontal(|ui| {
+            ui.set_width(ui.available_width());
+            ui.label(label);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                ui.label(RichText::new(value.unwrap_or_default()).strong().monospace());
+            });
+        });
+    }
+
+    fn flight_mode_button(&mut self, ui: &mut Ui, width: f32, fm: FlightMode) {
+        let (label, fg, bg) = match fm {
+            FlightMode::Idle => ("IDLE", Color32::BLACK, Color32::GRAY),
+            FlightMode::HardwareArmed => ("HWARMD", Color32::BLACK, Color32::KHAKI),
+            FlightMode::Armed => ("ARMD", Color32::WHITE, Color32::DARK_RED),
+            FlightMode::Flight => ("FLIGHT", Color32::BLACK, Color32::LIGHT_BLUE),
+            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, Color32::LIGHT_GREEN),
+            FlightMode::RecoveryMain => ("MAIN", Color32::BLACK, Color32::GREEN),
+            FlightMode::Landed => ("LANDED", Color32::BLACK, Color32::GRAY),
+        };
+
+        let button = if self.last_value(Box::new(|vs| vs.mode)).map(|m| m == fm).unwrap_or(false) {
+            let label = RichText::new(label).monospace().color(fg);
+            egui::Button::new(label).fill(bg)
+        } else {
+            let label = RichText::new(label).monospace().color(bg);
+            egui::Button::new(label).fill(Color32::TRANSPARENT).stroke(Stroke::new(2.0, bg))
+        };
+
+        if ui.add_sized([width, 50.0], button).clicked() {
+            self.uplink_tx.send(UplinkMessage::SetFlightMode(fm)).unwrap();
+        }
+    }
 }
 
 impl eframe::App for Sam {
@@ -135,12 +187,32 @@ impl eframe::App for Sam {
             self.process_telemetry(msg);
         }
 
+        self.message_receipt_times.retain(|i| i.elapsed() < Duration::from_millis(1000));
+
+        {
+            let input = ctx.input();
+            if input.modifiers.command_only() && input.key_down(Key::Num0) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::Idle)).unwrap();
+            } else if input.modifiers.command_only() && input.key_down(Key::A) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::Armed)).unwrap();
+            } else if input.modifiers.command_only() && input.key_down(Key::I) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::Flight)).unwrap();
+            } else if input.modifiers.command_only() && input.key_down(Key::D) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::RecoveryDrogue)).unwrap();
+            } else if input.modifiers.command_only() && input.key_down(Key::M) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::RecoveryMain)).unwrap();
+            } else if input.modifiers.command_only() && input.key_down(Key::L) {
+                self.uplink_tx.send(UplinkMessage::SetFlightMode(FlightMode::Landed)).unwrap();
+            }
+        }
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.set_width(ui.available_width());
             ui.set_height(ui.available_height());
 
-            let top_bar_height = ui.available_height() / 10.0;
-            let bottom_bar_height = 20.0;
+            let top_bar_height = 85.0;
+            //let top_bar_height = 0.0;
+            let bottom_bar_height = 15.0;
             let log_height = ui.available_height() / 5.0 - 10.0;
             let plot_height = ui.available_height() - top_bar_height - log_height - bottom_bar_height - 50.0;
 
@@ -149,6 +221,52 @@ impl eframe::App for Sam {
 
                 let max_size = ui.available_size();
                 self.logo.show_max_size(ui, max_size);
+
+                let buttons_w = f32::min(500.0, ui.available_width() * 0.45);
+                let gauge_w = ui.available_width() - buttons_w - 80.0;
+
+                ui.horizontal_centered(|ui| {
+                    ui.set_width(gauge_w);
+                    let w = ui.available_width() / 3.0;
+
+                    ui.vertical(|ui| {
+                        ui.set_width(w);
+                        self.text_indicator(ui, "Time [s]", self.vehicle_states.last().map(|vs| format!("{:10.3}", (vs.time as f32) / 1000.0)));
+                        self.text_indicator(ui, "Mode", self.last_value(Box::new(|vs| vs.mode)).map(|s| format!("{:?}", s)));
+                        self.text_indicator(ui, "Bat. Voltage [V]", self.last_value(Box::new(|vs| vs.battery_voltage)).map(|v| format!("{:.2}", v)));
+                        self.text_indicator(ui, "Vertical Speed [m/s]", self.last_value(Box::new(|vs| vs.vertical_speed)).map(|v| format!("{:.2}", v)));
+                    });
+
+                    ui.vertical(|ui| {
+                        ui.set_width(w);
+                        self.text_indicator(ui, "Altitude (AGL/ASL) [m]", self.last_value(Box::new(|vs| vs.altitude)).map(|a| format!("{:.1} ({:.1})", a, a)));
+                        self.text_indicator(ui, "Max Altitude (AGL/ASL) [m]", None); // TODO
+                        self.text_indicator(ui, "Altitude (Baro, ASL) [m]", self.last_value(Box::new(|vs| vs.altitude_baro)).map(|a| format!("{:.1}", a)));
+                        self.text_indicator(ui, "Altitude (GPS, ASL) [m]", self.last_value(Box::new(|vs| vs.altitude_gps)).map(|a| format!("{:.1}", a)));
+                    });
+
+                    let last_gps_msg = self.vehicle_states.iter().rev().find_map(|vs| vs.gps_fix.is_some().then(|| vs));
+
+                    ui.vertical(|ui| {
+                        ui.set_width(w);
+                        self.text_indicator(ui, "GPS Status (#Sats)", last_gps_msg.map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0))));
+                        self.text_indicator(ui, "HDOP", last_gps_msg.map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0)));
+                        self.text_indicator(ui, "Latitude", last_gps_msg.and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l)));
+                        self.text_indicator(ui, "Longitude", last_gps_msg.and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l)));
+                    });
+                });
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.set_width(buttons_w);
+                    let w = ui.available_width() / 7.0;
+                    self.flight_mode_button(ui, w, FlightMode::Landed);
+                    self.flight_mode_button(ui, w, FlightMode::RecoveryMain);
+                    self.flight_mode_button(ui, w, FlightMode::RecoveryDrogue);
+                    self.flight_mode_button(ui, w, FlightMode::Flight);
+                    self.flight_mode_button(ui, w, FlightMode::Armed);
+                    self.flight_mode_button(ui, w, FlightMode::HardwareArmed);
+                    self.flight_mode_button(ui, w, FlightMode::Idle);
+                });
             });
 
             ui.separator();
@@ -163,14 +281,26 @@ impl eframe::App for Sam {
                         "Orientation",
                         vec![
                             ("Roll (X) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.0 * RAD_TO_DEG))),
-                            ("Roll (y) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.1 * RAD_TO_DEG))),
+                            ("Roll (Y) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.1 * RAD_TO_DEG))),
                             ("Roll (Z) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.2 * RAD_TO_DEG))),
                         ],
                     );
 
-                    self.plot(ui, "Vert. Speed & Accel.", Vec::new());
+                    self.plot(ui, "Vert. Speed & Accel.",
+                        vec![
+                            ("Vario [m/s]", Box::new(|vs| vs.vertical_speed)),
+                            ("Vertical Accel [m/s²]", Box::new(|vs| vs.vertical_accel)),
+                            ("Vertical Accel (Filt.) [m/s²]", Box::new(|vs| vs.vertical_accel_filtered)),
+                        ],
+                    );
 
-                    self.plot(ui, "Altitude", Vec::new());
+                    self.plot(ui, "Altitude (ASL)",
+                        vec![
+                            ("Altitude [m]", Box::new(|vs| vs.altitude)),
+                            ("Altitude (Baro) [m]", Box::new(|vs| vs.altitude_baro)),
+                            ("Altitude (GPS) [m]", Box::new(|vs| vs.altitude_gps)),
+                        ],
+                    );
 
                     self.plot(ui, "Position (TODO)", Vec::new());
 
@@ -181,7 +311,7 @@ impl eframe::App for Sam {
                         "Gyroscope",
                         vec![
                             ("Gyro (X) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.0))),
-                            ("Gyro (y) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.1))),
+                            ("Gyro (Y) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.1))),
                             ("Gyro (Z) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.2))),
                         ],
                     );
@@ -214,7 +344,7 @@ impl eframe::App for Sam {
                         "Barometer",
                         vec![
                             ("Pressure [mbar]", Box::new(|vs| vs.pressure)),
-                            ("Altitude (ASL) [m]", Box::new(|vs| vs.altitude_baro)),
+                            //("Altitude (ASL) [m]", Box::new(|vs| vs.altitude_baro)),
                         ],
                     );
 
@@ -234,10 +364,10 @@ impl eframe::App for Sam {
                         ui,
                         "Power",
                         vec![
-                            ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage.map(|mv| mv as f32 / 1000.0))),
-                            ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage.map(|mv| mv as f32 / 1000.0))),
-                            ("Current [A]", Box::new(|vs| vs.current.map(|ma| ma as f32 / 1000.0))),
-                            ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage.map(|mv| mv as f32 / 1000.0))),
+                            ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage)),
+                            ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage)),
+                            ("Current [A]", Box::new(|vs| vs.current)),
+                            ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage)),
                         ],
                     );
 
@@ -252,9 +382,10 @@ impl eframe::App for Sam {
                         ui,
                         "Signal",
                         vec![
-                            ("RSSI [dBm]", Box::new(|vs| vs.lora_rssi.map(|x| x as f32 / -2.0))),
-                            ("Signal RSSI [-dBm]", Box::new(|vs| vs.lora_rssi_signal.map(|x| x as f32 / -2.0))),
-                            ("SNR [dB]", Box::new(|vs| vs.lora_snr.map(|x| x as f32 / 4.0))),
+                            ("GCS RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))),
+                            ("GCS Signal RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))),
+                            ("GCS SNR [dB]", Box::new(|vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))),
+                            ("Vehicle RSSI [dBm]", Box::new(|vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))),
                         ],
                     );
                 });
@@ -322,19 +453,26 @@ impl eframe::App for Sam {
             ui.separator();
 
             ui.horizontal_centered(|ui| {
+                ui.set_width(ui.available_width());
                 ui.set_height(bottom_bar_height);
 
-                match self.serial_status {
-                    SerialStatus::Connected => {
-                        ui.label(RichText::new("Connected").color(Color32::GREEN));
-                        ui.label(format!("to {}", self.serial_port.as_ref().unwrap_or(&"".to_string())));
+                ui.horizontal_centered(|ui| {
+                    ui.set_width(ui.available_width()/4.0);
+                    match self.serial_status {
+                        SerialStatus::Connected => {
+                            ui.label(RichText::new("Connected").color(Color32::GREEN));
+                            ui.label(format!("to {} (1s: {})",
+                                self.serial_port.as_ref().unwrap_or(&"".to_string()),
+                                self.message_receipt_times.len()
+                            ));
+                        }
+                        SerialStatus::Error => {
+                            ui.label(RichText::new("Connection lost").color(Color32::RED));
+                            ui.label(format!("to {}", self.serial_port.as_ref().unwrap_or(&"".to_string())));
+                        }
+                        _ => {}
                     }
-                    SerialStatus::Error => {
-                        ui.label(RichText::new("Connection lost").color(Color32::RED));
-                        ui.label(format!("to {}", self.serial_port.as_ref().unwrap_or(&"".to_string())));
-                    }
-                    _ => {}
-                }
+                });
             });
 
             // TODO: serial status & plot buttons
@@ -346,9 +484,10 @@ impl eframe::App for Sam {
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
+    let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
     let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
 
-    let serial_thread = spawn_downlink_monitor(serial_status_tx, downlink_tx);
+    let serial_thread = spawn_downlink_monitor(serial_status_tx, downlink_tx, uplink_rx);
 
     eframe::run_native(
         "Sam Ground Station",
@@ -356,7 +495,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             initial_window_size: Some(egui::vec2(1000.0, 700.0)),
             ..Default::default()
         },
-        Box::new(|_cc| Box::new(Sam::init(serial_status_rx, downlink_rx))),
+        Box::new(|_cc| Box::new(Sam::init(serial_status_rx, downlink_rx, uplink_tx))),
     );
 
     serial_thread.join().unwrap();
