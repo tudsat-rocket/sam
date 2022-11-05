@@ -34,7 +34,7 @@ impl UsbLink {
         let mut serial = unsafe { SerialPort::new(USB_BUS.as_ref().unwrap()) };
         let mut device = unsafe {
             UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x0483, 0x5740))
-                .product("AthenaFC")
+                .product("FrodoFC")
                 .device_class(USB_CLASS_CDC)
                 .build()
         };
@@ -68,7 +68,7 @@ impl UsbLink {
 
     pub fn send_message(&mut self, msg: DownlinkMessage) {
         let wrapped = msg.wrap();
-        if let Err(e) = self.send_data(&wrapped) {
+        if let Err(_e) = self.send_data(&wrapped) {
             // Since USB doesn't seem to work, we only try to send this via SWD
             //rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
         }

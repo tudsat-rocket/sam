@@ -99,6 +99,8 @@ pub struct TelemetryMain {
     pub mode: FlightMode,
     pub orientation: Option<UnitQuaternion<f32>>,
     pub vertical_speed: f32,
+    pub vertical_accel: f32,
+    pub vertical_accel_filtered: f32,
     pub altitude_baro: f32,
     pub altitude: f32,
 }
@@ -109,6 +111,8 @@ pub struct TelemetryMainCompressed {
     pub mode: FlightMode,
     pub orientation: (u8, u8, u8, u8),
     pub vertical_speed: f8,
+    pub vertical_accel: f8,
+    pub vertical_accel_filtered: f8,
     pub altitude_baro: u16,
     pub altitude: u16,
 }
@@ -148,8 +152,8 @@ pub struct TelemetryDiagnostics {
     pub arm_voltage: u16,
     /// Current current draw (hah!) in mA
     pub current: u16,
-    /// Battery capacity consumed in mAh
-    pub consumed: u16,
+    ///// Battery capacity consumed in mAh
+    //pub consumed: u16,
     pub lora_rssi: u8,
 }
 

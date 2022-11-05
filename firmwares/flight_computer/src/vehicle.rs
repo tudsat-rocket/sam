@@ -3,9 +3,9 @@ use stm32f4xx_hal as hal;
 
 #[cfg(not(feature = "gcs"))]
 use ahrs::Ahrs;
-use nalgebra::UnitQuaternion;
-#[cfg(not(feature = "gcs"))]
-use nalgebra::Vector3;
+use filter::kalman::kalman_filter::KalmanFilter;
+use nalgebra::*;
+use num_traits::Pow;
 
 #[allow(unused_imports)]
 use crate::prelude::*;
@@ -19,6 +19,11 @@ use crate::params::*;
 use crate::sensors::*;
 use crate::telemetry::*;
 use crate::usb::*;
+
+const STD_DEV_ACCELEROMETER: f32 = 0.5;
+const STD_DEV_BAROMETER: f32 = 1.0;
+const STD_DEV_PROCESS: f32 = 0.005;
+const G: f32 = 9.80665;
 
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
@@ -37,7 +42,9 @@ pub struct Vehicle {
     buzzer: Buzzer,
 
     ahrs: ahrs::Mahony<f32>,
-    orientation: Option<UnitQuaternion<f32>>,
+    kalman: KalmanFilter<f32, U3, U2, U0>,
+    orientation: Option<Unit<Quaternion<f32>>>,
+    acceleration_world: Option<Vector3<f32>>,
 
     pub time: u32,
     mode: FlightMode,
@@ -45,6 +52,7 @@ pub struct Vehicle {
 }
 
 impl<'a> Vehicle {
+    #[rustfmt::skip]
     pub fn init(
         clocks: Clocks,
         usb_link: UsbLink,
@@ -58,6 +66,41 @@ impl<'a> Vehicle {
         power: PowerMonitor,
         buzzer: Buzzer,
     ) -> Self {
+        let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
+
+        let ahrs = ahrs::Mahony::new(dt, MAHONY_KP, MAHONY_KI);
+
+        let mut kalman = KalmanFilter::default();
+        kalman.x = Vector3::new(0.0, 0.0, 0.0);
+
+        kalman.F = Matrix3::new(
+            1.0, dt, dt * dt * 0.5,
+            0.0, 1.0, dt,
+            0.0, 0.0, 1.0
+        );
+
+        kalman.H = Matrix2x3::new(
+            1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0
+        );
+
+        kalman.P = Matrix3::new(
+            STD_DEV_BAROMETER * STD_DEV_BAROMETER, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0.0, 0.0, STD_DEV_ACCELEROMETER * STD_DEV_ACCELEROMETER,
+        );
+
+        kalman.Q = Matrix3::new(
+            0.25f32 * dt.pow(4), 0.5f32 * dt.pow(3), 0.5f32 * dt.pow(2),
+            0.5f32 * dt.pow(3), dt.pow(2), dt,
+            0.5f32 * dt.pow(2), dt, 1.0f32,
+        ) * STD_DEV_PROCESS * STD_DEV_PROCESS;
+
+        kalman.R *= Matrix2::new(
+            STD_DEV_BAROMETER * STD_DEV_BAROMETER, 0.0,
+            0.0, STD_DEV_ACCELEROMETER * STD_DEV_ACCELEROMETER
+        );
+
         Self {
             clocks,
 
@@ -73,8 +116,10 @@ impl<'a> Vehicle {
             radio,
             buzzer,
 
-            ahrs: ahrs::Mahony::new(1.0 / (MAIN_LOOP_FREQ_HERTZ as f32), MAHONY_KP, MAHONY_KI),
+            ahrs,
+            kalman,
             orientation: None,
+            acceleration_world: None,
 
             time: 0,
             mode: FlightMode::Idle,
@@ -115,7 +160,25 @@ impl<'a> Vehicle {
             UplinkMessage::Heartbeat => {}
             UplinkMessage::Reboot => reboot(),
             UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
+            UplinkMessage::SetFlightMode(fm) => self.mode = fm
         }
+    }
+
+    fn acceleration(&self) -> Option<Vector3<f32>> {
+        // TODO: use backup acc if necessary
+        self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2))
+    }
+
+    fn altitude(&self) -> f32 {
+        self.kalman.x.x
+    }
+
+    fn vertical_speed(&self) -> f32 {
+        self.kalman.x.y
+    }
+
+    fn vertical_accel(&self) -> f32 {
+        self.kalman.x.z
     }
 
     /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
@@ -126,7 +189,6 @@ impl<'a> Vehicle {
         self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
         Logger::update_time(self.time);
 
-        // TODO: sensor readings
         self.acc.tick();
         self.barometer.tick();
         self.gps.tick(self.time, &self.clocks);
@@ -137,17 +199,35 @@ impl<'a> Vehicle {
 
         self.flash.tick(self.time, None);
 
-        let gyro_vector = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
-        let acc_vector = self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2));
-        let mag_vector = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
-        if gyro_vector.is_some() && acc_vector.is_some() && mag_vector.is_some() {
+        let gyro = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
+        let acc = self.acceleration();
+        let mag = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
+        if let (Some(gyro), Some(acc), Some(mag)) = (&gyro, &acc, &mag) {
             self.orientation = self
                 .ahrs
-                .update(&gyro_vector.unwrap(), &acc_vector.unwrap(), &mag_vector.unwrap())
+                .update(gyro, acc, mag)
                 .ok()
                 .map(|q| *q);
+            self.acceleration_world = self.orientation
+                .map(|quat| quat.transform_vector(acc) - Vector3::new(0.0, 0.0, G));
         } else {
             self.orientation = None;
+            self.acceleration_world = None;
+        }
+
+        let altitude_baro = self.barometer.altitude()
+            .and_then(|a| (!a.is_nan()).then(|| a));
+        let accel_z = self.acceleration_world.map(|a| a.z)
+            .and_then(|a| (!a.is_nan()).then(|| a));
+
+        match (accel_z, altitude_baro) {
+            (Some(accel_z), Some(altitude_baro)) => {
+                let z = Vector2::new(altitude_baro, accel_z);
+                self.kalman.update(&z, None, None);
+                self.kalman.predict(None, None, None, None);
+            },
+            // TODO: handle error cases
+            _ => {}
         }
 
         // TODO: write to flash, sd card
@@ -253,8 +333,11 @@ impl Into<TelemetryMain> for &Vehicle {
             time: self.time,
             mode: self.mode.clone(),
             orientation: self.orientation.clone(),
+            vertical_speed: self.vertical_speed(),
+            vertical_accel: self.acceleration_world.map(|a| a.z).unwrap_or(0.0),
+            vertical_accel_filtered: self.vertical_accel(),
             altitude_baro: self.barometer.altitude().unwrap_or(0.0),
-            ..Default::default()
+            altitude: self.altitude(),
         }
     }
 }
@@ -273,8 +356,11 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             time: self.time,
             mode: self.mode.clone(),
             orientation: quat.unwrap_or((127, 127, 127, 127)),
+            vertical_speed: (self.vertical_speed() * 100.0).into(),
+            vertical_accel: self.acceleration_world.map(|a| a.z * 100.0).unwrap_or(0.0).into(),
+            vertical_accel_filtered: (self.vertical_accel() * 100.0).into(),
             altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
-            ..Default::default()
+            altitude: (self.altitude() * 10.0) as u16,
         }
     }
 }
@@ -326,7 +412,6 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             arm_voltage: self.power.arm_voltage().unwrap_or(0),
             current: self.power.battery_current().unwrap_or(0),
             lora_rssi: self.radio.rssi,
-            ..Default::default()
         }
     }
 }

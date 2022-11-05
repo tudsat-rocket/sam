@@ -194,7 +194,6 @@ fn main() -> ! {
     //let mut gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
     //let mut gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
 
-    // TODO: radio gpio
     // TODO: sd
     // TODO: auxiliary IO
 
