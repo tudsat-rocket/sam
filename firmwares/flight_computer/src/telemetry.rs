@@ -12,6 +12,11 @@ use nalgebra::UnitQuaternion;
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
+// TODO: get this from some kind of parameter storage?
+pub const LORA_MESSAGE_INTERVAL: u32 = 20;
+pub const LORA_UPLINK_MODULO: u32 = 160;
+pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0xc5, 0x29, 0x77, 0x2a, 0xf5, 0xba, 0x95, 0x07, 0x06];
+
 pub use LogLevel::*;
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -215,11 +220,12 @@ impl DownlinkMessage {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum UplinkMessage {
-    // TODO: attach HMAC?
     Heartbeat,
     Reboot,
+    RebootAuth(u64),
     RebootToBootloader,
     SetFlightMode(FlightMode),
+    SetFlightModeAuth(FlightMode, u64)
 }
 
 impl ToString for LogLevel {

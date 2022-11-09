@@ -36,6 +36,7 @@ ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = fa
 nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
 ublox = { version = "0.4", default-features = false }
+siphasher = { version = "0.3", default-features = false }
 
 [features]
 default = ["no_std"]

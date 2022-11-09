@@ -2,6 +2,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::ops::DerefMut;
+use core::hash::Hasher;
 
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::prelude::*;
@@ -11,6 +12,8 @@ use hal::gpio::{Alternate, Input, Output, Pin};
 use hal::pac::{interrupt, Interrupt, DMA2, NVIC, SPI1};
 use hal::spi::{Master, Spi, TransferModeNormal, Tx};
 use stm32f4xx_hal as hal;
+
+use siphasher::sip::SipHasher;
 
 use crate::prelude::*;
 use crate::telemetry::*;
@@ -24,8 +27,6 @@ const DMA_BUFFER_SIZE: usize = 32;
 const FREQUENCY: u32 = 868_000_000;
 
 const RX_RETURN_DELAY: u32 = 10;
-const MESSAGE_INTERVAL: u32 = 20;
-const UPLINK_MODULO: u32 = 160;
 
 type RawSpi = Spi<
     SPI1,
@@ -80,6 +81,10 @@ pub struct LoRaRadio {
     pub snr: u8,
     #[cfg(feature="gcs")]
     uplink_message: Option<UplinkMessage>,
+    #[cfg(not(feature="gcs"))]
+    siphasher: SipHasher,
+    #[cfg(not(feature="gcs"))]
+    last_hash: u64,
 }
 
 #[interrupt]
@@ -145,6 +150,10 @@ impl LoRaRadio {
             snr: 0,
             #[cfg(feature="gcs")]
             uplink_message: None,
+            #[cfg(not(feature="gcs"))]
+            siphasher: SipHasher::new_with_key(&SIPHASHER_KEY),
+            #[cfg(not(feature="gcs"))]
+            last_hash: 0,
         }
     }
 
@@ -455,9 +464,9 @@ impl LoRaRadio {
     fn is_uplink_window(&self, time: u32, first_only: bool) -> bool {
         let mut t = time.saturating_sub(self.last_sync) % 1000;
         if !first_only {
-            t -= t % MESSAGE_INTERVAL;
+            t -= t % LORA_MESSAGE_INTERVAL;
         }
-        t != 0 && (t % UPLINK_MODULO) == 0
+        t != 0 && (t % LORA_UPLINK_MODULO) == 0
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
@@ -508,7 +517,7 @@ impl LoRaRadio {
             // is an uplink window
             #[cfg(not(feature="gcs"))]
             {
-                let next_msg = self.time + MESSAGE_INTERVAL - (self.time % MESSAGE_INTERVAL);
+                let next_msg = self.time + LORA_MESSAGE_INTERVAL - (self.time % LORA_MESSAGE_INTERVAL);
                 if self.is_uplink_window(next_msg, false) {
                     if let Err(_e) = self.switch_to_rx() {
                         //log!(Error, "Failed to return to RX mode: {:?}", e);
@@ -529,12 +538,28 @@ impl LoRaRadio {
     pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
         self.tick_common(time);
 
+        if time % LORA_MESSAGE_INTERVAL == 0 {
+            self.last_hash = self.siphasher.finish();
+            self.siphasher.write_u64(self.last_hash);
+        }
+
         if self.is_uplink_window(time, false) {
-            let result: Result<Option<UplinkMessage>, _> = self.receive_message();
-            if let Err(e) = result {
-                log!(Error, "Error receiving message: {:?}", e);
+            match self.receive_message() {
+                Ok(opt) => {
+                    if let Some(UplinkMessage::RebootAuth(mac)) | Some(UplinkMessage::SetFlightModeAuth(_, mac)) = opt {
+                        let current = self.siphasher.finish();
+                        if mac != self.last_hash && mac != current {
+                            log!(Error, "MAC mismatch: {:02x?} vs ({:02x?}, {:02x?})", mac, self.last_hash, current);
+                            return None;
+                        }
+                    }
+                    opt
+                },
+                Err(e) => {
+                    log!(Error, "Error receiving message: {:?}", e);
+                    None
+                }
             }
-            result.unwrap_or(None)
         } else {
             None
         }

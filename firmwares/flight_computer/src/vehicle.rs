@@ -234,10 +234,20 @@ impl<'a> Vehicle {
 
         // Handle incoming messages
         if let Some(msg) = self.radio.tick(self.time) {
-            self.handle_uplink_message(msg);
+            match msg {
+                UplinkMessage::RebootAuth(_) => reboot(),
+                UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),
+                _ => {},
+            }
         }
+
         if let Some(msg) = self.usb_link.tick(self.time) {
-            self.handle_uplink_message(msg);
+            match msg {
+                UplinkMessage::Heartbeat => {}
+                UplinkMessage::Reboot | UplinkMessage::RebootAuth(_) => reboot(),
+                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
+                UplinkMessage::SetFlightMode(fm) | UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm)
+            }
         }
 
         if let Some(new_mode) = self.tick_mode() {
@@ -267,12 +277,11 @@ impl<'a> Vehicle {
         let uplink_msg = self.usb_link.tick(self.time).and_then(|msg| {
             match msg {
                 UplinkMessage::Heartbeat => None,
-                UplinkMessage::Reboot => Some(UplinkMessage::Reboot),
                 UplinkMessage::RebootToBootloader => {
                     reboot_to_bootloader();
                     None
                 },
-                UplinkMessage::SetFlightMode(fm) => Some(UplinkMessage::SetFlightMode(fm)),
+                msg => Some(msg)
             }
         });
 
