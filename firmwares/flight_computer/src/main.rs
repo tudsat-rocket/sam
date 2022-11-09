@@ -131,10 +131,10 @@ fn main() -> ! {
     let mut mco = gpioa.pa8.into_push_pull_output_in_state(PinState::Low);
 
     // Initialize LEDs
-    // TODO
-    let mut led_red = gpioc.pc13.into_push_pull_output_in_state(PinState::Low);
-    let mut led_yellow = gpioc.pc14.into_push_pull_output_in_state(PinState::High);
-    let mut led_green = gpioc.pc15.into_push_pull_output_in_state(PinState::High);
+    let led_red = gpioc.pc13.into_push_pull_output_in_state(PinState::Low);
+    let led_yellow = gpioc.pc14.into_push_pull_output_in_state(PinState::High);
+    let led_green = gpioc.pc15.into_push_pull_output_in_state(PinState::High);
+    let leds = (led_red, led_yellow, led_green);
 
     // Initialize SPI peripherals
     let spi_mode = Mode {
@@ -191,8 +191,9 @@ fn main() -> ! {
 
     let buzzer = Buzzer::init(dp.TIM4, gpiob.pb9.into_alternate::<2>(), &clocks);
 
-    //let mut gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
-    //let mut gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
+    let gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
+    let gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
+    let recovery = (gpio_drogue, gpio_main);
 
     // TODO: sd
     // TODO: auxiliary IO
@@ -219,15 +220,10 @@ fn main() -> ! {
     }
 
     let mut vehicle = Vehicle::init(
-        clocks, usb_link, imu, acc, compass, barometer, gps, flash, radio, power, buzzer,
+        clocks, usb_link, imu, acc, compass, barometer, gps, flash, radio, power, leds, buzzer, recovery
     );
 
     log!(Info, "Starting main loop.");
-
-    // We have successfully initialized, adjust LEDs
-    led_red.set_high();
-    led_yellow.set_low();
-    led_green.set_low();
 
     loop {
         // Read and reset loop interrupt flag

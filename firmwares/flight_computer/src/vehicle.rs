@@ -1,5 +1,6 @@
 use hal::rcc::Clocks;
 use stm32f4xx_hal as hal;
+use hal::gpio::{Pin, Output};
 
 #[cfg(not(feature = "gcs"))]
 use ahrs::Ahrs;
@@ -25,6 +26,15 @@ const STD_DEV_BAROMETER: f32 = 1.0;
 const STD_DEV_PROCESS: f32 = 0.005;
 const G: f32 = 9.80665;
 
+const MIN_TAKEOFF_ACC: f32 = 20.; // minimum vertical acceleration for takeoff detection (m/s^2)
+const APOGEE_VERTICAL_DISTANCE: f32 = 1.0; // minimum vertical distance to max altitude for apogee
+                                           // detection (m)
+const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to be exceeded for
+                                       // recovery to be started (ms)
+
+type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
+type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
+
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
     clocks: Clocks,
@@ -39,7 +49,9 @@ pub struct Vehicle {
     usb_link: UsbLink,
     radio: LoRaRadio,
     flash: Flash,
+    leds: LEDS,
     buzzer: Buzzer,
+    recovery: RECOVERY,
 
     ahrs: ahrs::Mahony<f32>,
     kalman: KalmanFilter<f32, U3, U2, U0>,
@@ -48,6 +60,7 @@ pub struct Vehicle {
 
     pub time: u32,
     mode: FlightMode,
+    mode_time: u32,
     loop_runtime: u16,
 }
 
@@ -64,12 +77,44 @@ impl<'a> Vehicle {
         flash: Flash,
         radio: LoRaRadio,
         power: PowerMonitor,
+        leds: LEDS,
         buzzer: Buzzer,
+        recovery: RECOVERY
     ) -> Self {
         let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
-
         let ahrs = ahrs::Mahony::new(dt, MAHONY_KP, MAHONY_KI);
+        let kalman = Self::init_kalman(dt);
 
+        Self {
+            clocks,
+
+            imu,
+            acc,
+            compass,
+            barometer,
+            gps,
+            power,
+
+            usb_link,
+            flash,
+            radio,
+            leds,
+            buzzer,
+            recovery,
+
+            ahrs,
+            kalman,
+            orientation: None,
+            acceleration_world: None,
+
+            time: 0,
+            mode: FlightMode::Idle,
+            mode_time: 0,
+            loop_runtime: 0,
+        }
+    }
+
+    fn init_kalman(dt: f32) -> KalmanFilter<f32, U3, U2, U0> {
         let mut kalman = KalmanFilter::default();
         kalman.x = Vector3::new(0.0, 0.0, 0.0);
 
@@ -101,34 +146,11 @@ impl<'a> Vehicle {
             0.0, STD_DEV_ACCELEROMETER * STD_DEV_ACCELEROMETER
         );
 
-        Self {
-            clocks,
-
-            imu,
-            acc,
-            compass,
-            barometer,
-            gps,
-            power,
-
-            usb_link,
-            flash,
-            radio,
-            buzzer,
-
-            ahrs,
-            kalman,
-            orientation: None,
-            acceleration_world: None,
-
-            time: 0,
-            mode: FlightMode::Idle,
-            loop_runtime: 0,
-        }
+        kalman
     }
 
-    pub fn tick_mode(&mut self) -> Option<FlightMode> {
-        match self.mode {
+    pub fn tick_mode(&mut self) {
+        let new_mode = match self.mode {
             FlightMode::Idle => {
                 // TODO: Detect hardware arm
             }
@@ -150,18 +172,19 @@ impl<'a> Vehicle {
             FlightMode::Landed => {
                 // TODO: Buzz
             }
-        }
+        };
 
-        None
+        //if let Some(fm) = new_mode {
+        //    self.switch_mode(fm);
+        //}
+
+        self.recovery.0.set_state((self.mode == FlightMode::RecoveryDrogue).into()); // TODO
+        self.recovery.1.set_state((self.mode == FlightMode::RecoveryMain).into()); // TODO
     }
 
-    fn handle_uplink_message(&mut self, msg: UplinkMessage) {
-        match msg {
-            UplinkMessage::Heartbeat => {}
-            UplinkMessage::Reboot => reboot(),
-            UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
-            UplinkMessage::SetFlightMode(fm) => self.mode = fm
-        }
+    fn switch_mode(&mut self, mode: FlightMode) {
+        self.mode = mode;
+        self.mode_time = self.time;
     }
 
     fn acceleration(&self) -> Option<Vector3<f32>> {
@@ -181,24 +204,8 @@ impl<'a> Vehicle {
         self.kalman.x.z
     }
 
-    /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
     #[cfg(not(feature = "gcs"))]
-    pub fn tick(&mut self) {
-        let cycles_before = hal::pac::DWT::cycle_count();
-
-        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
-        Logger::update_time(self.time);
-
-        self.acc.tick();
-        self.barometer.tick();
-        self.gps.tick(self.time, &self.clocks);
-        self.power.tick();
-
-        self.imu.tick();
-        self.compass.tick();
-
-        self.flash.tick(self.time, None);
-
+    fn update_state_estimator(&mut self) {
         let gyro = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
         let acc = self.acceleration();
         let mag = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
@@ -229,6 +236,25 @@ impl<'a> Vehicle {
             // TODO: handle error cases
             _ => {}
         }
+    }
+
+    /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
+    #[cfg(not(feature = "gcs"))]
+    pub fn tick(&mut self) {
+        let cycles_before = hal::pac::DWT::cycle_count();
+
+        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
+        Logger::update_time(self.time);
+
+        // Read sensors
+        self.acc.tick();
+        self.barometer.tick();
+        self.gps.tick(self.time, &self.clocks);
+        self.power.tick();
+        self.imu.tick();
+        self.compass.tick();
+
+        self.update_state_estimator();
 
         // TODO: write to flash, sd card
 
@@ -250,18 +276,24 @@ impl<'a> Vehicle {
             }
         }
 
-        if let Some(new_mode) = self.tick_mode() {
-            self.mode = new_mode;
-        }
+        self.tick_mode();
 
+        let (r,y,g) = self.mode.led_state(self.time);
+        self.leds.0.set_state((!r).into());
+        self.leds.1.set_state((!y).into());
+        self.leds.2.set_state((!g).into());
         self.buzzer.tick(self.time);
 
         if let Some(msg) = self.next_usb_telem() {
             self.usb_link.send_message(msg);
         }
+
         if let Some(msg) = self.next_lora_telem() {
             self.radio.send_downlink_message(msg);
         }
+
+        // TODO
+        self.flash.tick(self.time, None);
 
         let cycles_elapsed = hal::pac::DWT::cycle_count().wrapping_sub(cycles_before);
         // TODO: maybe take the max over the last N iterations so we catch spikes?

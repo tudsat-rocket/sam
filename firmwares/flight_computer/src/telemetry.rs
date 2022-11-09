@@ -76,6 +76,20 @@ pub enum FlightMode {
     Landed = 6,
 }
 
+impl FlightMode {
+    pub fn led_state(self, time: u32) -> (bool, bool, bool) {
+        match self {
+            FlightMode::Idle => (false, false, true),                       // ( ,  , G)
+            FlightMode::HardwareArmed => (true, time % 500 < 250, false),   // (R, y,  )
+            FlightMode::Armed => (true, true, false),                       // (R, Y,  )
+            FlightMode::Flight => (false, true, false),                     // ( , Y,  )
+            FlightMode::RecoveryDrogue => (false, true, true),              // ( , Y, G)
+            FlightMode::RecoveryMain => (true, false, true),                // (R,  , G)
+            FlightMode::Landed => (false, false, time % 1000 < 500),        // ( ,  , g)
+        }
+    }
+}
+
 impl Default for FlightMode {
     fn default() -> Self {
         Self::Idle
