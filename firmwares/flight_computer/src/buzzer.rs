@@ -6,6 +6,7 @@ use stm32f4xx_hal as hal;
 
 use num_traits::Float;
 
+use crate::telemetry::FlightMode;
 use Semitone::*;
 
 type Timer = hal::pac::TIM4;
@@ -14,146 +15,34 @@ type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<3>, Pin>;
 
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
 
-#[allow(dead_code)]
-#[rustfmt::skip]
-const REMNANTS: [Note; 40] = [
-    Note::note(E, 3, 200), Note::pause(10),
-    Note::note(D, 3, 200), Note::pause(10),
-    Note::note(A, 4, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-
-    Note::note(A, 4, 400), Note::pause(10),
-    Note::note(D, 5, 200), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(F, 5, 800), Note::pause(10),
-
-    Note::note(E, 3, 200), Note::pause(10),
-    Note::note(D, 3, 200), Note::pause(10),
-    Note::note(F, 3, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-
-    Note::note(F, 3, 400), Note::pause(10),
-    Note::note(D, 5, 200), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(As, 4, 800), Note::pause(10),
+const STARTUP: [Note; 6] = [
+    Note::note(C, 4, 150), Note::pause(10),
+    Note::note(E, 4, 150), Note::pause(10),
+    Note::note(G, 4, 150), Note::pause(10),
 ];
 
-#[allow(dead_code)]
-#[rustfmt::skip]
-const THUNDERSTRUCK: [Note; 64] = [
-    Note::note(B, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Fs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-
-    Note::note(Fs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
+const HWARMED: [Note; 6] = [
+    Note::note(A, 3, 150), Note::pause(10),
+    Note::note(A, 3, 150), Note::pause(10),
+    Note::note(A, 3, 150), Note::pause(10),
 ];
 
-#[allow(dead_code)]
-#[rustfmt::skip]
-const STAR_TREK: [Note; 20] = [
-    Note::note(D, 4, 600), Note::pause(10),
-    Note::note(E, 4, 200), Note::pause(10),
-    Note::note(F, 4, 400), Note::pause(10),
-    Note::note(E, 4, 400), Note::pause(10),
-    Note::note(C, 4, 400), Note::pause(10),
-
-    Note::note(D, 4, 600), Note::pause(10),
-    Note::note(E, 4, 200), Note::pause(10),
-    Note::note(F, 4, 400), Note::pause(10),
-    Note::note(E, 4, 400), Note::pause(10),
-    Note::note(G, 4, 400), Note::pause(10),
+const ARMED: [Note; 6] = [
+    Note::note(G, 4, 150), Note::pause(10),
+    Note::note(G, 4, 150), Note::pause(10),
+    Note::note(G, 4, 150), Note::pause(10),
 ];
 
-#[allow(dead_code)]
-#[rustfmt::skip]
-const SHIRE: [Note; 14] = [
-    Note::note(A, 3, 200), Note::pause(20),
-    Note::note(B, 3, 300), Note::pause(20),
-    Note::note(Cs, 4, 800), Note::pause(20),
-    Note::note(E, 4, 800), Note::pause(20),
-    Note::note(Cs, 4, 800), Note::pause(20),
-    Note::note(B, 3, 750), Note::pause(70),
-    Note::note(A, 3, 1500), Note::pause(20),
-];
+const RECOVERY: [Note; 1] = [Note::note(C, 5, 750)];
 
-#[allow(dead_code)]
-#[rustfmt::skip]
-const E1M1: [Note; 56] = [
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(D, 3, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(C, 3, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(As, 2, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(Gs, 2, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(A, 2, 100), Note::pause(10),
-    Note::note(As, 2, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(D, 3, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(C, 3, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(As, 2, 100), Note::pause(10),
-
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(E, 2, 100), Note::pause(10),
-    Note::note(Gs, 2, 500), Note::pause(10),
-];
+const LANDED: [Note; 2] = [Note::note(F, 4, 500), Note::pause(500)];
 
 pub struct Buzzer {
     pwm: Pwm,
     current_melody: Vec<Note>,
     current_index: usize,
     time_note_change: u32,
+    repeat: bool
 }
 
 impl Buzzer {
@@ -161,14 +50,14 @@ impl Buzzer {
         let mut pwm = timer.pwm_hz(pin, 440.Hz(), clocks);
         pwm.set_duty(CHANNEL, pwm.get_max_duty() / 2);
 
-        //let current_melody = E1M1.to_vec();
-        let current_melody = Vec::new();
+        let current_melody = STARTUP.to_vec();
 
         let buzzer = Self {
             pwm,
             current_melody,
             current_index: 0,
             time_note_change: 0,
+            repeat: false
         };
 
         buzzer
@@ -176,8 +65,12 @@ impl Buzzer {
 
     pub fn tick(&mut self, time: u32) {
         if self.current_index >= self.current_melody.len() {
-            self.pwm.disable(CHANNEL);
-            return;
+            if self.repeat {
+                self.current_index = 0;
+            } else {
+                self.pwm.disable(CHANNEL);
+                return;
+            }
         }
 
         let current_note = &self.current_melody[self.current_index];
@@ -192,6 +85,19 @@ impl Buzzer {
             self.current_index += 1;
             self.time_note_change = time;
         }
+    }
+
+    pub fn switch_mode(&mut self, time: u32, mode: FlightMode) {
+        self.current_melody = match mode {
+            FlightMode::HardwareArmed => HWARMED.to_vec(),
+            FlightMode::Armed => ARMED.to_vec(),
+            FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => RECOVERY.to_vec(),
+            FlightMode::Landed => LANDED.to_vec(),
+            _ => Vec::new()
+        };
+        self.current_index = 0;
+        self.time_note_change = time;
+        self.repeat = mode == FlightMode::Landed;
     }
 }
 

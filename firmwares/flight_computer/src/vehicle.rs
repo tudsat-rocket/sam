@@ -185,6 +185,7 @@ impl<'a> Vehicle {
     fn switch_mode(&mut self, mode: FlightMode) {
         self.mode = mode;
         self.mode_time = self.time;
+        self.buzzer.switch_mode(self.time, mode);
     }
 
     fn acceleration(&self) -> Option<Vector3<f32>> {
