@@ -260,7 +260,7 @@ impl<'a> Vehicle {
         // TODO: write to flash, sd card
 
         // Handle incoming messages
-        if let Some(msg) = self.radio.tick(self.time) {
+        if let Some(msg) = self.radio.tick(self.time, self.mode) {
             match msg {
                 UplinkMessage::RebootAuth(_) => reboot(),
                 UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),

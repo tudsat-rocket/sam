@@ -65,7 +65,7 @@ impl Into<f32> for f8 {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, PartialOrd)]
 pub enum FlightMode {
     Idle = 0,
     HardwareArmed = 1,

@@ -76,6 +76,8 @@ pub struct LoRaRadio {
     irq: IrqPin,
     #[allow(dead_code)] // TODO
     busy: BusyPin,
+    high_power: bool,
+    high_power_configured: bool,
     pub rssi: u8,
     pub rssi_signal: u8,
     pub snr: u8,
@@ -145,6 +147,8 @@ impl LoRaRadio {
             cs,
             irq,
             busy,
+            high_power: false,
+            high_power_configured: false,
             rssi: 255,
             rssi_signal: 255,
             snr: 0,
@@ -532,11 +536,26 @@ impl LoRaRadio {
             log!(Error, "LoRa DMA timeout");
             self.set_state(RadioState::Idle);
         }
+
+        if self.high_power != self.high_power_configured {
+            let power = if self.high_power {
+                LLCC68OutputPower::P22dBm
+            } else {
+                LLCC68OutputPower::P17dBm
+            };
+
+            if let Err(e) = self.set_output_power(power, LLCC68RampTime::R200U) {
+                log!(Error, "Error setting power level: {:?}", e);
+            } else {
+                self.high_power_configured = self.high_power;
+            }
+        }
     }
 
     #[cfg(not(feature = "gcs"))]
-    pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
+    pub fn tick(&mut self, time: u32, mode: FlightMode) -> Option<UplinkMessage> {
         self.tick_common(time);
+        self.high_power = mode >= FlightMode::Armed;
 
         if time % LORA_MESSAGE_INTERVAL == 0 {
             self.last_hash = self.siphasher.finish();
@@ -582,6 +601,8 @@ impl LoRaRadio {
                 Ok(msg) => {
                     if let Some(DownlinkMessage::TelemetryGPS(_)) = msg {
                         self.last_sync = time;
+                    } else if let Some(DownlinkMessage::TelemetryMain(tm)) = msg {
+                        self.high_power = tm.mode >= FlightMode::Armed;
                     }
                 }
                 Err(e) => log!(Error, "Error receiving message: {:?}", e),
