@@ -399,9 +399,9 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             time: self.time,
             mode: self.mode.clone(),
             orientation: quat.unwrap_or((127, 127, 127, 127)),
-            vertical_speed: (self.vertical_speed() * 100.0).into(),
-            vertical_accel: self.acceleration_world.map(|a| a.z * 100.0).unwrap_or(0.0).into(),
-            vertical_accel_filtered: (self.vertical_accel() * 100.0).into(),
+            vertical_speed: (self.vertical_speed() * 10.0).into(),
+            vertical_accel: self.acceleration_world.map(|a| a.z * 10.0).unwrap_or(0.0).into(),
+            vertical_accel_filtered: (self.vertical_accel() * 10.0).into(),
             altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
             altitude: (self.altitude() * 10.0) as u16,
         }
@@ -461,14 +461,23 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
 
 impl Into<TelemetryGPS> for &Vehicle {
     fn into(self) -> TelemetryGPS {
+        let latitude = self.gps.latitude
+            .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
+            .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
+            .unwrap_or([0, 0, 0]);
+        let longitude = self.gps.longitude
+            .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
+            .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
+            .unwrap_or([0, 0, 0]);
+        let fix_and_sats = ((self.gps.fix.clone() as u8) << 5) + (self.gps.num_satellites as u8) & 0x1f;
+
         TelemetryGPS {
             time: self.time,
-            fix: self.gps.fix.clone(),
+            fix_and_sats,
             hdop: self.gps.hdop,
-            num_satellites: self.gps.num_satellites,
-            latitude: self.gps.latitude,
-            longitude: self.gps.longitude,
-            altitude_asl: self.gps.altitude,
+            latitude,
+            longitude,
+            altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0) as u16).unwrap_or(u16::MAX),
         }
     }
 }

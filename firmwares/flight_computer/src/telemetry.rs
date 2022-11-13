@@ -98,17 +98,31 @@ impl Default for FlightMode {
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum GPSFixType {
-    NoFix,
-    AutonomousFix,
-    DifferentialFix,
-    RTKFix,
-    RTKFloat,
-    DeadReckoningFix,
+    NoFix = 0,
+    AutonomousFix = 1,
+    DifferentialFix = 2,
+    RTKFix = 3,
+    RTKFloat = 4,
+    DeadReckoningFix = 5,
 }
 
 impl Default for GPSFixType {
     fn default() -> Self {
         Self::NoFix
+    }
+}
+
+impl From<u8> for GPSFixType {
+    fn from(x: u8) -> Self {
+        match x {
+            0 => Self::NoFix,
+            1 => Self::AutonomousFix,
+            2 => Self::DifferentialFix,
+            3 => Self::RTKFix,
+            4 => Self::RTKFloat,
+            5 => Self::DeadReckoningFix,
+            _ => Self::NoFix
+        }
     }
 }
 
@@ -180,12 +194,11 @@ pub struct TelemetryDiagnostics {
 pub struct TelemetryGPS {
     // TODO: compress
     pub time: u32,
-    pub fix: GPSFixType,
+    pub fix_and_sats: u8,
     pub hdop: u16,
-    pub num_satellites: u8,
-    pub latitude: Option<f32>,
-    pub longitude: Option<f32>,
-    pub altitude_asl: Option<f32>,
+    pub latitude: [u8; 3],
+    pub longitude: [u8; 3],
+    pub altitude_asl: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
