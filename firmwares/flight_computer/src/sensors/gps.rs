@@ -244,12 +244,12 @@ impl GPS {
 
             // Latitude needs to converted from degrees and minutes to decimal degrees
             // Lat: DDMM.MM... Lng: DDDMM.MM...
-            self.latitude = (segments[2].len() > 0)
+            self.latitude = (segments[2].len() > 2)
                 .then(|| segments[2].split_at(2))
                 .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
                 .flatten()
                 .map(|(d, m)| (d + m / 60.0) * if segments[3] == "N" { 1.0 } else { -1.0 });
-            self.longitude = (segments[4].len() > 0)
+            self.longitude = (segments[4].len() > 3)
                 .then(|| segments[4].split_at(3))
                 .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
                 .flatten()
