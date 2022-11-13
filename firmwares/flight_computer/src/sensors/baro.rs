@@ -121,8 +121,7 @@ impl Barometer {
                 ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
             let sens = ((cal.pressure_sensitivity as i64) << 15)
                 + ((cal.temp_coef_pressure_sensitivity as i64 * dt as i64) >> 8);
-            let p = (raw_pressure as i64 * (sens >> 21) - offset) >> 15;
-            self.pressure = Some(p as i32);
+            let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> 15;
 
             // TODO: second order temp compensation
 
