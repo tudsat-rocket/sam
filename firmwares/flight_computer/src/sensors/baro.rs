@@ -125,6 +125,17 @@ impl Barometer {
             self.pressure = Some(p as i32);
 
             // TODO: second order temp compensation
+
+            // If the value is too drastically different from the last, skip it
+            self.pressure = if let Some(last_pressure) = self.pressure {
+                if ((p as i32) - last_pressure).abs() > 100 {
+                    Some(last_pressure)
+                } else {
+                    Some(p as i32)
+                }
+            } else {
+                Some(p as i32)
+            }
         }
 
         Ok(())
