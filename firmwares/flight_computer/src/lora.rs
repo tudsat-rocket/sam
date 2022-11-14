@@ -606,7 +606,7 @@ impl LoRaRadio {
                 Ok(msg) => {
                     if let Some(DownlinkMessage::TelemetryGPS(_)) = msg {
                         self.last_sync = time;
-                    } else if let Some(DownlinkMessage::TelemetryMain(tm)) = msg {
+                    } else if let Some(DownlinkMessage::TelemetryMainCompressed(tm)) = msg {
                         self.high_power = tm.mode >= FlightMode::Armed;
                     }
                 }
