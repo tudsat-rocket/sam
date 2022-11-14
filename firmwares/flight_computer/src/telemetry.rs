@@ -136,6 +136,7 @@ pub struct TelemetryMain {
     pub vertical_accel: f32,
     pub vertical_accel_filtered: f32,
     pub altitude_baro: f32,
+    pub altitude_max: f32,
     pub altitude: f32,
 }
 
@@ -148,6 +149,7 @@ pub struct TelemetryMainCompressed {
     pub vertical_accel: f8,
     pub vertical_accel_filtered: f8,
     pub altitude_baro: u16,
+    pub altitude_max: u16,
     pub altitude: u16,
 }
 
@@ -175,11 +177,10 @@ pub struct TelemetryRawSensorsCompressed {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryDiagnostics {
-    // TODO: compress
     pub time: u32,
     pub cpu_utilization: u8,
     pub heap_utilization: u8,
-    pub temperature_core: i16,
+    pub temperature_core: i8,
     pub cpu_voltage: u16,
     /// Battery voltage in mV
     pub battery_voltage: u16,
@@ -190,6 +191,7 @@ pub struct TelemetryDiagnostics {
     ///// Battery capacity consumed in mAh
     //pub consumed: u16,
     pub lora_rssi: u8,
+    pub altitude_ground: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

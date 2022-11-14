@@ -30,11 +30,16 @@ const STD_DEV_BAROMETER: f32 = 1.0;
 const STD_DEV_PROCESS: f32 = 0.005;
 const G: f32 = 9.80665;
 
-const MIN_TAKEOFF_ACC: f32 = 20.; // minimum vertical acceleration for takeoff detection (m/s^2)
+const MIN_TAKEOFF_ACC: f32 = 10.0; // minimum vertical acceleration for takeoff detection (m/s^2)
+const MIN_TAKEOFF_ACC_DURATION: u32 = 10; // time MIN_TAKEOFF_ACC has to be exceeded (ms)
 const APOGEE_VERTICAL_DISTANCE: f32 = 1.0; // minimum vertical distance to max altitude for apogee
                                            // detection (m)
 const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to be exceeded for
                                        // recovery to be started (ms)
+const MIN_FLIGHT_TIME: u32 = 5000; // minimum time in flight to trigger recovery (ms)
+const MAX_FLIGHT_TIME: u32 = 15000; // maximum time in flight to trigger recovery (ms)
+
+const RECOVERY_DURATION: u32 = 250; // time to enable recovery outputs (after warning tone, in ms)
 
 type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
@@ -61,10 +66,13 @@ pub struct Vehicle {
     kalman: KalmanFilter<f32, U3, U2, U0>,
     orientation: Option<Unit<Quaternion<f32>>>,
     acceleration_world: Option<Vector3<f32>>,
+    altitude_ground: f32,
+    altitude_max: f32,
 
     pub time: u32,
     mode: FlightMode,
     mode_time: u32,
+    condition_true_since: Option<u32>,
     loop_runtime_history: VecDeque<u16>,
 }
 
@@ -110,10 +118,13 @@ impl<'a> Vehicle {
             kalman,
             orientation: None,
             acceleration_world: None,
+            altitude_ground: 0.0,
+            altitude_max: -10_000.0,
 
             time: 0,
             mode: FlightMode::Idle,
             mode_time: 0,
+            condition_true_since: None,
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN)
         }
     }
@@ -153,43 +164,61 @@ impl<'a> Vehicle {
         kalman
     }
 
-    pub fn tick_mode(&mut self) {
-        let new_mode = match self.mode {
-            FlightMode::Idle => {
-                // TODO: Detect hardware arm
-            }
-            FlightMode::HardwareArmed => {
-                // TODO: Detect software arm (however that looks like)
-            }
-            FlightMode::Armed => {
-                // TODO: Detect liftoff
-            }
-            FlightMode::Flight => {
-                // TODO: Detect apogee
-            }
-            FlightMode::RecoveryDrogue => {
-                // TODO: Detect alt < MAIN_THRESHOLE
-            }
-            FlightMode::RecoveryMain => {
-                // TODO: Detect landing
-            }
-            FlightMode::Landed => {
-                // TODO: Buzz
-            }
-        };
-
-        //if let Some(fm) = new_mode {
-        //    self.switch_mode(fm);
-        //}
-
-        self.recovery.0.set_state((self.mode == FlightMode::RecoveryDrogue).into()); // TODO
-        self.recovery.1.set_state((self.mode == FlightMode::RecoveryMain).into()); // TODO
+    fn true_since(&mut self, cond: bool, duration: u32) -> bool {
+        let dur = self.condition_true_since
+            .map(|d| d + 1000 / crate::MAIN_LOOP_FREQ_HERTZ)
+            .unwrap_or(0);
+        self.condition_true_since = cond.then(|| dur);
+        self.condition_true_since.map(|dur| dur >= duration).unwrap_or(false)
     }
 
     fn switch_mode(&mut self, mode: FlightMode) {
         self.mode = mode;
         self.mode_time = self.time;
+        self.condition_true_since = None;
         self.buzzer.switch_mode(self.time, mode);
+    }
+
+    pub fn tick_mode(&mut self) {
+        if self.mode < FlightMode::Armed {
+            self.altitude_ground = self.altitude();
+        }
+
+        if self.mode <= FlightMode::Armed {
+            self.altitude_max = self.altitude();
+        }
+
+        if self.mode == FlightMode::Flight {
+            self.altitude_max = f32::max(self.altitude_max, self.altitude());
+        }
+
+        let elapsed = self.time.checked_sub(self.mode_time).unwrap_or(0);
+        let armv = self.power.arm_voltage().unwrap_or(0);
+        let vacc = self.acceleration().map(|acc| acc.z).unwrap_or(0.0);
+        let rec_min_dur = crate::buzzer::RECOVERY_WARNING_TIME + RECOVERY_DURATION;
+
+        let new_mode = match self.mode {
+            FlightMode::Idle => self.true_since(armv >= 1000, 100).then(|| FlightMode::HardwareArmed),
+            FlightMode::HardwareArmed => self.true_since(armv < 100, 100).then(|| FlightMode::Idle),
+            FlightMode::Armed => self.true_since(vacc > MIN_TAKEOFF_ACC, MIN_TAKEOFF_ACC_DURATION).then(|| FlightMode::Flight),
+            FlightMode::Flight => {
+                let falling = self.true_since(self.altitude() + APOGEE_VERTICAL_DISTANCE < self.altitude_max, APOGEE_FALLING_TIME);
+                let min_exceeded = elapsed > MIN_FLIGHT_TIME;
+                let max_exceeded = elapsed > MAX_FLIGHT_TIME;
+                ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
+            }
+            FlightMode::RecoveryDrogue => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
+            FlightMode::RecoveryMain => (elapsed > rec_min_dur).then(|| FlightMode::Landed), // TODO: detect landing instead
+            FlightMode::Landed => None
+        };
+
+        if let Some(fm) = new_mode {
+            self.switch_mode(fm);
+        }
+
+        let recovery_high = elapsed > crate::buzzer::RECOVERY_WARNING_TIME && elapsed < rec_min_dur;
+        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
+        self.recovery.1.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
     }
 
     fn acceleration(&self) -> Option<Vector3<f32>> {
@@ -384,6 +413,7 @@ impl Into<TelemetryMain> for &Vehicle {
             vertical_accel_filtered: self.vertical_accel(),
             altitude_baro: self.barometer.altitude().unwrap_or(0.0),
             altitude: self.altitude(),
+            altitude_max: self.altitude_max,
         }
     }
 }
@@ -407,6 +437,7 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             vertical_accel_filtered: (self.vertical_accel() * 10.0).into(),
             altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
             altitude: (self.altitude() * 10.0) as u16,
+            altitude_max: (self.altitude_max * 10.0) as u16,
         }
     }
 }
@@ -458,12 +489,13 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             time: self.time,
             cpu_utilization: cpu_util as u8,
             heap_utilization: heap_util as u8,
-            temperature_core: self.power.temperature().unwrap_or(0),
+            temperature_core: (self.power.temperature().unwrap_or(0.0) * 2.0) as i8,
             cpu_voltage: self.power.cpu_voltage().unwrap_or(0),
             battery_voltage: self.power.battery_voltage().unwrap_or(0),
             arm_voltage: self.power.arm_voltage().unwrap_or(0),
             current: self.power.battery_current().unwrap_or(0),
             lora_rssi: self.radio.rssi,
+            altitude_ground: (self.altitude_ground * 10.0) as u16,
         }
     }
 }

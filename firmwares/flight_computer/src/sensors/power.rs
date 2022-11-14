@@ -17,7 +17,7 @@ pub struct PowerMonitor {
     battery_current: Option<u16>,
     arm_voltage: Option<u16>,
     cpu_voltage: Option<u16>,
-    temperature: Option<i16>,
+    temperature: Option<f32>,
 }
 
 impl PowerMonitor {
@@ -44,7 +44,7 @@ impl PowerMonitor {
         let sample = self.adc.convert(&hal::adc::Temperature, ST);
         let mv = self.adc.sample_to_millivolts(sample);
         let temp_cal_30 = hal::signature::VtempCal30::get().read();
-        let temp = (100.0 * 30.0 * (mv as f32) / (temp_cal_30 as f32)) as i16;
+        let temp = 30.0 * (mv as f32) / (temp_cal_30 as f32);
 
         let voltage_core = self.adc.reference_voltage() as u16;
 
@@ -86,7 +86,7 @@ impl PowerMonitor {
         self.cpu_voltage
     }
 
-    pub fn temperature(&self) -> Option<i16> {
+    pub fn temperature(&self) -> Option<f32> {
         self.temperature
     }
 }

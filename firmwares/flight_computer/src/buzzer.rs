@@ -33,7 +33,8 @@ const ARMED: [Note; 6] = [
     Note::note(G, 4, 150), Note::pause(10),
 ];
 
-const RECOVERY: [Note; 1] = [Note::note(C, 5, 750)];
+pub const RECOVERY_WARNING_TIME: u32 = 750;
+const RECOVERY: [Note; 1] = [Note::note(C, 5, RECOVERY_WARNING_TIME)];
 
 const LANDED: [Note; 2] = [Note::note(F, 4, 500), Note::pause(500)];
 
