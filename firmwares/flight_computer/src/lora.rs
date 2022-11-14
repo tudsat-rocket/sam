@@ -470,7 +470,7 @@ impl LoRaRadio {
         if !first_only {
             t -= t % LORA_MESSAGE_INTERVAL;
         }
-        t != 0 && (t % LORA_UPLINK_MODULO) == 0
+        t != 0 && (t % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {

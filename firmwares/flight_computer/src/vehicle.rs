@@ -361,19 +361,17 @@ impl<'a> Vehicle {
     fn next_lora_telem(&self) -> Option<DownlinkMessage> {
         if self.time % 1000 == 0 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
-        } else if (self.time % 1000) % 160 == 80 {
+        } else if self.time % 200 == 0 {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
-        } else if (self.time % 1000) % 80 == 40 {
+        } else if self.time % 100 == 50 {
             Some(DownlinkMessage::TelemetryMainCompressed(self.into()))
-        } else if (self.time % 1000) % 40 == 20 {
+        } else if self.time % 50 == 25 {
             Some(DownlinkMessage::TelemetryRawSensorsCompressed(self.into()))
         } else {
             None
         }
     }
 }
-
-// TODO: move these trait implementations to telemetry.rs?
 
 impl Into<TelemetryMain> for &Vehicle {
     fn into(self) -> TelemetryMain {
