@@ -22,6 +22,8 @@ use crate::telemetry::*;
 const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 64;
 
+const UPLINK_MAX_LEN: u8 = 16;
+
 const DMA_BUFFER_SIZE: usize = 32;
 
 const FREQUENCY: u32 = 868_000_000;
@@ -177,8 +179,7 @@ impl LoRaRadio {
 
             // At 10MHz SPI freq, the setup commands seem to require some
             // extra delay between cs going low and the SCK going high
-            // TODO: make this prettier
-            for _i in 0..2000 {
+            for _i in 0..300 {
                 core::hint::spin_loop()
             }
 
@@ -198,7 +199,6 @@ impl LoRaRadio {
 
         // At 10MHz SPI freq, the setup commands seem to require some
         // extra delay between cs going low and the SCK going high
-        // TODO: make this prettier
         for _i in 0..=200 {
             core::hint::spin_loop()
         }
@@ -328,7 +328,7 @@ impl LoRaRadio {
     }
 
     fn switch_to_rx(&mut self) -> Result<(), hal::spi::Error> {
-        self.set_lora_packet_params(12, false, 0xff, true, false)?; // TODO
+        self.set_lora_packet_params(12, false, UPLINK_MAX_LEN, true, false)?; // TODO
         self.set_rx_mode(0)?;
         Ok(())
     }
@@ -435,10 +435,15 @@ impl LoRaRadio {
         // get rx buffer status
         let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3)?;
 
+        #[cfg(feature="gcs")]
+        let len = rx_buffer_status[1];
+        #[cfg(not(feature="gcs"))]
+        let len = u8::min(rx_buffer_status[1], UPLINK_MAX_LEN);
+
         let buffer = self.command(
             LLCC68OpCode::ReadBuffer,
             &[rx_buffer_status[2]],
-            rx_buffer_status[1] as usize + 1,
+            len as usize + 1,
         )?;
 
         let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
