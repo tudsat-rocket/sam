@@ -132,12 +132,12 @@ enum ADXL375Register {
     InterruptMapping = 0x2f,
     InterruptSource = 0x30,
     DataFormat = 0x31,
-    DataXL = 0x32, // TODO: L/H?
-    DataXH = 0x33, // TODO: L/H?
-    DataYL = 0x34, // TODO: L/H?
-    DataYH = 0x35, // TODO: L/H?
-    DataZL = 0x36, // TODO: L/H?
-    DataZH = 0x37, // TODO: L/H?
+    DataXL = 0x32,
+    DataXH = 0x33,
+    DataYL = 0x34,
+    DataYH = 0x35,
+    DataZL = 0x36,
+    DataZH = 0x37,
     FifoControl = 0x38,
     FifoStatus = 0x39,
 }

@@ -19,7 +19,6 @@ use ublox::{AlignmentToReferenceTime, CfgPrtUartBuilder, CfgRateBuilder, UartPor
 use crate::prelude::*;
 use crate::telemetry::*;
 
-// TODO: with decent hardware, maybe go up to 460_800 & 50
 const DESIRED_BAUD_RATE: u32 = 115_200;
 const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
@@ -57,9 +56,12 @@ enum GPSState {
 pub struct GPS {
     state: GPSState,
     utc_time: Option<String>,
-    pub latitude: Option<f32>,  // TODO: type?
-    pub longitude: Option<f32>, // TODO: type?
-    pub altitude: Option<f32>,  // TODO: unit/type?
+    /// latitude in decimal degrees
+    pub latitude: Option<f32>,
+    /// longitude in decimal degrees
+    pub longitude: Option<f32>,
+    /// altitude in m (ASL)
+    pub altitude: Option<f32>,
     pub fix: GPSFixType,
     pub num_satellites: u8,
     pub hdop: u16, // hdop * 100
