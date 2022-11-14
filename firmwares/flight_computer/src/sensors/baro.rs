@@ -106,24 +106,38 @@ impl Barometer {
 
         if self.read_temp {
             let dt = (value as i32) - ((cal.reference_temperature as i32) << 8);
-            let temp = 2000 + ((dt as i64) * (cal.temp_coef_temperature as i64) >> 23) as i32;
             self.dt = Some(dt);
-            self.temp = Some(temp);
         } else {
             self.raw_pressure = Some(value);
         }
 
-        if self.dt.is_some() && self.raw_pressure.is_some() {
-            let dt = self.dt.unwrap();
-            let raw_pressure = self.raw_pressure.unwrap();
-
-            let offset =
+        if let Some((dt, raw_pressure)) = self.dt.zip(self.raw_pressure) {
+            let mut temp = 2000 + ((dt as i64) * (cal.temp_coef_temperature as i64) >> 23);
+            let mut offset =
                 ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
-            let sens = ((cal.pressure_sensitivity as i64) << 15)
+            let mut sens = ((cal.pressure_sensitivity as i64) << 15)
                 + ((cal.temp_coef_pressure_sensitivity as i64 * dt as i64) >> 8);
-            let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> 15;
 
-            // TODO: second order temp compensation
+            // second order temp compensation
+            if temp < 2000 {
+                let t2 = ((dt as i64) * (dt as i64)) >> 31;
+                let temp_offset = (temp - 2000);
+                let mut off2 = (5 * temp_offset * temp_offset) >> 1;
+                let mut sens2 = off2 >> 1;
+
+                if temp < -1500 { // brrrr
+                    let temp_offset = (temp + 1500);
+                    off2 += 7 * temp_offset * temp_offset;
+                    sens2 += (11 * temp_offset * temp_offset) >> 1;
+                }
+
+                temp -= t2;
+                offset -= off2;
+                sens -= sens2;
+            }
+
+            self.temp = Some(temp as i32);
+            let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> 15;
 
             // If the value is too drastically different from the last, skip it
             self.pressure = if let Some(last_pressure) = self.pressure {
