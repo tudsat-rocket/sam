@@ -1,3 +1,5 @@
+use alloc::collections::VecDeque;
+
 use hal::rcc::Clocks;
 use stm32f4xx_hal as hal;
 use hal::gpio::{Pin, Output};
@@ -20,6 +22,8 @@ use crate::params::*;
 use crate::sensors::*;
 use crate::telemetry::*;
 use crate::usb::*;
+
+const RUNTIME_HISTORY_LEN: usize = 200;
 
 const STD_DEV_ACCELEROMETER: f32 = 0.5;
 const STD_DEV_BAROMETER: f32 = 1.0;
@@ -61,7 +65,7 @@ pub struct Vehicle {
     pub time: u32,
     mode: FlightMode,
     mode_time: u32,
-    loop_runtime: u16,
+    loop_runtime_history: VecDeque<u16>,
 }
 
 impl<'a> Vehicle {
@@ -110,7 +114,7 @@ impl<'a> Vehicle {
             time: 0,
             mode: FlightMode::Idle,
             mode_time: 0,
-            loop_runtime: 0,
+            loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN)
         }
     }
 
@@ -296,9 +300,10 @@ impl<'a> Vehicle {
         // TODO
         self.flash.tick(self.time, None);
 
+        // get CPU usage (max of RUNTIME_HISTORY_LEN last iterations)
+        self.loop_runtime_history.truncate(RUNTIME_HISTORY_LEN - 1);
         let cycles_elapsed = hal::pac::DWT::cycle_count().wrapping_sub(cycles_before);
-        // TODO: maybe take the max over the last N iterations so we catch spikes?
-        self.loop_runtime = (cycles_elapsed / CLOCK_FREQ_MEGA_HERTZ) as u16;
+        self.loop_runtime_history.push_front((cycles_elapsed / CLOCK_FREQ_MEGA_HERTZ) as u16);
     }
 
     #[cfg(feature = "gcs")]
@@ -446,9 +451,15 @@ impl Into<TelemetryRawSensorsCompressed> for &Vehicle {
 
 impl Into<TelemetryDiagnostics> for &Vehicle {
     fn into(self) -> TelemetryDiagnostics {
+        let loop_runtime = self.loop_runtime_history.iter()
+            .fold(0, |a, b| u16::max(a, *b));
+        let cpu_util = 100.0 * (loop_runtime as f32) / (1_000_000.0 / MAIN_LOOP_FREQ_HERTZ as f32);
+        let heap_util = 100.0 * (crate::ALLOCATOR.used() as f32) / (crate::HEAP_SIZE as f32);
+
         TelemetryDiagnostics {
             time: self.time,
-            loop_runtime: self.loop_runtime,
+            cpu_utilization: cpu_util as u8,
+            heap_utilization: heap_util as u8,
             temperature_core: self.power.temperature().unwrap_or(0),
             cpu_voltage: self.power.cpu_voltage().unwrap_or(0),
             battery_voltage: self.power.battery_voltage().unwrap_or(0),

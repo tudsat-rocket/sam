@@ -176,7 +176,8 @@ pub struct TelemetryRawSensorsCompressed {
 pub struct TelemetryDiagnostics {
     // TODO: compress
     pub time: u32,
-    pub loop_runtime: u16,
+    pub cpu_utilization: u8,
+    pub heap_utilization: u8,
     pub temperature_core: i16,
     pub cpu_voltage: u16,
     /// Battery voltage in mV
