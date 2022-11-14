@@ -260,18 +260,6 @@ impl GPS {
             self.num_satellites = segments[7].parse().unwrap_or(0);
             self.hdop = (segments[8].parse::<f32>().unwrap_or(99.99) * 100.0) as u16;
 
-            log_every_nth_time!(
-                100,
-                Debug,
-                "{:?}, Lat/Lng: ({},{})°, Alt: {}m, Sats: {}, HDOP: {}",
-                self.fix,
-                self.latitude.map(|x| x.to_string()).unwrap_or("".to_string()),
-                self.longitude.map(|x| x.to_string()).unwrap_or("".to_string()),
-                self.altitude.map(|x| x.to_string()).unwrap_or("".to_string()),
-                self.num_satellites,
-                self.hdop as f32 / 100.0
-            );
-
             // This seems to be the very first NMEA line we received, so make
             // sure we configure the GPS (and change baud rate if necessary)
             if self.state != GPSState::Active {
