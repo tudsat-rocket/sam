@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use alloc::collections::VecDeque;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
@@ -25,6 +26,8 @@ type RawSpi = Spi<
 type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
 type CsPin = hal::gpio::Pin<'C', 6, Output>;
 
+const TEMP_FILTER_LEN: usize = 64;
+
 struct MS5611CalibrationData {
     pressure_sensitivity: u16,
     pressure_offset: u16,
@@ -39,6 +42,7 @@ pub struct Barometer {
     cs: CsPin,
     calibration_data: Option<MS5611CalibrationData>,
     read_temp: bool,
+    dt_filter: VecDeque<i32>,
     dt: Option<i32>,
     temp: Option<i32>,
     raw_pressure: Option<i32>,
@@ -52,6 +56,7 @@ impl Barometer {
             cs,
             calibration_data: None,
             read_temp: true,
+            dt_filter: VecDeque::with_capacity(TEMP_FILTER_LEN),
             dt: None,
             temp: None,
             raw_pressure: None,
@@ -106,27 +111,32 @@ impl Barometer {
 
         if self.read_temp {
             let dt = (value as i32) - ((cal.reference_temperature as i32) << 8);
-            self.dt = Some(dt);
+            self.dt_filter.truncate(TEMP_FILTER_LEN - 1);
+            self.dt_filter.push_front(dt);
+            let filtered = self.dt_filter.iter()
+                .map(|dt| *dt as i64)
+                .sum::<i64>() / (self.dt_filter.len() as i64);
+            self.dt = Some(filtered as i32);
         } else {
             self.raw_pressure = Some(value);
         }
 
         if let Some((dt, raw_pressure)) = self.dt.zip(self.raw_pressure) {
-            let mut temp = 2000 + ((dt as i64) * (cal.temp_coef_temperature as i64) >> 23);
+            let mut temp = 2000 + (((dt as i64) * (cal.temp_coef_temperature as i64)) >> 23);
             let mut offset =
                 ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
             let mut sens = ((cal.pressure_sensitivity as i64) << 15)
-                + ((cal.temp_coef_pressure_sensitivity as i64 * dt as i64) >> 8);
+                + (((cal.temp_coef_pressure_sensitivity as i64) * (dt as i64)) >> 8);
 
             // second order temp compensation
             if temp < 2000 {
                 let t2 = ((dt as i64) * (dt as i64)) >> 31;
-                let temp_offset = (temp - 2000);
+                let temp_offset = temp - 2000;
                 let mut off2 = (5 * temp_offset * temp_offset) >> 1;
                 let mut sens2 = off2 >> 1;
 
                 if temp < -1500 { // brrrr
-                    let temp_offset = (temp + 1500);
+                    let temp_offset = temp + 1500;
                     off2 += 7 * temp_offset * temp_offset;
                     sens2 += (11 * temp_offset * temp_offset) >> 1;
                 }
