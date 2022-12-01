@@ -6,8 +6,11 @@ use hal::gpio::{Alternate, Output, Pin};
 use hal::pac::SPI2;
 use stm32f4xx_hal as hal;
 
+use crc::{Crc, CRC_16_IBM_SDLC};
+
 use crate::prelude::*;
 use crate::telemetry::*;
+use crate::usb::*;
 
 type CsPin = Pin<'B', 12, Output>;
 type SclPin = Pin<'B', 13, Alternate<5>>;
@@ -15,23 +18,24 @@ type MisoPin = Pin<'C', 2, Alternate<5>>;
 type MosiPin = Pin<'C', 3, Alternate<5>>;
 type Spi = hal::spi::Spi<SPI2, (SclPin, MisoPin, MosiPin)>;
 
-const PAGE_SIZE: usize = 256;
-const RESERVED_SIZE: usize = 4096;
+const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
+const PAGE_SIZE: u32 = 256;
+const SECTOR_SIZE: u32 = 4096;
 
 #[derive(Debug, PartialEq, Eq)]
 enum FlashState {
     Init,
-    Idle
+    Idle,
+    Erasing
 }
 
 pub struct Flash {
     state: FlashState,
     spi: Spi,
     cs: CsPin,
-    size: usize,
-    pointer: usize,
-    write_buffer: [u8; PAGE_SIZE*2],
-    write_buffer_pointer: usize
+    size: u32,
+    pub pointer: u32,
+    write_buffer: Vec<u8>,
 }
 
 impl Flash {
@@ -42,8 +46,7 @@ impl Flash {
             cs,
             size: 0,
             pointer: 0,
-            write_buffer: [0; PAGE_SIZE*2],
-            write_buffer_pointer: 0
+            write_buffer: Vec::with_capacity((PAGE_SIZE * 2) as usize),
         };
 
         let ids = flash.command(W25OpCode::JedecId, &[], 3).unwrap_or([0; 3].to_vec());
@@ -76,40 +79,77 @@ impl Flash {
         })
     }
 
-    fn read(&mut self, address: usize, len: usize) -> Result<Vec<u8>, hal::spi::Error> {
-        // TODO: check if busy
+    fn is_busy(&mut self) -> bool {
+        let response = self.command(W25OpCode::ReadStatusRegister1, &[], 1);
+        response.map(|resp| resp[0] & 0x01 > 0).unwrap_or(true)
+    }
+
+    fn read(&mut self, address: u32, len: u32) -> Result<Vec<u8>, hal::spi::Error> {
+        if self.is_busy() {
+            return Err(hal::spi::Error::Overrun);
+        }
+
         let address = address.to_be_bytes();
-        self.command(W25OpCode::ReadData4BAddress, &address, len)
+        self.command(W25OpCode::ReadData4BAddress, &address, len as usize)
     }
 
     fn write(&mut self, address: usize, data: &[u8]) -> Result<(), hal::spi::Error> {
+        if self.is_busy() {
+            return Err(hal::spi::Error::Overrun);
+        }
+
         self.command(W25OpCode::WriteEnable, &[], 0)?;
         let cmd = [&address.to_be_bytes(), data].concat();
         self.command(W25OpCode::PageProgram4BAddress, &cmd, 0)?;
         Ok(())
     }
 
-    fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), hal::spi::Error> {
-        let serialized = msg.wrap();
-        if serialized.len() > (self.write_buffer.len() - self.write_buffer_pointer) {
+    fn erase_sector(&mut self, address: u32) -> Result<(), hal::spi::Error> {
+        self.command(W25OpCode::WriteEnable, &[], 0)?;
+        let cmd = address.to_be_bytes();
+        self.command(W25OpCode::SectorErase4KB4BAddress, &cmd, 0)?;
+        Ok(())
+    }
+
+    fn flush_page(&mut self) -> Result<(), hal::spi::Error> {
+        let data: Vec<u8> = self.write_buffer.drain(..((PAGE_SIZE-3) as usize)).collect();
+
+        if self.pointer >= FLASH_SIZE {
+            log_every_nth_time!(1000, Error, "Flash storage full, skipping page flush.");
             return Ok(());
         }
 
-        // TODO
-        for i in 0..serialized.len() {
-            self.write_buffer[self.write_buffer_pointer + i] = serialized[i];
-        }
-        self.write_buffer_pointer += serialized.len();
+        let crc = X25.checksum(&data);
 
-        if self.write_buffer_pointer > (PAGE_SIZE-1) {
-            self.pointer += PAGE_SIZE;
-            let page = [&[0x0a], &self.write_buffer[..(PAGE_SIZE-1)]].concat();
-            self.write_buffer.rotate_left(PAGE_SIZE-1);
-            self.write_buffer_pointer -= PAGE_SIZE-1;
-            self.write(self.pointer, &page)?;
+        let mut page = Vec::with_capacity(PAGE_SIZE as usize);
+        page.push(0x00);
+        page.extend(data);
+        page.push((crc >> 8) as u8);
+        page.push(crc as u8);
+
+        let result = self.write(self.pointer as usize, &page);
+        self.pointer += PAGE_SIZE;
+        result
+    }
+
+    pub fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), hal::spi::Error> {
+        if self.state != FlashState::Idle {
+            log!(Error, "Flash not idle.");
+            return Ok(());
         }
 
-        Ok(())
+        let serialized = msg.wrap();
+        if serialized.len() > (2*PAGE_SIZE as usize) - self.write_buffer.len() {
+            log!(Error, "Flash message too big.");
+            return Ok(());
+        }
+
+        self.write_buffer.extend(serialized);
+        if self.write_buffer.len() > (PAGE_SIZE-3) as usize {
+            self.flush_page()
+        } else {
+            Ok(())
+        }
     }
 
     fn configure(&mut self) -> Result<(), hal::spi::Error> {
@@ -123,12 +163,38 @@ impl Flash {
                 a = mid;
             }
         }
-        self.pointer = b;
+        self.pointer = u32::max(b, FLASH_HEADER_SIZE);
         log!(Info, "Determined Flash pointer: 0x{:02x?}", self.pointer);
         Ok(())
     }
 
-    pub fn tick(&mut self, _time: u32, _data: Option<bool>) {
+    fn tick_erase(&mut self) {
+        if self.pointer == FLASH_HEADER_SIZE {
+            log!(Info, "Flash erase done, reinitializing.");
+            self.state = FlashState::Init;
+            self.write_buffer.truncate(0);
+            return;
+        }
+
+        if self.is_busy() {
+            return;
+        }
+
+        self.pointer -= self.pointer % SECTOR_SIZE;
+        let first_byte = self.read(self.pointer, 1)
+            .map(|resp| resp[0])
+            .unwrap_or(0x00);
+
+        if first_byte != 0xff {
+            if let Err(e) = self.erase_sector(self.pointer) {
+                log!(Error, "Error erasing sector 0x{:x}: {:?}", self.pointer, e);
+            }
+        } else {
+            self.pointer -= SECTOR_SIZE;
+        }
+    }
+
+    pub fn tick(&mut self, _time: u32, msg: Option<DownlinkMessage>) {
         if self.state == FlashState::Init {
             if let Err(e) = self.configure() {
                 log!(Error, "Error configuring Flash memory: {:?}", e);
@@ -136,10 +202,32 @@ impl Flash {
                 self.state = FlashState::Idle;
             }
         }
-        // TODO
+
+        if self.state == FlashState::Erasing {
+            self.tick_erase();
+        }
+
+        if let Some(msg) = msg {
+            if let Err(e) = self.write_message(msg) {
+                log!(Error, "Failed to write message to flash: {:?}", e);
+            }
+        }
     }
 
+    pub fn downlink(&mut self, usb_link: &mut UsbLink, address: u32, size: u32) {
+        match self.read(address, size) {
+            Ok(data) => {
+                let msg = DownlinkMessage::FlashContent(address as u32, data);
+                usb_link.send_message(msg);
+            },
+            Err(e) => log!(Error, "Failed to read flash: {:?}", e)
+        }
+    }
 
+    pub fn erase(&mut self) {
+        log!(Info, "Erasing flash.");
+        self.state = FlashState::Erasing;
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -148,6 +236,10 @@ enum W25OpCode {
     WriteEnable = 0x06,
     VolatileSrWriteEnable = 0x50,
     WriteDisable = 0x04,
+
+    ReadStatusRegister1 = 0x05,
+    ReadStatusRegister2 = 0x35,
+    ReadStatusRegister3 = 0x15,
 
     ReleasePowerDown = 0xab,
     ManufacturerDeviceId = 0x90,

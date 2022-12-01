@@ -570,7 +570,9 @@ impl LoRaRadio {
         if self.is_uplink_window(time, false) {
             match self.receive_message() {
                 Ok(opt) => {
-                    if let Some(UplinkMessage::RebootAuth(mac)) | Some(UplinkMessage::SetFlightModeAuth(_, mac)) = opt {
+                    if let Some(UplinkMessage::RebootAuth(mac)) |
+                            Some(UplinkMessage::SetFlightModeAuth(_, mac)) |
+                            Some(UplinkMessage::EraseFlashAuth(mac)) = opt {
                         let current = self.siphasher.finish();
                         if mac != self.last_hash && mac != current {
                             log!(Error, "MAC mismatch: {:02x?} vs ({:02x?}, {:02x?})", mac, self.last_hash, current);

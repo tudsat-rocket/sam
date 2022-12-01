@@ -297,6 +297,7 @@ impl<'a> Vehicle {
             match msg {
                 UplinkMessage::RebootAuth(_) => reboot(),
                 UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),
+                UplinkMessage::EraseFlashAuth(_) => self.flash.erase(),
                 _ => {},
             }
         }
@@ -306,7 +307,9 @@ impl<'a> Vehicle {
                 UplinkMessage::Heartbeat => {}
                 UplinkMessage::Reboot | UplinkMessage::RebootAuth(_) => reboot(),
                 UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
-                UplinkMessage::SetFlightMode(fm) | UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm)
+                UplinkMessage::SetFlightMode(fm) | UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),
+                UplinkMessage::ReadFlash(adr, size) => self.flash.downlink(&mut self.usb_link, adr, size),
+                UplinkMessage::EraseFlash | UplinkMessage::EraseFlashAuth(_) => self.flash.erase()
             }
         }
 
@@ -326,8 +329,10 @@ impl<'a> Vehicle {
             self.radio.send_downlink_message(msg);
         }
 
-        // TODO
-        self.flash.tick(self.time, None);
+        let flash_message = (self.mode >= FlightMode::Armed)
+            .then(|| self.next_flash_telem())
+            .flatten();
+        self.flash.tick(self.time, flash_message);
 
         // get CPU usage (max of RUNTIME_HISTORY_LEN last iterations)
         self.loop_runtime_history.truncate(RUNTIME_HISTORY_LEN - 1);
@@ -396,6 +401,25 @@ impl<'a> Vehicle {
             Some(DownlinkMessage::TelemetryMainCompressed(self.into()))
         } else if self.time % 50 == 25 {
             Some(DownlinkMessage::TelemetryRawSensorsCompressed(self.into()))
+        } else {
+            None
+        }
+    }
+
+    #[cfg(not(feature = "gcs"))]
+    fn next_flash_telem(&self) -> Option<DownlinkMessage> {
+        // Offset everything a little so that flash message writes don't coincide
+        // with lora message writes.
+        let t = self.time + 3;
+
+        if t % 1000 == 0 {
+            Some(DownlinkMessage::TelemetryGPS(self.into()))
+        } else if t % 20 == 0 {
+            Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
+        } else if t % 10 == 5 {
+            Some(DownlinkMessage::TelemetryMain(self.into()))
+        } else if t % 5 == 2 {
+            Some(DownlinkMessage::TelemetryRawSensors(self.into()))
         } else {
             None
         }
@@ -519,6 +543,7 @@ impl Into<TelemetryGPS> for &Vehicle {
             latitude,
             longitude,
             altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0) as u16).unwrap_or(u16::MAX),
+            flash_pointer: (self.flash.pointer / 1024) as u16,
         }
     }
 }

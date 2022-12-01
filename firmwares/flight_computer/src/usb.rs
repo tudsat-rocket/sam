@@ -12,12 +12,15 @@ use usbd_serial::{SerialPort, USB_CLASS_CDC};
 use crate::prelude::*;
 use crate::telemetry::*;
 
-static mut USB_BUFFER: [u32; 1024] = [0; 1024];
+static mut USB_BUFFER: [u32; 4096] = [0; 4096];
 static mut USB_BUS: Option<UsbBusAllocator<UsbBus<USB>>> = None;
+
+type ReadBufferStore = [u8; 128];
+type WriteBufferStore = [u8; 2048];
 
 pub struct UsbLink {
     device: UsbDevice<'static, UsbBus<USB>>,
-    serial: SerialPort<'static, UsbBus<USB>>,
+    serial: SerialPort<'static, UsbBus<USB>, ReadBufferStore, WriteBufferStore>,
     poll_counter: u32,
     log_counter: u32,
     uplink_buffer: Vec<u8>,
@@ -31,11 +34,18 @@ impl UsbLink {
             USB_BUS = Some(UsbBus::new(usb, &mut USB_BUFFER));
         }
 
-        let mut serial = unsafe { SerialPort::new(USB_BUS.as_ref().unwrap()) };
+        let mut serial = unsafe {
+            SerialPort::new_with_store(
+                USB_BUS.as_ref().unwrap(),
+                [0; 128],
+                [0; 2048]
+            )
+        };
         let mut device = unsafe {
             UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x0483, 0x5740))
                 .product("FrodoFC")
                 .device_class(USB_CLASS_CDC)
+                .max_packet_size_0(64)
                 .build()
         };
 
@@ -57,12 +67,8 @@ impl UsbLink {
     }
 
     fn send_data(&mut self, data: &[u8]) -> Result<(), UsbError> {
-        // USB only allows packet sizes up to 64 bytes
-        for chunk in data.chunks(64) {
-            self.serial.write(&chunk)?;
-            self.serial.flush()?;
-        }
-
+        self.serial.write(data)?;
+        self.serial.flush()?;
         Ok(())
     }
 

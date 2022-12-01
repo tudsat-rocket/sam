@@ -17,6 +17,9 @@ pub const LORA_MESSAGE_INTERVAL: u32 = 25;
 pub const LORA_UPLINK_INTERVAL: u32 = 200;
 pub const LORA_UPLINK_MODULO: u32 = 100;
 pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0xc5, 0x29, 0x77, 0x2a, 0xf5, 0xba, 0x95, 0x07, 0x06];
+#[allow(dead_code)]
+pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
+pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
 
 pub use LogLevel::*;
 
@@ -203,6 +206,7 @@ pub struct TelemetryGPS {
     pub latitude: [u8; 3],
     pub longitude: [u8; 3],
     pub altitude_asl: u16,
+    pub flash_pointer: u16,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -232,6 +236,7 @@ pub enum DownlinkMessage {
     TelemetryGPS(TelemetryGPS),
     TelemetryGCS(TelemetryGCS),
     Log(u32, String, LogLevel, String),
+    FlashContent(u32, Vec<u8>)
 }
 
 impl DownlinkMessage {
@@ -245,6 +250,7 @@ impl DownlinkMessage {
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
             DownlinkMessage::TelemetryGCS(tm) => tm.time,
             DownlinkMessage::Log(t, _, _, _) => *t,
+            DownlinkMessage::FlashContent(_, _) => 0,
         }
     }
 }
@@ -256,7 +262,10 @@ pub enum UplinkMessage {
     RebootAuth(u64),
     RebootToBootloader,
     SetFlightMode(FlightMode),
-    SetFlightModeAuth(FlightMode, u64)
+    SetFlightModeAuth(FlightMode, u64),
+    ReadFlash(u32, u32),
+    EraseFlash,
+    EraseFlashAuth(u64),
 }
 
 impl ToString for LogLevel {
@@ -280,10 +289,24 @@ pub trait Transmit: Sized {
 
 impl<M: Serialize + DeserializeOwned> Transmit for M {
     fn wrap(&self) -> Vec<u8> {
-        let mut buf = [0u8; 512];
+        let mut buf = [0u8; 1024 + 8];
         let serialized = postcard::to_slice(self, &mut buf).unwrap();
-        [&[0x42, serialized.len() as u8], &*serialized].concat()
+
+        if serialized.len() > 127 {
+            // For large packets (basically just for flash reading) we set the most
+            // significant bit of the first length byte to indicate that we use a
+            // 16-bit (or rather, 15-bit) length value
+            let len = serialized.len();
+            [
+                &[0x42, 0x80 | ((len >> 8) as u8), len as u8],
+                &*serialized
+            ].concat()
+        } else {
+            [&[0x42, serialized.len() as u8], &*serialized].concat()
+        }
     }
+
+    // TODO: make this prettier
 
     fn read_valid(buf: &[u8]) -> Option<Self> {
         if buf.len() == 0 {
@@ -294,28 +317,44 @@ impl<M: Serialize + DeserializeOwned> Transmit for M {
             return None;
         }
 
-        if buf.len() < 2 {
+        if buf.len() < 3 {
             return None;
         }
 
         let len = buf[1] as usize;
-        if buf.len() < 2 + len {
-            return None;
-        }
+        if (len & 0x80) > 0 { // 15-bit length mode
+            let len = ((len & 0x7f) << 8) + (buf[2] as usize);
+            if buf.len() < 3 + len {
+                return None;
+            }
 
-        postcard::from_bytes::<Self>(&buf[2..(len + 2)]).ok()
+            postcard::from_bytes::<Self>(&buf[3..(len + 3)]).ok()
+        } else { // 7-bit length mode
+            if buf.len() < 2 + len {
+                return None;
+            }
+
+            postcard::from_bytes::<Self>(&buf[2..(len + 2)]).ok()
+        }
     }
 
     fn pop_valid(buf: &mut Vec<u8>) -> Option<Self> {
         while buf.len() > 0 {
             if buf[0] == 0x42 {
-                if buf.len() < 2 {
+                if buf.len() < 3 {
                     return None;
                 }
 
                 let len = buf[1] as usize;
-                if buf.len() < 2 + len {
-                    return None;
+                if (len & 0x80) > 0 { // 15-bit length mode
+                    let len = ((len & 0x7f) << 8) + (buf[2] as usize);
+                    if buf.len() < 3 + len {
+                        return None;
+                    }
+                } else { // 7-bit length mode
+                    if buf.len() < 2 + len {
+                        return None;
+                    }
                 }
 
                 break;
@@ -324,16 +363,27 @@ impl<M: Serialize + DeserializeOwned> Transmit for M {
             buf.remove(0);
         }
 
-        if buf.len() < 2 {
+        if buf.len() < 3 {
             return None;
         }
 
         let len = buf[1] as usize;
-        let head = buf[2..(len+2)].to_vec();
-        for _i in 0..(len + 2) {
-            buf.remove(0);
-        }
+        if (len & 0x80) > 0 { // 15-bit length mode
+            let len = ((len & 0x7f) << 8) + (buf[2] as usize);
 
-        postcard::from_bytes::<Self>(&head).ok()
+            let head = buf[3..(len+3)].to_vec();
+            for _i in 0..(len + 3) {
+                buf.remove(0);
+            }
+
+            postcard::from_bytes::<Self>(&head).ok()
+        } else { // 7-bit length mode
+            let head = buf[2..(len+2)].to_vec();
+            for _i in 0..(len + 2) {
+                buf.remove(0);
+            }
+
+            postcard::from_bytes::<Self>(&head).ok()
+        }
     }
 }
