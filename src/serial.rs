@@ -30,12 +30,14 @@ pub fn downlink_port(
     downlink_tx: &mut Sender<DownlinkMessage>,
     uplink_rx: &mut Receiver<UplinkMessage>,
     port: String,
+    send_heartbeats: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut port = serialport::new(port, BAUD_RATE)
-        .timeout(std::time::Duration::from_millis(100))
+        .timeout(std::time::Duration::from_millis(1))
         .open_native()?;
+    port.set_exclusive(false)?;
 
-    let mut buffer: Vec<u8> = vec![0; 1024];
+    let mut buffer: Vec<u8> = vec![0; 4096];
     let mut downlink_buffer: Vec<u8> = Vec::new();
 
     let mut now = Instant::now();
@@ -46,7 +48,7 @@ pub fn downlink_port(
         if let Some(msg) = uplink_rx.try_iter().next() {
             let _written = port.write(&msg.wrap())?;
             port.flush()?;
-        } else if now.duration_since(last_heartbeat) > Duration::from_millis(500) {
+        } else if now.duration_since(last_heartbeat) > Duration::from_millis(500) && send_heartbeats {
             let _written = port.write(&UplinkMessage::Heartbeat.wrap())?;
             port.flush()?;
             last_heartbeat = now;
@@ -56,8 +58,8 @@ pub fn downlink_port(
             Ok(x) => Ok(x),
             Err(e) => match e.kind() {
                 std::io::ErrorKind::TimedOut => Ok(0),
-                _ => Err(e)
-            }
+                _ => Err(e),
+            },
         }?;
 
         for i in 0..read_bytes {
@@ -71,7 +73,7 @@ pub fn downlink_port(
             last_message = now;
         }
 
-        std::thread::sleep(Duration::from_micros(1000));
+        //std::thread::sleep(Duration::from_micros(100));
         now = Instant::now();
     }
 
@@ -81,23 +83,29 @@ pub fn downlink_port(
 fn downlink_monitor(
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     mut downlink_tx: Sender<DownlinkMessage>,
-    mut uplink_rx: Receiver<UplinkMessage>
+    mut uplink_rx: Receiver<UplinkMessage>,
+    send_heartbeats: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         if let Some(p) = find_serial_port() {
             serial_status_tx.send((SerialStatus::Connected, Some(p.clone())))?;
-            if let Err(e) = downlink_port(&mut downlink_tx, &mut uplink_rx, p.clone()) {
+            if let Err(e) = downlink_port(&mut downlink_tx, &mut uplink_rx, p.clone(), send_heartbeats) {
                 println!("{:?}", e);
                 serial_status_tx.send((SerialStatus::Error, Some(p)))?;
             }
         }
+
+        std::thread::sleep(Duration::from_millis(100));
     }
 }
 
 pub fn spawn_downlink_monitor(
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_tx: Sender<DownlinkMessage>,
-    uplink_rx: Receiver<UplinkMessage>
+    uplink_rx: Receiver<UplinkMessage>,
+    send_heartbeats: bool,
 ) -> JoinHandle<()> {
-    std::thread::spawn(move || downlink_monitor(serial_status_tx, downlink_tx, uplink_rx).unwrap_or_default())
+    std::thread::spawn(move || {
+        downlink_monitor(serial_status_tx, downlink_tx, uplink_rx, send_heartbeats).unwrap_or_default()
+    })
 }

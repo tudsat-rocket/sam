@@ -8,11 +8,22 @@ edition = "2021"
 euroc_fc_firmware = { git = "ssh://git@gitlab.com/tudsat-rocket1/microcontrollers/flight-computers/euroc_fc_firmware.git", default-features = false }
 #euroc_fc_firmware = { path = "../euroc_fc_firmware", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
+log = "0.4"
+env_logger = "0.10"
+indicatif = "0.17"
 colored = "2"
-eframe = "0.19"
+#eframe = "0.19"
+#eframe = { path = "../egui/crates/eframe" }
+eframe = { git = "https://github.com/emilk/egui" }
 image = { version = "0.24", features = ["png"] }
-egui_extras = { version = "0.19", features = ["image"] }
+#egui_extras = { version = "0.19", features = ["image"] }
+#egui_extras = { path = "../egui/crates/egui_extras", features = ["image"] }
+egui_extras = { git = "https://github.com/emilk/egui", features = ["image"] }
 serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.89"
 postcard = "0.7.2"
 serialport = "4"
 nalgebra = "0.31"
+siphasher = "0.3"
+chrono = "0.4"
+crc = "2"
