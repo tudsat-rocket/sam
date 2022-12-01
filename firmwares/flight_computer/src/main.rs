@@ -170,8 +170,9 @@ fn main() -> ! {
     let spi2_cs_flash = gpiob.pb12.into_push_pull_output_in_state(PinState::High);
     let spi2 = dp
         .SPI2
-        .spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 20.MHz(), &clocks);
-    let flash = Flash::init(spi2, spi2_cs_flash);
+        .spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 42.MHz(), &clocks);
+    let flash_dma_streams = hal::dma::StreamsTuple::new(dp.DMA1);
+    let flash = Flash::init(spi2, spi2_cs_flash, flash_dma_streams);
 
     let spi_mode = Mode {
         polarity: Polarity::IdleHigh,

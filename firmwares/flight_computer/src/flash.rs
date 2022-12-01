@@ -1,9 +1,13 @@
 use alloc::vec::Vec;
+use core::cell::RefCell;
 
-use cortex_m::interrupt::free;
+use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::prelude::*;
+use hal::dma::config::DmaConfig;
+use hal::dma::{MemoryToPeripheral, Stream4, StreamsTuple, Transfer};
 use hal::gpio::{Alternate, Output, Pin};
-use hal::pac::SPI2;
+use hal::pac::{interrupt, Interrupt, DMA1, NVIC, SPI2};
+use hal::spi::Tx;
 use stm32f4xx_hal as hal;
 
 use crc::{Crc, CRC_16_IBM_SDLC};
@@ -18,15 +22,29 @@ type MisoPin = Pin<'C', 2, Alternate<5>>;
 type MosiPin = Pin<'C', 3, Alternate<5>>;
 type Spi = hal::spi::Spi<SPI2, (SclPin, MisoPin, MosiPin)>;
 
+type SpiDmaTransfer = Transfer<
+    Stream4<DMA1>, // TODO
+    0,
+    Tx<SPI2>,
+    MemoryToPeripheral,
+    &'static mut [u8; DMA_BUFFER_SIZE],
+>;
+
 const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 const PAGE_SIZE: u32 = 256;
 const SECTOR_SIZE: u32 = 4096;
+
+const DMA_BUFFER_SIZE: usize = 256 + 1 + 4;
+static DMA_TRANSFER: Mutex<RefCell<Option<SpiDmaTransfer>>> = Mutex::new(RefCell::new(None));
+static DMA_RESULT: Mutex<RefCell<Option<Result<(), ()>>>> = Mutex::new(RefCell::new(None));
+static mut DMA_BUFFER: [u8; DMA_BUFFER_SIZE] = [0; DMA_BUFFER_SIZE];
 
 #[derive(Debug, PartialEq, Eq)]
 enum FlashState {
     Init,
     Idle,
-    Erasing
+    Erasing,
+    Writing,
 }
 
 pub struct Flash {
@@ -38,8 +56,48 @@ pub struct Flash {
     write_buffer: Vec<u8>,
 }
 
+#[interrupt]
+fn DMA1_STREAM4() {
+    cortex_m::peripheral::NVIC::unpend(Interrupt::DMA1_STREAM4);
+
+    free(|cs| {
+        let transfer = &mut *DMA_TRANSFER.borrow(cs).borrow_mut();
+        if let Some(ref mut transfer) = transfer.as_mut() {
+            transfer.clear_fifo_error_interrupt();
+            transfer.clear_transfer_complete_interrupt();
+        }
+
+        let result = Some(Ok(())); // TODO: properly track errors
+        *DMA_RESULT.borrow(cs).borrow_mut() = result;
+    })
+}
+
 impl Flash {
-    pub fn init(spi: Spi, cs: CsPin) -> Self {
+    pub fn init(mut spi: Spi, cs: CsPin, dma_streams: StreamsTuple<DMA1>) -> Self {
+        let stream = dma_streams.4;
+        let tx = unsafe {
+            let spi_copy = core::ptr::read(&mut spi);
+            let tx = spi_copy.use_dma().tx();
+            tx
+        };
+
+        let transfer = unsafe {
+            Transfer::init_memory_to_peripheral(
+                stream,
+                tx,
+                &mut DMA_BUFFER,
+                None,
+                DmaConfig::default()
+                    .memory_increment(true)
+                    .fifo_enable(true)
+                    .fifo_error_interrupt(true)
+                    .transfer_complete_interrupt(true),
+            )
+        };
+
+        // Hand off transfer to interrupt handler
+        free(|cs| *DMA_TRANSFER.borrow(cs).borrow_mut() = Some(transfer));
+
         let mut flash = Self {
             state: FlashState::Init,
             spi,
@@ -79,8 +137,44 @@ impl Flash {
         })
     }
 
+    fn command_dma(&mut self, opcode: W25OpCode, params: &[u8]) -> () {
+        if params.len() > DMA_BUFFER_SIZE - 1 {
+            return;
+        }
+
+        self.cs.set_low();
+
+        free(|cs| {
+            let msg = [&[opcode as u8], params].concat();
+
+            let mut transfer = DMA_TRANSFER.borrow(cs).borrow_mut();
+            if let Some(ref mut transfer) = transfer.as_mut() {
+                unsafe {
+                    DMA_BUFFER = msg.try_into().unwrap();
+                    transfer.next_transfer(&mut DMA_BUFFER).unwrap();
+                    transfer.start(|_tx| {});
+                }
+            }
+
+            *DMA_RESULT.borrow(cs).borrow_mut() = None;
+
+            unsafe {
+                NVIC::unmask(hal::pac::Interrupt::DMA1_STREAM4);
+            }
+        })
+    }
+
     fn is_busy(&mut self) -> bool {
-        let response = self.command(W25OpCode::ReadStatusRegister1, &[], 1);
+        let mut response = self.command(W25OpCode::ReadStatusRegister1, &[], 1);
+        // Same issue as in lora.rs. When combining DMA and regular SPI, the first
+        // non-DMA command after a DMA transfer (which is always this one) needs 3
+        // tries not to end with an overrun. Weirdly reproducible.
+        for _i in 0..3 {
+            if response.is_ok() {
+                break;
+            }
+            response = self.command(W25OpCode::ReadStatusRegister1, &[], 1);
+        }
         response.map(|resp| resp[0] & 0x01 > 0).unwrap_or(true)
     }
 
@@ -93,14 +187,14 @@ impl Flash {
         self.command(W25OpCode::ReadData4BAddress, &address, len as usize)
     }
 
-    fn write(&mut self, address: usize, data: &[u8]) -> Result<(), hal::spi::Error> {
+    fn write_dma(&mut self, address: usize, data: &[u8]) -> Result<(), hal::spi::Error> {
         if self.is_busy() {
             return Err(hal::spi::Error::Overrun);
         }
 
         self.command(W25OpCode::WriteEnable, &[], 0)?;
         let cmd = [&address.to_be_bytes(), data].concat();
-        self.command(W25OpCode::PageProgram4BAddress, &cmd, 0)?;
+        self.command_dma(W25OpCode::PageProgram4BAddress, &cmd);
         Ok(())
     }
 
@@ -112,7 +206,7 @@ impl Flash {
     }
 
     fn flush_page(&mut self) -> Result<(), hal::spi::Error> {
-        let data: Vec<u8> = self.write_buffer.drain(..((PAGE_SIZE-3) as usize)).collect();
+        let data: Vec<u8> = self.write_buffer.drain(..((PAGE_SIZE - 3) as usize)).collect();
 
         if self.pointer >= FLASH_SIZE {
             log_every_nth_time!(1000, Error, "Flash storage full, skipping page flush.");
@@ -127,25 +221,30 @@ impl Flash {
         page.push((crc >> 8) as u8);
         page.push(crc as u8);
 
-        let result = self.write(self.pointer as usize, &page);
+        let result = self.write_dma(self.pointer as usize, &page);
         self.pointer += PAGE_SIZE;
+
+        if result.is_ok() {
+            self.state = FlashState::Writing;
+        }
+
         result
     }
 
     pub fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), hal::spi::Error> {
         if self.state != FlashState::Idle {
-            log!(Error, "Flash not idle.");
+            log_every_nth_time!(1000, Error, "Flash not idle.");
             return Ok(());
         }
 
         let serialized = msg.wrap();
-        if serialized.len() > (2*PAGE_SIZE as usize) - self.write_buffer.len() {
+        if serialized.len() > (2 * PAGE_SIZE as usize) - self.write_buffer.len() {
             log!(Error, "Flash message too big.");
             return Ok(());
         }
 
         self.write_buffer.extend(serialized);
-        if self.write_buffer.len() > (PAGE_SIZE-3) as usize {
+        if self.write_buffer.len() > (PAGE_SIZE - 3) as usize {
             self.flush_page()
         } else {
             Ok(())
@@ -156,7 +255,7 @@ impl Flash {
         // Determine first unwritten page by binary search
         let (mut a, mut b) = (0, self.size);
         while b - a > PAGE_SIZE {
-            let mid = (a+b)/2;
+            let mid = (a + b) / 2;
             if self.read(mid, 1)?[0] == 0xff {
                 b = mid;
             } else {
@@ -181,9 +280,7 @@ impl Flash {
         }
 
         self.pointer -= self.pointer % SECTOR_SIZE;
-        let first_byte = self.read(self.pointer, 1)
-            .map(|resp| resp[0])
-            .unwrap_or(0x00);
+        let first_byte = self.read(self.pointer, 1).map(|resp| resp[0]).unwrap_or(0x00);
 
         if first_byte != 0xff {
             if let Err(e) = self.erase_sector(self.pointer) {
@@ -194,17 +291,26 @@ impl Flash {
         }
     }
 
-    pub fn tick(&mut self, _time: u32, msg: Option<DownlinkMessage>) {
-        if self.state == FlashState::Init {
-            if let Err(e) = self.configure() {
-                log!(Error, "Error configuring Flash memory: {:?}", e);
-            } else {
-                self.state = FlashState::Idle;
-            }
+    fn tick_writing(&mut self) {
+        let result = free(|cs| DMA_RESULT.borrow(cs).replace(None));
+        if result.is_some() {
+            self.state = FlashState::Idle;
+            self.cs.set_high();
         }
+    }
 
-        if self.state == FlashState::Erasing {
-            self.tick_erase();
+    pub fn tick(&mut self, _time: u32, msg: Option<DownlinkMessage>) {
+        match self.state {
+            FlashState::Init => {
+                if let Err(e) = self.configure() {
+                    log!(Error, "Error configuring Flash memory: {:?}", e);
+                } else {
+                    self.state = FlashState::Idle;
+                }
+            }
+            FlashState::Erasing => self.tick_erase(),
+            FlashState::Writing => self.tick_writing(),
+            FlashState::Idle => {}
         }
 
         if let Some(msg) = msg {
@@ -219,8 +325,8 @@ impl Flash {
             Ok(data) => {
                 let msg = DownlinkMessage::FlashContent(address as u32, data);
                 usb_link.send_message(msg);
-            },
-            Err(e) => log!(Error, "Failed to read flash: {:?}", e)
+            }
+            Err(e) => log!(Error, "Failed to read flash: {:?}", e),
         }
     }
 

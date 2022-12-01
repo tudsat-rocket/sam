@@ -378,14 +378,14 @@ impl<'a> Vehicle {
 
     #[cfg(not(feature = "gcs"))]
     fn next_usb_telem(&self) -> Option<DownlinkMessage> {
-        if self.time % 20 == 0 {
-            Some(DownlinkMessage::TelemetryMain(self.into()))
-        } else if self.time % 20 == 10 {
-            Some(DownlinkMessage::TelemetryRawSensors(self.into()))
-        } else if self.time % 100 == 1 {
-            Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
-        } else if self.time % 100 == 2 {
+        if self.time % 100 == 0 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
+        } else if self.time % 50 == 0 {
+            Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
+        } else if self.time % 50 == 20 {
+            Some(DownlinkMessage::TelemetryMain(self.into()))
+        } else if self.time % 10 == 5 {
+            Some(DownlinkMessage::TelemetryRawSensors(self.into()))
         } else {
             None
         }
@@ -411,14 +411,13 @@ impl<'a> Vehicle {
         // Offset everything a little so that flash message writes don't coincide
         // with lora message writes.
         let t = self.time + 3;
-
-        if t % 1000 == 0 {
+        if t % 100 == 0 {
             Some(DownlinkMessage::TelemetryGPS(self.into()))
-        } else if t % 20 == 0 {
+        } else if t % 50 == 0 {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
-        } else if t % 10 == 5 {
+        } else if t % 50 == 20 {
             Some(DownlinkMessage::TelemetryMain(self.into()))
-        } else if t % 5 == 2 {
+        } else if t % 10 == 5 {
             Some(DownlinkMessage::TelemetryRawSensors(self.into()))
         } else {
             None
