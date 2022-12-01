@@ -39,7 +39,7 @@ const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to b
 const MIN_FLIGHT_TIME: u32 = 5000; // minimum time in flight to trigger recovery (ms)
 const MAX_FLIGHT_TIME: u32 = 15000; // maximum time in flight to trigger recovery (ms)
 
-const RECOVERY_DURATION: u32 = 250; // time to enable recovery outputs (after warning tone, in ms)
+const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after warning tone, in ms)
 
 type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
@@ -207,7 +207,8 @@ impl<'a> Vehicle {
                 let max_exceeded = elapsed > MAX_FLIGHT_TIME;
                 ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
             }
-            FlightMode::RecoveryDrogue => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
+            //FlightMode::RecoveryDrogue => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
+            FlightMode::RecoveryDrogue => Some(FlightMode::RecoveryMain),
             FlightMode::RecoveryMain => (elapsed > rec_min_dur).then(|| FlightMode::Landed), // TODO: detect landing instead
             FlightMode::Landed => None
         };
@@ -217,7 +218,7 @@ impl<'a> Vehicle {
         }
 
         let recovery_high = elapsed > crate::buzzer::RECOVERY_WARNING_TIME && elapsed < rec_min_dur;
-        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
+        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
         self.recovery.1.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
     }
 
