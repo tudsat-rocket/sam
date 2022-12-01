@@ -13,6 +13,7 @@ use log::*;
 
 use euroc_fc_firmware::telemetry::*;
 
+mod data_source;
 mod gui;
 mod serial;
 mod state;
@@ -29,7 +30,7 @@ struct Cli {
 #[derive(Debug, Clone, Subcommand)]
 enum CliCommand {
     /// Launch the main gui [default]
-    Gui,
+    Gui { log_path: Option<PathBuf> },
     /// Attach to FC and tail logs
     Logcat {
         #[clap(short = 'v')]
@@ -265,8 +266,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .init();
 
     let args = Cli::parse();
-    match args.command.unwrap_or(CliCommand::Gui) {
-        CliCommand::Gui => gui::main(),
+    match args.command.unwrap_or(CliCommand::Gui { log_path: None }) {
+        CliCommand::Gui { log_path } => gui::main(log_path),
         CliCommand::Logcat { verbose } => logcat(verbose),
         CliCommand::ParseLog { path, json } => parse_log(path, json),
         CliCommand::DumpFlash { path, force, raw } => dump_flash(path, force, raw),

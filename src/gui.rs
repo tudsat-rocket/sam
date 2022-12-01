@@ -1,10 +1,4 @@
-use core::hash::Hasher;
-use std::collections::VecDeque;
-use std::fs::File;
-use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
-use std::time::{Duration, Instant};
 
 use eframe::egui::{self, Ui};
 use egui::widgets::plot::{Corner, Legend, Line};
@@ -13,32 +7,22 @@ use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
 use egui::{Color32, Key, Layout, RichText, Stroke, Vec2};
-use siphasher::sip::SipHasher;
+use log::*;
 
 use euroc_fc_firmware::telemetry::*;
 
-use crate::serial::*;
 use crate::state::*;
+use crate::data_source::*;
 
 #[rustfmt::skip]
-const ZOOM_LEVELS: [u32; 14] = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000, 1200000, 300000, 600000, 1800000, 3600000];
+const ZOOM_LEVELS: [u32; 14] = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000, 120000, 300000, 600000, 1800000, 3600000];
 const RAD_TO_DEG: f32 = 180.0 / std::f32::consts::PI;
 
 struct Sam {
-    serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
-    downlink_rx: Receiver<DownlinkMessage>,
-    uplink_tx: Sender<UplinkMessage>,
-    telemetry_log_path: PathBuf,
-    telemetry_log_file: Result<File, std::io::Error>,
-
-    serial_port: Option<String>,
-    serial_status: SerialStatus,
+    data_source: Box<dyn DataSource>,
 
     vehicle_states: Vec<VehicleState>,
-    message_receipt_times: VecDeque<(Instant, u32)>,
     log_messages: Vec<(u32, String, LogLevel, String)>,
-    siphasher: SipHasher,
-    next_mac: (u32, u64),
 
     zoom_level: usize,
     auto_reset: bool,
@@ -47,33 +31,11 @@ struct Sam {
 }
 
 impl Sam {
-    fn new_telemetry_log_path() -> PathBuf {
-        let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
-        let name = format!("sam_log_{}.log", now.format("%+"));
-        name.into()
-    }
-
-    pub fn init(
-        serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
-        downlink_rx: Receiver<DownlinkMessage>,
-        uplink_tx: Sender<UplinkMessage>,
-    ) -> Self {
-        let telemetry_log_path = Self::new_telemetry_log_path();
-        let telemetry_log_file = File::create(&telemetry_log_path);
-
+    pub fn init(data_source: Box<dyn DataSource>) -> Self {
         Self {
-            serial_status_rx,
-            telemetry_log_path,
-            telemetry_log_file,
-            downlink_rx,
-            uplink_tx,
-            serial_port: None,
-            serial_status: SerialStatus::Init,
-            message_receipt_times: VecDeque::new(),
+            data_source,
             vehicle_states: Vec::new(),
             log_messages: Vec::new(),
-            siphasher: SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY),
-            next_mac: (0, 0),
             zoom_level: ZOOM_LEVELS.iter().position(|zl| *zl == 10000).unwrap(),
             auto_reset: true,
             logo: egui_extras::RetainedImage::from_image_bytes("logo.png", include_bytes!("logo.png")).unwrap(),
@@ -81,15 +43,10 @@ impl Sam {
     }
 
     fn reset(&mut self) {
-        println!("Resetting.");
+        info!("Resetting.");
         self.vehicle_states.truncate(0);
         //self.log_messages.truncate(0);
-        self.message_receipt_times.truncate(0);
-        self.siphasher = SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY);
-        self.next_mac = (0, 0);
-
-        self.telemetry_log_path = Self::new_telemetry_log_path();
-        self.telemetry_log_file = File::create(&self.telemetry_log_path);
+        self.data_source.reset();
     }
 
     fn adjust_zoom_level(&mut self, delta: isize) {
@@ -99,12 +56,6 @@ impl Sam {
     }
 
     fn process_telemetry(&mut self, msg: DownlinkMessage) {
-        if let Ok(f) = self.telemetry_log_file.as_mut() {
-            if let Err(e) = f.write_all(&msg.wrap()) {
-                println!("Error saving msg: {:?}", e);
-            }
-        }
-
         match msg {
             DownlinkMessage::Log(t, l, ll, m) => {
                 self.log_messages.push((t, l, ll, m));
@@ -112,8 +63,6 @@ impl Sam {
             }
             DownlinkMessage::TelemetryGCS(_) => {}
             _ => {
-                self.message_receipt_times.push_back((Instant::now(), msg.time()));
-
                 let time = msg.time();
                 let last_time = self.vehicle_states.last().map(|vs| vs.time).unwrap_or(0);
 
@@ -297,8 +246,8 @@ impl Sam {
         };
 
         if ui.add_sized([width, 30.0], button).clicked() {
-            self.uplink_tx
-                .send(UplinkMessage::SetFlightModeAuth(fm, self.next_mac.1))
+            self.data_source
+                .send(UplinkMessage::SetFlightModeAuth(fm, self.data_source.next_mac()))
                 .unwrap();
         }
     }
@@ -308,52 +257,16 @@ impl Sam {
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::new(1.5, Color32::GRAY));
         if ui.add_sized([width, 18.0], button).clicked() {
-            self.uplink_tx.send(msg).unwrap();
-        }
-    }
-
-    fn is_uplink_window(&self, time: u32) -> bool {
-        (time % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
-    }
-
-    fn update_mac(&mut self) {
-        // predict current time on vehicle;
-        let t = self
-            .message_receipt_times
-            .iter()
-            .last()
-            .map(|(i, t)| t + i.elapsed().as_millis() as u32)
-            .unwrap_or(0);
-
-        if self.next_mac.0 > (t + 500) || (self.next_mac.0 + 500) < t {
-            self.next_mac = (0, 0);
-            self.siphasher = SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY);
-        }
-
-        while self.next_mac.0 < t || !self.is_uplink_window(self.next_mac.0) {
-            self.next_mac.0 += LORA_MESSAGE_INTERVAL;
-            self.next_mac.1 = self.siphasher.finish();
-            self.siphasher.write_u64(self.next_mac.1);
+            self.data_source.send(msg).unwrap();
         }
     }
 }
 
 impl eframe::App for Sam {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        for (status, port) in self.serial_status_rx.try_iter() {
-            self.serial_status = status;
-            self.serial_port = port;
-        }
-
-        self.update_mac();
-
-        let msgs: Vec<DownlinkMessage> = self.downlink_rx.try_iter().collect();
-        for msg in msgs.into_iter() {
+        for msg in self.data_source.next_messages().into_iter() {
             self.process_telemetry(msg);
         }
-
-        self.message_receipt_times
-            .retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
         {
             let input = ctx.input();
@@ -373,8 +286,8 @@ impl eframe::App for Sam {
                 None
             };
             if let Some(fm) = fm {
-                self.uplink_tx
-                    .send(UplinkMessage::SetFlightModeAuth(fm, self.next_mac.1))
+                self.data_source
+                    .send(UplinkMessage::SetFlightModeAuth(fm, self.data_source.next_mac()))
                     .unwrap();
             }
 
@@ -548,8 +461,8 @@ impl eframe::App for Sam {
                             let w = (ui.available_width() * 0.4) / 2.0;
                             ui.set_width(w * 2.0);
                             ui.set_height(ui.available_height() * 0.9);
-                            // TODO: confirm these
-                            self.utility_button(ui, w, "Reboot", UplinkMessage::RebootAuth(self.next_mac.1));
+                            // TODO: confirm these?
+                            self.utility_button(ui, w, "Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()));
                             self.utility_button(ui, w, "Erase Flash", UplinkMessage::EraseFlash);
                         });
                     });
@@ -794,27 +707,11 @@ impl eframe::App for Sam {
 
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() / 4.0);
-                    match self.serial_status {
-                        SerialStatus::Connected => {
-                            ui.label(RichText::new("Connected").color(Color32::GREEN));
-                            ui.label(format!(
-                                "to {} (1s: {})",
-                                self.serial_port.as_ref().unwrap_or(&"".to_string()),
-                                self.message_receipt_times.len()
-                            ));
-                        }
-                        SerialStatus::Error => {
-                            ui.label(RichText::new("Connection lost").color(Color32::RED));
-                            ui.label(format!("to {}", self.serial_port.as_ref().unwrap_or(&"".to_string())));
-                        }
-                        _ => {}
-                    }
 
-                    let file_status = match self.telemetry_log_file.as_ref() {
-                        Ok(_) => self.telemetry_log_path.as_os_str().to_string_lossy().to_string(),
-                        Err(e) => format!("{:?}", e),
-                    };
-                    ui.label(file_status);
+                    let (status_color, status_text) = self.data_source.status();
+                    ui.label(RichText::new(status_text).color(status_color));
+
+                    ui.label(self.data_source.info_text());
                 });
 
                 ui.allocate_ui_with_layout(
@@ -845,12 +742,11 @@ impl eframe::App for Sam {
     }
 }
 
-pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
-    let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
-    let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
-
-    let serial_thread = spawn_downlink_monitor(serial_status_tx, downlink_tx, uplink_rx, true);
+pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let data_source: Box<dyn DataSource> = match log_file {
+        Some(path) => Box::new(LogFileDataSource::new(path)?),
+        None => Box::new(SerialDataSource::new()),
+    };
 
     eframe::run_native(
         "Sam Ground Station",
@@ -858,10 +754,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
             initial_window_size: Some(egui::vec2(1000.0, 700.0)),
             ..Default::default()
         },
-        Box::new(|_cc| Box::new(Sam::init(serial_status_rx, downlink_rx, uplink_tx))),
+        Box::new(|_cc| Box::new(Sam::init(data_source))),
     );
-
-    serial_thread.join().unwrap();
 
     Ok(())
 }
