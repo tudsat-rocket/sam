@@ -463,7 +463,7 @@ impl eframe::App for Sam {
                             ui.set_height(ui.available_height() * 0.9);
                             // TODO: confirm these?
                             self.utility_button(ui, w, "Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()));
-                            self.utility_button(ui, w, "Erase Flash", UplinkMessage::EraseFlash);
+                            self.utility_button(ui, w, "Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()));
                         });
                     });
 

@@ -940,6 +940,7 @@ dependencies = [
 [[package]]
 name = "euroc_fc_firmware"
 version = "0.1.0"
+source = "git+ssh://git@gitlab.com/tudsat-rocket1/microcontrollers/flight-computers/euroc_fc_firmware.git#13051a9a3f0049eae38b5f20ad07bf39f5fdd8e0"
 dependencies = [
  "ahrs",
  "cortex-m",
