@@ -280,15 +280,21 @@ impl Flash {
         }
 
         self.pointer -= self.pointer % SECTOR_SIZE;
-        let first_byte = self.read(self.pointer, 1).map(|resp| resp[0]).unwrap_or(0x00);
 
-        if first_byte != 0xff {
-            if let Err(e) = self.erase_sector(self.pointer) {
-                log!(Error, "Error erasing sector 0x{:x}: {:?}", self.pointer, e);
+        for address in (self.pointer..(self.pointer + SECTOR_SIZE)).step_by(PAGE_SIZE as usize) {
+            let page_erased = self.read(address, 256)
+                .map(|page_content| !page_content.iter().any(|b| *b != 0xff))
+                .unwrap_or(false);
+
+            if !page_erased {
+                if let Err(e) = self.erase_sector(self.pointer) {
+                    log!(Error, "Error erasing sector 0x{:x}: {:?}", self.pointer, e);
+                }
+                return;
             }
-        } else {
-            self.pointer -= SECTOR_SIZE;
         }
+
+        self.pointer -= SECTOR_SIZE;
     }
 
     fn tick_writing(&mut self) {
@@ -333,6 +339,7 @@ impl Flash {
     pub fn erase(&mut self) {
         log!(Info, "Erasing flash.");
         self.state = FlashState::Erasing;
+        self.pointer = self.size - 1;
     }
 }
 
