@@ -1324,6 +1324,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "home"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "747309b4b440c06d57b0b25f2aee03ee9b5e5397d288c60e21fc709bb98a7408"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "humantime"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2319,6 +2328,7 @@ dependencies = [
  "egui_extras",
  "env_logger",
  "euroc_fc_firmware",
+ "home",
  "image",
  "indicatif",
  "log",

@@ -35,6 +35,8 @@ pub fn downlink_port(
     let mut port = serialport::new(port, BAUD_RATE)
         .timeout(std::time::Duration::from_millis(1))
         .open_native()?;
+
+    #[cfg(not(target_os = "windows"))]
     port.set_exclusive(false)?;
 
     let mut buffer: Vec<u8> = vec![0; 4096];

@@ -57,8 +57,21 @@ impl SerialDataSource {
 
     fn new_telemetry_log_path() -> PathBuf {
         let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
-        let name = format!("sam_log_{}.log", now.format("%+"));
-        name.into()
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            // TODO: put these in XDG directories?
+            let name = format!("sam_log_{}.log", now.format("%+"));
+            name.into()
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let name = format!("sam_log_{}.log", now.format("%Y-%m-%dT%H%M%S"));
+            let mut path = home::home_dir().unwrap();
+            path.push::<PathBuf>(name.into());
+            path
+        }
     }
 
     fn write_to_telemetry_log(&mut self, msg: &DownlinkMessage) {
