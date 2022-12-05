@@ -37,7 +37,7 @@ impl Sam {
             vehicle_states: Vec::new(),
             log_messages: Vec::new(),
             zoom_level: ZOOM_LEVELS.iter().position(|zl| *zl == 10000).unwrap(),
-            auto_reset: true,
+            auto_reset: false,
             logo: egui_extras::RetainedImage::from_image_bytes("logo.png", include_bytes!("logo.png")).unwrap(),
         }
     }
