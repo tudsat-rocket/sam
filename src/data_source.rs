@@ -169,7 +169,7 @@ impl DataSource for SerialDataSource {
 
     fn status(&self) -> (Color32, String) {
         match self.serial_status {
-            SerialStatus::Init => (Color32::GRAY, "Init".to_string()),
+            SerialStatus::Init => (Color32::GRAY, "Not connected".to_string()),
             SerialStatus::Connected => (Color32::GREEN, "Connected".to_string()),
             SerialStatus::Error => (Color32::RED, "Error".to_string()),
         }
@@ -178,12 +178,12 @@ impl DataSource for SerialDataSource {
     fn info_text(&self) -> String {
         let serial_info = if self.serial_status == SerialStatus::Connected {
             format!(
-                "to {} (1s: {})",
+                "{} (1s: {})",
                 self.serial_port.as_ref().unwrap_or(&"".to_string()),
                 self.message_receipt_times.len()
             )
         } else {
-            format!("to {}", self.serial_port.as_ref().unwrap_or(&"".to_string()))
+            self.serial_port.clone().unwrap_or("".to_string())
         };
 
         let telemetry_log_info = match self.telemetry_log_file.as_ref() {

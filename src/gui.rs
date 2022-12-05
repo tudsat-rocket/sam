@@ -218,13 +218,13 @@ impl Sam {
 
     fn flight_mode_style(&self, fm: FlightMode) -> (&str, Color32, Color32) {
         match fm {
-            FlightMode::Idle => ("IDLE", Color32::BLACK, Color32::GRAY),
-            FlightMode::HardwareArmed => ("HWARMD", Color32::BLACK, Color32::KHAKI),
-            FlightMode::Armed => ("ARMD", Color32::WHITE, Color32::DARK_RED),
-            FlightMode::Flight => ("FLIGHT", Color32::BLACK, Color32::LIGHT_BLUE),
-            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, Color32::LIGHT_GREEN),
-            FlightMode::RecoveryMain => ("MAIN", Color32::BLACK, Color32::GREEN),
-            FlightMode::Landed => ("LANDED", Color32::BLACK, Color32::GRAY),
+            FlightMode::Idle => ("IDLE",             Color32::WHITE, Color32::from_rgb(0x27, 0xa3, 0x00)),
+            FlightMode::HardwareArmed => ("HWARMED", Color32::BLACK, Color32::from_rgb(0xff, 0x7b, 0x00)),
+            FlightMode::Armed => ("ARMED",           Color32::WHITE, Color32::from_rgb(0xae, 0x20, 0x12)),
+            FlightMode::Flight => ("FLIGHT",         Color32::BLACK, Color32::from_rgb(0x74, 0x00, 0xc6)),
+            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, Color32::from_rgb(0x48, 0xbf, 0xe3)),
+            FlightMode::RecoveryMain => ("MAIN",     Color32::BLACK, Color32::from_rgb(0x72, 0xef, 0xdd)),
+            FlightMode::Landed => ("LANDED",         Color32::WHITE, Color32::from_rgb(0x7f, 0x4f, 0x24)),
         }
     }
 
@@ -239,7 +239,7 @@ impl Sam {
             let label = RichText::new(label).monospace().color(fg);
             egui::Button::new(label).fill(bg)
         } else {
-            let label = RichText::new(label).monospace().color(bg);
+            let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
             egui::Button::new(label)
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::new(2.0, bg))
@@ -253,9 +253,11 @@ impl Sam {
     }
 
     fn utility_button(&mut self, ui: &mut Ui, width: f32, label: &str, msg: UplinkMessage) {
+        let color = Color32::from_rgb(0xff, 0x7b, 0x00);
+        let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
         let button = egui::Button::new(label)
             .fill(Color32::TRANSPARENT)
-            .stroke(Stroke::new(1.5, Color32::GRAY));
+            .stroke(Stroke::new(1.5, color));
         if ui.add_sized([width, 18.0], button).clicked() {
             self.data_source.send(msg).unwrap();
         }
@@ -321,11 +323,12 @@ impl eframe::App for Sam {
             ui.set_width(ui.available_width());
             ui.set_height(ui.available_height());
 
+            let available_height = ui.available_height() - 60.0;
             let top_bar_height = 75.0;
             //let top_bar_height = 0.0;
             let bottom_bar_height = 15.0;
-            let log_height = ui.available_height() / 7.0 - 10.0;
-            let plot_height = ui.available_height() - top_bar_height - log_height - bottom_bar_height - 50.0;
+            let log_height = available_height / 7.0 - 10.0;
+            let plot_height = available_height - top_bar_height - log_height - bottom_bar_height;
 
             ui.horizontal(|ui| {
                 ui.set_height(top_bar_height);
@@ -333,12 +336,12 @@ impl eframe::App for Sam {
                 let max_size = ui.available_size();
                 self.logo.show_max_size(ui, max_size);
 
-                let buttons_w = f32::min(500.0, ui.available_width() * 0.45);
-                let gauge_w = ui.available_width() - buttons_w - 80.0;
+                let buttons_w = f32::min(1000.0, f32::max(500.0, ui.available_width() * 0.45));
+                let gauge_w = ui.available_width() - buttons_w - 75.0;
 
                 ui.horizontal_centered(|ui| {
                     ui.set_width(gauge_w);
-                    let w = ui.available_width() / 3.0;
+                    let w = gauge_w / 3.0;
 
                     ui.vertical(|ui| {
                         ui.set_width(w * 0.8);
@@ -428,50 +431,70 @@ impl eframe::App for Sam {
                     });
                 });
 
-                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                ui.vertical(|ui| {
                     ui.set_width(buttons_w);
-                    //ui.set_height(ui.available_height());
+                    ui.set_height(top_bar_height);
 
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.set_height(ui.available_height() * 0.1);
+                    ui.horizontal(|ui| {
+                        ui.set_height(top_bar_height * 0.1);
+                        ui.style_mut().visuals.extreme_bg_color = Color32::from_rgb(0x10, 0x10, 0x10);
+                        ui.style_mut().visuals.override_text_color = Some(Color32::LIGHT_GRAY);
 
-                        ui.horizontal_centered(|ui| {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.set_width(buttons_w * 0.25 + 12.0);
+
                             let battery_voltage: f32 =
                                 self.last_value(Box::new(|vs| vs.battery_voltage)).unwrap_or_default();
+
+                            ui.style_mut().visuals.selection.bg_fill = if battery_voltage >= 7.4 {
+                                Color32::DARK_GREEN
+                            } else if battery_voltage >= 6.5 {
+                                Color32::from_rgb(0xe6, 0x6f, 0x00)
+                            } else {
+                                Color32::from_rgb(0xff, 0x3b, 0x00)
+                            };
+
                             let battery_percentage = (battery_voltage - 6.0) / (8.4 - 6.0);
                             let progress_bar_battery =
-                                ProgressBar::new(battery_percentage).text(format!("Battery: {:.2}v", battery_voltage));
+                                ProgressBar::new(battery_percentage).text(format!("Battery: {:.2}V", battery_voltage));
 
-                            ui.add_sized([ui.available_width() * 0.2, 10.0], progress_bar_battery);
+                            ui.add(progress_bar_battery);
                         });
 
-                        ui.horizontal_centered(|ui| {
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.set_width(buttons_w * 0.45 + 12.0);
+
                             let flash_pointer: f32 = self
                                 .last_value(Box::new(|vs| vs.flash_pointer))
                                 .map(|fp| (fp as f32) / 1024.0 / 1024.)
                                 .unwrap_or_default();
                             let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
+
+                            ui.style_mut().visuals.selection.bg_fill = if flash_pointer > flash_size * 0.9 {
+                                Color32::DARK_RED
+                            } else if flash_pointer > flash_size * 0.5 {
+                                Color32::from_rgb(0xe6, 0x6f, 0x00)
+                            } else {
+                                Color32::from_rgb(0x24, 0x63, 0x99)
+                            };
+
                             let progress_bar_flash = ProgressBar::new(flash_pointer / flash_size)
                                 .text(format!("Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size));
 
-                            ui.add_sized([ui.available_width() * 0.4, 10.0], progress_bar_flash);
+                            ui.add(progress_bar_flash);
                         });
 
+                        // TODO: confirm these?
                         ui.horizontal_centered(|ui| {
-                            let w = (ui.available_width() * 0.4) / 2.0;
-                            ui.set_width(w * 2.0);
-                            ui.set_height(ui.available_height() * 0.9);
-                            // TODO: confirm these?
+                            let w = (buttons_w * 0.3) / 2.0;
                             self.utility_button(ui, w, "Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()));
                             self.utility_button(ui, w, "Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()));
                         });
                     });
 
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        //ui.set_width(buttons_w);
-                        ui.set_width(ui.available_width());
-                        ui.set_height(ui.available_height() * 0.9);
-                        let w = ui.available_width() / 7.0;
+                        ui.set_height(top_bar_height * 0.7);
+                        let w = buttons_w / 7.0;
                         self.flight_mode_button(ui, w, FlightMode::Idle);
                         self.flight_mode_button(ui, w, FlightMode::HardwareArmed);
                         self.flight_mode_button(ui, w, FlightMode::Armed);
@@ -486,8 +509,8 @@ impl eframe::App for Sam {
             ui.separator();
 
             egui::Grid::new("plot_grid")
-                .min_col_width(ui.available_width() / 4.0)
-                .max_col_width(ui.available_width() / 4.0)
+                .min_col_width(ui.available_width() / 4.0 - 6.0)
+                .max_col_width(ui.available_width() / 4.0 - 6.0)
                 .min_row_height(plot_height / 3.0)
                 .show(ui, |ui| {
                     self.plot(
@@ -647,7 +670,7 @@ impl eframe::App for Sam {
                 .stick_to_bottom(true)
                 .show(ui, |ui| {
                     ui.set_min_height(log_height);
-                    ui.set_width(ui.available_width());
+                    //ui.set_width(ui.available_width());
 
                     for (t, loc, ll, msg) in self.log_messages.iter() {
                         let color = match ll {
@@ -688,7 +711,7 @@ impl eframe::App for Sam {
                             );
 
                             ui.allocate_ui_with_layout(
-                                Vec2::new(9999.0, 10.0),
+                                Vec2::new(ui.available_width(), 10.0),
                                 Layout::top_down(eframe::emath::Align::LEFT),
                                 |ui| {
                                     ui.set_width(ui.available_width());
@@ -702,11 +725,12 @@ impl eframe::App for Sam {
             ui.separator();
 
             ui.horizontal_centered(|ui| {
-                ui.set_width(ui.available_width());
+                let w = ui.available_width();
+                ui.set_width(w);
                 ui.set_height(bottom_bar_height);
 
                 ui.horizontal_centered(|ui| {
-                    ui.set_width(ui.available_width() / 4.0);
+                    ui.set_width(w / 2.0);
 
                     let (status_color, status_text) = self.data_source.status();
                     ui.label(RichText::new(status_text).color(status_color));
@@ -714,8 +738,7 @@ impl eframe::App for Sam {
                     ui.label(self.data_source.info_text());
                 });
 
-                ui.allocate_ui_with_layout(
-                    Vec2::new(ui.available_width() - 20.0, ui.available_height()),
+                ui.allocate_ui_with_layout(Vec2::new(w / 2.0 - 6.0, bottom_bar_height),
                     Layout::right_to_left(eframe::emath::Align::Center),
                     |ui| {
                         ui.checkbox(&mut self.auto_reset, "Auto-Reset");
