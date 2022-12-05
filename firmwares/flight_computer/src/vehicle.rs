@@ -358,6 +358,10 @@ impl<'a> Vehicle {
             }
         });
 
+        let rssi_led = (self.time % 100) > (self.radio.rssi as u32);
+        self.leds.0.set_state((!self.radio.high_power).into());
+        self.leds.1.set_state((!rssi_led).into());
+        self.leds.2.set_state((!true).into());
         self.buzzer.tick(self.time);
 
         if let Some(msg) = uplink_msg {

@@ -78,7 +78,7 @@ pub struct LoRaRadio {
     irq: IrqPin,
     #[allow(dead_code)] // TODO
     busy: BusyPin,
-    high_power: bool,
+    pub high_power: bool,
     high_power_configured: bool,
     pub rssi: u8,
     pub rssi_signal: u8,
