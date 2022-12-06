@@ -30,14 +30,14 @@ const STD_DEV_BAROMETER: f32 = 1.0;
 const STD_DEV_PROCESS: f32 = 0.005;
 const G: f32 = 9.80665;
 
-const MIN_TAKEOFF_ACC: f32 = 10.0; // minimum vertical acceleration for takeoff detection (m/s^2)
-const MIN_TAKEOFF_ACC_DURATION: u32 = 10; // time MIN_TAKEOFF_ACC has to be exceeded (ms)
+const MIN_TAKEOFF_ACC: f32 = 30.0; // minimum vertical acceleration for takeoff detection (m/s^2)
+const MIN_TAKEOFF_ACC_DURATION: u32 = 50; // time MIN_TAKEOFF_ACC has to be exceeded (ms)
 const APOGEE_VERTICAL_DISTANCE: f32 = 1.0; // minimum vertical distance to max altitude for apogee
                                            // detection (m)
 const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to be exceeded for
                                        // recovery to be started (ms)
 const MIN_FLIGHT_TIME: u32 = 5000; // minimum time in flight to trigger recovery (ms)
-const MAX_FLIGHT_TIME: u32 = 15000; // maximum time in flight to trigger recovery (ms)
+const MAX_FLIGHT_TIME: u32 = 14000; // maximum time in flight to trigger recovery (ms)
 
 const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after warning tone, in ms)
 
