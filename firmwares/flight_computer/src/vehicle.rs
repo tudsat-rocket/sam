@@ -37,7 +37,7 @@ const APOGEE_VERTICAL_DISTANCE: f32 = 1.0; // minimum vertical distance to max a
 const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to be exceeded for
                                        // recovery to be started (ms)
 const MIN_FLIGHT_TIME: u32 = 5000; // minimum time in flight to trigger recovery (ms)
-const MAX_FLIGHT_TIME: u32 = 14000; // maximum time in flight to trigger recovery (ms)
+const MAX_FLIGHT_TIME: u32 = 12000; // maximum time in flight to trigger recovery (ms)
 
 const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after warning tone, in ms)
 
