@@ -5,13 +5,16 @@ use core::cell::RefCell;
 use core::ops::DerefMut;
 
 use cortex_m::interrupt::{free, Mutex};
-use rtt_target::rprintln;
+use defmt::*;
 
 pub use crate::telemetry::LogLevel;
 pub use crate::telemetry::LogLevel::*;
 
 const QUEUE_SIZE: usize = 32;
 static LOGGER: Mutex<RefCell<Option<Logger>>> = Mutex::new(RefCell::new(None));
+
+// TODO: either use defmt directly everywhere (i.e. remove USB logging), or
+// implement USB logging as a defmt logger.
 
 pub struct Logger {
     pub time: u32,
@@ -66,7 +69,7 @@ impl Logger {
         }
         let location_trimmed = segments.join("::");
 
-        rprintln!("[{}] [{}] {}", log_level.to_string(), location_trimmed, msg);
+        println!("[{}] [{}] {}", log_level.to_string().as_str(), location_trimmed.as_str(), msg.as_str());
         free(|cs| {
             if let Some(ref mut logger) = LOGGER.borrow(cs).borrow_mut().deref_mut() {
                 logger.push_usb_message(&location_trimmed, log_level, msg);

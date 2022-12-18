@@ -7,26 +7,21 @@ authors = [
 ]
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[test]]
+name = "telemetry"
+harness = false
 
-[profile.release]
-opt-level = "z"
-lto = true
-
-[profile.dev]
-opt-level = "z"
+[lib]
+harness = false
 
 [dependencies]
 embedded-hal = "0.2"
 num-traits = { version = "0.2.15", default-features = false }
 nb = "1"
-cortex-m = "0.7"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 alloc-cortex-m = { version = "0.4", optional = true } # Only load this for no_std, since it forces us to use nightly
-panic-halt = "0.2"
-panic-rtt-target = {version = "0.1.1", features = ["cortex-m"]}
-rtt-target = {version = "0.3", features = ["cortex-m"]}
-stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"]}
+stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="7e500316a87b98202d783251201615a17329eb7b"}
 usbd-serial = "0.1.1"
 usb-device ="0.2.9"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
@@ -37,8 +32,52 @@ nalgebra = { version = "0.31", default-features = false, features = ["alloc", "s
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
 ublox = { version = "0.4", default-features = false }
 siphasher = { version = "0.3", default-features = false }
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+[dev-dependencies]
+defmt-test = "0.3"
 
 [features]
 default = ["no_std"]
 no_std = ["alloc-cortex-m"]
 gcs = []
+
+# cargo build/run
+[profile.dev]
+codegen-units = 1
+debug = 2
+debug-assertions = true # <-
+incremental = false
+opt-level = 'z'         # <-
+overflow-checks = true  # <-
+
+# cargo test
+[profile.test]
+codegen-units = 1
+debug = 2
+debug-assertions = true # <-
+incremental = false
+opt-level = 'z'         # <-
+overflow-checks = true  # <-
+
+# cargo build/run --release
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false # <-
+incremental = false
+lto = 'fat'
+opt-level = 'z'          # <-
+overflow-checks = false  # <-
+
+# cargo test --release
+[profile.bench]
+codegen-units = 1
+debug = 2
+debug-assertions = false # <-
+incremental = false
+lto = 'fat'
+opt-level = 'z'          # <-
+overflow-checks = false  # <-

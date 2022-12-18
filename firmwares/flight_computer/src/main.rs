@@ -1,10 +1,6 @@
-#![no_main]
 #![no_std]
+#![no_main]
 #![feature(default_alloc_error_handler)]
-
-// Halt on panic
-#[cfg(not(test))]
-use panic_rtt_target as _;
 
 // This is why we need nightly, default_alloc_error_handler is (still) not
 // stabilized. This allows using Strings and everything else that requires
@@ -15,9 +11,8 @@ use alloc::sync::Arc;
 use core::cell::{Cell, RefCell};
 use core::ops::DerefMut;
 use cortex_m::interrupt::{free, Mutex};
-use rtt_target::{rprintln, rtt_init_print};
+use defmt::*;
 
-use alloc_cortex_m::CortexMHeap;
 use cortex_m;
 use hal::adc::config::AdcConfig;
 use hal::adc::Adc;
@@ -41,10 +36,12 @@ mod usb;
 mod vehicle;
 mod watchdog;
 
+use euroc_fc_firmware as _;
+
 use bootloader::*;
 use buzzer::*;
 use flash::*;
-use logging::*;
+use logging::Info; // TODO
 use lora::*;
 use params::*;
 use sensors::*;
@@ -61,17 +58,14 @@ mod prelude {
 const HEAP_SIZE: usize = 16384;
 static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
 
+#[global_allocator]
+static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
+
 static LOOP_INTERRUPT_FLAG: Mutex<Cell<bool>> = Mutex::new(Cell::new(false));
 static LOOP_TIMER: Mutex<RefCell<Option<CounterHz<TIM2>>>> = Mutex::new(RefCell::new(None));
 
-#[global_allocator]
-static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
-
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    rtt_init_print!();
-    rprintln!("RTT init");
-
     // Set up the independent watchdog. This reboots the processor
     // if it is not reset regularly, even if the main clock fails.
     // This also guarantees a reboot after returning from bootloader.
@@ -84,9 +78,9 @@ fn main() -> ! {
 
     // Initialize heap
     unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
-    rprintln!("Heap initialized.");
+    info!("Heap initialized.");
 
-    Logger::init();
+    logging::Logger::init();
     log!(Info, "Logger init.");
 
     let dp = hal::pac::Peripherals::take().unwrap();

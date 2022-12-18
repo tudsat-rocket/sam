@@ -3,7 +3,7 @@ use hal::rcc::Enable;
 use stm32f4xx_hal as hal;
 
 use cortex_m::interrupt::free;
-use rtt_target::rprintln;
+use defmt::*;
 
 use crate::log;
 use crate::logging::*;
@@ -68,7 +68,7 @@ pub fn init_bootloader() {
     let rtc = unsafe { &(*RTC::ptr()) };
     if rtc.bkpr[0].read().bits() > 0 {
         rtc.bkpr[0].write(|w| unsafe { w.bits(0) });
-        rprintln!("Jumping to bootloader...");
+        info!("Jumping to bootloader...");
 
         jump_to_bootloader();
     }

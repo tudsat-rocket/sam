@@ -47,6 +47,8 @@ Run the following commands (you can skip ones needed for flashing methods you're
 - `cargo install cargo-embed` (Needed for SWD flashing)
 - `cargo install cargo-binutils` (Needed for DFU flashing)
 - `cargo install cargo-make` (Main task runner)
+- `cargo install probe-run` (Needed for cargo run)
+- `cargo install flip-link` (Needed for cargo run)
 
 ## Sam Ground Station
 

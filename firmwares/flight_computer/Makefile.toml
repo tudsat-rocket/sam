@@ -1,7 +1,5 @@
 [env]
-#FEATURES = { source = "${CARGO_MAKE_TASK_ARGS}", default_value = "[]", mapping = {"gcs" = "gcs"} }
 FEATURES = "${CARGO_MAKE_TASK_ARGS}"
-TOOLCHAIN = "nightly-2022-09-01"
 
 [tasks.reboot-to-bootloader]
 command = "sam"
@@ -10,22 +8,16 @@ args = ["bootloader"]
 ignore_errors = true
 
 [tasks.build]
-command = "rustup"
+command = "cargo"
 args = [
-    "run",
-    "${TOOLCHAIN}",
-    "cargo",
     "build",
     "--release",
     "--features", "${FEATURES}"
 ]
 
 [tasks.test]
-command = "rustup"
+command = "cargo"
 args = [
-    "run",
-    "${TOOLCHAIN}",
-    "cargo",
     "test",
     "--lib",
     "--target", "x86_64-unknown-linux-gnu",
@@ -33,11 +25,8 @@ args = [
 ]
 
 [tasks.objcopy]
-command = "rustup"
+command = "cargo"
 args = [
-    "run",
-    "${TOOLCHAIN}",
-    "cargo",
     "objcopy",
     "--quiet",
     "--release",
@@ -79,11 +68,8 @@ args = ["logcat"]
 dependencies = ["dfu"]
 
 [tasks.swd]
-command = "rustup"
+command = "cargo"
 args = [
-    "run",
-    "${TOOLCHAIN}",
-    "cargo",
     "embed",
     "--release",
     "--features", "${FEATURES}",
