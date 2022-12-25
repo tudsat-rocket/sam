@@ -36,17 +36,25 @@ enum CliCommand {
         #[clap(short = 'v')]
         verbose: bool,
     },
-    ParseLog {
-        path: PathBuf,
-        #[clap(long)]
-        json: bool,
-    },
+    /// Dump the contents of the FC's flash to a file
     DumpFlash {
         path: PathBuf,
         #[clap(short = 'f', help = "Always overwrite existing file")]
         force: bool,
         #[clap(short = 'r', help = "Dump entire, raw flash, not just telemetry")]
         raw: bool,
+    },
+    /// Convert a binary flash/telem log to a JSON file
+    #[clap(name = "bin2json")]
+    Bin2Json {
+        input: PathBuf,
+        output: Option<PathBuf>
+    },
+    /// Convert a JSON file to a binary flash/telem log
+    #[clap(name = "json2bin")]
+    Json2Bin {
+        input: PathBuf,
+        output: Option<PathBuf>
     },
     /// Reboot the FC
     Reboot,
@@ -101,28 +109,6 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-}
-
-fn parse_log(path: PathBuf, json: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let mut f = std::fs::File::open(path)?;
-
-    let mut buf = Vec::new();
-    f.read_to_end(&mut buf)?;
-
-    let mut msgs = Vec::new();
-    while let Some(msg) = DownlinkMessage::pop_valid(&mut buf) {
-        msgs.push(msg);
-    }
-
-    if json {
-        println!("{}", serde_json::to_string_pretty(&msgs).unwrap());
-    } else {
-        for msg in msgs {
-            println!("{:?}", msg);
-        }
-    }
-
-    Ok(())
 }
 
 fn read_flash_chunk(
@@ -253,9 +239,80 @@ fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
         false => UplinkMessage::Reboot,
     };
 
-    let _written = port.write(&msg.wrap())?;
+    port.write(&msg.serialize())?;
     port.flush()?;
 
+    Ok(())
+}
+
+fn bin2json(input: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = File::open(input)?;
+    let mut buffer = Vec::new();
+    input.read_to_end(&mut buffer)?;
+
+    let mut msgs: Vec<DownlinkMessage> = Vec::new();
+    let mut last: Option<u32> = None;
+    while buffer.len() > 0 {
+        if buffer.remove(0) != 0x42 {
+            continue;
+        }
+
+        if buffer.len() < 1 {
+            break;
+        }
+
+        let len = buffer.remove(0) as usize;
+        // The largest msg that should appear in any flash/telem logs is 63 bytes
+        if len > 63 {
+            continue;
+        }
+
+        if buffer.len() < len {
+            continue;
+        }
+
+        let msg = match postcard::from_bytes::<DownlinkMessage>(&buffer[0..len]) {
+            Ok(msg) => msg,
+            Err(_e) => continue
+        };
+
+        for _i in 0..len {
+            buffer.remove(0);
+        }
+
+        if msg.time() < 1_000_000 {
+            continue;
+        }
+
+        if last.map(|t| msg.time() < t || msg.time() > (t + 30)).unwrap_or(false) {
+            continue;
+        }
+
+        last = Some(msg.time());
+        msgs.push(msg);
+    }
+
+    let mut output: Box<dyn Write> = match output {
+        Some(path) => Box::new(File::create(path)?),
+        None => Box::new(std::io::stdout().lock())
+    };
+
+    output.write(b"[\n")?;
+    let mut first = true;
+    for msg in &msgs {
+        if !first {
+            output.write(b",\n")?;
+        }
+        output.write(&serde_json::to_string(&msg).unwrap().into_bytes())?;
+        first = false;
+    }
+    output.write(b"\n]\n")?;
+
+    Ok(())
+}
+
+fn json2bin(input: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    todo!();
     Ok(())
 }
 
@@ -269,8 +326,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match args.command.unwrap_or(CliCommand::Gui { log_path: None }) {
         CliCommand::Gui { log_path } => gui::main(log_path),
         CliCommand::Logcat { verbose } => logcat(verbose),
-        CliCommand::ParseLog { path, json } => parse_log(path, json),
         CliCommand::DumpFlash { path, force, raw } => dump_flash(path, force, raw),
+        CliCommand::Bin2Json { input, output } => bin2json(input, output),
+        CliCommand::Json2Bin { input, output } => json2bin(input, output),
         CliCommand::Reboot => reboot(false),
         CliCommand::Bootloader => reboot(true),
     }
