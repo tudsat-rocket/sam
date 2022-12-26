@@ -27,7 +27,8 @@ const DMA_BUFFER_SIZE: usize = 32;
 
 const FREQUENCY: u32 = 868_000_000;
 
-const RX_RETURN_DELAY: u32 = 10;
+const RX_RETURN_DELAY: u32 = 25;
+const TRANSMISSION_TIMEOUT_MS: u32 = 25;
 
 type RawSpi = Spi<
     SPI1,
@@ -338,12 +339,12 @@ impl LoRaRadio {
         self.set_rf_frequency(FREQUENCY)?;
         self.set_lora_mod_params(
             LLCC68LoRaModulationBandwidth::Bw500,
-            LLCC68LoRaSpreadingFactor::SF5,
-            LLCC68LoRaCodingRate::CR4of5,
+            LLCC68LoRaSpreadingFactor::SF6,
+            LLCC68LoRaCodingRate::CR4of6,
             false,
         )?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
-        self.set_output_power(LLCC68OutputPower::P17dBm, LLCC68RampTime::R200U)?;
+        self.set_output_power(LLCC68OutputPower::P17dBm, LLCC68RampTime::R20U)?;
         self.set_dio1_interrupt(
             (LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16),
             LLCC68Interrupt::RxDone as u16,
@@ -511,7 +512,7 @@ impl LoRaRadio {
             }
         } else if self.state == RadioState::Writing {
             if let Some(_result) = self.check_dma_result() {
-                self.set_tx_mode_dma(5000);
+                self.set_tx_mode_dma(TRANSMISSION_TIMEOUT_MS * 1000);
                 self.set_state(RadioState::Transmitting);
             }
         } else if self.state == RadioState::Transmitting {
@@ -550,7 +551,7 @@ impl LoRaRadio {
         }
 
         if (self.state == RadioState::Writing || self.state == RadioState::Transmitting)
-            && ((self.state_time + 20) < self.time)
+            && ((self.state_time + TRANSMISSION_TIMEOUT_MS) < self.time)
         {
             log!(Error, "LoRa DMA timeout");
             self.set_state(RadioState::Idle);
@@ -563,7 +564,7 @@ impl LoRaRadio {
                 LLCC68OutputPower::P17dBm
             };
 
-            if let Err(e) = self.set_output_power(power, LLCC68RampTime::R200U) {
+            if let Err(e) = self.set_output_power(power, LLCC68RampTime::R20U) {
                 log!(Error, "Error setting power level: {:?}", e);
             } else {
                 self.high_power_configured = self.high_power;
@@ -746,7 +747,7 @@ enum LLCC68LoRaSpreadingFactor {
     SF8 = 0x08,
     SF9 = 0x09,
     SF10 = 0x0a,
-    SF11 = 0x0B,
+    SF11 = 0x0b,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
