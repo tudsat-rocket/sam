@@ -215,9 +215,22 @@ impl DataSource for LogFileDataSource {
             error!("Failed to read log file: {:?}", e);
         }
 
-        self.buffer.split_mut(|b| *b == 0x00)
-            .filter_map(|b| postcard::from_bytes_cobs(b).ok())
-            .collect()
+        let is_json = self.path.extension().map(|ext| ext == "json").unwrap_or(false);
+
+        let msgs = if is_json {
+            if self.buffer.len() > 0 {
+                serde_json::from_slice::<Vec<DownlinkMessage>>(&self.buffer).unwrap()
+            } else {
+                vec![]
+            }
+        } else {
+            self.buffer.split_mut(|b| *b == 0x00)
+                .filter_map(|b| postcard::from_bytes_cobs(b).ok())
+                .collect()
+        };
+
+        self.buffer.truncate(0);
+        msgs
     }
 
     fn reset(&mut self) {
