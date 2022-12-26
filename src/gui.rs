@@ -336,7 +336,7 @@ impl eframe::App for Sam {
                 let max_size = ui.available_size();
                 self.logo.show_max_size(ui, max_size);
 
-                let buttons_w = f32::min(1000.0, f32::max(500.0, ui.available_width() * 0.45));
+                let buttons_w = f32::min(1000.0, f32::max(500.0, ui.available_width() * 0.40));
                 let gauge_w = ui.available_width() - buttons_w - 75.0;
 
                 ui.horizontal_centered(|ui| {
@@ -344,7 +344,7 @@ impl eframe::App for Sam {
                     let w = gauge_w / 3.0;
 
                     ui.vertical(|ui| {
-                        ui.set_width(w * 0.8);
+                        ui.set_width(w * 0.75);
                         self.text_indicator(
                             ui,
                             "Time [s]",
@@ -372,7 +372,7 @@ impl eframe::App for Sam {
                     });
 
                     ui.vertical(|ui| {
-                        ui.set_width(w * 1.2);
+                        ui.set_width(w * 1.15);
                         self.text_indicator(
                             ui,
                             "Alt. (AGL/ASL) [m]",
@@ -406,7 +406,7 @@ impl eframe::App for Sam {
                         .find_map(|vs| vs.gps_fix.is_some().then(|| vs));
 
                     ui.vertical(|ui| {
-                        ui.set_width(w);
+                        ui.set_width(w * 1.1);
                         self.text_indicator(
                             ui,
                             "GPS Status (#Sats)",
