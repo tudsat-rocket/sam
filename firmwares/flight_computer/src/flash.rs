@@ -237,7 +237,7 @@ impl Flash {
             return Ok(());
         }
 
-        let serialized = msg.wrap();
+        let serialized = msg.serialize().unwrap_or_default();
         if serialized.len() > (2 * PAGE_SIZE as usize) - self.write_buffer.len() {
             log!(Error, "Flash message too big.");
             return Ok(());

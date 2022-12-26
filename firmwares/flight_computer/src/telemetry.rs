@@ -20,6 +20,7 @@ pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0
 #[allow(dead_code)]
 pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
+pub const UPLINK_MAX_LEN: u8 = 16;
 
 pub use LogLevel::*;
 
@@ -271,108 +272,13 @@ impl ToString for LogLevel {
 }
 
 pub trait Transmit: Sized {
-    fn wrap(&self) -> Vec<u8>;
-    fn read_valid(buf: &[u8]) -> Option<Self>;
-    fn pop_valid(buf: &mut Vec<u8>) -> Option<Self>;
+    fn serialize(&self) -> Result<Vec<u8>, postcard::Error>;
 }
 
 impl<M: Serialize + DeserializeOwned> Transmit for M {
-    fn wrap(&self) -> Vec<u8> {
+    fn serialize(&self) -> Result<Vec<u8>, postcard::Error> {
         let mut buf = [0u8; 1024 + 8];
-        let serialized = postcard::to_slice(self, &mut buf).unwrap();
-
-        if serialized.len() > 127 {
-            // For large packets (basically just for flash reading) we set the most
-            // significant bit of the first length byte to indicate that we use a
-            // 16-bit (or rather, 15-bit) length value
-            let len = serialized.len();
-            [
-                &[0x42, 0x80 | ((len >> 8) as u8), len as u8],
-                &*serialized
-            ].concat()
-        } else {
-            [&[0x42, serialized.len() as u8], &*serialized].concat()
-        }
-    }
-
-    // TODO: make this prettier
-
-    fn read_valid(buf: &[u8]) -> Option<Self> {
-        if buf.len() == 0 {
-            return None;
-        }
-
-        if buf[0] != 0x42 {
-            return None;
-        }
-
-        if buf.len() < 3 {
-            return None;
-        }
-
-        let len = buf[1] as usize;
-        if (len & 0x80) > 0 { // 15-bit length mode
-            let len = ((len & 0x7f) << 8) + (buf[2] as usize);
-            if buf.len() < 3 + len {
-                return None;
-            }
-
-            postcard::from_bytes::<Self>(&buf[3..(len + 3)]).ok()
-        } else { // 7-bit length mode
-            if buf.len() < 2 + len {
-                return None;
-            }
-
-            postcard::from_bytes::<Self>(&buf[2..(len + 2)]).ok()
-        }
-    }
-
-    fn pop_valid(buf: &mut Vec<u8>) -> Option<Self> {
-        while buf.len() > 0 {
-            if buf[0] == 0x42 {
-                if buf.len() < 3 {
-                    return None;
-                }
-
-                let len = buf[1] as usize;
-                if (len & 0x80) > 0 { // 15-bit length mode
-                    let len = ((len & 0x7f) << 8) + (buf[2] as usize);
-                    if buf.len() < 3 + len {
-                        return None;
-                    }
-                } else { // 7-bit length mode
-                    if buf.len() < 2 + len {
-                        return None;
-                    }
-                }
-
-                break;
-            }
-
-            buf.remove(0);
-        }
-
-        if buf.len() < 3 {
-            return None;
-        }
-
-        let len = buf[1] as usize;
-        if (len & 0x80) > 0 { // 15-bit length mode
-            let len = ((len & 0x7f) << 8) + (buf[2] as usize);
-
-            let head = buf[3..(len+3)].to_vec();
-            for _i in 0..(len + 3) {
-                buf.remove(0);
-            }
-
-            postcard::from_bytes::<Self>(&head).ok()
-        } else { // 7-bit length mode
-            let head = buf[2..(len+2)].to_vec();
-            for _i in 0..(len + 2) {
-                buf.remove(0);
-            }
-
-            postcard::from_bytes::<Self>(&head).ok()
-        }
+        postcard::to_slice_cobs(self, &mut buf)
+            .map(|s| s.to_vec())
     }
 }

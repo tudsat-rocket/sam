@@ -44,55 +44,71 @@ mod tests {
     #[test]
     fn downlink_msg_sizes_correct() {
         let msg = DownlinkMessage::TelemetryMain(TelemetryMain::default());
-        assert_eq!(msg.wrap().len(), 33);
+        assert_eq!(msg.serialize().unwrap().len(), 30);
 
         let msg = DownlinkMessage::TelemetryMainCompressed(TelemetryMainCompressed::default());
-        assert_eq!(msg.wrap().len(), 21);
+        assert_eq!(msg.serialize().unwrap().len(), 15);
 
         let msg = DownlinkMessage::TelemetryRawSensors(TelemetryRawSensors::default());
-        assert_eq!(msg.wrap().len(), 63);
+        assert_eq!(msg.serialize().unwrap().len(), 60);
 
         let msg = DownlinkMessage::TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed::default());
-        assert_eq!(msg.wrap().len(), 22);
+        assert_eq!(msg.serialize().unwrap().len(), 18);
 
         let msg = DownlinkMessage::TelemetryDiagnostics(TelemetryDiagnostics::default());
-        assert_eq!(msg.wrap().len(), 21);
+        assert_eq!(msg.serialize().unwrap().len(), 13);
 
         let msg = DownlinkMessage::TelemetryGPS(TelemetryGPS::default());
-        assert_eq!(msg.wrap().len(), 20);
+        assert_eq!(msg.serialize().unwrap().len(), 14);
 
         let msg = DownlinkMessage::TelemetryGCS(TelemetryGCS::default());
-        assert_eq!(msg.wrap().len(), 10);
+        assert_eq!(msg.serialize().unwrap().len(), 7);
     }
 
     #[test]
     fn uplink_msg_sizes_correct() {
         let msg = UplinkMessage::Heartbeat;
-        assert_eq!(msg.wrap().len(), 3);
+        assert_eq!(msg.serialize().unwrap().len(), 3);
 
         let msg = UplinkMessage::Reboot;
-        assert_eq!(msg.wrap().len(), 3);
+        assert_eq!(msg.serialize().unwrap().len(), 3);
 
         let msg = UplinkMessage::RebootAuth(0x1234);
-        assert_eq!(msg.wrap().len(), 11);
+        assert_eq!(msg.serialize().unwrap().len(), 5);
 
         let msg = UplinkMessage::RebootToBootloader;
-        assert_eq!(msg.wrap().len(), 3);
+        assert_eq!(msg.serialize().unwrap().len(), 3);
 
         let msg = UplinkMessage::SetFlightMode(FlightMode::Idle);
-        assert_eq!(msg.wrap().len(), 4);
+        assert_eq!(msg.serialize().unwrap().len(), 4);
 
         let msg = UplinkMessage::SetFlightModeAuth(FlightMode::Idle, 0x1234);
-        assert_eq!(msg.wrap().len(), 12);
+        assert_eq!(msg.serialize().unwrap().len(), 6);
 
         let msg = UplinkMessage::ReadFlash(0x0100, 0x1000);
-        assert_eq!(msg.wrap().len(), 11);
+        assert_eq!(msg.serialize().unwrap().len(), 7);
 
         let msg = UplinkMessage::EraseFlash;
-        assert_eq!(msg.wrap().len(), 3);
+        assert_eq!(msg.serialize().unwrap().len(), 3);
 
         let msg = UplinkMessage::EraseFlashAuth(0x1234);
-        assert_eq!(msg.wrap().len(), 11);
+        assert_eq!(msg.serialize().unwrap().len(), 5);
     }
 
+    #[test]
+    fn serialization_appends_delimiter() {
+        let msg = DownlinkMessage::TelemetryMain(TelemetryMain {
+            time: 0x7fffffff,
+            mode: FlightMode::Armed,
+            orientation: None,
+            vertical_speed: 42.0,
+            vertical_accel: 10.42,
+            vertical_accel_filtered: 10.24,
+            altitude_baro: 3124.52,
+            altitude_max: 4201.12,
+            altitude: 3214.56,
+        });
+
+        assert!(*msg.serialize().unwrap().last().unwrap() == 0x00);
+    }
 }

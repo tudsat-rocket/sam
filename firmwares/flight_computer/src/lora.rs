@@ -14,6 +14,7 @@ use hal::spi::{Master, Spi, TransferModeNormal, Tx};
 use stm32f4xx_hal as hal;
 
 use siphasher::sip::SipHasher;
+use serde::de::DeserializeOwned;
 
 use crate::prelude::*;
 use crate::telemetry::*;
@@ -21,8 +22,6 @@ use crate::telemetry::*;
 // both RX and TX get half of the available 256 bytes
 const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 64;
-
-const UPLINK_MAX_LEN: u8 = 16;
 
 const DMA_BUFFER_SIZE: usize = 32;
 
@@ -397,7 +396,15 @@ impl LoRaRadio {
             self.last_sync = self.time;
         }
 
-        let serialized = msg.wrap();
+        // TODO
+        let serialized = match msg.serialize() {
+            Ok(b) => b[..b.len()-1].to_vec(), // last byte is always 0, not needed
+            Err(e) => {
+                log!(Error, "Failed to serialize message: {:?}", e);
+                return;
+            }
+        };
+
         if let Err(e) = self.send_packet(&serialized) {
             log!(Error, "Error sending LoRa packet: {:?}", e);
         }
@@ -405,7 +412,9 @@ impl LoRaRadio {
 
     #[cfg(feature="gcs")]
     fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), hal::spi::Error> {
-        let serialized = msg.wrap();
+        let serialized = msg.serialize()
+            .map(|b| b[..(b.len()-1)].to_vec()) // the last byte is always 0, not needed
+            .unwrap_or_default(); // TODO
         self.send_packet(&serialized)
     }
 
@@ -428,46 +437,51 @@ impl LoRaRadio {
 
         self.command(LLCC68OpCode::ClearIrqStatus, &[0xff, 0xff], 0)?;
 
+        // Get the packet stats before the data, since this is useful even if the data is corrupted
+        let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
+        self.rssi = packet_status[1];
+        self.rssi_signal = packet_status[3];
+        self.snr = packet_status[2];
+
+        // Abort in case of a CRC mismatch
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
-            log!(Error, "CRC Error.");
+            return Err(hal::spi::Error::Crc);
         }
 
-        // get rx buffer status
+        // Get RX buffer status (this contains the length of the received data)
         let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3)?;
 
+        // Avoid unnecessarily long reads for corrupted uplink commands
         #[cfg(feature="gcs")]
         let len = rx_buffer_status[1];
         #[cfg(not(feature="gcs"))]
         let len = u8::min(rx_buffer_status[1], UPLINK_MAX_LEN);
 
+        // Read received data
         let buffer = self.command(
             LLCC68OpCode::ReadBuffer,
             &[rx_buffer_status[2]],
             len as usize + 1,
         )?;
 
-        let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
-        self.rssi = packet_status[1];
-        self.rssi_signal = packet_status[3];
-        self.snr = packet_status[2];
-
         self.set_rx_mode(0)?;
 
         Ok(Some(buffer))
     }
 
-    fn receive_message<M: Transmit>(&mut self) -> Result<Option<M>, hal::spi::Error> {
-        let buffer = self.receive_data()?;
-        if buffer.is_none() {
+    fn receive_message<M: Transmit + DeserializeOwned>(&mut self) -> Result<Option<M>, hal::spi::Error> {
+        let mut buffer = self.receive_data()?.unwrap_or_default();
+        if buffer.len() == 0 {
             return Ok(None);
         }
 
-        let decoded = buffer.as_ref().and_then(|b| M::read_valid(&b[1..]));
-        if decoded.is_none() {
-            log!(Error, "Failed to decode uplink message: {:02x?}", buffer);
+        // TODO: move deserialization code to src/telemetry
+        let deserialized = postcard::from_bytes_cobs(&mut buffer[1..]).ok();
+        if deserialized.is_none() {
+            log!(Error, "Failed to decode message: {:02x?}", buffer);
         }
 
-        Ok(decoded)
+        Ok(deserialized)
     }
 
     fn is_uplink_window(&self, time: u32, first_only: bool) -> bool {

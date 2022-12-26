@@ -2,8 +2,6 @@ use alloc::vec::Vec;
 
 use hal::otg_fs::{UsbBus, USB};
 use stm32f4xx_hal as hal;
-//use hal::pac::{interrupt, Interrupt, TIM2};
-//use cortex_m::interrupt::{free, Mutex};
 
 use usb_device::class_prelude::*;
 use usb_device::prelude::*;
@@ -73,8 +71,8 @@ impl UsbLink {
     }
 
     pub fn send_message(&mut self, msg: DownlinkMessage) {
-        let wrapped = msg.wrap();
-        if let Err(_e) = self.send_data(&wrapped) {
+        let serialized = msg.serialize().unwrap_or_default();
+        if let Err(_e) = self.send_data(&serialized) {
             // Since USB doesn't seem to work, we only try to send this via SWD
             //rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
         }
@@ -100,37 +98,29 @@ impl UsbLink {
         }
 
         let mut buf: [u8; 128] = [0; 128];
-        for i in 0..self.serial.read(&mut buf).unwrap_or(0) {
-            if self.uplink_buffer.len() > 0 || buf[0] == 0x42 {
-                self.uplink_buffer.push(buf[i]);
-            }
+        let read = self.serial.read(&mut buf).unwrap_or(0);
+        self.uplink_buffer.extend(&buf[..read]);
+
+        if self.uplink_buffer.len() > UPLINK_MAX_LEN as usize {
+            self.uplink_buffer.truncate(0);
         }
 
-        if self.uplink_buffer.len() > 2 {
-            if let Ok(msg) = postcard::from_bytes::<UplinkMessage>(&self.uplink_buffer[2..]) {
-                self.uplink_buffer.truncate(0);
+        match postcard::take_from_bytes_cobs(&mut self.uplink_buffer) {
+            Ok((msg, rest)) => {
+                self.uplink_buffer = rest.to_vec();
 
                 if msg == UplinkMessage::Heartbeat {
                     self.last_heartbeat = Some(self.time);
                 }
 
-                return Some(msg);
-            } else if self.uplink_buffer[2] > 10 || self.uplink_buffer.len() > (self.uplink_buffer[2] as usize + 2) {
-                self.uplink_buffer.truncate(0);
+                Some(msg)
+            },
+            Err(_) => {
+                if self.uplink_buffer.iter().position(|b| *b == 0).is_some() {
+                    self.uplink_buffer.truncate(0);
+                }
+                None
             }
         }
-
-        None
     }
 }
-
-//#[interrupt]
-//fn OTG_FS() {
-//    free(|cs| {
-//        cortex_m::peripheral::NVIC::unpend(Interrupt::OTG_FS);
-//
-//        if let Some(ref mut logger) = USB_LOGGER.borrow(cs).borrow_mut().deref_mut() {
-//            logger.handle_interrupt();
-//        }
-//    });
-//}

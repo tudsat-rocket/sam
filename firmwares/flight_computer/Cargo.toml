@@ -25,7 +25,7 @@ stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = [
 usbd-serial = "0.1.1"
 usb-device ="0.2.9"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
-postcard = "0.7.2"
+postcard = "1.0"
 crc = "2"
 ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
 nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
