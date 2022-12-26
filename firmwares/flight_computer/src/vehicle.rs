@@ -538,7 +538,7 @@ impl Into<TelemetryGPS> for &Vehicle {
             .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
             .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
             .unwrap_or([0, 0, 0]);
-        let fix_and_sats = ((self.gps.fix.clone() as u8) << 5) + (self.gps.num_satellites as u8) & 0x1f;
+        let fix_and_sats = ((self.gps.fix.clone() as u8) << 5) + ((self.gps.num_satellites as u8) & 0x1f);
 
         TelemetryGPS {
             time: self.time,
