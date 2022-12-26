@@ -77,7 +77,8 @@ impl SerialDataSource {
     fn write_to_telemetry_log(&mut self, msg: &DownlinkMessage) {
         // TODO
         if let Ok(f) = self.telemetry_log_file.as_mut() {
-            if let Err(e) = f.write_all(&msg.wrap()) {
+            let serialized = msg.serialize().unwrap_or_default(); // TODO
+            if let Err(e) = f.write_all(&serialized) {
                 error!("Error saving msg: {:?}", e);
             }
         }
@@ -214,13 +215,9 @@ impl DataSource for LogFileDataSource {
             error!("Failed to read log file: {:?}", e);
         }
 
-        let mut msgs = Vec::new();
-
-        while let Some(msg) = DownlinkMessage::pop_valid(&mut self.buffer) {
-            msgs.push(msg);
-        }
-
-        msgs
+        self.buffer.split_mut(|b| *b == 0x00)
+            .filter_map(|b| postcard::from_bytes_cobs(b).ok())
+            .collect()
     }
 
     fn reset(&mut self) {

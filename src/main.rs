@@ -47,19 +47,33 @@ enum CliCommand {
     /// Convert a binary flash/telem log to a JSON file
     #[clap(name = "bin2json")]
     Bin2Json {
-        input: PathBuf,
+        input: Option<PathBuf>,
         output: Option<PathBuf>
     },
     /// Convert a JSON file to a binary flash/telem log
     #[clap(name = "json2bin")]
     Json2Bin {
-        input: PathBuf,
+        input: Option<PathBuf>,
         output: Option<PathBuf>
     },
     /// Reboot the FC
     Reboot,
     /// Reboot the FC into bootloader
     Bootloader,
+}
+
+fn open_file_or_stdin(path: Option<PathBuf>) -> Result<Box<dyn Read>, std::io::Error> {
+    Ok(match path {
+        Some(path) => Box::new(File::open(path)?),
+        None => Box::new(std::io::stdin().lock())
+    })
+}
+
+fn create_file_or_stdout(path: Option<PathBuf>) -> Result<Box<dyn Write>, std::io::Error> {
+    Ok(match path {
+        Some(path) => Box::new(File::create(path)?),
+        None => Box::new(std::io::stdout().lock())
+    })
 }
 
 fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
@@ -239,80 +253,40 @@ fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
         false => UplinkMessage::Reboot,
     };
 
-    port.write(&msg.serialize())?;
+    port.write(&msg.serialize().unwrap())?;
     port.flush()?;
 
     Ok(())
 }
 
-fn bin2json(input: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut input = File::open(input)?;
+fn bin2json(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = open_file_or_stdin(input)?;
+    let mut output = create_file_or_stdout(output)?;
+
     let mut buffer = Vec::new();
     input.read_to_end(&mut buffer)?;
 
-    let mut msgs: Vec<DownlinkMessage> = Vec::new();
-    let mut last: Option<u32> = None;
-    while buffer.len() > 0 {
-        if buffer.remove(0) != 0x42 {
-            continue;
-        }
-
-        if buffer.len() < 1 {
-            break;
-        }
-
-        let len = buffer.remove(0) as usize;
-        // The largest msg that should appear in any flash/telem logs is 63 bytes
-        if len > 63 {
-            continue;
-        }
-
-        if buffer.len() < len {
-            continue;
-        }
-
-        let msg = match postcard::from_bytes::<DownlinkMessage>(&buffer[0..len]) {
-            Ok(msg) => msg,
-            Err(_e) => continue
-        };
-
-        for _i in 0..len {
-            buffer.remove(0);
-        }
-
-        if msg.time() < 1_000_000 {
-            continue;
-        }
-
-        if last.map(|t| msg.time() < t || msg.time() > (t + 30)).unwrap_or(false) {
-            continue;
-        }
-
-        last = Some(msg.time());
-        msgs.push(msg);
-    }
-
-    let mut output: Box<dyn Write> = match output {
-        Some(path) => Box::new(File::create(path)?),
-        None => Box::new(std::io::stdout().lock())
-    };
+    let serialized: Vec<_> = buffer.split_mut(|b| *b == 0x00)
+        .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
+        .map(|msg| serde_json::to_string(&msg).unwrap())
+        .collect();
 
     output.write(b"[\n")?;
-    let mut first = true;
-    for msg in &msgs {
-        if !first {
-            output.write(b",\n")?;
-        }
-        output.write(&serde_json::to_string(&msg).unwrap().into_bytes())?;
-        first = false;
-    }
+    output.write(&serialized.join(",\n").into_bytes())?;
     output.write(b"\n]\n")?;
 
     Ok(())
 }
 
-fn json2bin(input: PathBuf, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
-    todo!();
+fn json2bin(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let input = open_file_or_stdin(input)?;
+    let mut output = create_file_or_stdout(output)?;
+
+    let msgs: Vec<DownlinkMessage> = serde_json::from_reader(input)?;
+    for msg in msgs {
+        output.write(&msg.serialize().unwrap())?;
+    }
+
     Ok(())
 }
 

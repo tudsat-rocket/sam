@@ -39,38 +39,38 @@ pub fn downlink_port(
     #[cfg(not(target_os = "windows"))]
     port.set_exclusive(false)?;
 
-    let mut buffer: Vec<u8> = vec![0; 4096];
     let mut downlink_buffer: Vec<u8> = Vec::new();
-
     let mut now = Instant::now();
     let mut last_heartbeat = Instant::now() - Duration::from_millis(1000);
     let mut last_message = Instant::now();
 
     while now.duration_since(last_message) < Duration::from_millis(500) {
         if let Some(msg) = uplink_rx.try_iter().next() {
-            let _written = port.write(&msg.wrap())?;
+            port.write(&msg.serialize().unwrap_or_default())?;
             port.flush()?;
         } else if now.duration_since(last_heartbeat) > Duration::from_millis(500) && send_heartbeats {
-            let _written = port.write(&UplinkMessage::Heartbeat.wrap())?;
+            port.write(&UplinkMessage::Heartbeat.serialize().unwrap())?;
             port.flush()?;
             last_heartbeat = now;
         }
 
-        let read_bytes = match port.read(&mut buffer) {
-            Ok(x) => Ok(x),
-            Err(e) => match e.kind() {
-                std::io::ErrorKind::TimedOut => Ok(0),
-                _ => Err(e),
-            },
-        }?;
-
-        for i in 0..read_bytes {
-            if !downlink_buffer.is_empty() || buffer[i] == 0x42 {
-                downlink_buffer.push(buffer[i]);
+        if let Err(e) = port.read_to_end(&mut downlink_buffer) {
+            match e.kind() {
+                std::io::ErrorKind::TimedOut => (),
+                _ => return Err(e.into())
             }
         }
 
-        while let Some(msg) = DownlinkMessage::pop_valid(&mut downlink_buffer) {
+        while let Some(index) = downlink_buffer.iter().position(|b| *b == 0) {
+            let (serialized, rest) = downlink_buffer.split_at_mut(index+1);
+            let mut serialized = serialized.to_vec();
+            downlink_buffer = rest.to_vec();
+
+            let msg = match postcard::from_bytes_cobs(serialized.as_mut_slice()) {
+                Ok(msg) => msg,
+                Err(_e) => continue
+            };
+
             downlink_tx.send(msg)?;
             last_message = now;
         }
@@ -92,7 +92,7 @@ fn downlink_monitor(
         if let Some(p) = find_serial_port() {
             serial_status_tx.send((SerialStatus::Connected, Some(p.clone())))?;
             if let Err(e) = downlink_port(&mut downlink_tx, &mut uplink_rx, p.clone(), send_heartbeats) {
-                println!("{:?}", e);
+                eprintln!("{:?}", e);
                 serial_status_tx.send((SerialStatus::Error, Some(p)))?;
             }
         }
