@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use eframe::egui::{self, Ui};
-use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle};
-use egui::widgets::ProgressBar;
+use egui::widgets::plot::{LinkedAxisGroup, LinkedCursorsGroup};
+use egui::widgets::{Button, ProgressBar};
 use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
@@ -11,13 +11,20 @@ use log::*;
 
 use euroc_fc_firmware::telemetry::*;
 
+mod plot;
+mod map;
+mod log_scroller;
+
 use crate::state::*;
 use crate::data_source::*;
 use crate::telemetry_ext::*;
+use crate::gui::plot::*;
+use crate::gui::map::*;
+use crate::gui::log_scroller::*;
 
 #[rustfmt::skip]
-const ZOOM_LEVELS: [u32; 14] = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000, 120000, 300000, 600000, 1800000, 3600000];
 const RAD_TO_DEG: f32 = 180.0 / std::f32::consts::PI;
+const ZOOM_FACTOR: f64 = 2.0;
 
 struct Sam {
     data_source: Box<dyn DataSource>,
@@ -25,35 +32,186 @@ struct Sam {
     vehicle_states: Vec<VehicleState>,
     log_messages: Vec<(u32, String, LogLevel, String)>,
 
-    zoom_level: usize,
     auto_reset: bool,
 
     logo: egui_extras::RetainedImage,
+
+    xlen: f64,
+    axes: LinkedAxisGroup,
+    cursor: LinkedCursorsGroup,
+
+    orientation_plot_cache: PlotCache,
+    vertical_speed_plot_cache: PlotCache,
+    altitude_plot_cache: PlotCache,
+    gyroscope_plot_cache: PlotCache,
+    accelerometer_plot_cache: PlotCache,
+    magnetometer_plot_cache: PlotCache,
+    barometer_plot_cache: PlotCache,
+    temperature_plot_cache: PlotCache,
+    power_plot_cache: PlotCache,
+    runtime_plot_cache: PlotCache,
+    signal_plot_cache: PlotCache,
 }
 
 impl Sam {
     pub fn init(data_source: Box<dyn DataSource>) -> Self {
+        let orientation_plot_cache = PlotCache::new(
+            "Orientation",
+            vec![
+                ("Pitch (X) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.0 * RAD_TO_DEG))),
+                ("Pitch (Y) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.1 * RAD_TO_DEG))),
+                ("Roll (Z) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.2 * RAD_TO_DEG))),
+            ],
+            (Some(-180.0), Some(180.0)),
+        );
+
+        let vertical_speed_plot_cache = PlotCache::new(
+            "Vert. Speed & Accel.",
+            vec![
+                ("Vario [m/s]", Box::new(|vs| vs.vertical_speed)),
+                ("Vertical Accel [m/s²]", Box::new(|vs| vs.vertical_accel)),
+                (
+                    "Vertical Accel (Filt.) [m/s²]",
+                    Box::new(|vs| vs.vertical_accel_filtered),
+                ),
+            ],
+            (Some(-1.0), Some(1.0)),
+        );
+
+        let altitude_plot_cache = PlotCache::new(
+            "Altitude (ASL)",
+            vec![
+                ("Altitude [m]", Box::new(|vs| vs.altitude)),
+                ("Altitude (Baro) [m]", Box::new(|vs| vs.altitude_baro)),
+                ("Altitude (GPS) [m]", Box::new(|vs| vs.altitude_gps)),
+                ("Altitude (Max) [m]", Box::new(|vs| vs.altitude_max)),
+                ("Altitude (Ground) [m]", Box::new(|vs| vs.altitude_ground)),
+            ],
+            (Some(0.0), Some(300.0)) // TODO
+        );
+
+        let gyroscope_plot_cache = PlotCache::new(
+            "Gyroscope",
+            vec![
+                ("Gyro (X) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.0))),
+                ("Gyro (Y) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.1))),
+                ("Gyro (Z) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.2))),
+            ],
+            (Some(-10.0), Some(10.0)),
+        );
+
+        let accelerometer_plot_cache = PlotCache::new(
+            "Accelerometers",
+            vec![
+                ("Accel 2 (X) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.0))),
+                ("Accel 2 (Y) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.1))),
+                ("Accel 2 (Z) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.2))),
+                ("Accel 1 (X) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.0))),
+                ("Accel 1 (Y) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.1))),
+                ("Accel 1 (Z) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.2))),
+            ],
+            (Some(-10.0), Some(10.0)),
+        );
+
+        let magnetometer_plot_cache = PlotCache::new(
+            "Magnetometer",
+            vec![
+                ("Mag (X) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.0))),
+                ("Mag (Y) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.1))),
+                ("Mag (Z) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.2))),
+            ],
+            (None, None),
+        );
+
+        let barometer_plot_cache = PlotCache::new(
+            "Barometer",
+            vec![
+                ("Pressure [mbar]", Box::new(|vs| vs.pressure)),
+                //("Altitude (ASL) [m]", Box::new(|vs| vs.altitude_baro)),
+            ],
+            (Some(900.0), Some(1100.0)),
+        );
+
+        let temperature_plot_cache = PlotCache::new(
+            "Temperatures",
+            vec![
+                ("Baro. Temp. [°C]", Box::new(|vs| vs.temperature_baro)),
+                ("Core Temp. [°C]", Box::new(|vs| vs.temperature_core)),
+            ],
+            (Some(25.0), Some(35.0)),
+        );
+
+        let power_plot_cache = PlotCache::new(
+            "Power",
+            vec![
+                ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage)),
+                ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage)),
+                ("Current [A]", Box::new(|vs| vs.current)),
+                ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage)),
+            ],
+            (Some(0.0), Some(9.0)),
+        );
+
+        let runtime_plot_cache = PlotCache::new(
+            "Runtime",
+            vec![
+                ("CPU Util. [%]", Box::new(|vs| vs.cpu_utilization.map(|u| u as f32))),
+                ("Heap Util. [%]", Box::new(|vs| vs.heap_utilization.map(|u| u as f32))),
+            ],
+            (Some(0.0), Some(100.0)),
+        );
+
+        let signal_plot_cache = PlotCache::new(
+            "Signal",
+            vec![
+                ("GCS RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))),
+                ("GCS Signal RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))),
+                ("GCS SNR [dB]", Box::new(|vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))),
+                ("Vehicle RSSI [dBm]", Box::new(|vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))),
+            ],
+            (Some(-100.0), Some(10.0)),
+        );
+
         Self {
             data_source,
             vehicle_states: Vec::new(),
             log_messages: Vec::new(),
-            zoom_level: ZOOM_LEVELS.iter().position(|zl| *zl == 10000).unwrap(),
             auto_reset: false,
             logo: egui_extras::RetainedImage::from_image_bytes("logo.png", include_bytes!("logo.png")).unwrap(),
+            xlen: 10.0,
+            axes: LinkedAxisGroup::new(true, false),
+            cursor: LinkedCursorsGroup::new(true, false),
+            orientation_plot_cache,
+            vertical_speed_plot_cache,
+            altitude_plot_cache,
+            gyroscope_plot_cache,
+            accelerometer_plot_cache,
+            magnetometer_plot_cache,
+            barometer_plot_cache,
+            temperature_plot_cache,
+            power_plot_cache,
+            runtime_plot_cache,
+            signal_plot_cache,
         }
     }
 
     fn reset(&mut self) {
         info!("Resetting.");
+        self.xlen = 10.0;
         self.vehicle_states.truncate(0);
-        //self.log_messages.truncate(0);
+        //self.log_messages.truncate(0); // TODO
         self.data_source.reset();
-    }
-
-    fn adjust_zoom_level(&mut self, delta: isize) {
-        let new = (self.zoom_level as isize) + delta;
-        let new = isize::max(0, isize::min(new, (ZOOM_LEVELS.len() as isize) - 1));
-        self.zoom_level = new as usize;
+        self.orientation_plot_cache.reset();
+        self.vertical_speed_plot_cache.reset();
+        self.altitude_plot_cache.reset();
+        self.gyroscope_plot_cache.reset();
+        self.accelerometer_plot_cache.reset();
+        self.magnetometer_plot_cache.reset();
+        self.barometer_plot_cache.reset();
+        self.temperature_plot_cache.reset();
+        self.power_plot_cache.reset();
+        self.runtime_plot_cache.reset();
+        self.signal_plot_cache.reset();
     }
 
     fn process_telemetry(&mut self, msg: DownlinkMessage) {
@@ -79,141 +237,21 @@ impl Sam {
             }
         }
 
-        self.vehicle_states.last_mut().map(|vs| vs.incorporate_telemetry(&msg));
-    }
-
-    fn visible_state_indices(&self) -> usize {
-        // TODO: do end as well
-        let last_t = self.vehicle_states.last().map(|vs| vs.time).unwrap_or(0);
-        match self
-            .vehicle_states
-            .binary_search_by(|vs| (vs.time + ZOOM_LEVELS[self.zoom_level]).cmp(&last_t))
-        {
-            Ok(i) => i,
-            Err(i) => i,
+        if let Some(vs) = self.vehicle_states.last_mut() {
+            vs.incorporate_telemetry(&msg);
+            // TODO
+            self.orientation_plot_cache.push(&vs);
+            self.vertical_speed_plot_cache.push(&vs);
+            self.altitude_plot_cache.push(&vs);
+            self.gyroscope_plot_cache.push(&vs);
+            self.accelerometer_plot_cache.push(&vs);
+            self.magnetometer_plot_cache.push(&vs);
+            self.barometer_plot_cache.push(&vs);
+            self.temperature_plot_cache.push(&vs);
+            self.power_plot_cache.push(&vs);
+            self.runtime_plot_cache.push(&vs);
+            self.signal_plot_cache.push(&vs);
         }
-    }
-
-    fn plot(
-        &self,
-        ui: &mut Ui,
-        heading: &str,
-        callbacks: Vec<(&str, Box<dyn Fn(&VehicleState) -> Option<f32>>)>,
-        ylimits: (Option<f32>, Option<f32>),
-    ) {
-        let start_i = self.visible_state_indices();
-
-        let lines = callbacks.iter().map(|(name, callback)| {
-            let points: Vec<[f64; 2]> = self.vehicle_states[start_i..]
-                .iter()
-                .map(|vs| (vs.time as f64 / 1000.0, callback(vs)))
-                .filter(|(_t, y)| y.is_some())
-                .map(|(t, y)| [t, y.unwrap() as f64])
-                .collect();
-            Line::new(points).name(name).width(1.2)
-        });
-
-        let mut modes: Vec<(f64, FlightMode)> = self.vehicle_states[start_i..].iter()
-            .map(|vs| (vs.time as f64 / 1000.0, vs.mode))
-            .filter(|(_x, mode)| mode.is_some())
-            .map(|(x, mode)| (x, mode.unwrap()))
-            .collect();
-        modes.dedup_by_key(|(_x, mode)| mode.clone());
-        let mode_lines = modes.iter()
-            .map(|(x, mode)| VLine::new(*x).color(mode.color()).style(LineStyle::Dashed{length: 4.0}));
-
-        let legend = Legend::default().background_alpha(0.5).position(Corner::LeftTop);
-
-        ui.vertical_centered(|ui| {
-            ui.heading(heading);
-            let mut plot = egui::widgets::plot::Plot::new(heading)
-                .allow_drag(false)
-                .allow_scroll(false)
-                .allow_zoom(false)
-                .allow_boxed_zoom(false)
-                .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
-                .auto_bounds_y()
-                .legend(legend.clone());
-
-            if let Some(min) = ylimits.0 {
-                plot = plot.include_y(min);
-            }
-
-            if let Some(max) = ylimits.1 {
-                plot = plot.include_y(max);
-            }
-
-            if let Some(last) = self.vehicle_states.last() {
-                plot = plot
-                    .include_x((last.time as f32) / 1000.0)
-                    .include_x(((last.time as f32) - (ZOOM_LEVELS[self.zoom_level] as f32)) / 1000.0);
-            }
-
-            plot.show(ui, |plot_ui| {
-                for l in lines {
-                    plot_ui.line(l);
-                }
-
-                for vl in mode_lines {
-                    plot_ui.vline(vl);
-                }
-            });
-        });
-    }
-
-    fn plot_position(&self, ui: &mut Ui, heading: &str) {
-        let points: Vec<[f64; 3]> = self
-            .vehicle_states
-            .iter()
-            .map(|vs| (vs.time as f64 / 1000.0, vs.latitude, vs.longitude))
-            .filter(|(_t, lat, lng)| lat.is_some() && lng.is_some())
-            .map(|(t, lat, lng)| [t, lng.unwrap() as f64, lat.unwrap() as f64])
-            .collect();
-
-        let last = points.last().cloned();
-
-        let points_10m: Vec<[f64; 3]> = points
-            .iter()
-            .cloned()
-            .filter(|x| (last.unwrap()[0] - x[0]) < 600.0)
-            .collect();
-        let points_1m: Vec<[f64; 3]> = points
-            .iter()
-            .cloned()
-            .filter(|x| (last.unwrap()[0] - x[0]) < 60.0)
-            .collect();
-        let points_10s: Vec<[f64; 3]> = points
-            .iter()
-            .cloned()
-            .filter(|x| (last.unwrap()[0] - x[0]) < 10.0)
-            .collect();
-
-        let line = Line::new(points.iter().map(|x| [x[1], x[2]]).collect::<Vec<[f64; 2]>>()).width(1.2);
-        let line_10m = Line::new(points_10m.iter().map(|x| [x[1], x[2]]).collect::<Vec<[f64; 2]>>()).width(1.2);
-        let line_1m = Line::new(points_1m.iter().map(|x| [x[1], x[2]]).collect::<Vec<[f64; 2]>>()).width(1.2);
-        let line_10s = Line::new(points_10s.iter().map(|x| [x[1], x[2]]).collect::<Vec<[f64; 2]>>()).width(1.2);
-
-        ui.vertical_centered(|ui| {
-            ui.heading(heading);
-            let mut plot = egui::widgets::plot::Plot::new(heading)
-                .allow_scroll(false)
-                .data_aspect(1.0)
-                .set_margin_fraction(egui::Vec2::new(0.0, 0.15));
-
-            if let Some(coords) = last {
-                plot = plot.include_x(coords[1] - 0.001);
-                plot = plot.include_x(coords[1] + 0.001);
-                plot = plot.include_y(coords[2] - 0.001);
-                plot = plot.include_y(coords[2] + 0.001);
-            }
-
-            plot.show(ui, |plot_ui| {
-                plot_ui.line(line.color(Color32::DARK_RED));
-                plot_ui.line(line_10m.color(Color32::RED));
-                plot_ui.line(line_1m.color(Color32::YELLOW));
-                plot_ui.line(line_10s.color(Color32::GREEN));
-            });
-        });
     }
 
     fn last_value<T>(&self, callback: Box<dyn Fn(&VehicleState) -> Option<T>>) -> Option<T> {
@@ -251,10 +289,10 @@ impl Sam {
             .unwrap_or(false)
         {
             let label = RichText::new(label).monospace().color(fg);
-            egui::Button::new(label).fill(bg)
+            Button::new(label).fill(bg)
         } else {
             let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
-            egui::Button::new(label)
+            Button::new(label)
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::new(2.0, bg))
         };
@@ -269,7 +307,7 @@ impl Sam {
     fn utility_button(&mut self, ui: &mut Ui, width: f32, label: &str, msg: UplinkMessage) {
         let color = Color32::from_rgb(0xff, 0x7b, 0x00);
         let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
-        let button = egui::Button::new(label)
+        let button = Button::new(label)
             .fill(Color32::TRANSPARENT)
             .stroke(Stroke::new(1.5, color));
         if ui.add_sized([width, 18.0], button).clicked() {
@@ -308,10 +346,11 @@ impl eframe::App for Sam {
             }
 
             if input.key_released(Key::ArrowDown) {
-                self.adjust_zoom_level(1);
+                self.xlen /= ZOOM_FACTOR;
             }
+
             if input.key_released(Key::ArrowUp) {
-                self.adjust_zoom_level(-1);
+                self.xlen *= ZOOM_FACTOR;
             }
         }
 
@@ -339,7 +378,6 @@ impl eframe::App for Sam {
 
             let available_height = ui.available_height() - 60.0;
             let top_bar_height = 75.0;
-            //let top_bar_height = 0.0;
             let bottom_bar_height = 15.0;
             let log_height = available_height / 7.0 - 10.0;
             let plot_height = available_height - top_bar_height - log_height - bottom_bar_height;
@@ -527,214 +565,29 @@ impl eframe::App for Sam {
                 .max_col_width(ui.available_width() / 4.0 - 6.0)
                 .min_row_height(plot_height / 3.0)
                 .show(ui, |ui| {
-                    self.plot(
-                        ui,
-                        "Orientation",
-                        vec![
-                            (
-                                "Pitch (X) [°]",
-                                Box::new(|vs| vs.euler_angles.map(|a| a.0 * RAD_TO_DEG)),
-                            ),
-                            (
-                                "Pitch (Y) [°]",
-                                Box::new(|vs| vs.euler_angles.map(|a| a.1 * RAD_TO_DEG)),
-                            ),
-                            ("Roll (Z) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.2 * RAD_TO_DEG))),
-                        ],
-                        (Some(-180.0), Some(180.0)),
-                    );
-
-                    self.plot(
-                        ui,
-                        "Vert. Speed & Accel.",
-                        vec![
-                            ("Vario [m/s]", Box::new(|vs| vs.vertical_speed)),
-                            ("Vertical Accel [m/s²]", Box::new(|vs| vs.vertical_accel)),
-                            (
-                                "Vertical Accel (Filt.) [m/s²]",
-                                Box::new(|vs| vs.vertical_accel_filtered),
-                            ),
-                        ],
-                        (Some(-1.0), Some(1.0)),
-                    );
-
-                    self.plot(
-                        ui,
-                        "Altitude (ASL)",
-                        vec![
-                            ("Altitude [m]", Box::new(|vs| vs.altitude)),
-                            ("Altitude (Baro) [m]", Box::new(|vs| vs.altitude_baro)),
-                            ("Altitude (GPS) [m]", Box::new(|vs| vs.altitude_gps)),
-                            ("Altitude (Max) [m]", Box::new(|vs| vs.altitude_max)),
-                            ("Altitude (Ground) [m]", Box::new(|vs| vs.altitude_ground)),
-                        ],
-                        (
-                            Some(alt_ground),
-                            Some(f32::max(
-                                alt_ground + 10.0,
-                                self.last_value(Box::new(|vs| vs.altitude_max)).unwrap_or(-100.0),
-                            )),
-                        ),
-                    );
-
-                    self.plot_position(ui, "Position");
+                    ui.plot_telemetry(&self.orientation_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.vertical_speed_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.altitude_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.map(&self.vehicle_states);
 
                     ui.end_row();
 
-                    self.plot(
-                        ui,
-                        "Gyroscope",
-                        vec![
-                            ("Gyro (X) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.0))),
-                            ("Gyro (Y) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.1))),
-                            ("Gyro (Z) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.2))),
-                        ],
-                        (Some(-10.0), Some(10.0)),
-                    );
-
-                    self.plot(
-                        ui,
-                        "Accelerometers",
-                        vec![
-                            ("Accel 2 (X) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.0))),
-                            ("Accel 2 (Y) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.1))),
-                            ("Accel 2 (Z) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.2))),
-                            ("Accel 1 (X) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.0))),
-                            ("Accel 1 (Y) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.1))),
-                            ("Accel 1 (Z) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.2))),
-                        ],
-                        (Some(-10.0), Some(10.0)),
-                    );
-
-                    self.plot(
-                        ui,
-                        "Magnetometer",
-                        vec![
-                            ("Mag (X) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.0))),
-                            ("Mag (Y) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.1))),
-                            ("Mag (Z) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.2))),
-                        ],
-                        (None, None),
-                    );
-
-                    self.plot(
-                        ui,
-                        "Barometer",
-                        vec![
-                            ("Pressure [mbar]", Box::new(|vs| vs.pressure)),
-                            //("Altitude (ASL) [m]", Box::new(|vs| vs.altitude_baro)),
-                        ],
-                        (Some(900.0), Some(1100.0)),
-                    );
+                    ui.plot_telemetry(&self.gyroscope_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.accelerometer_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.magnetometer_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.barometer_plot_cache, &self.axes, &self.cursor, self.xlen);
 
                     ui.end_row();
 
-                    self.plot(
-                        ui,
-                        "Temperatures",
-                        vec![
-                            ("Baro. Temp. [°C]", Box::new(|vs| vs.temperature_baro)),
-                            ("Core Temp. [°C]", Box::new(|vs| vs.temperature_core)),
-                        ],
-                        (Some(25.0), Some(35.0)),
-                    );
-
-                    #[rustfmt::skip]
-                    self.plot(
-                        ui,
-                        "Power",
-                        vec![
-                            ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage)),
-                            ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage)),
-                            ("Current [A]", Box::new(|vs| vs.current)),
-                            ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage)),
-                        ],
-                        (Some(0.0), Some(9.0))
-                    );
-
-                    self.plot(
-                        ui,
-                        "Runtime",
-                        vec![
-                            ("CPU Util. [%]", Box::new(|vs| vs.cpu_utilization.map(|u| u as f32))),
-                            ("Heap Util. [%]", Box::new(|vs| vs.heap_utilization.map(|u| u as f32))),
-                        ],
-                        (Some(0.0), Some(100.0)),
-                    );
-
-                    #[rustfmt::skip]
-                    self.plot(
-                        ui,
-                        "Signal",
-                        vec![
-                            ("GCS RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))),
-                            ("GCS Signal RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))),
-                            ("GCS SNR [dB]", Box::new(|vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))),
-                            ("Vehicle RSSI [dBm]", Box::new(|vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))),
-                        ],
-                        (Some(-100.0), Some(10.0))
-                    );
+                    ui.plot_telemetry(&self.temperature_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.power_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.runtime_plot_cache, &self.axes, &self.cursor, self.xlen);
+                    ui.plot_telemetry(&self.signal_plot_cache, &self.axes, &self.cursor, self.xlen);
                 });
 
             ui.separator();
 
-            egui::ScrollArea::vertical()
-                .max_height(log_height)
-                .max_width(ui.available_width())
-                .stick_to_bottom(true)
-                .show(ui, |ui| {
-                    ui.set_min_height(log_height);
-                    //ui.set_width(ui.available_width());
-
-                    for (t, loc, ll, msg) in self.log_messages.iter() {
-                        let color = match ll {
-                            LogLevel::Debug => Color32::LIGHT_BLUE,
-                            LogLevel::Info => Color32::GREEN,
-                            LogLevel::Warning => Color32::YELLOW,
-                            LogLevel::Error => Color32::RED,
-                            LogLevel::Critical => Color32::DARK_RED,
-                        };
-
-                        ui.horizontal(|ui| {
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(60.0, 10.0),
-                                Layout::top_down(eframe::emath::Align::RIGHT),
-                                |ui| {
-                                    ui.label(
-                                        RichText::new(format!("{:>8.3}", *t as f32 / 1000.0)).color(Color32::GRAY),
-                                    );
-                                },
-                            );
-
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(70.0, 10.0),
-                                Layout::top_down(eframe::emath::Align::LEFT),
-                                |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.label(RichText::new(ll.to_string()).color(color));
-                                },
-                            );
-
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(150.0, 10.0),
-                                Layout::top_down(eframe::emath::Align::LEFT),
-                                |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.label(RichText::new(loc).color(Color32::GRAY));
-                                },
-                            );
-
-                            ui.allocate_ui_with_layout(
-                                Vec2::new(ui.available_width(), 10.0),
-                                Layout::top_down(eframe::emath::Align::LEFT),
-                                |ui| {
-                                    ui.set_width(ui.available_width());
-                                    ui.label(RichText::new(msg).color(Color32::LIGHT_GRAY));
-                                },
-                            );
-                        });
-                    }
-                });
+            ui.log_scroller(&self.log_messages, log_height);
 
             ui.separator();
 
@@ -762,13 +615,11 @@ impl eframe::App for Sam {
                         }
 
                         if ui.add_sized([20.0, 20.0], egui::Button::new("+")).clicked() {
-                            self.adjust_zoom_level(-1);
+                            self.xlen /= ZOOM_FACTOR;
                         }
 
-                        if ui.add_sized([50.0, 20.0], egui::Button::new("Pause")).clicked() {}
-
                         if ui.add_sized([20.0, 20.0], egui::Button::new("-")).clicked() {
-                            self.adjust_zoom_level(1);
+                            self.xlen *= ZOOM_FACTOR;
                         }
                     },
                 );
@@ -792,7 +643,7 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
             ..Default::default()
         },
         Box::new(|_cc| Box::new(Sam::init(data_source))),
-    );
+    )?;
 
     Ok(())
 }

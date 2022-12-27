@@ -19,3 +19,15 @@ impl ColorExt for FlightMode {
         }
     }
 }
+
+impl ColorExt for LogLevel {
+    fn color(&self) -> Color32 {
+        match self {
+            LogLevel::Debug => Color32::LIGHT_BLUE,
+            LogLevel::Info => Color32::GREEN,
+            LogLevel::Warning => Color32::YELLOW,
+            LogLevel::Error => Color32::RED,
+            LogLevel::Critical => Color32::DARK_RED,
+        }
+    }
+}

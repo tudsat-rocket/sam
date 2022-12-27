@@ -12,9 +12,9 @@ log = "0.4"
 env_logger = "0.10"
 indicatif = "0.17"
 colored = "2"
-eframe = "0.20"
+eframe = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" } # TODO: upstream this
 image = { version = "0.24", features = ["png"] }
-egui_extras = { version = "0.20", features = ["image"] }
+egui_extras = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks", features = ["image"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"
 postcard = "1.0"
