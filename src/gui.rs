@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use eframe::egui::{self, Ui};
-use egui::widgets::plot::{Corner, Legend, Line};
+use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle};
 use egui::widgets::ProgressBar;
 use egui::FontFamily::Proportional;
 use egui::FontId;
@@ -13,6 +13,7 @@ use euroc_fc_firmware::telemetry::*;
 
 use crate::state::*;
 use crate::data_source::*;
+use crate::telemetry_ext::*;
 
 #[rustfmt::skip]
 const ZOOM_LEVELS: [u32; 14] = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 60000, 120000, 300000, 600000, 1800000, 3600000];
@@ -112,6 +113,15 @@ impl Sam {
             Line::new(points).name(name).width(1.2)
         });
 
+        let mut modes: Vec<(f64, FlightMode)> = self.vehicle_states[start_i..].iter()
+            .map(|vs| (vs.time as f64 / 1000.0, vs.mode))
+            .filter(|(_x, mode)| mode.is_some())
+            .map(|(x, mode)| (x, mode.unwrap()))
+            .collect();
+        modes.dedup_by_key(|(_x, mode)| mode.clone());
+        let mode_lines = modes.iter()
+            .map(|(x, mode)| VLine::new(*x).color(mode.color()).style(LineStyle::Dashed{length: 4.0}));
+
         let legend = Legend::default().background_alpha(0.5).position(Corner::LeftTop);
 
         ui.vertical_centered(|ui| {
@@ -142,6 +152,10 @@ impl Sam {
             plot.show(ui, |plot_ui| {
                 for l in lines {
                     plot_ui.line(l);
+                }
+
+                for vl in mode_lines {
+                    plot_ui.vline(vl);
                 }
             });
         });
@@ -218,13 +232,13 @@ impl Sam {
 
     fn flight_mode_style(&self, fm: FlightMode) -> (&str, Color32, Color32) {
         match fm {
-            FlightMode::Idle => ("IDLE",             Color32::WHITE, Color32::from_rgb(0x27, 0xa3, 0x00)),
-            FlightMode::HardwareArmed => ("HWARMED", Color32::BLACK, Color32::from_rgb(0xff, 0x7b, 0x00)),
-            FlightMode::Armed => ("ARMED",           Color32::WHITE, Color32::from_rgb(0xae, 0x20, 0x12)),
-            FlightMode::Flight => ("FLIGHT",         Color32::BLACK, Color32::from_rgb(0x74, 0x00, 0xc6)),
-            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, Color32::from_rgb(0x48, 0xbf, 0xe3)),
-            FlightMode::RecoveryMain => ("MAIN",     Color32::BLACK, Color32::from_rgb(0x72, 0xef, 0xdd)),
-            FlightMode::Landed => ("LANDED",         Color32::WHITE, Color32::from_rgb(0x7f, 0x4f, 0x24)),
+            FlightMode::Idle => ("IDLE",             Color32::WHITE, fm.color()),
+            FlightMode::HardwareArmed => ("HWARMED", Color32::BLACK, fm.color()),
+            FlightMode::Armed => ("ARMED",           Color32::WHITE, fm.color()),
+            FlightMode::Flight => ("FLIGHT",         Color32::BLACK, fm.color()),
+            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, fm.color()),
+            FlightMode::RecoveryMain => ("MAIN",     Color32::BLACK, fm.color()),
+            FlightMode::Landed => ("LANDED",         Color32::WHITE, fm.color()),
         }
     }
 
