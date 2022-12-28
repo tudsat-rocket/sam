@@ -1,5 +1,7 @@
 use eframe::egui;
 use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle, LinkedAxisGroup, LinkedCursorsGroup};
+use egui::style::TextStyle;
+use egui::RichText;
 
 use euroc_fc_firmware::telemetry::FlightMode;
 
@@ -109,10 +111,13 @@ impl PlotUiExt for egui::Ui {
         cursors_group: &LinkedCursorsGroup,
         xlen: f64
     ) {
-        let legend = Legend::default().background_alpha(0.5).position(Corner::LeftTop);
+        let legend = Legend::default()
+            .text_style(egui::TextStyle::Small)
+            .background_alpha(0.5)
+            .position(Corner::LeftTop);
 
         self.vertical_centered(|ui| {
-            ui.heading(&cache.title);
+            ui.label(RichText::new(&cache.title).text_style(TextStyle::Name("Heading2".into())));
             let mut plot = egui::widgets::plot::Plot::new(&cache.title)
                 .link_axis(axis_group.clone())
                 .link_cursor(cursors_group.clone())

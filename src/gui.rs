@@ -1,23 +1,26 @@
 use std::path::PathBuf;
 
-use eframe::egui::{self, Ui};
+use eframe::egui;
+use eframe::emath::Align;
 use egui::widgets::plot::{LinkedAxisGroup, LinkedCursorsGroup};
-use egui::widgets::{Button, ProgressBar};
 use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
-use egui::{Color32, Key, Layout, RichText, Stroke, Vec2};
+use egui::{Key, Layout, RichText, Vec2, Rounding};
+
 use log::*;
 
 use euroc_fc_firmware::telemetry::*;
 
+mod top_bar;
 mod plot;
 mod map;
 mod log_scroller;
 
 use crate::state::*;
 use crate::data_source::*;
-use crate::telemetry_ext::*;
+
+use crate::gui::top_bar::*;
 use crate::gui::plot::*;
 use crate::gui::map::*;
 use crate::gui::log_scroller::*;
@@ -70,10 +73,7 @@ impl Sam {
             vec![
                 ("Vario [m/s]", Box::new(|vs| vs.vertical_speed)),
                 ("Vertical Accel [m/s²]", Box::new(|vs| vs.vertical_accel)),
-                (
-                    "Vertical Accel (Filt.) [m/s²]",
-                    Box::new(|vs| vs.vertical_accel_filtered),
-                ),
+                ("Vertical Accel (Filt.) [m/s²]", Box::new(|vs| vs.vertical_accel_filtered)),
             ],
             (Some(-1.0), Some(1.0)),
         );
@@ -87,7 +87,7 @@ impl Sam {
                 ("Altitude (Max) [m]", Box::new(|vs| vs.altitude_max)),
                 ("Altitude (Ground) [m]", Box::new(|vs| vs.altitude_ground)),
             ],
-            (Some(0.0), Some(300.0)) // TODO
+            (None, Some(300.0)) // TODO
         );
 
         let gyroscope_plot_cache = PlotCache::new(
@@ -127,7 +127,6 @@ impl Sam {
             "Barometer",
             vec![
                 ("Pressure [mbar]", Box::new(|vs| vs.pressure)),
-                //("Altitude (ASL) [m]", Box::new(|vs| vs.altitude_baro)),
             ],
             (Some(900.0), Some(1100.0)),
         );
@@ -257,63 +256,6 @@ impl Sam {
     fn last_value<T>(&self, callback: Box<dyn Fn(&VehicleState) -> Option<T>>) -> Option<T> {
         self.vehicle_states.iter().rev().find_map(|vs| callback(vs))
     }
-
-    fn text_indicator(&self, ui: &mut Ui, label: &str, value: Option<String>) {
-        ui.horizontal(|ui| {
-            ui.set_width(ui.available_width());
-            ui.label(label);
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(RichText::new(value.unwrap_or_default()).strong().monospace());
-            });
-        });
-    }
-
-    fn flight_mode_style(&self, fm: FlightMode) -> (&str, Color32, Color32) {
-        match fm {
-            FlightMode::Idle => ("IDLE",             Color32::WHITE, fm.color()),
-            FlightMode::HardwareArmed => ("HWARMED", Color32::BLACK, fm.color()),
-            FlightMode::Armed => ("ARMED",           Color32::WHITE, fm.color()),
-            FlightMode::Flight => ("FLIGHT",         Color32::BLACK, fm.color()),
-            FlightMode::RecoveryDrogue => ("DROGUE", Color32::BLACK, fm.color()),
-            FlightMode::RecoveryMain => ("MAIN",     Color32::BLACK, fm.color()),
-            FlightMode::Landed => ("LANDED",         Color32::WHITE, fm.color()),
-        }
-    }
-
-    fn flight_mode_button(&mut self, ui: &mut Ui, width: f32, fm: FlightMode) {
-        let (label, fg, bg) = self.flight_mode_style(fm);
-
-        let button = if self
-            .last_value(Box::new(|vs| vs.mode))
-            .map(|m| m == fm)
-            .unwrap_or(false)
-        {
-            let label = RichText::new(label).monospace().color(fg);
-            Button::new(label).fill(bg)
-        } else {
-            let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
-            Button::new(label)
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::new(2.0, bg))
-        };
-
-        if ui.add_sized([width, 30.0], button).clicked() {
-            self.data_source
-                .send(UplinkMessage::SetFlightModeAuth(fm, self.data_source.next_mac()))
-                .unwrap();
-        }
-    }
-
-    fn utility_button(&mut self, ui: &mut Ui, width: f32, label: &str, msg: UplinkMessage) {
-        let color = Color32::from_rgb(0xff, 0x7b, 0x00);
-        let label = RichText::new(label).monospace().color(Color32::LIGHT_GRAY);
-        let button = Button::new(label)
-            .fill(Color32::TRANSPARENT)
-            .stroke(Stroke::new(1.5, color));
-        if ui.add_sized([width, 18.0], button).clicked() {
-            self.data_source.send(msg).unwrap();
-        }
-    }
 }
 
 impl eframe::App for Sam {
@@ -357,213 +299,154 @@ impl eframe::App for Sam {
         // Redefine text_styles
         let mut style = (*ctx.style()).clone();
         style.text_styles = [
-            (Heading, FontId::new(16.0, Proportional)),
-            (Name("Heading2".into()), FontId::new(14.0, Proportional)),
-            (Name("Context".into()), FontId::new(14.0, Proportional)),
-            (Body, FontId::new(12.0, Proportional)),
-            (Monospace, FontId::new(12.0, Proportional)),
-            (Button, FontId::new(12.0, Proportional)),
-            (Small, FontId::new(10.0, Proportional)),
-        ]
-        .into();
-
-        // Mutate global style with above changes
-        ctx.set_style(style);
+            (Heading, FontId::new(12.0, Proportional)),
+            (Name("Heading2".into()), FontId::new(10.0, Proportional)),
+            (Name("Context".into()), FontId::new(10.0, Proportional)),
+            (Body, FontId::new(9.0, Proportional)),
+            (Monospace, FontId::new(9.0, Proportional)),
+            (Button, FontId::new(9.0, Proportional)),
+            (Small, FontId::new(7.0, Proportional)),
+        ].into();
+        style.spacing.item_spacing = Vec2::new(6.0, 4.0);
+        style.spacing.button_padding = Vec2::new(4.0, 1.0);
+        style.spacing.interact_size = Vec2::new(14.0, 14.0);
+        style.spacing.icon_width = 10.0;
+        style.visuals.menu_rounding = Rounding::same(2.0);
+        ctx.set_style(style.clone());
 
         let alt_ground = self.last_value(Box::new(|vs| vs.altitude_ground)).unwrap_or(0.0);
 
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_width(ui.available_width());
-            ui.set_height(ui.available_height());
+        egui::TopBottomPanel::bottom("bottombar").min_height(18.0).show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.set_width(ui.available_width() / 2.0);
+                    let (status_color, status_text) = self.data_source.status();
+                    ui.label(RichText::new(status_text).color(status_color));
+                    ui.label(self.data_source.info_text());
+                });
 
-            let available_height = ui.available_height() - 60.0;
-            let top_bar_height = 75.0;
-            let bottom_bar_height = 15.0;
-            let log_height = available_height / 7.0 - 10.0;
-            let plot_height = available_height - top_bar_height - log_height - bottom_bar_height;
+                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
+                    ui.checkbox(&mut self.auto_reset, "Auto-Reset");
 
+                    if ui.button("Reset").clicked() {
+                        self.reset();
+                    }
+
+                    //if ui.add_sized([15.0, 12.0], egui::Button::new("+")).clicked() {
+                    if ui.button("+").clicked() {
+                        self.xlen /= ZOOM_FACTOR;
+                    }
+
+                    if ui.button("-").clicked() {
+                        self.xlen *= ZOOM_FACTOR;
+                    }
+                });
+            });
+        });
+
+        egui::TopBottomPanel::top("topbar").min_height(50.0).max_height(50.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.set_height(top_bar_height);
-
-                let max_size = ui.available_size();
-                self.logo.show_max_size(ui, max_size);
-
-                let buttons_w = f32::min(1000.0, f32::max(500.0, ui.available_width() * 0.40));
-                let gauge_w = ui.available_width() - buttons_w - 75.0;
+                self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 70.0)); // TODO
 
                 ui.horizontal_centered(|ui| {
-                    ui.set_width(gauge_w);
-                    let w = gauge_w / 3.0;
+                    ui.set_width(ui.available_width() * 0.55);
 
-                    ui.vertical(|ui| {
-                        ui.set_width(w * 0.75);
-                        self.text_indicator(
-                            ui,
-                            "Time [s]",
-                            self.vehicle_states
-                                .last()
-                                .map(|vs| format!("{:10.3}", (vs.time as f32) / 1000.0)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Mode",
-                            self.last_value(Box::new(|vs| vs.mode)).map(|s| format!("{:?}", s)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Bat. Voltage [V]",
-                            self.last_value(Box::new(|vs| vs.battery_voltage))
-                                .map(|v| format!("{:.2}", v)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Vertical Speed [m/s]",
-                            self.last_value(Box::new(|vs| vs.vertical_speed))
-                                .map(|v| format!("{:.2}", v)),
-                        );
-                    });
+                    let time = self.vehicle_states.last().map(|vs| format!("{:10.3}", (vs.time as f32) / 1000.0));
+                    let mode = self.last_value(Box::new(|vs| vs.mode)).map(|s| format!("{:?}", s));
+                    let battery_voltage = self.last_value(Box::new(|vs| vs.battery_voltage)).map(|v| format!("{:.2}", v));
+                    let vertical_speed = self.last_value(Box::new(|vs| vs.vertical_speed)).map(|v| format!("{:.2}", v));
 
-                    ui.vertical(|ui| {
-                        ui.set_width(w * 1.15);
-                        self.text_indicator(
-                            ui,
-                            "Alt. (AGL/ASL) [m]",
-                            self.last_value(Box::new(|vs| vs.altitude))
-                                .map(|a| format!("{:.1} ({:.1})", a - alt_ground, a)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Max Alt. (AGL/ASL) [m]",
-                            self.last_value(Box::new(|vs| vs.altitude_max))
-                                .map(|a| format!("{:.1} ({:.1})", a - alt_ground, a)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Alt. (Baro, ASL) [m]",
-                            self.last_value(Box::new(|vs| vs.altitude_baro))
-                                .map(|a| format!("{:.1}", a)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Alt. (GPS, ASL) [m]",
-                            self.last_value(Box::new(|vs| vs.altitude_gps))
-                                .map(|a| format!("{:.1}", a)),
-                        );
-                    });
+                    let alt = self.last_value(Box::new(|vs| vs.altitude)).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_max = self.last_value(Box::new(|vs| vs.altitude_max)).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_baro = self.last_value(Box::new(|vs| vs.altitude_baro)).map(|a| format!("{:.1}", a));
+                    let alt_gps = self.last_value(Box::new(|vs| vs.altitude_gps)).map(|a| format!("{:.1}", a));
 
                     let last_gps_msg = self
                         .vehicle_states
                         .iter()
                         .rev()
                         .find_map(|vs| vs.gps_fix.is_some().then(|| vs));
+                    let gps_status = last_gps_msg.map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0)));
+                    let hdop = last_gps_msg.map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0));
+                    let latitude = last_gps_msg.and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l));
+                    let longitude = last_gps_msg.and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l));
 
                     ui.vertical(|ui| {
-                        ui.set_width(w * 1.1);
-                        self.text_indicator(
-                            ui,
-                            "GPS Status (#Sats)",
-                            last_gps_msg
-                                .map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0))),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "HDOP",
-                            last_gps_msg.map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Latitude",
-                            last_gps_msg.and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l)),
-                        );
-                        self.text_indicator(
-                            ui,
-                            "Longitude",
-                            last_gps_msg.and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l)),
-                        );
+                        ui.set_width(ui.available_width() / 3.0);
+                        ui.telemetry_value("Time [s]", time);
+                        ui.telemetry_value("Mode", mode);
+                        ui.telemetry_value("Bat. Voltage [V]", battery_voltage);
+                        ui.telemetry_value("Vertical Speed [m/s]", vertical_speed);
+                    });
+
+                    ui.vertical(|ui| {
+                        ui.set_width(ui.available_width() / 2.0);
+                        ui.telemetry_value("Alt. (AGL/ASL) [m]", alt);
+                        ui.telemetry_value("Max Alt. (AGL/ASL) [m]", alt_max);
+                        ui.telemetry_value("Alt. (Baro, ASL) [m]", alt_baro);
+                        ui.telemetry_value("Alt. (GPS, ASL) [m]", alt_gps);
+                    });
+
+                    ui.vertical(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.telemetry_value("GPS Status (#Sats)", gps_status);
+                        ui.telemetry_value("HDOP", hdop);
+                        ui.telemetry_value("Latitude", latitude);
+                        ui.telemetry_value("Longitude", longitude);
                     });
                 });
 
                 ui.vertical(|ui| {
-                    ui.set_width(buttons_w);
-                    ui.set_height(top_bar_height);
+                    let size = Vec2::new(ui.available_width(), ui.available_height() * 0.4);
+                    ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
+                        ui.command_button("Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()), &mut self.data_source);
+                        ui.command_button("Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()), &mut self.data_source);
 
-                    ui.horizontal(|ui| {
-                        ui.set_height(top_bar_height * 0.1);
-                        ui.style_mut().visuals.extreme_bg_color = Color32::from_rgb(0x10, 0x10, 0x10);
-                        ui.style_mut().visuals.override_text_color = Some(Color32::LIGHT_GRAY);
+                        let flash_pointer: f32 = self
+                            .last_value(Box::new(|vs| vs.flash_pointer))
+                            .map(|fp| (fp as f32) / 1024.0 / 1024.0)
+                            .unwrap_or_default();
+                        let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
+                        let f = flash_pointer / flash_size;
+                        let text = format!("Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size);
+                        ui.flash_bar(ui.available_width() * 0.6, f, text);
 
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_width(buttons_w * 0.25 + 12.0);
-
-                            let battery_voltage: f32 =
-                                self.last_value(Box::new(|vs| vs.battery_voltage)).unwrap_or_default();
-
-                            ui.style_mut().visuals.selection.bg_fill = if battery_voltage >= 7.4 {
-                                Color32::DARK_GREEN
-                            } else if battery_voltage >= 6.5 {
-                                Color32::from_rgb(0xe6, 0x6f, 0x00)
-                            } else {
-                                Color32::from_rgb(0xff, 0x3b, 0x00)
-                            };
-
-                            let battery_percentage = (battery_voltage - 6.0) / (8.4 - 6.0);
-                            let progress_bar_battery =
-                                ProgressBar::new(battery_percentage).text(format!("Battery: {:.2}V", battery_voltage));
-
-                            ui.add(progress_bar_battery);
-                        });
-
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            ui.set_width(buttons_w * 0.45 + 12.0);
-
-                            let flash_pointer: f32 = self
-                                .last_value(Box::new(|vs| vs.flash_pointer))
-                                .map(|fp| (fp as f32) / 1024.0 / 1024.)
-                                .unwrap_or_default();
-                            let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
-
-                            ui.style_mut().visuals.selection.bg_fill = if flash_pointer > flash_size * 0.9 {
-                                Color32::DARK_RED
-                            } else if flash_pointer > flash_size * 0.5 {
-                                Color32::from_rgb(0xe6, 0x6f, 0x00)
-                            } else {
-                                Color32::from_rgb(0x24, 0x63, 0x99)
-                            };
-
-                            let progress_bar_flash = ProgressBar::new(flash_pointer / flash_size)
-                                .text(format!("Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size));
-
-                            ui.add(progress_bar_flash);
-                        });
-
-                        // TODO: confirm these?
-                        ui.horizontal_centered(|ui| {
-                            let w = (buttons_w * 0.3) / 2.0;
-                            self.utility_button(ui, w, "Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()));
-                            self.utility_button(ui, w, "Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()));
-                        });
+                        let voltage = self.last_value(Box::new(|vs| vs.battery_voltage)).unwrap_or_default();
+                        let f = (voltage - 6.0) / (8.4 - 6.0);
+                        let text = format!("Battery: {:.2}V", voltage);
+                        ui.battery_bar(ui.available_width(), f, text);
                     });
 
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        ui.set_height(top_bar_height * 0.7);
-                        let w = buttons_w / 7.0;
-                        self.flight_mode_button(ui, w, FlightMode::Idle);
-                        self.flight_mode_button(ui, w, FlightMode::HardwareArmed);
-                        self.flight_mode_button(ui, w, FlightMode::Armed);
-                        self.flight_mode_button(ui, w, FlightMode::Flight);
-                        self.flight_mode_button(ui, w, FlightMode::RecoveryDrogue);
-                        self.flight_mode_button(ui, w, FlightMode::RecoveryMain);
-                        self.flight_mode_button(ui, w, FlightMode::Landed);
+                    ui.horizontal_centered(|ui| {
+                        ui.set_height(ui.available_height());
+                        let w = ui.available_width() / 7.0 - style.spacing.item_spacing.x * (6.0 / 7.0);
+                        let current = self.last_value(Box::new(|vs| vs.mode));
+                        ui.flight_mode_button(w, FlightMode::Idle, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::HardwareArmed, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::Armed, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::Flight, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::RecoveryDrogue, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::RecoveryMain, current, &mut self.data_source);
+                        ui.flight_mode_button(w, FlightMode::Landed, current, &mut self.data_source);
                     });
                 });
             });
+        });
 
-            ui.separator();
+        egui::TopBottomPanel::bottom("logbar")
+            .min_height(72.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.log_scroller(&self.log_messages);
+            });
 
+        egui::CentralPanel::default().show(ctx, |ui| {
+            let xspacing = style.spacing.item_spacing.x * (3.0 / 4.0);
+            let yspacing = style.spacing.item_spacing.y / 1.5;
             egui::Grid::new("plot_grid")
-                .min_col_width(ui.available_width() / 4.0 - 6.0)
-                .max_col_width(ui.available_width() / 4.0 - 6.0)
-                .min_row_height(plot_height / 3.0)
+                .min_col_width(ui.available_width() / 4.0 - xspacing)
+                .max_col_width(ui.available_width() / 4.0 - xspacing)
+                .min_row_height(ui.available_height() / 3.0 - yspacing)
                 .show(ui, |ui| {
                     ui.plot_telemetry(&self.orientation_plot_cache, &self.axes, &self.cursor, self.xlen);
                     ui.plot_telemetry(&self.vertical_speed_plot_cache, &self.axes, &self.cursor, self.xlen);
@@ -584,46 +467,6 @@ impl eframe::App for Sam {
                     ui.plot_telemetry(&self.runtime_plot_cache, &self.axes, &self.cursor, self.xlen);
                     ui.plot_telemetry(&self.signal_plot_cache, &self.axes, &self.cursor, self.xlen);
                 });
-
-            ui.separator();
-
-            ui.log_scroller(&self.log_messages, log_height);
-
-            ui.separator();
-
-            ui.horizontal_centered(|ui| {
-                let w = ui.available_width();
-                ui.set_width(w);
-                ui.set_height(bottom_bar_height);
-
-                ui.horizontal_centered(|ui| {
-                    ui.set_width(w / 2.0);
-
-                    let (status_color, status_text) = self.data_source.status();
-                    ui.label(RichText::new(status_text).color(status_color));
-
-                    ui.label(self.data_source.info_text());
-                });
-
-                ui.allocate_ui_with_layout(Vec2::new(w / 2.0 - 6.0, bottom_bar_height),
-                    Layout::right_to_left(eframe::emath::Align::Center),
-                    |ui| {
-                        ui.checkbox(&mut self.auto_reset, "Auto-Reset");
-
-                        if ui.button("Reset").clicked() {
-                            self.reset();
-                        }
-
-                        if ui.add_sized([20.0, 20.0], egui::Button::new("+")).clicked() {
-                            self.xlen /= ZOOM_FACTOR;
-                        }
-
-                        if ui.add_sized([20.0, 20.0], egui::Button::new("-")).clicked() {
-                            self.xlen *= ZOOM_FACTOR;
-                        }
-                    },
-                );
-            });
         });
 
         ctx.request_repaint_after(std::time::Duration::from_millis(16));

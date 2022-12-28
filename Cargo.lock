@@ -2592,6 +2592,7 @@ dependencies = [
  "eframe",
  "egui_extras",
  "env_logger",
+ "epaint",
  "euroc_fc_firmware",
  "home",
  "image",

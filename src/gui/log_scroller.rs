@@ -8,23 +8,22 @@ use crate::telemetry_ext::*;
 pub trait LogUiExt {
     fn log_scroller(
         &mut self,
-        log_messages: &Vec<(u32, String, LogLevel, String)>,
-        height: f32
+        log_messages: &Vec<(u32, String, LogLevel, String)>
     );
 }
 
 impl LogUiExt for egui::Ui {
     fn log_scroller(
         &mut self,
-        log_messages: &Vec<(u32, String, LogLevel, String)>,
-        height: f32,
+        log_messages: &Vec<(u32, String, LogLevel, String)>
     ) {
+        let h = self.available_height();
         egui::ScrollArea::vertical()
-            .max_height(height)
+            .max_height(self.available_height())
             .max_width(self.available_width())
             .stick_to_bottom(true)
             .show(self, |ui| {
-                ui.set_min_height(height);
+                ui.set_min_height(h);
 
                 for (t, loc, ll, msg) in log_messages {
                     ui.horizontal(|ui| {
@@ -61,7 +60,7 @@ impl LogUiExt for egui::Ui {
                             Layout::top_down(eframe::emath::Align::LEFT),
                             |ui| {
                                 ui.set_width(ui.available_width());
-                                ui.label(RichText::new(msg).color(Color32::LIGHT_GRAY));
+                                ui.label(msg);
                             },
                         );
                     });

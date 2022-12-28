@@ -2,6 +2,8 @@ use euroc_fc_firmware::telemetry::*;
 use nalgebra::vector;
 use nalgebra::{Quaternion, UnitQuaternion};
 
+// TODO: refactor this, maybe replace with a trait implemented by downlink messages?
+
 #[derive(Clone, Debug, Default)]
 pub struct VehicleState {
     pub time: u32,
