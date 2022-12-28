@@ -7,6 +7,7 @@ use egui::FontFamily::Proportional;
 use egui::FontId;
 use egui::TextStyle::*;
 use egui::{Key, Layout, RichText, Vec2, Rounding};
+use egui_extras::RetainedImage;
 
 use log::*;
 
@@ -37,7 +38,8 @@ struct Sam {
 
     auto_reset: bool,
 
-    logo: egui_extras::RetainedImage,
+    logo: RetainedImage,
+    logo_inverted: RetainedImage,
 
     xlen: f64,
     axes: LinkedAxisGroup,
@@ -171,12 +173,19 @@ impl Sam {
             (Some(-100.0), Some(10.0)),
         );
 
+        let bytes = include_bytes!("logo.png");
+        let logo = RetainedImage::from_image_bytes("logo.png", bytes).unwrap();
+
+        let bytes = include_bytes!("logo_inverted.png");
+        let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
+
         Self {
             data_source,
             vehicle_states: Vec::new(),
             log_messages: Vec::new(),
             auto_reset: false,
-            logo: egui_extras::RetainedImage::from_image_bytes("logo.png", include_bytes!("logo.png")).unwrap(),
+            logo,
+            logo_inverted,
             xlen: 10.0,
             axes: LinkedAxisGroup::new(true, false),
             cursor: LinkedCursorsGroup::new(true, false),
@@ -256,6 +265,18 @@ impl Sam {
     fn last_value<T>(&self, callback: Box<dyn Fn(&VehicleState) -> Option<T>>) -> Option<T> {
         self.vehicle_states.iter().rev().find_map(|vs| callback(vs))
     }
+
+    fn open_log_file(&mut self, path: PathBuf) {
+        if let Ok(data_source) = LogFileDataSource::new(path) {
+            self.reset();
+            self.data_source = Box::new(data_source);
+        }
+    }
+
+    fn close_log_file(&mut self) {
+        self.reset();
+        self.data_source = Box::new(SerialDataSource::new());
+    }
 }
 
 impl eframe::App for Sam {
@@ -316,6 +337,28 @@ impl eframe::App for Sam {
 
         let alt_ground = self.last_value(Box::new(|vs| vs.altitude_ground)).unwrap_or(0.0);
 
+        egui::TopBottomPanel::top("menubar").max_height(18.0).show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                egui::widgets::global_dark_light_mode_switch(ui);
+
+                ui.separator();
+
+                if ui.button("Open Log File").clicked() {
+                    if let Some(path) = rfd::FileDialog::new().pick_file() {
+                        self.open_log_file(path);
+                    }
+                }
+
+                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
+                    if self.data_source.is_log_file() {
+                        if ui.button("Close Log File").clicked() {
+                            self.close_log_file();
+                        }
+                    }
+                });
+            });
+        });
+
         egui::TopBottomPanel::bottom("bottombar").min_height(18.0).show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.horizontal_centered(|ui| {
@@ -332,7 +375,6 @@ impl eframe::App for Sam {
                         self.reset();
                     }
 
-                    //if ui.add_sized([15.0, 12.0], egui::Button::new("+")).clicked() {
                     if ui.button("+").clicked() {
                         self.xlen /= ZOOM_FACTOR;
                     }
@@ -346,7 +388,11 @@ impl eframe::App for Sam {
 
         egui::TopBottomPanel::top("topbar").min_height(50.0).max_height(50.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
-                self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 70.0)); // TODO
+                if ui.style().visuals.dark_mode {
+                    self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 70.0));
+                } else {
+                    self.logo_inverted.show_max_size(ui, Vec2::new(ui.available_width(), 70.0));
+                }
 
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() * 0.55);

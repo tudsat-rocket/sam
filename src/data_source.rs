@@ -135,6 +135,7 @@ pub trait DataSource {
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>>;
     fn status(&self) -> (Color32, String);
     fn info_text(&self) -> String;
+    fn is_log_file(&self) -> bool;
 }
 
 impl DataSource for SerialDataSource {
@@ -207,6 +208,10 @@ impl DataSource for SerialDataSource {
 
         format!("{} {}", serial_info, telemetry_log_info)
     }
+
+    fn is_log_file(&self) -> bool {
+        false
+    }
 }
 
 impl DataSource for LogFileDataSource {
@@ -250,5 +255,9 @@ impl DataSource for LogFileDataSource {
 
     fn info_text(&self) -> String {
         self.path.as_os_str().to_string_lossy().into()
+    }
+
+    fn is_log_file(&self) -> bool {
+        true
     }
 }
