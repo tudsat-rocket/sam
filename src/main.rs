@@ -14,6 +14,7 @@ use log::*;
 use euroc_fc_firmware::telemetry::*;
 
 mod data_source;
+mod file;
 mod gui;
 mod serial;
 mod state;

@@ -1,3 +1,5 @@
+//! Contains some extension traits of the telemetry data types.
+
 use eframe::egui::Color32;
 
 use euroc_fc_firmware::telemetry::*;

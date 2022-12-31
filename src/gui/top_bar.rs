@@ -1,3 +1,6 @@
+//! Contains smaller UI functions for the top bar, including text indicators
+//! and flight mode buttons.
+
 use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
 use egui::{Color32, RichText, Stroke};
@@ -7,6 +10,7 @@ use euroc_fc_firmware::telemetry::*;
 use crate::telemetry_ext::*;
 use crate::data_source::*;
 
+// TODO: move to telemetry_ext?
 fn flight_mode_style(fm: FlightMode) -> (&'static str, Color32, Color32) {
     match fm {
         FlightMode::Idle => ("IDLE",             Color32::WHITE, fm.color()),
@@ -19,7 +23,7 @@ fn flight_mode_style(fm: FlightMode) -> (&'static str, Color32, Color32) {
     }
 }
 
-pub trait TopBarPlotExt {
+pub trait TopBarUiExt {
     fn telemetry_value(&mut self, label: &str, value: Option<String>);
     fn battery_bar(&mut self, w: f32, f: f32, text: String);
     fn flash_bar(&mut self, w: f32, f: f32, text: String);
@@ -38,7 +42,7 @@ pub trait TopBarPlotExt {
     );
 }
 
-impl TopBarPlotExt for egui::Ui {
+impl TopBarUiExt for egui::Ui {
     fn telemetry_value(&mut self, label: &str, value: Option<String>) {
         self.horizontal(|ui| {
             ui.set_width(ui.available_width());

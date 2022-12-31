@@ -1,3 +1,6 @@
+//! Data sources serve as an abstraction for the origin of the displayed data.
+//! This data source can either be a serial port device, or an opened log file.
+
 use core::hash::Hasher;
 use std::collections::VecDeque;
 use std::fs::File;
@@ -14,6 +17,7 @@ use euroc_fc_firmware::telemetry::*;
 
 use crate::serial::*;
 
+/// A serial port data source. The default.
 pub struct SerialDataSource {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     downlink_rx: Receiver<DownlinkMessage>,
@@ -31,11 +35,13 @@ pub struct SerialDataSource {
 }
 
 impl SerialDataSource {
+    /// Create a new serial port data source.
     pub fn new() -> Self {
         let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
         let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
         let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
 
+        #[cfg(not(target_arch = "wasm32"))] // TODO: can't spawn threads on wasm
         spawn_downlink_monitor(serial_status_tx, downlink_tx, uplink_rx, true);
 
         let telemetry_log_path = Self::new_telemetry_log_path();
@@ -55,6 +61,15 @@ impl SerialDataSource {
         }
     }
 
+    /// No telemetry file needed because serial port does not work on
+    /// web assembly. TODO: maybe create a NoopDataSource for wasm instead?
+    #[cfg(target_arch = "wasm32")]
+    fn new_telemetry_log_path() -> PathBuf {
+        "telem.log".into()
+    }
+
+    /// Comes up with a new, unique path for a telemetry log file.
+    #[cfg(not(target_arch = "wasm32"))] // TODO: time doesn't work on wasm
     fn new_telemetry_log_path() -> PathBuf {
         let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
 
@@ -74,6 +89,7 @@ impl SerialDataSource {
         }
     }
 
+    /// Stores a received message in the telemetry log.
     fn write_to_telemetry_log(&mut self, msg: &DownlinkMessage) {
         // TODO
         if let Ok(f) = self.telemetry_log_file.as_mut() {
@@ -85,6 +101,7 @@ impl SerialDataSource {
 
     }
 
+    /// Update message authentication code. TODO: refactor
     fn update_mac(&mut self) {
         // predict current time on vehicle;
         let t = self
@@ -106,35 +123,75 @@ impl SerialDataSource {
         }
     }
 
+    /// Determines if the given time is an uplink window.
+    /// TODO: should be unnecessary after MAC refactor
     fn is_uplink_window(&self, time: u32) -> bool {
         (time % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
     }
 }
 
+/// A data source based on a logfile, either passed as a file path, or with
+/// some raw bytes.
 pub struct LogFileDataSource {
-    path: PathBuf,
-    file: File,
-    buffer: Vec<u8>
+    path: Option<PathBuf>,
+    name: Option<String>,
+    file: Option<File>,
+    buffer: Vec<u8>,
+    is_json: bool
 }
 
 impl LogFileDataSource {
+    /// Open the given file as a data source.
     pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
         let file = File::open(&path)?;
+        let is_json = path.extension().map(|ext| ext == "json").unwrap_or(false);
+
         Ok(Self {
-            path,
-            file,
-            buffer: Vec::new()
+            path: Some(path),
+            name: None,
+            file: Some(file),
+            buffer: Vec::new(),
+            is_json,
         })
+    }
+
+    /// Create given data source using the given name and bytes. The name is
+    /// only passed to the data source to allow identifying it based on the
+    /// status text.
+    pub fn from_bytes(name: Option<String>, bytes: Vec<u8>) -> Self {
+        let is_json = bytes[0] == b'[';
+
+        Self {
+            path: None,
+            name,
+            file: None,
+            buffer: bytes,
+            is_json
+        }
     }
 }
 
+/// Trait shared by all data sources.
 pub trait DataSource {
+    /// New messages. TODO: replace with iterator?
     fn next_messages(&mut self) -> Vec<DownlinkMessage>;
+    /// Reset data source if applicable.
     fn reset(&mut self);
+    /// Calculate the next message authentication code. TODO: refactor
     fn next_mac(&self) -> u64;
+    /// Send an uplink message to the connected device if applicable.
+    /// TODO: maybe replace with command enum later, and handle details
+    /// like MACs internally
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>>;
+    /// Return the color and content of the status indicator (e.g. for
+    /// connection status)
     fn status(&self) -> (Color32, String);
+    /// Return the content of the gray status text (e.g. file path).
     fn info_text(&self) -> String;
+    /// The minimum fps required for the data source. Occasional redraws
+    /// are necessary if data source is live.
+    fn minimum_fps(&self) -> Option<u64>;
+    /// Is the data source a file. TODO: a bit unelegant
     fn is_log_file(&self) -> bool;
 }
 
@@ -209,6 +266,10 @@ impl DataSource for SerialDataSource {
         format!("{} {}", serial_info, telemetry_log_info)
     }
 
+    fn minimum_fps(&self) -> Option<u64> {
+        Some(u64::max(5, u64::min(self.message_receipt_times.len() as u64, 60)))
+    }
+
     fn is_log_file(&self) -> bool {
         false
     }
@@ -216,13 +277,13 @@ impl DataSource for SerialDataSource {
 
 impl DataSource for LogFileDataSource {
     fn next_messages(&mut self) -> Vec<DownlinkMessage> {
-        if let Err(e) = self.file.read_to_end(&mut self.buffer) {
-            error!("Failed to read log file: {:?}", e);
+        if let Some(file) = self.file.as_mut() {
+            if let Err(e) = file.read_to_end(&mut self.buffer) {
+                error!("Failed to read log file: {:?}", e);
+            }
         }
 
-        let is_json = self.path.extension().map(|ext| ext == "json").unwrap_or(false);
-
-        let msgs = if is_json {
+        let msgs = if self.is_json {
             if self.buffer.len() > 0 {
                 serde_json::from_slice::<Vec<DownlinkMessage>>(&self.buffer).unwrap()
             } else {
@@ -254,7 +315,14 @@ impl DataSource for LogFileDataSource {
     }
 
     fn info_text(&self) -> String {
-        self.path.as_os_str().to_string_lossy().into()
+        self.path.as_ref()
+            .map(|p| p.as_os_str().to_string_lossy().into())
+            .or(self.name.clone())
+            .unwrap_or_default()
+    }
+
+    fn minimum_fps(&self) -> Option<u64> {
+        None
     }
 
     fn is_log_file(&self) -> bool {

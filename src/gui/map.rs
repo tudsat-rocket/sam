@@ -1,22 +1,41 @@
+//! Contains code for a map widget. TODO: replace with a proper map.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use eframe::egui;
 use egui::widgets::plot::Line;
 use egui::Color32;
 
 use crate::state::*;
 
+/// State of the map widget, stored by the application.
+#[derive(Clone)]
+pub struct MapState {
+    pub vehicle_states: Rc<RefCell<Vec<VehicleState>>>
+}
+
+impl MapState {
+    pub fn new(vehicle_states: Rc<RefCell<Vec<VehicleState>>>) -> Self {
+        Self {
+            vehicle_states
+        }
+    }
+}
+
 pub trait MapUiExt {
     fn map(
         &mut self,
-        vs: &Vec<VehicleState>
+        state: MapState
     );
 }
 
 impl MapUiExt for egui::Ui {
     fn map(
         &mut self,
-        vs: &Vec<VehicleState>
+        state: MapState
     ) {
-        let points: Vec<[f64; 3]> = vs.iter()
+        let points: Vec<[f64; 3]> = state.vehicle_states.borrow().iter()
             .map(|vs| (vs.time as f64 / 1000.0, vs.latitude, vs.longitude))
             .filter(|(_t, lat, lng)| lat.is_some() && lng.is_some())
             .map(|(t, lat, lng)| [t, lng.unwrap() as f64, lat.unwrap() as f64])
@@ -46,8 +65,7 @@ impl MapUiExt for egui::Ui {
         let line_10s = Line::new(points_10s.iter().map(|x| [x[1], x[2]]).collect::<Vec<[f64; 2]>>()).width(1.2);
 
         self.vertical_centered(|ui| {
-            ui.heading("Position");
-            let mut plot = egui::widgets::plot::Plot::new("Position")
+            let mut plot = egui::widgets::plot::Plot::new("map")
                 .allow_scroll(false)
                 .data_aspect(1.0)
                 .set_margin_fraction(egui::Vec2::new(0.0, 0.15));

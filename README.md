@@ -3,13 +3,38 @@ Sam
 
 Ground station software for the Sting FC.
 
-# Setup
+# Running
+
+To run for debugging purposes:
+
+```
+cargo run
+```
+
+# Installation
 
 (Assuming rust/rustup is already installed)
 
 ```
 cargo install --path .
 ````
+
+# Building Web Assembly Version
+
+## Setup
+
+```
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack --features curl/static-curl
+```
+
+## Building
+
+```
+wasm-pack build --target web
+```
+
+This will store the compiled application in `pkg/`.
 
 # Usage
 

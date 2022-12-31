@@ -24,5 +24,26 @@ nalgebra = "0.31"
 siphasher = "0.3"
 chrono = "0.4"
 crc = "2"
-home = "0.5"
 rfd = "0.10"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+home = "0.5" # No home directories in web assembly
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
+wasm-bindgen = "0.2"
+wasm-logger = "0.2.0"
+
+# The following entries are only required for web assembly compilation
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.dev]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.profiling]
+wasm-opt = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
