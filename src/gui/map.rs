@@ -7,6 +7,11 @@ use std::sync::Arc;
 use std::io::{Read, Write};
 use std::f64::consts::TAU;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
+
 use slippy_map_tiles::{BBox, Tile};
 
 use eframe::egui;
@@ -15,6 +20,7 @@ use egui::{Context, Color32, ColorImage, TextureHandle, Vec2};
 use egui::mutex::Mutex;
 
 use crate::state::*;
+use crate::gui::*;
 
 const MAPBOX_ACCESS_TOKEN: &str = "pk.eyJ1Ijoia29mZmVpbmZsdW1taSIsImEiOiJjbGE0cDl4MWkwcXJoM3VxcXBmeHJhdGpzIn0.Md170HfUJM_BLss3zb0bMg";
 
@@ -81,13 +87,13 @@ async fn load_tile_image(tile: &Tile) -> Result<ColorImage, Box<dyn std::error::
 
 /// Cached data for map, including satellite imagery tiles, which are also
 /// cached on disk.
-pub struct MapCache {
+pub struct TileCache {
     textures: HashMap<String, TextureHandle>,
     tiles: HashMap<String, ColorImage>,
     loading: HashSet<String>,
 }
 
-impl MapCache {
+impl TileCache {
     pub fn new() -> Self {
         Self {
             textures: HashMap::new(),
@@ -121,24 +127,86 @@ impl MapCache {
     }
 }
 
+pub struct MapCache {
+    points: Vec<(f64, f64, f64)>,
+    max_alt: f64,
+    pub center: (f64, f64),
+    pub hdop_circle_points: Option<Vec<[f64; 2]>>,
+}
+
+impl MapCache {
+    pub fn new() -> Self {
+        MapCache {
+            points: Vec::new(),
+            max_alt: 300.0,
+            center: (49.861445, 8.68519),
+            hdop_circle_points: None
+        }
+    }
+
+    pub fn push(&mut self, _x: Instant, msg: &DownlinkMessage) {
+        if let (Some(lat), Some(lng)) = (msg.latitude(), msg.longitude()) {
+            let (lat, lng) = (lat as f64, lng as f64);
+            let altitude_ground = msg.altitude_ground().unwrap_or(0.0);
+            let alt = msg.altitude_gps().map(|alt| alt - altitude_ground).unwrap_or(0.0) as f64;
+            let hdop = msg.hdop().unwrap_or(9999);
+
+            self.points.push((lat, lng, alt));
+            self.max_alt = f64::max(self.max_alt, alt);
+            self.center = (lat, lng);
+
+            let aspect = 1.0 / f64::cos(lat as f64);
+            let cep_m = 2.5 * (hdop as f64) / 100.0;
+            let r = 360.0 * cep_m / 40_075_017.0; // meters to decimal degrees
+            let points = (0..=64)
+                .map(|i| (i as f64) * TAU / 64.0)
+                .map(|i| [r * i.cos() * aspect + lng, r * i.sin() + lat])
+                .collect();
+            self.hdop_circle_points = Some(points);
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.points.truncate(0);
+    }
+
+    pub fn lines<'a>(&'a self) -> Box<dyn Iterator<Item = Line> + 'a> {
+        let lines = self.points.windows(2)
+            .map(move |pair| {
+                let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
+                let color = colorgrad::yl_or_rd().at(1.0 - pair[0].2 / self.max_alt).to_rgba8();
+                Line::new(points)
+                    .width(2.0)
+                    .color(Color32::from_rgb(color[0], color[1], color[2]))
+                });
+
+        Box::new(lines) // TODO
+    }
+
+    pub fn hdop_circle_line(&self) -> Option<Line> {
+        self.hdop_circle_points.as_ref()
+            .map(|points| Line::new(points.clone()).width(1.5).color(Color32::RED))
+    }
+}
+
 /// State of the map widget, stored by the application.
 #[derive(Clone)]
 pub struct MapState {
-    pub vehicle_states: Rc<RefCell<Vec<VehicleState>>>,
-    pub cache: Arc<Mutex<MapCache>>,
+    pub tile_cache: Arc<Mutex<TileCache>>,
+    pub cache: Rc<RefCell<MapCache>>,
 }
 
 impl MapState {
-    pub fn new(vehicle_states: Rc<RefCell<Vec<VehicleState>>>) -> Self {
+    pub fn new() -> Self {
         Self {
-            vehicle_states,
-            cache: Arc::new(Mutex::new(MapCache::new())),
+            tile_cache: Arc::new(Mutex::new(TileCache::new())),
+            cache: Rc::new(RefCell::new(MapCache::new())),
         }
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn load_tile(&self, tile: Tile) {
-        let cache = self.cache.clone();
+        let cache = self.tile_cache.clone();
         std::thread::spawn(move || {
             match load_tile_image(&tile) {
                 Ok(image) => cache.lock().insert(tile, image),
@@ -151,7 +219,7 @@ impl MapState {
 
     #[cfg(target_arch = "wasm32")]
     fn load_tile(&self, tile: Tile) {
-        let cache = self.cache.clone();
+        let cache = self.tile_cache.clone();
         wasm_bindgen_futures::spawn_local(async move {
             match load_tile_image(&tile).await {
                 Ok(image) => cache.lock().insert(tile, image),
@@ -180,13 +248,21 @@ impl MapState {
 
         let iter = bbox.tiles_for_zoom(zoom as u8)
             .filter_map(|tile| {
-                let result = self.cache.lock().cached_image(ctx, &tile);
-                if result.is_none() && self.cache.lock().loading.insert(tile_id(&tile)) {
+                let result = self.tile_cache.lock().cached_image(ctx, &tile);
+                if result.is_none() && self.tile_cache.lock().loading.insert(tile_id(&tile)) {
                     self.load_tile(tile);
                 }
                 result
             });
         Box::new(iter)
+    }
+
+    pub fn push(&self, x: Instant, msg: &DownlinkMessage) {
+        self.cache.borrow_mut().push(x, msg);
+    }
+
+    pub fn reset(&self) {
+        self.cache.borrow_mut().reset();
     }
 }
 
@@ -202,43 +278,19 @@ impl MapUiExt for egui::Ui {
         &mut self,
         state: MapState
     ) {
-        let points: Vec<(f64, f64, f64, u16)> = state.vehicle_states.borrow()
-            .iter()
-            .filter(|vs| vs.latitude.is_some() && vs.longitude.is_some())
-            .map(|vs| {
-                let lat = vs.latitude.unwrap();
-                let lng = vs.longitude.unwrap();
-                let altitude_ground = vs.altitude_ground.unwrap_or(0.0);
-                let alt = vs.altitude_gps.map(|alt| alt - altitude_ground).unwrap_or(0.0);
-                (lat as f64, lng as f64, alt as f64, vs.hdop.unwrap_or(9999))
-            })
-            .collect();
-
-        let max_alt = points.iter()
-            .map(|(_, _, alt, _)| alt)
-            .fold(300.0, |a, b| f64::max(a, *b));
-        let lines = points.windows(2)
-            .map(|pair| {
-                let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
-                let color = colorgrad::yl_or_rd().at(1.0 - pair[0].2 / max_alt).to_rgba8();
-                Line::new(points)
-                    .width(2.0)
-                    .color(Color32::from_rgb(color[0], color[1], color[2]))
-            });
+        let cache = state.cache.borrow_mut();
 
         self.vertical_centered(|ui| {
-            let last = points.last();
-            let center = last.cloned().unwrap_or((49.861445, 8.68519, 0.0, 0));
-            let aspect = 1.0 / f64::cos(center.0.to_radians() as f64);
+            let aspect = 1.0 / f64::cos(cache.center.0.to_radians() as f64);
             let plot = egui::widgets::plot::Plot::new("map")
                 .allow_scroll(false)
                 .data_aspect(aspect as f32)
                 .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
                 .show_axes([false, false])
-                .include_x(center.1 - 0.005)
-                .include_x(center.1 + 0.005)
-                .include_y(center.0 - 0.005)
-                .include_y(center.0 + 0.005);
+                .include_x(cache.center.1 - 0.005)
+                .include_x(cache.center.1 + 0.005)
+                .include_y(cache.center.0 - 0.005)
+                .include_y(cache.center.0 + 0.005);
 
             plot.show(ui, |plot_ui| {
                 let ctx = plot_ui.ctx().clone();
@@ -246,18 +298,11 @@ impl MapUiExt for egui::Ui {
                     plot_ui.image(pi);
                 }
 
-                // TODO: maybe cache this?
-                if let Some((lat, lng, _, hdop)) = last {
-                    let cep_m = 2.5 * (*hdop as f64) / 100.0;
-                    let r = 360.0 * cep_m / 40_075_017.0; // meters to decimal degrees
-                    let circle_points: egui::widgets::plot::PlotPoints = (0..=64)
-                        .map(|i| (i as f64) * TAU / 64.0)
-                        .map(|i| [r * i.cos() * aspect + lng, r * i.sin() + lat])
-                        .collect();
-                    plot_ui.line(Line::new(circle_points).width(1.5).color(Color32::RED));
+                if let Some(line) = cache.hdop_circle_line() {
+                    plot_ui.line(line);
                 }
 
-                for line in lines {
+                for line in cache.lines() {
                     plot_ui.line(line);
                 }
             });

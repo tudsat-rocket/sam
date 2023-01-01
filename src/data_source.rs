@@ -7,7 +7,12 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, SendError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
 
 use eframe::epaint::Color32;
 use siphasher::sip::SipHasher;
@@ -174,7 +179,7 @@ impl LogFileDataSource {
 /// Trait shared by all data sources.
 pub trait DataSource {
     /// New messages. TODO: replace with iterator?
-    fn next_messages(&mut self) -> Vec<DownlinkMessage>;
+    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a>;
     /// Reset data source if applicable.
     fn reset(&mut self);
     /// Calculate the next message authentication code. TODO: refactor
@@ -196,7 +201,7 @@ pub trait DataSource {
 }
 
 impl DataSource for SerialDataSource {
-    fn next_messages(&mut self) -> Vec<DownlinkMessage> {
+    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a> {
         self.update_mac();
 
         self.message_receipt_times
@@ -207,20 +212,22 @@ impl DataSource for SerialDataSource {
             self.serial_port = port;
         }
 
-        let msgs: Vec<DownlinkMessage> = self.downlink_rx.try_iter().collect();
-        for msg in msgs.iter() {
-            self.write_to_telemetry_log(&msg);
+        let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
+        let iter = msgs.into_iter().map(|msg| {
+                self.write_to_telemetry_log(&msg);
 
-            match msg {
-                DownlinkMessage::Log(_, _, _, _) => {},
-                DownlinkMessage::TelemetryGCS(_) => {},
-                _ => {
-                    self.message_receipt_times.push_back((Instant::now(), msg.time()));
+                match msg {
+                    DownlinkMessage::Log(_, _, _, _) => {},
+                    DownlinkMessage::TelemetryGCS(_) => {},
+                    _ => {
+                        self.message_receipt_times.push_back((Instant::now(), msg.time()));
+                    }
                 }
-            }
-        }
 
-        msgs
+                (Instant::now(), msg)
+            });
+
+        Box::new(iter)
     }
 
     fn reset(&mut self) {
@@ -276,7 +283,7 @@ impl DataSource for SerialDataSource {
 }
 
 impl DataSource for LogFileDataSource {
-    fn next_messages(&mut self) -> Vec<DownlinkMessage> {
+    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a> {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -296,7 +303,15 @@ impl DataSource for LogFileDataSource {
         };
 
         self.buffer.truncate(0);
-        msgs
+
+        let iter = msgs.into_iter().scan((Instant::now(), 0), |(now, last), msg| {
+            let since_previous = u32::max(1, msg.time().saturating_sub(*last));
+            *now = *now + Duration::from_millis(since_previous as u64);
+            *last = msg.time();
+            Some((*now, msg))
+        });
+
+        Box::new(iter) // TODO
     }
 
     fn reset(&mut self) {

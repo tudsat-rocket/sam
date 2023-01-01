@@ -4,6 +4,11 @@ use std::path::PathBuf;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
+
 use eframe::egui;
 use eframe::emath::Align;
 use egui::widgets::plot::{LinkedAxisGroup, LinkedCursorsGroup};
@@ -54,10 +59,8 @@ const ARCHIVE: [(&str, &[u8], &[u8]); 2] = [
 pub struct Sam {
     data_source: Box<dyn DataSource>,
 
-    vehicle_states: Rc<RefCell<Vec<VehicleState>>>,
+    telemetry_msgs: Rc<RefCell<Vec<(Instant, DownlinkMessage)>>>,
     log_messages: Vec<(u32, String, LogLevel, String)>,
-
-    auto_reset: bool,
 
     logo: RetainedImage,
     logo_inverted: RetainedImage,
@@ -88,154 +91,79 @@ impl Sam {
         let axes = LinkedAxisGroup::new(true, false);
         let cursors = LinkedCursorsGroup::new(true, false);
 
-        let orientation_plot = PlotState::new(
-            "Orientation",
-            vec![
-                ("Pitch (X) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.0 * RAD_TO_DEG))),
-                ("Pitch (Y) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.1 * RAD_TO_DEG))),
-                ("Roll (Z) [°]", Box::new(|vs| vs.euler_angles.map(|a| a.2 * RAD_TO_DEG))),
-            ],
-            (Some(-180.0), Some(180.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let start = Instant::now();
 
-        let vertical_speed_plot = PlotState::new(
-            "Vert. Speed & Accel.",
-            vec![
-                ("Vario [m/s]", Box::new(|vs| vs.vertical_speed)),
-                ("Vertical Accel [m/s²]", Box::new(|vs| vs.vertical_accel)),
-                ("Vertical Accel (Filt.) [m/s²]", Box::new(|vs| vs.vertical_accel_filtered)),
-            ],
-            (Some(-1.0), Some(1.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), axes.clone(), cursors.clone(), start)
+            .line("Pitch (X) [°]", |vs| vs.euler_angles().map(|a| a.0 * RAD_TO_DEG))
+            .line("Pitch (Y) [°]", |vs| vs.euler_angles().map(|a| a.1 * RAD_TO_DEG))
+            .line("Roll (Z) [°]", |vs| vs.euler_angles().map(|a| a.2 * RAD_TO_DEG));
 
-        let altitude_plot = PlotState::new(
-            "Altitude (ASL)",
-            vec![
-                ("Altitude [m]", Box::new(|vs| vs.altitude)),
-                ("Altitude (Baro) [m]", Box::new(|vs| vs.altitude_baro)),
-                ("Altitude (GPS) [m]", Box::new(|vs| vs.altitude_gps)),
-                ("Altitude (Max) [m]", Box::new(|vs| vs.altitude_max)),
-                ("Altitude (Ground) [m]", Box::new(|vs| vs.altitude_ground)),
-            ],
-            (None, Some(300.0)), // TODO
-            axes.clone(),
-            cursors.clone(),
-        );
+        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), axes.clone(), cursors.clone(), start)
+            .line("Vario [m/s]", |vs| vs.vertical_speed())
+            .line("Vertical Accel [m/s²]", |vs| vs.vertical_accel())
+            .line("Vertical Accel (Filt.) [m/s²]", |vs| vs.vertical_accel_filtered());
 
-        let gyroscope_plot = PlotState::new(
-            "Gyroscope",
-            vec![
-                ("Gyro (X) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.0))),
-                ("Gyro (Y) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.1))),
-                ("Gyro (Z) [°/s]", Box::new(|vs| vs.gyroscope.map(|a| a.2))),
-            ],
-            (Some(-10.0), Some(10.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        // TODO: ylimits
+        let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), axes.clone(), cursors.clone(), start)
+            .line("Altitude [m]", |vs| vs.altitude())
+            .line("Altitude (Baro) [m]", |vs| vs.altitude_baro())
+            .line("Altitude (GPS) [m]", |vs| vs.altitude_gps())
+            .line("Altitude (Max) [m]", |vs| vs.altitude_max())
+            .line("Altitude (Ground) [m]", |vs| vs.altitude_ground());
 
-        let accelerometer_plot = PlotState::new(
-            "Accelerometers",
-            vec![
-                ("Accel 2 (X) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.0))),
-                ("Accel 2 (Y) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.1))),
-                ("Accel 2 (Z) [m/s²]", Box::new(|vs| vs.accelerometer2.map(|a| a.2))),
-                ("Accel 1 (X) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.0))),
-                ("Accel 1 (Y) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.1))),
-                ("Accel 1 (Z) [m/s²]", Box::new(|vs| vs.accelerometer1.map(|a| a.2))),
-            ],
-            (Some(-10.0), Some(10.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+            .line("Gyro (X) [°/s]", |vs| vs.gyroscope().map(|a| a.0))
+            .line("Gyro (Y) [°/s]", |vs| vs.gyroscope().map(|a| a.1))
+            .line("Gyro (Z) [°/s]", |vs| vs.gyroscope().map(|a| a.2));
 
-        let magnetometer_plot = PlotState::new(
-            "Magnetometer",
-            vec![
-                ("Mag (X) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.0))),
-                ("Mag (Y) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.1))),
-                ("Mag (Z) [µT]", Box::new(|vs| vs.magnetometer.map(|a| a.2))),
-            ],
-            (None, None),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+            .line("Accel 2 (X) [m/s²]", |vs| vs.accelerometer2().map(|a| a.0))
+            .line("Accel 2 (Y) [m/s²]", |vs| vs.accelerometer2().map(|a| a.1))
+            .line("Accel 2 (Z) [m/s²]", |vs| vs.accelerometer2().map(|a| a.2))
+            .line("Accel 1 (X) [m/s²]", |vs| vs.accelerometer1().map(|a| a.0))
+            .line("Accel 1 (Y) [m/s²]", |vs| vs.accelerometer1().map(|a| a.1))
+            .line("Accel 1 (Z) [m/s²]", |vs| vs.accelerometer1().map(|a| a.2));
 
-        let barometer_plot = PlotState::new(
-            "Barometer",
-            vec![
-                ("Pressure [mbar]", Box::new(|vs| vs.pressure)),
-            ],
-            (Some(900.0), Some(1100.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let magnetometer_plot = PlotState::new("Magnetometer", (None, None), axes.clone(), cursors.clone(), start)
+            .line("Mag (X) [µT]", |vs| vs.magnetometer().map(|a| a.0))
+            .line("Mag (Y) [µT]", |vs| vs.magnetometer().map(|a| a.1))
+            .line("Mag (Z) [µT]", |vs| vs.magnetometer().map(|a| a.2));
 
-        let temperature_plot = PlotState::new(
-            "Temperatures",
-            vec![
-                ("Baro. Temp. [°C]", Box::new(|vs| vs.temperature_baro)),
-                ("Core Temp. [°C]", Box::new(|vs| vs.temperature_core)),
-            ],
-            (Some(25.0), Some(35.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), axes.clone(), cursors.clone(), start)
+            .line("Pressure [mbar]", |vs| vs.pressure());
 
-        let power_plot = PlotState::new(
-            "Power",
-            vec![
-                ("Battery Voltage [V]", Box::new(|vs| vs.battery_voltage)),
-                ("Arm Voltage [V]", Box::new(|vs| vs.arm_voltage)),
-                ("Current [A]", Box::new(|vs| vs.current)),
-                ("Core Voltage [V]", Box::new(|vs| vs.cpu_voltage)),
-            ],
-            (Some(0.0), Some(9.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), axes.clone(), cursors.clone(), start)
+            .line("Baro. Temp. [°C]", |vs| vs.temperature_baro())
+            .line("Core Temp. [°C]", |vs| vs.temperature_core());
 
-        let runtime_plot = PlotState::new(
-            "Runtime",
-            vec![
-                ("CPU Util. [%]", Box::new(|vs| vs.cpu_utilization.map(|u| u as f32))),
-                ("Heap Util. [%]", Box::new(|vs| vs.heap_utilization.map(|u| u as f32))),
-            ],
-            (Some(0.0), Some(100.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), axes.clone(), cursors.clone(), start)
+            .line("Battery Voltage [V]", |vs| vs.battery_voltage())
+            .line("Arm Voltage [V]", |vs| vs.arm_voltage())
+            .line("Current [A]", |vs| vs.current())
+            .line("Core Voltage [V]", |vs| vs.cpu_voltage());
 
-        let signal_plot = PlotState::new(
-            "Signal",
-            vec![
-                ("GCS RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))),
-                ("GCS Signal RSSI [dBm]", Box::new(|vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))),
-                ("GCS SNR [dB]", Box::new(|vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))),
-                ("Vehicle RSSI [dBm]", Box::new(|vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))),
-            ],
-            (Some(-100.0), Some(10.0)),
-            axes.clone(),
-            cursors.clone(),
-        );
+        let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), axes.clone(), cursors.clone(), start)
+            .line("CPU Util. [%]", |vs| vs.cpu_utilization().map(|u| u as f32))
+            .line("Heap Util. [%]", |vs| vs.heap_utilization().map(|u| u as f32));
+
+        let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+            .line("GCS RSSI [dBm]", |vs| vs.gcs_lora_rssi().map(|x| x as f32 / -2.0))
+            .line("GCS Signal RSSI [dBm]", |vs| vs.gcs_lora_rssi_signal().map(|x| x as f32 / -2.0))
+            .line("GCS SNR [dB]", |vs| vs.gcs_lora_snr().map(|x| x as f32 / 4.0))
+            .line("Vehicle RSSI [dBm]", |vs| vs.vehicle_lora_rssi().map(|x| x as f32 / -2.0));
 
         let bytes = include_bytes!("logo.png");
         let logo = RetainedImage::from_image_bytes("logo.png", bytes).unwrap();
 
         let bytes = include_bytes!("logo_inverted.png");
         let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
-        let vehicle_states = Rc::new(RefCell::new(Vec::new()));
-        let map = MapState::new(vehicle_states.clone());
+        let telemetry_msgs = Rc::new(RefCell::new(Vec::new()));
+        let map = MapState::new(); // TODO
 
         Self {
             data_source,
-            vehicle_states,
+            telemetry_msgs,
             log_messages: Vec::new(),
-            auto_reset: false,
             logo,
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
@@ -278,50 +206,31 @@ impl Sam {
     fn reset(&mut self) {
         info!("Resetting.");
         self.xlen = 10.0;
-        self.vehicle_states.borrow_mut().truncate(0);
+        self.telemetry_msgs.borrow_mut().truncate(0);
         self.log_messages.truncate(0);
         self.data_source.reset();
-        self.all_plots(|plot| plot.reset());
-        // TODO: close log file if opened?
+        let now = Instant::now();
+        self.all_plots(|plot| plot.reset(now));
+        self.map.reset();
     }
 
     /// Incorporates a new downlink message
-    fn process_telemetry(&mut self, msg: DownlinkMessage) {
-        match msg {
-            DownlinkMessage::Log(t, l, ll, m) => {
-                self.log_messages.push((t, l, ll, m));
-                return;
-            }
-            DownlinkMessage::TelemetryGCS(_) => {}
-            _ => {
-                let time = msg.time();
-                let last_time = self.vehicle_states.borrow().last().map(|vs| vs.time).unwrap_or(0);
-
-                // Clear history if this seems to be a new run
-                // TODO: refactor
-                if time + 1000 < last_time && self.auto_reset {
-                    self.reset();
-                }
-
-                self.vehicle_states.borrow_mut().push(VehicleState {
-                    time,
-                    ..Default::default()
-                });
-            }
+    fn process_telemetry(&mut self, time: Instant, msg: DownlinkMessage) {
+        if let DownlinkMessage::Log(t, l, ll, m) = msg {
+            self.log_messages.push((t, l, ll, m));
+            return;
         }
 
-        let vs = self.vehicle_states.clone();
-        if let Some(vs) = vs.borrow_mut().last_mut() {
-            vs.incorporate_telemetry(&msg);
-            self.all_plots(|plot| plot.push(&vs));
-        };
+        self.all_plots(|plot| plot.push(time, &msg));
+        self.map.push(time, &msg);
+        self.telemetry_msgs.borrow_mut().push((time, msg.clone()));
     }
 
     /// Returns the "current" value for the given callback. This is the last
     /// known of the value at the current time.
     /// TODO: incorporate cursor position
-    fn current<T>(&self, callback: impl Fn(&VehicleState) -> Option<T>) -> Option<T> {
-        self.vehicle_states.borrow().iter().rev().find_map(|vs| callback(vs))
+    fn current<T>(&self, callback: impl Fn(&DownlinkMessage) -> Option<T>) -> Option<T> {
+        self.telemetry_msgs.borrow().iter().rev().find_map(|(_t, msg)| callback(msg))
     }
 
     /// Opens a log file data source
@@ -340,9 +249,10 @@ impl Sam {
 impl eframe::App for Sam {
     /// Main draw method of the application
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Process new messages
-        for msg in self.data_source.next_messages().into_iter() {
-            self.process_telemetry(msg);
+        // Process new messages TODO. iter
+        let msgs: Vec<_> = self.data_source.next_messages().collect();
+        for (time, msg) in msgs.into_iter() {
+            self.process_telemetry(time, msg);
         }
 
         // Check for keyboard inputs. TODO: clean up
@@ -437,14 +347,14 @@ impl eframe::App for Sam {
                     ui.label(self.data_source.info_text());
                 });
 
-                // Some buttons. TODO: refactor
+                // Some buttons
                 #[cfg(not(target_arch = "wasm32"))]
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    ui.checkbox(&mut self.auto_reset, "Auto-Reset");
-
-                    if ui.button("⟲  Reset").clicked() {
-                        self.reset();
-                    }
+                    ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
+                        if ui.button("⏮  Reset").clicked() {
+                            self.reset();
+                        }
+                    });
 
                     if ui.button("➕").clicked() {
                         self.xlen /= ZOOM_FACTOR;
@@ -504,28 +414,28 @@ impl eframe::App for Sam {
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() * 0.55);
 
-                    let time = self.vehicle_states.borrow().last().map(|vs| format!("{:10.3}", (vs.time as f32) / 1000.0));
-                    let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
-                    let battery_voltage = self.current(|vs| vs.battery_voltage).map(|v| format!("{:.2}", v));
-                    let vertical_speed = self.current(|vs| vs.vertical_speed).map(|v| format!("{:.2}", v));
+                    let time = self.telemetry_msgs.borrow().last().map(|(_t, msg)| format!("{:10.3}", (msg.time() as f32) / 1000.0));
+                    let mode = self.current(|vs| vs.mode()).map(|s| format!("{:?}", s));
+                    let battery_voltage = self.current(|vs| vs.battery_voltage()).map(|v| format!("{:.2}", v));
+                    let vertical_speed = self.current(|vs| vs.vertical_speed()).map(|v| format!("{:.2}", v));
 
-                    let alt_ground = self.current(|vs| vs.altitude_ground).unwrap_or(0.0);
-                    let alt = self.current(|vs| vs.altitude).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_max = self.current(|vs| vs.altitude_max).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_baro = self.current(|vs| vs.altitude_baro).map(|a| format!("{:.1}", a));
-                    let alt_gps = self.current(|vs| vs.altitude_gps).map(|a| format!("{:.1}", a));
+                    let alt_ground = self.current(|vs| vs.altitude_ground()).unwrap_or(0.0);
+                    let alt = self.current(|vs| vs.altitude()).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_max = self.current(|vs| vs.altitude_max()).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_baro = self.current(|vs| vs.altitude_baro()).map(|a| format!("{:.1}", a));
+                    let alt_gps = self.current(|vs| vs.altitude_gps()).map(|a| format!("{:.1}", a));
 
                     let last_gps_msg = self
-                        .vehicle_states
+                        .telemetry_msgs
                         .borrow()
                         .iter()
                         .rev()
-                        .find_map(|vs| vs.gps_fix.is_some().then(|| vs))
+                        .find_map(|(_t, msg)| msg.gps_fix().is_some().then(|| msg))
                         .cloned();
-                    let gps_status = last_gps_msg.as_ref().map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0)));
-                    let hdop = last_gps_msg.as_ref().map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0));
-                    let latitude = last_gps_msg.as_ref().and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l));
-                    let longitude = last_gps_msg.as_ref().and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l));
+                    let gps_status = last_gps_msg.as_ref().map(|vs| format!("{:?} ({})", vs.gps_fix().unwrap(), vs.num_satellites().unwrap_or(0)));
+                    let hdop = last_gps_msg.as_ref().map(|vs| format!("{:.2}", vs.hdop().unwrap_or(9999) as f32 / 100.0));
+                    let latitude = last_gps_msg.as_ref().and_then(|vs| vs.latitude()).map(|l| format!("{:.6}", l));
+                    let longitude = last_gps_msg.as_ref().and_then(|vs| vs.longitude()).map(|l| format!("{:.6}", l));
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 3.0);
@@ -539,7 +449,7 @@ impl eframe::App for Sam {
                         ui.set_width(ui.available_width() / 2.0);
                         ui.telemetry_value("⬆  Alt. (AGL/ASL) [m]", alt);
                         ui.telemetry_value("📈 Max Alt. (AGL/ASL) [m]", alt_max);
-                        ui.telemetry_value("🌁 Alt. (Baro, ASL) [m]", alt_baro);
+                        ui.telemetry_value("☁  Alt. (Baro, ASL) [m]", alt_baro);
                         ui.telemetry_value("📡 Alt. (GPS, ASL) [m]", alt_gps);
                     });
 
@@ -559,7 +469,7 @@ impl eframe::App for Sam {
                         ui.command_button("🗑 Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()), &mut self.data_source);
 
                         let flash_pointer: f32 = self
-                            .current(|vs| vs.flash_pointer)
+                            .current(|vs| vs.flash_pointer())
                             .map(|fp| (fp as f32) / 1024.0 / 1024.0)
                             .unwrap_or_default();
                         let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
@@ -567,7 +477,7 @@ impl eframe::App for Sam {
                         let text = format!("🖴  Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size);
                         ui.flash_bar(ui.available_width() * 0.6, f, text);
 
-                        let voltage = self.current(|vs| vs.battery_voltage).unwrap_or_default();
+                        let voltage = self.current(|vs| vs.battery_voltage()).unwrap_or_default();
                         let f = (voltage - 6.0) / (8.4 - 6.0);
                         let text = format!("🔋 Battery: {:.2}V", voltage);
                         ui.battery_bar(ui.available_width(), f, text);
@@ -576,7 +486,7 @@ impl eframe::App for Sam {
                     ui.horizontal_centered(|ui| {
                         ui.set_height(ui.available_height());
                         let w = ui.available_width() / 7.0 - style.spacing.item_spacing.x * (6.0 / 7.0);
-                        let current = self.current(|vs| vs.mode);
+                        let current = self.current(|vs| vs.mode());
                         ui.flight_mode_button(w, FlightMode::Idle, current, &mut self.data_source);
                         ui.flight_mode_button(w, FlightMode::HardwareArmed, current, &mut self.data_source);
                         ui.flight_mode_button(w, FlightMode::Armed, current, &mut self.data_source);

@@ -3,75 +3,81 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
+
 use eframe::egui;
 use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle, LinkedAxisGroup, LinkedCursorsGroup};
 
 use euroc_fc_firmware::telemetry::FlightMode;
 
+use crate::gui::*;
 use crate::state::*;
 use crate::telemetry_ext::*;
-
-/// A callback to obtain the value to be plotted from a given VehicleState.
-type DataCallback = Box<dyn FnMut(&VehicleState) -> Option<f32>>;
 
 /// Larger data structures cached for each plot, to avoid being recalculated
 /// on each draw.
 struct PlotCache {
+    start: Instant,
     lines: Vec<PlotCacheLine>,
     mode_transitions: Vec<(f64, FlightMode)>,
-    reset_on_next_draw: bool
+    reset_on_next_draw: bool,
 }
 
 /// Cache for a single line.
 struct PlotCacheLine {
-    title: String,
-    pub callback: DataCallback,
+    name: String,
+    pub callback: Box<dyn FnMut(&DownlinkMessage) -> Option<f32>>,
     data: Vec<[f64; 2]>,
 }
 
 impl PlotCache {
     /// Create a new plot cache.
-    fn new<S: ToString>(
-        lines: Vec<(S, DataCallback)>
-    ) -> Self {
-        let lines = lines.into_iter()
-            .map(|(s, cb)| PlotCacheLine {
-                title: s.to_string(),
-                callback: cb,
-                data: Vec::new()
-            })
-            .collect();
-
+    fn new(start: Instant) -> Self {
         Self {
-            lines,
+            lines: Vec::new(),
             mode_transitions: Vec::new(),
-            reset_on_next_draw: false
+            reset_on_next_draw: false,
+            start,
         }
     }
 
+    fn add_line(&mut self, name: &str, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) {
+        self.lines.push(PlotCacheLine {
+            name: name.to_string(),
+            callback: Box::new(cb),
+            data: Vec::new()
+        });
+    }
+
     /// Incorporate some new data into the cache.
-    pub fn push(&mut self, vs: &VehicleState) {
+    pub fn push(&mut self, x: Instant, vs: &DownlinkMessage) {
+        let x = x.duration_since(self.start).as_secs_f64();
+
         // Value to be plotted.
         for l in self.lines.iter_mut() {
             if let Some(value) = (l.callback)(vs) {
-                l.data.push([vs.time as f64 / 1000.0, value.into()]); // TODO: f32?
+                l.data.push([x, value.into()]); // TODO: f32?
             }
         }
 
         // Vertical lines for mode transitions
-        if let Some(mode) = vs.mode {
+        if let Some(mode) = vs.mode() {
             if self.mode_transitions.last().map(|l| l.1 != mode).unwrap_or(true) {
-                self.mode_transitions.push((vs.time as f64 / 1000.0, mode));
+                self.mode_transitions.push((x, mode));
             }
         }
     }
 
     /// Reset the cache.
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, start: Instant) {
         for l in self.lines.iter_mut() {
             l.data.truncate(0);
         }
         self.mode_transitions.truncate(0);
+        self.start = start;
 
         // To reset some of the egui internals (state stored in the linked
         // axes/cursor groups), we also need to call reset on the egui object
@@ -94,7 +100,7 @@ impl PlotCache {
     /// Lines to be plotted
     pub fn plot_lines(&self) -> Box<dyn Iterator<Item = Line> + '_> {
         let iter = self.lines.iter()
-            .map(|pcl| Line::new(pcl.data.clone()).name(&pcl.title));
+            .map(|pcl| Line::new(pcl.data.clone()).name(&pcl.name));
         Box::new(iter)
     }
 
@@ -129,12 +135,12 @@ impl PlotState {
     // Create a new `PlotState`.
     pub fn new<S: ToString>(
         title: S,
-        lines: Vec<(S, DataCallback)>,
         ylimits: (Option<f32>, Option<f32>),
         axes: LinkedAxisGroup,
-        cursors: LinkedCursorsGroup
+        cursors: LinkedCursorsGroup,
+        start: Instant
     ) -> Self {
-        let cache = PlotCache::new(lines);
+        let cache = PlotCache::new(start);
         let (ymin, ymax) = ylimits;
 
         Self {
@@ -143,18 +149,23 @@ impl PlotState {
             axes,
             cursors,
             ymin,
-            ymax
+            ymax,
         }
     }
 
+    pub fn line(self, name: &str, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
+        self.cache.borrow_mut().add_line(name, cb);
+        self
+    }
+
     // Add some newly downlinked data to the cache.
-    pub fn push(&mut self, vs: &VehicleState) {
-        self.cache.borrow_mut().push(vs)
+    pub fn push(&mut self, x: Instant, msg: &DownlinkMessage) {
+        self.cache.borrow_mut().push(x, msg)
     }
 
     // Reset the plot, for instance when loading a different file.
-    pub fn reset(&mut self) {
-        self.cache.borrow_mut().reset()
+    pub fn reset(&mut self, start: Instant) {
+        self.cache.borrow_mut().reset(start)
     }
 }
 
