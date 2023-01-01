@@ -25,11 +25,16 @@ siphasher = "0.3"
 chrono = "0.4"
 crc = "2"
 rfd = "0.10"
+xdg = "2.4"
+slippy-map-tiles = "0.16"
+colorgrad = "0.6"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 home = "0.5" # No home directories in web assembly
+reqwest = { version = "0.11", features = ["blocking"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+reqwest = { version = "0.11" }
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
