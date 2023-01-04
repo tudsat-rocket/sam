@@ -18,10 +18,12 @@ harness = false
 embedded-hal = "0.2"
 num-traits = { version = "0.2.15", default-features = false }
 nb = "1"
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
-cortex-m-rt = "0.7"
-alloc-cortex-m = { version = "0.4", optional = true } # Only load this for no_std, since it forces us to use nightly
-stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="7e500316a87b98202d783251201615a17329eb7b"}
+cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
+cortex-m-rt = { version = "0.7", optional = true }
+# Only load this for no_std, since it forces us to use nightly
+alloc-cortex-m = { version = "0.4", optional = true }
+# Same here, but this is because it can cause issues when the library is loaded in wasm or x86
+stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="7e500316a87b98202d783251201615a17329eb7b", optional = true }
 usbd-serial = "0.1.1"
 usb-device ="0.2.9"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
@@ -41,7 +43,7 @@ defmt-test = "0.3"
 
 [features]
 default = ["no_std"]
-no_std = ["alloc-cortex-m"]
+no_std = ["alloc-cortex-m", "stm32f4xx-hal", "cortex-m", "cortex-m-rt"]
 gcs = []
 
 # cargo build/run
