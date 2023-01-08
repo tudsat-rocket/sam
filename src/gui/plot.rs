@@ -22,6 +22,7 @@ use crate::telemetry_ext::*;
 /// Cache for a single line.
 struct PlotCacheLine {
     name: String,
+    color: Color32,
     pub callback: Box<dyn FnMut(&DownlinkMessage) -> Option<f32>>,
     data: Vec<[f64; 2]>,
     last_bounds: Option<PlotBounds>,
@@ -29,9 +30,10 @@ struct PlotCacheLine {
 }
 
 impl PlotCacheLine {
-    pub fn new(name: &str, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
+    pub fn new(name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
         Self {
             name: name.to_string(),
+            color,
             callback: Box::new(cb),
             data: Vec::new(),
             last_bounds: None,
@@ -98,8 +100,8 @@ impl PlotCache {
         }
     }
 
-    fn add_line(&mut self, name: &str, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) {
-        self.lines.push(PlotCacheLine::new(name, cb));
+    fn add_line(&mut self, name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) {
+        self.lines.push(PlotCacheLine::new(name, color, cb));
     }
 
     /// Incorporate some new data into the cache.
@@ -140,7 +142,7 @@ impl PlotCache {
         puffin::profile_function!();
 
         self.lines.iter_mut()
-            .map(|pcl| Line::new(pcl.data_for_bounds(bounds)).name(&pcl.name))
+            .map(|pcl| Line::new(pcl.data_for_bounds(bounds)).name(&pcl.name).color(pcl.color))
             .collect()
     }
 
@@ -259,8 +261,8 @@ impl PlotState {
         }
     }
 
-    pub fn line(self, name: &str, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
-        self.cache.borrow_mut().add_line(name, cb);
+    pub fn line(self, name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
+        self.cache.borrow_mut().add_line(name, color, cb);
         self
     }
 

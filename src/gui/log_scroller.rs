@@ -25,14 +25,16 @@ impl LogUiExt for egui::Ui {
             .show(self, |ui| {
                 ui.set_min_height(h);
 
+                let gray = Color32::from_rgb(0x66, 0x5c, 0x54);
+
                 for (t, loc, ll, msg) in log_messages {
                     ui.horizontal(|ui| {
                         ui.allocate_ui_with_layout(
                             Vec2::new(60.0, 10.0),
                             Layout::top_down(eframe::emath::Align::RIGHT),
                             |ui| {
-                                ui.label(
-                                    RichText::new(format!("{:>8.3}", *t as f32 / 1000.0)).color(Color32::GRAY),
+                                ui.monospace(
+                                    RichText::new(format!("{:>8.3}", *t as f32 / 1000.0)).color(gray),
                                 );
                             },
                         );
@@ -51,7 +53,7 @@ impl LogUiExt for egui::Ui {
                             Layout::top_down(eframe::emath::Align::LEFT),
                             |ui| {
                                 ui.set_width(ui.available_width());
-                                ui.label(RichText::new(loc).color(Color32::GRAY));
+                                ui.monospace(RichText::new(loc).color(gray));
                             },
                         );
 
@@ -60,7 +62,7 @@ impl LogUiExt for egui::Ui {
                             Layout::top_down(eframe::emath::Align::LEFT),
                             |ui| {
                                 ui.set_width(ui.available_width());
-                                ui.label(msg);
+                                ui.monospace(msg);
                             },
                         );
                     });

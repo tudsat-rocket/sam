@@ -256,9 +256,9 @@ impl DataSource for SerialDataSource {
 
     fn status(&self) -> (Color32, String) {
         match self.serial_status {
-            SerialStatus::Init => (Color32::GRAY, "Not connected".to_string()),
-            SerialStatus::Connected => (Color32::GREEN, "Connected".to_string()),
-            SerialStatus::Error => (Color32::RED, "Error".to_string()),
+            SerialStatus::Init => (Color32::from_rgb(0x92, 0x83, 0x74), "Not connected".to_string()),
+            SerialStatus::Connected => (Color32::from_rgb(0x98, 0x97, 0x1a), "Connected".to_string()),
+            SerialStatus::Error => (Color32::from_rgb(0xcc, 0x24, 0x1d), "Error".to_string()),
         }
     }
 
@@ -283,7 +283,7 @@ impl DataSource for SerialDataSource {
 
     fn minimum_fps(&self) -> Option<u64> {
         if self.last_time.map(|t| t.elapsed() > Duration::from_secs_f64(10.0)).unwrap_or(false) {
-            None
+            Some(1)
         } else {
             Some(u64::max(30, u64::min(self.message_receipt_times.len() as u64, 60)))
         }
@@ -355,7 +355,7 @@ impl DataSource for LogFileDataSource {
     }
 
     fn status(&self) -> (Color32, String) {
-        (Color32::LIGHT_BLUE, "Log File".to_string())
+        (Color32::from_rgb(0x45, 0x85, 0x88), "Log File".to_string())
     }
 
     fn info_text(&self) -> String {

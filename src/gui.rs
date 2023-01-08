@@ -13,7 +13,7 @@ use eframe::egui;
 use eframe::emath::Align;
 use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
-use egui::{FontId, Key, Layout, RichText, Vec2};
+use egui::{FontId, Key, Layout, RichText, Vec2, Color32};
 use egui_extras::RetainedImage;
 
 use log::*;
@@ -25,6 +25,7 @@ mod plot;
 mod map;
 mod log_scroller;
 mod maxi_grid;
+mod theme;
 
 use crate::state::*;
 use crate::data_source::*;
@@ -35,6 +36,7 @@ use crate::gui::plot::*;
 use crate::gui::map::*;
 use crate::gui::log_scroller::*;
 use crate::gui::maxi_grid::*;
+use crate::gui::theme::*;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
@@ -86,69 +88,81 @@ impl Sam {
     pub fn init(data_source: Box<dyn DataSource>) -> Self {
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
+        let r = Color32::from_rgb(0xfb, 0x49, 0x34);
+        let g = Color32::from_rgb(0xb8, 0xbb, 0x26);
+        let b = Color32::from_rgb(0x83, 0xa5, 0x98);
+        let r1 = Color32::from_rgb(0xcc, 0x24, 0x1d);
+        let g1 = Color32::from_rgb(0x98, 0x97, 0x1a);
+        let b1 = Color32::from_rgb(0x45, 0x85, 0x88);
+        let o = Color32::from_rgb(0xfa, 0xbd, 0x2f);
+        let o1 = Color32::from_rgb(0xd6, 0x5d, 0x0e);
+        let br = Color32::from_rgb(0x61, 0x48, 0x1c);
+        let p = Color32::from_rgb(0xb1, 0x62, 0x86);
+        let c = Color32::from_rgb(0x68, 0x9d, 0x6a);
+
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
-            .line("Pitch (X) [°]", |vs| vs.euler_angles().map(|a| a.0))
-            .line("Pitch (Y) [°]", |vs| vs.euler_angles().map(|a| a.1))
-            .line("Roll (Z) [°]", |vs| vs.euler_angles().map(|a| a.2));
+            .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.2))
+            .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.0))
+            .line("Pitch (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.1));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), shared_plot.clone())
-            .line("Vario [m/s]", |vs| vs.vertical_speed())
-            .line("Vertical Accel [m/s²]", |vs| vs.vertical_accel())
-            .line("Vertical Accel (Filt.) [m/s²]", |vs| vs.vertical_accel_filtered());
+            .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel())
+            .line("Vertical Accel (Filt.) [m/s²]", o, |vs| vs.vertical_accel_filtered())
+            .line("Vario [m/s]", b, |vs| vs.vertical_speed());
 
         // TODO: ylimits
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), shared_plot.clone())
-            .line("Altitude [m]", |vs| vs.altitude())
-            .line("Altitude (Baro) [m]", |vs| vs.altitude_baro())
-            .line("Altitude (GPS) [m]", |vs| vs.altitude_gps())
-            .line("Altitude (Max) [m]", |vs| vs.altitude_max())
-            .line("Altitude (Ground) [m]", |vs| vs.altitude_ground());
+            .line("Altitude (Ground) [m]", br, |vs| vs.altitude_ground())
+            //.line("Altitude (Max) [m]", r, |vs| vs.altitude_max())
+            .line("Altitude (Baro) [m]", b1, |vs| vs.altitude_baro())
+            .line("Altitude [m]", b, |vs| vs.altitude())
+            .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps());
 
         let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Gyro (X) [°/s]", |vs| vs.gyroscope().map(|a| a.0))
-            .line("Gyro (Y) [°/s]", |vs| vs.gyroscope().map(|a| a.1))
-            .line("Gyro (Z) [°/s]", |vs| vs.gyroscope().map(|a| a.2));
+            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope().map(|a| a.0))
+            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope().map(|a| a.1))
+            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope().map(|a| a.2));
 
         let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", |vs| vs.accelerometer2().map(|a| a.0))
-            .line("Accel 2 (Y) [m/s²]", |vs| vs.accelerometer2().map(|a| a.1))
-            .line("Accel 2 (Z) [m/s²]", |vs| vs.accelerometer2().map(|a| a.2))
-            .line("Accel 1 (X) [m/s²]", |vs| vs.accelerometer1().map(|a| a.0))
-            .line("Accel 1 (Y) [m/s²]", |vs| vs.accelerometer1().map(|a| a.1))
-            .line("Accel 1 (Z) [m/s²]", |vs| vs.accelerometer1().map(|a| a.2));
+            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2().map(|a| a.0))
+            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2().map(|a| a.1))
+            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2().map(|a| a.2))
+            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1().map(|a| a.0))
+            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1().map(|a| a.1))
+            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1().map(|a| a.2));
 
         let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
-            .line("Mag (X) [µT]", |vs| vs.magnetometer().map(|a| a.0))
-            .line("Mag (Y) [µT]", |vs| vs.magnetometer().map(|a| a.1))
-            .line("Mag (Z) [µT]", |vs| vs.magnetometer().map(|a| a.2));
+            .line("Mag (X) [µT]", r, |vs| vs.magnetometer().map(|a| a.0))
+            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer().map(|a| a.1))
+            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer().map(|a| a.2));
 
         let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), shared_plot.clone())
-            .line("Pressure [mbar]", |vs| vs.pressure());
+            .line("Pressure [mbar]", c, |vs| vs.pressure());
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Baro. Temp. [°C]", |vs| vs.temperature_baro())
-            .line("Core Temp. [°C]", |vs| vs.temperature_core());
+            .line("Baro. Temp. [°C]", c, |vs| vs.temperature_baro())
+            .line("Core Temp. [°C]", b, |vs| vs.temperature_core());
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Battery Voltage [V]", |vs| vs.battery_voltage())
-            .line("Arm Voltage [V]", |vs| vs.arm_voltage())
-            .line("Current [A]", |vs| vs.current())
-            .line("Core Voltage [V]", |vs| vs.cpu_voltage());
+            .line("Arm Voltage [V]", o, |vs| vs.arm_voltage())
+            .line("Battery Voltage [V]", g, |vs| vs.battery_voltage())
+            .line("Current [A]", o1, |vs| vs.current())
+            .line("Core Voltage [V]", b, |vs| vs.cpu_voltage());
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", |vs| vs.cpu_utilization().map(|u| u as f32))
-            .line("Heap Util. [%]", |vs| vs.heap_utilization().map(|u| u as f32));
+            .line("CPU Util. [%]", o, |vs| vs.cpu_utilization().map(|u| u as f32))
+            .line("Heap Util. [%]", g, |vs| vs.heap_utilization().map(|u| u as f32));
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
-            .line("GCS RSSI [dBm]", |vs| vs.gcs_lora_rssi().map(|x| x as f32 / -2.0))
-            .line("GCS Signal RSSI [dBm]", |vs| vs.gcs_lora_rssi_signal().map(|x| x as f32 / -2.0))
-            .line("GCS SNR [dB]", |vs| vs.gcs_lora_snr().map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", |vs| vs.vehicle_lora_rssi().map(|x| x as f32 / -2.0));
+            .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi().map(|x| x as f32 / -2.0))
+            .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal().map(|x| x as f32 / -2.0))
+            .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr().map(|x| x as f32 / 4.0))
+            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi().map(|x| x as f32 / -2.0));
 
-        let bytes = include_bytes!("logo.png");
+        let bytes = include_bytes!("../assets/logo.png");
         let logo = RetainedImage::from_image_bytes("logo.png", bytes).unwrap();
 
-        let bytes = include_bytes!("logo_inverted.png");
+        let bytes = include_bytes!("../assets/logo_inverted.png");
         let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
         let telemetry_msgs = Rc::new(RefCell::new(Vec::new()));
         let map = MapState::new(); // TODO
@@ -278,7 +292,9 @@ impl Sam {
         }
 
         // Redefine text_styles
+        let colors = ThemeColors::new(ctx);
         let mut style = (*ctx.style()).clone();
+        colors.apply(&mut style);
         style.text_styles.insert(Heading, FontId::new(14.0, Proportional));
         ctx.set_style(style.clone());
 
@@ -388,10 +404,12 @@ impl Sam {
         egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.style().visuals.dark_mode {
-                    self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 80.0));
+                    self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 90.0));
                 } else {
-                    self.logo_inverted.show_max_size(ui, Vec2::new(ui.available_width(), 80.0));
+                    self.logo_inverted.show_max_size(ui, Vec2::new(ui.available_width(), 90.0));
                 }
+
+                let spacing = 3.0; // TODO: this is ugly
 
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() * 0.55);
@@ -421,26 +439,30 @@ impl Sam {
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 3.0);
-                        ui.telemetry_value("🕐 Time [s]", time);
-                        ui.telemetry_value("🏷 Mode", mode);
-                        ui.telemetry_value("🔋 Bat. Voltage [V]", battery_voltage);
-                        ui.telemetry_value("⏱  Vertical Speed [m/s]", vertical_speed);
+                        ui.add_space(spacing);
+                        ui.telemetry_value("🕐", "Time [s]", time);
+                        ui.telemetry_value("🏷", "Mode", mode);
+                        ui.telemetry_value("🔋", "Bat. Voltage [V]", battery_voltage);
+                        ui.telemetry_value("⏱", "Vertical Speed [m/s]", vertical_speed);
+                        ui.add_space(spacing);
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 2.0);
-                        ui.telemetry_value("⬆  Alt. (AGL/ASL) [m]", alt);
-                        ui.telemetry_value("📈 Max Alt. (AGL/ASL) [m]", alt_max);
-                        ui.telemetry_value("☁  Alt. (Baro, ASL) [m]", alt_baro);
-                        ui.telemetry_value("📡 Alt. (GPS, ASL) [m]", alt_gps);
+                        ui.add_space(spacing);
+                        ui.telemetry_value("⬆", "Alt. (AGL/ASL) [m]", alt);
+                        ui.telemetry_value("📈", "Max Alt. (AGL/ASL) [m]", alt_max);
+                        ui.telemetry_value("☁", "Alt. (Baro, ASL) [m]", alt_baro);
+                        ui.telemetry_value("📡", "Alt. (GPS, ASL) [m]", alt_gps);
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width());
-                        ui.telemetry_value("📶 GPS Status (#Sats)", gps_status);
-                        ui.telemetry_value("🎯 HDOP", hdop);
-                        ui.telemetry_value("↕ Latitude", latitude);
-                        ui.telemetry_value("↔ Longitude", longitude);
+                        ui.add_space(spacing);
+                        ui.telemetry_value("📶", "GPS Status (#Sats)", gps_status);
+                        ui.telemetry_value("🎯", "HDOP", hdop);
+                        ui.telemetry_value("↕", "Latitude", latitude);
+                        ui.telemetry_value("↔", "Longitude", longitude);
                     });
                 });
 
@@ -466,7 +488,7 @@ impl Sam {
                     });
 
                     ui.horizontal_centered(|ui| {
-                        ui.set_height(ui.available_height());
+                        ui.set_height(ui.available_height() - spacing);
                         let w = ui.available_width() / 7.0 - style.spacing.item_spacing.x * (6.0 / 7.0);
                         let current = self.current(|vs| vs.mode());
                         ui.flight_mode_button(w, FlightMode::Idle, current, &mut self.data_source);
@@ -482,9 +504,12 @@ impl Sam {
         });
 
         // Log scroller.
+        let mut frame = egui::containers::Frame::side_top_panel(&style);
+        frame.fill = colors.background_weak;
         egui::TopBottomPanel::bottom("logbar")
             .min_height(72.0)
             .resizable(true)
+            .frame(frame)
             .show(ctx, |ui| {
                 ui.log_scroller(&self.log_messages);
             });
