@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use euroc_fc_firmware::telemetry::*;
 use nalgebra::vector;
 use nalgebra::{Quaternion, UnitQuaternion};
@@ -40,7 +42,9 @@ pub trait VehicleState {
     fn gcs_lora_snr(&self) -> Option<u8>;
 
     fn euler_angles(&self) -> Option<(f32, f32, f32)> {
-        self.orientation().map(|q| q.euler_angles())
+        self.orientation()
+            .map(|q| q.euler_angles())
+            .map(|(r, p, y)| (r * 180.0 / PI, p * 180.0 / PI, y * 180.0 / PI))
     }
 }
 

@@ -37,6 +37,7 @@ pub struct SerialDataSource {
     message_receipt_times: VecDeque<(Instant, u32)>,
     siphasher: SipHasher,
     next_mac: (u32, u64),
+    last_time: Option<Instant>,
 }
 
 impl SerialDataSource {
@@ -63,6 +64,7 @@ impl SerialDataSource {
             message_receipt_times: VecDeque::new(),
             siphasher: SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY),
             next_mac: (0, 0),
+            last_time: None,
         }
     }
 
@@ -142,7 +144,8 @@ pub struct LogFileDataSource {
     name: Option<String>,
     file: Option<File>,
     buffer: Vec<u8>,
-    is_json: bool
+    is_json: bool,
+    last_time: Instant,
 }
 
 impl LogFileDataSource {
@@ -157,6 +160,7 @@ impl LogFileDataSource {
             file: Some(file),
             buffer: Vec::new(),
             is_json,
+            last_time: Instant::now(),
         })
     }
 
@@ -171,7 +175,8 @@ impl LogFileDataSource {
             name,
             file: None,
             buffer: bytes,
-            is_json
+            is_json,
+            last_time: Instant::now(),
         }
     }
 }
@@ -179,7 +184,7 @@ impl LogFileDataSource {
 /// Trait shared by all data sources.
 pub trait DataSource {
     /// New messages. TODO: replace with iterator?
-    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a>;
+    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)>;
     /// Reset data source if applicable.
     fn reset(&mut self);
     /// Calculate the next message authentication code. TODO: refactor
@@ -198,10 +203,11 @@ pub trait DataSource {
     fn minimum_fps(&self) -> Option<u64>;
     /// Is the data source a file. TODO: a bit unelegant
     fn is_log_file(&self) -> bool;
+    fn end(&self) -> Option<Instant>;
 }
 
 impl DataSource for SerialDataSource {
-    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a> {
+    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)> {
         self.update_mac();
 
         self.message_receipt_times
@@ -213,7 +219,8 @@ impl DataSource for SerialDataSource {
         }
 
         let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
-        let iter = msgs.into_iter().map(|msg| {
+        msgs.into_iter()
+            .map(|msg| {
                 self.write_to_telemetry_log(&msg);
 
                 match msg {
@@ -224,10 +231,11 @@ impl DataSource for SerialDataSource {
                     }
                 }
 
-                (Instant::now(), msg)
-            });
-
-        Box::new(iter)
+                let now = Instant::now();
+                self.last_time = Some(now);
+                (now, msg)
+            })
+            .collect()
     }
 
     fn reset(&mut self) {
@@ -274,16 +282,32 @@ impl DataSource for SerialDataSource {
     }
 
     fn minimum_fps(&self) -> Option<u64> {
-        Some(u64::max(5, u64::min(self.message_receipt_times.len() as u64, 60)))
+        if self.last_time.map(|t| t.elapsed() > Duration::from_secs_f64(10.0)).unwrap_or(false) {
+            None
+        } else {
+            Some(u64::max(30, u64::min(self.message_receipt_times.len() as u64, 60)))
+        }
     }
 
     fn is_log_file(&self) -> bool {
         false
     }
+
+    fn end(&self) -> Option<Instant> {
+        let postroll = Duration::from_secs_f64(10.0);
+
+        self.last_time.map(|t| {
+            if t.elapsed() < postroll {
+                Instant::now()
+            } else {
+                t + postroll
+            }
+        })
+    }
 }
 
 impl DataSource for LogFileDataSource {
-    fn next_messages<'a>(&'a mut self) -> Box<dyn Iterator<Item=(Instant, DownlinkMessage)> + 'a> {
+    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)> {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -303,15 +327,20 @@ impl DataSource for LogFileDataSource {
         };
 
         self.buffer.truncate(0);
+        let msgs_with_time: Vec<_> = msgs.into_iter()
+            .scan((Instant::now(), 0), |(now, last), msg| {
+                let since_previous = u32::max(1, msg.time().saturating_sub(*last));
+                *now = *now + Duration::from_millis(since_previous as u64);
+                *last = msg.time();
+                Some((*now, msg))
+            })
+            .collect();
 
-        let iter = msgs.into_iter().scan((Instant::now(), 0), |(now, last), msg| {
-            let since_previous = u32::max(1, msg.time().saturating_sub(*last));
-            *now = *now + Duration::from_millis(since_previous as u64);
-            *last = msg.time();
-            Some((*now, msg))
-        });
+        if let Some((t, _msg)) = msgs_with_time.last() {
+            self.last_time = *t;
+        }
 
-        Box::new(iter) // TODO
+        msgs_with_time
     }
 
     fn reset(&mut self) {
@@ -342,5 +371,9 @@ impl DataSource for LogFileDataSource {
 
     fn is_log_file(&self) -> bool {
         true
+    }
+
+    fn end(&self) -> Option<Instant> {
+        Some(self.last_time)
     }
 }

@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use eframe::egui;
-use egui::{Ui, Response, Layout, Align};
+use egui::{Ui, Layout, Align, Rect, Vec2};
 
 /// State object held by the application, storing the currently maximized cell.
 #[derive(Default, Clone)]
@@ -13,8 +13,8 @@ pub struct MaxiGridState {
 }
 
 impl MaxiGridState {
-    fn maximize(&self, row: usize, col: usize) {
-        self.maximized.borrow_mut().replace((row, col));
+    fn maximize(&self, cell: (usize, usize)) {
+        self.maximized.borrow_mut().replace(cell);
     }
 
     fn minimize(&self) {
@@ -27,98 +27,82 @@ impl MaxiGridState {
 }
 
 /// Grid widget. Created and destroyed during draw.
-pub struct MaxiGrid {
-    id: &'static str,
+pub struct MaxiGrid<'a> {
+    cells: (usize, usize),
+    available_rect: Rect,
+    ui: &'a mut Ui,
     state: MaxiGridState,
-    rows: Vec<Vec<(&'static str, Box<dyn FnOnce(&mut Ui)>)>>
+    current_cell: (usize, usize),
 }
 
-impl MaxiGrid {
-    pub fn new(id: &'static str, state: MaxiGridState) -> Self {
+impl<'a> MaxiGrid<'a> {
+    pub fn new(cells: (usize, usize), ui: &'a mut Ui, state: MaxiGridState) -> Self {
+        let available_rect = ui.available_rect_before_wrap();
+
         Self {
-            id,
+            cells,
+            available_rect,
+            ui,
             state,
-            rows: vec![Vec::new()]
+            current_cell: (0, 0),
         }
     }
 
-    pub fn add_cell(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui) + 'static) {
-        self.rows.last_mut()
-            .unwrap()
-            .push((title, Box::new(cb)))
-    }
+    fn draw_minimized(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) {
+        let top_left = self.available_rect.left_top();
+        let cell_size = self.available_rect.size() / Vec2::new(self.cells.0 as f32, self.cells.1 as f32);
 
-    pub fn end_row(&mut self) {
-        self.rows.push(Vec::new());
-    }
+        let cell_top_left = top_left + (cell_size * Vec2::new(self.current_cell.0 as f32, self.current_cell.1 as f32));
+        let cell_bottom_right = cell_top_left + cell_size;
+        let rect = Rect::from_min_max(cell_top_left, cell_bottom_right)
+            .shrink2(self.ui.style().spacing.item_spacing / 2.0);
 
-    // TODO: reduce code reuse here...
-    fn show_minimized(self, ui: &mut Ui) -> Response {
-        let style = ui.style();
-        let xspacing = style.spacing.item_spacing.x * (3.0 / 4.0);
-        let yspacing = style.spacing.item_spacing.y / 1.5;
+        self.ui.put(rect, |ui: &mut Ui| {
+            ui.vertical(|ui| {
+                ui.add_space(3.0);
+                ui.horizontal(|ui| {
+                    ui.heading(title);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.button("🗖").clicked() {
+                            self.state.maximize(self.current_cell);
+                        }
+                    });
+                });
 
-        egui::Grid::new(self.id)
-            .min_col_width(ui.available_width() / 4.0 - xspacing)
-            .max_col_width(ui.available_width() / 4.0 - xspacing)
-            .min_row_height(ui.available_height() / 3.0 - yspacing)
-            .show(ui, |ui| {
-                for (i, row) in self.rows.into_iter().enumerate() {
-                    if i != 0 {
-                        ui.end_row();
-                    }
-
-                    for (j, (heading, widget)) in row.into_iter().enumerate() {
-                        ui.vertical(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.heading(heading);
-
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui.button("🗖").clicked() {
-                                        self.state.maximize(i, j);
-                                    }
-                                });
-                            });
-
-                            (widget)(ui);
-                        });
-                    }
-                }
+                (cb)(ui);
             }).response
+        });
     }
 
-    // ... and here.
-    fn show_maximized(self, ui: &mut Ui, r: usize, c: usize) -> Response {
-        for (i, row) in self.rows.into_iter().enumerate() {
-            for (j, (heading, widget)) in row.into_iter().enumerate() {
-                if i == r && j == c {
-                    return ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
-                            ui.heading(heading);
+    fn draw_maximized(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) {
+        self.ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.heading(title);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("🗕").clicked() {
+                        self.state.minimize();
+                    }
+                });
+            });
 
-                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button("🗕").clicked() {
-                                    self.state.minimize();
-                                }
-                            });
-                        });
-
-                        (widget)(ui);
-                    }).response
-                }
-            }
-        }
-
-        unreachable!() // TODO
+            (cb)(ui);
+        });
     }
-}
 
-impl egui::Widget for MaxiGrid {
-    fn ui(self, ui: &mut Ui) -> Response {
-        if let Some((r, c)) = self.state.maximized() {
-            self.show_maximized(ui, r, c)
-        } else {
-            self.show_minimized(ui)
+    pub fn cell(mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) -> Self {
+        let maximized = self.state.maximized();
+        if maximized.map(|c| c == self.current_cell).unwrap_or(false) {
+            self.draw_maximized(title, cb);
+        } else if maximized.is_none() {
+            self.draw_minimized(title, cb);
         }
+
+        self.current_cell.0 += 1;
+        if self.current_cell.0 >= self.cells.0 {
+            self.current_cell.0 = 0;
+            self.current_cell.1 += 1;
+        }
+
+        self
     }
 }

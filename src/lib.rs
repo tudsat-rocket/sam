@@ -18,10 +18,8 @@ mod telemetry_ext;
 #[allow(unused_imports)]
 mod serial;
 
-use crate::gui::*;
-
-#[cfg(target_arch = "wasm32")]
-use crate::data_source::*;
+pub use crate::gui::*;
+pub use crate::data_source::*;
 
 // Entry point for wasm
 #[cfg(target_arch = "wasm32")]

@@ -13,6 +13,7 @@ env_logger = "0.10"
 indicatif = "0.17"
 colored = "2"
 image = { version = "0.24", features = ["png"] }
+egui = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" } # TODO: upstream this
 eframe = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" } # TODO: upstream this
 epaint = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" }
 egui_extras = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks", features = ["image"] }
@@ -24,22 +25,37 @@ nalgebra = "0.31"
 siphasher = "0.3"
 chrono = "0.4"
 crc = "2"
-rfd = "0.10"
-xdg = "2.4"
+directories = "4.0"
 slippy-map-tiles = "0.16"
 colorgrad = "0.6"
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Used for profiling
+puffin = { version = "0.14", optional = true }
+puffin_egui = { version = "0.19", optional = true }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+rfd = "0.10"
 home = "0.5" # No home directories in web assembly
-reqwest = { version = "0.11", features = ["blocking"] }
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
+
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+home = "0.5" # No home directories in web assembly
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reqwest = { version = "0.11" }
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 instant = { version = "0.1", features = ["stdweb", "wasm-bindgen"] }
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
 wasm-bindgen = "0.2"
 wasm-logger = "0.2.0"
+
+[patch.crates-io]
+egui = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" }
+eframe = { git = "https://github.com/KoffeinFlummi/egui", branch = "plot-tweaks" }
+
+[features]
+profiling = ["dep:puffin", "dep:puffin_egui"]
 
 # The following entries are only required for web assembly compilation
 [lib]

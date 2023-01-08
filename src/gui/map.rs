@@ -39,10 +39,13 @@ fn tile_id(tile: &Tile) -> String {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    // TODO: non-linux cache part
-    let name = format!("{}.png", tile_id(tile));
-    let base_dirs = xdg::BaseDirectories::with_prefix("sam")?;
-    let path = base_dirs.get_cache_file(name);
+    let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
+    let cache_dir = project_dirs.cache_dir();
+    if !cache_dir.exists() {
+        std::fs::create_dir_all(cache_dir)?;
+    }
+
+    let path = cache_dir.join(format!("{}.png", tile_id(tile)));
 
     if path.exists() {
         let mut f = std::fs::File::open(path)?;
@@ -103,19 +106,23 @@ impl TileCache {
     }
 
     pub fn cached_image(&mut self, ctx: &Context, tile: &Tile) -> Option<PlotImage> {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let center = tile.center_point();
         let center = PlotPoint::new(center.lon(), center.lat());
         let size = Vec2::new(tile.right() - tile.left(), tile.top() - tile.bottom());
 
-        let id = tile_id(&tile);
-        if let Some(texture) = self.textures.get(&id) {
+        let tile_id = tile_id(tile);
+        let texture_id = format!("map_tile_{}", &tile_id);
+
+        if let Some(texture) = self.textures.get(&tile_id) {
             return Some(PlotImage::new(texture, center, size));
         }
 
-        if let Some(ci) = self.tiles.get(&tile_id(tile)) {
-            let id = format!("map_tile_{}", &id);
-            let texture = ctx.load_texture(&id, ci.clone(), Default::default());
-            self.textures.insert(id, texture.clone());
+        if let Some(ci) = self.tiles.get(&tile_id) {
+            let texture = ctx.load_texture(&texture_id, ci.clone(), Default::default());
+            self.textures.insert(tile_id, texture.clone());
             return Some(PlotImage::new(&texture, center, size));
         }
 
@@ -129,6 +136,7 @@ impl TileCache {
 
 pub struct MapCache {
     points: Vec<(f64, f64, f64)>,
+    plot_points: Vec<(Vec<[f64; 2]>, Color32)>,
     max_alt: f64,
     pub center: (f64, f64),
     pub hdop_circle_points: Option<Vec<[f64; 2]>>,
@@ -138,6 +146,7 @@ impl MapCache {
     pub fn new() -> Self {
         MapCache {
             points: Vec::new(),
+            plot_points: Vec::new(),
             max_alt: 300.0,
             center: (49.861445, 8.68519),
             hdop_circle_points: None
@@ -155,12 +164,23 @@ impl MapCache {
             self.max_alt = f64::max(self.max_alt, alt);
             self.center = (lat, lng);
 
-            let aspect = 1.0 / f64::cos(lat as f64);
+            self.plot_points = self.points.windows(2)
+                .map(|pair| {
+                    #[cfg(feature = "profiling")]
+                    puffin::profile_scope!("map_line_creation");
+
+                    let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
+                    let color = colorgrad::yl_or_rd().at(1.0 - pair[0].2 / self.max_alt).to_rgba8();
+                    let color = Color32::from_rgb(color[0], color[1], color[2]);
+                    (points, color)
+                    })
+                .collect();
+
             let cep_m = 2.5 * (hdop as f64) / 100.0;
             let r = 360.0 * cep_m / 40_075_017.0; // meters to decimal degrees
             let points = (0..=64)
                 .map(|i| (i as f64) * TAU / 64.0)
-                .map(|i| [r * i.cos() * aspect + lng, r * i.sin() + lat])
+                .map(|i| [r * i.cos() * self.aspect() + lng, r * i.sin() + lat])
                 .collect();
             self.hdop_circle_points = Some(points);
         }
@@ -168,22 +188,31 @@ impl MapCache {
 
     pub fn reset(&mut self) {
         self.points.truncate(0);
+        self.plot_points.truncate(0);
+        self.max_alt = 300.0;
+        self.center = (49.861445, 8.68519);
+        self.hdop_circle_points = None;
     }
 
-    pub fn lines<'a>(&'a self) -> Box<dyn Iterator<Item = Line> + 'a> {
-        let lines = self.points.windows(2)
-            .map(move |pair| {
-                let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
-                let color = colorgrad::yl_or_rd().at(1.0 - pair[0].2 / self.max_alt).to_rgba8();
-                Line::new(points)
-                    .width(2.0)
-                    .color(Color32::from_rgb(color[0], color[1], color[2]))
-                });
+    pub fn aspect(&self) -> f64 {
+        1.0 / f64::cos(self.center.0.to_radians() as f64)
+    }
 
-        Box::new(lines) // TODO
+    fn lines<'a>(&'a self) -> Vec<Line> {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
+        self.plot_points.iter()
+            .map(|(pp, color)| {
+                Line::new(pp.clone()).width(2.0).color(color.clone())
+            })
+            .collect()
     }
 
     pub fn hdop_circle_line(&self) -> Option<Line> {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         self.hdop_circle_points.as_ref()
             .map(|points| Line::new(points.clone()).width(1.5).color(Color32::RED))
     }
@@ -231,6 +260,9 @@ impl MapState {
     }
 
     pub fn tile_images<'a>(&'a self, ctx: &'a Context, bounds: PlotBounds) -> Box<dyn Iterator<Item = PlotImage> + 'a> {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let width = bounds.max()[0] - bounds.min()[0];
         let height = bounds.max()[1] - bounds.min()[1];
 
@@ -269,22 +301,24 @@ impl MapState {
 pub trait MapUiExt {
     fn map(
         &mut self,
-        state: MapState
+        state: &MapState
     );
 }
 
 impl MapUiExt for egui::Ui {
     fn map(
         &mut self,
-        state: MapState
+        state: &MapState
     ) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let cache = state.cache.borrow_mut();
 
         self.vertical_centered(|ui| {
-            let aspect = 1.0 / f64::cos(cache.center.0.to_radians() as f64);
             let plot = egui::widgets::plot::Plot::new("map")
                 .allow_scroll(false)
-                .data_aspect(aspect as f32)
+                .data_aspect(cache.aspect() as f32)
                 .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
                 .show_axes([false, false])
                 .include_x(cache.center.1 - 0.005)
@@ -295,14 +329,23 @@ impl MapUiExt for egui::Ui {
             plot.show(ui, |plot_ui| {
                 let ctx = plot_ui.ctx().clone();
                 for pi in state.tile_images(&ctx, plot_ui.plot_bounds()) {
+                    #[cfg(feature = "profiling")]
+                    puffin::profile_scope!("tile_image");
+
                     plot_ui.image(pi);
                 }
 
                 if let Some(line) = cache.hdop_circle_line() {
+                    #[cfg(feature = "profiling")]
+                    puffin::profile_scope!("hdop_circle");
+
                     plot_ui.line(line);
                 }
 
                 for line in cache.lines() {
+                    #[cfg(feature = "profiling")]
+                    puffin::profile_scope!("map_line");
+
                     plot_ui.line(line);
                 }
             });

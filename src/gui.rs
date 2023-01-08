@@ -11,7 +11,6 @@ use instant::Instant;
 
 use eframe::egui;
 use eframe::emath::Align;
-use egui::widgets::plot::{LinkedAxisGroup, LinkedCursorsGroup};
 use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
 use egui::{FontId, Key, Layout, RichText, Vec2};
@@ -36,9 +35,6 @@ use crate::gui::plot::*;
 use crate::gui::map::*;
 use crate::gui::log_scroller::*;
 use crate::gui::maxi_grid::*;
-
-const RAD_TO_DEG: f32 = 180.0 / std::f32::consts::PI;
-const ZOOM_FACTOR: f64 = 2.0;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
@@ -66,9 +62,9 @@ pub struct Sam {
     logo_inverted: RetainedImage,
 
     archive_panel_open: bool,
-    xlen: f64,
     maxi_grid_state: MaxiGridState,
 
+    shared_plot: Rc<RefCell<SharedPlotState>>,
     orientation_plot: PlotState,
     vertical_speed_plot: PlotState,
     altitude_plot: PlotState,
@@ -88,35 +84,32 @@ impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
     pub fn init(data_source: Box<dyn DataSource>) -> Self {
-        let axes = LinkedAxisGroup::new(true, false);
-        let cursors = LinkedCursorsGroup::new(true, false);
+        let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
-        let start = Instant::now();
+        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
+            .line("Pitch (X) [°]", |vs| vs.euler_angles().map(|a| a.0))
+            .line("Pitch (Y) [°]", |vs| vs.euler_angles().map(|a| a.1))
+            .line("Roll (Z) [°]", |vs| vs.euler_angles().map(|a| a.2));
 
-        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), axes.clone(), cursors.clone(), start)
-            .line("Pitch (X) [°]", |vs| vs.euler_angles().map(|a| a.0 * RAD_TO_DEG))
-            .line("Pitch (Y) [°]", |vs| vs.euler_angles().map(|a| a.1 * RAD_TO_DEG))
-            .line("Roll (Z) [°]", |vs| vs.euler_angles().map(|a| a.2 * RAD_TO_DEG));
-
-        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), axes.clone(), cursors.clone(), start)
+        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), shared_plot.clone())
             .line("Vario [m/s]", |vs| vs.vertical_speed())
             .line("Vertical Accel [m/s²]", |vs| vs.vertical_accel())
             .line("Vertical Accel (Filt.) [m/s²]", |vs| vs.vertical_accel_filtered());
 
         // TODO: ylimits
-        let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), axes.clone(), cursors.clone(), start)
+        let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), shared_plot.clone())
             .line("Altitude [m]", |vs| vs.altitude())
             .line("Altitude (Baro) [m]", |vs| vs.altitude_baro())
             .line("Altitude (GPS) [m]", |vs| vs.altitude_gps())
             .line("Altitude (Max) [m]", |vs| vs.altitude_max())
             .line("Altitude (Ground) [m]", |vs| vs.altitude_ground());
 
-        let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+        let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
             .line("Gyro (X) [°/s]", |vs| vs.gyroscope().map(|a| a.0))
             .line("Gyro (Y) [°/s]", |vs| vs.gyroscope().map(|a| a.1))
             .line("Gyro (Z) [°/s]", |vs| vs.gyroscope().map(|a| a.2));
 
-        let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+        let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
             .line("Accel 2 (X) [m/s²]", |vs| vs.accelerometer2().map(|a| a.0))
             .line("Accel 2 (Y) [m/s²]", |vs| vs.accelerometer2().map(|a| a.1))
             .line("Accel 2 (Z) [m/s²]", |vs| vs.accelerometer2().map(|a| a.2))
@@ -124,29 +117,29 @@ impl Sam {
             .line("Accel 1 (Y) [m/s²]", |vs| vs.accelerometer1().map(|a| a.1))
             .line("Accel 1 (Z) [m/s²]", |vs| vs.accelerometer1().map(|a| a.2));
 
-        let magnetometer_plot = PlotState::new("Magnetometer", (None, None), axes.clone(), cursors.clone(), start)
+        let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
             .line("Mag (X) [µT]", |vs| vs.magnetometer().map(|a| a.0))
             .line("Mag (Y) [µT]", |vs| vs.magnetometer().map(|a| a.1))
             .line("Mag (Z) [µT]", |vs| vs.magnetometer().map(|a| a.2));
 
-        let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), axes.clone(), cursors.clone(), start)
+        let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), shared_plot.clone())
             .line("Pressure [mbar]", |vs| vs.pressure());
 
-        let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), axes.clone(), cursors.clone(), start)
+        let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
             .line("Baro. Temp. [°C]", |vs| vs.temperature_baro())
             .line("Core Temp. [°C]", |vs| vs.temperature_core());
 
-        let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), axes.clone(), cursors.clone(), start)
+        let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
             .line("Battery Voltage [V]", |vs| vs.battery_voltage())
             .line("Arm Voltage [V]", |vs| vs.arm_voltage())
             .line("Current [A]", |vs| vs.current())
             .line("Core Voltage [V]", |vs| vs.cpu_voltage());
 
-        let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), axes.clone(), cursors.clone(), start)
+        let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
             .line("CPU Util. [%]", |vs| vs.cpu_utilization().map(|u| u as f32))
             .line("Heap Util. [%]", |vs| vs.heap_utilization().map(|u| u as f32));
 
-        let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), axes.clone(), cursors.clone(), start)
+        let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
             .line("GCS RSSI [dBm]", |vs| vs.gcs_lora_rssi().map(|x| x as f32 / -2.0))
             .line("GCS Signal RSSI [dBm]", |vs| vs.gcs_lora_rssi_signal().map(|x| x as f32 / -2.0))
             .line("GCS SNR [dB]", |vs| vs.gcs_lora_snr().map(|x| x as f32 / 4.0))
@@ -167,8 +160,8 @@ impl Sam {
             logo,
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
-            xlen: 10.0,
             maxi_grid_state: MaxiGridState::default(),
+            shared_plot,
             orientation_plot,
             vertical_speed_plot,
             altitude_plot,
@@ -205,7 +198,6 @@ impl Sam {
     /// Resets the GUI
     fn reset(&mut self) {
         info!("Resetting.");
-        self.xlen = 10.0;
         self.telemetry_msgs.borrow_mut().truncate(0);
         self.log_messages.truncate(0);
         self.data_source.reset();
@@ -244,16 +236,21 @@ impl Sam {
         self.reset();
         self.data_source = Box::new(SerialDataSource::new());
     }
-}
 
-impl eframe::App for Sam {
-    /// Main draw method of the application
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    pub fn ui(&mut self, ctx: &egui::Context) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+        #[cfg(feature = "profiling")]
+        puffin::GlobalProfiler::lock().new_frame();
+        #[cfg(feature = "profiling")]
+        puffin_egui::profiler_window(ctx);
+
         // Process new messages TODO. iter
-        let msgs: Vec<_> = self.data_source.next_messages().collect();
-        for (time, msg) in msgs.into_iter() {
+        for (time, msg) in self.data_source.next_messages() {
             self.process_telemetry(time, msg);
         }
+
+        self.shared_plot.borrow_mut().set_end(self.data_source.end());
 
         // Check for keyboard inputs. TODO: clean up
         {
@@ -278,14 +275,6 @@ impl eframe::App for Sam {
                     .send(UplinkMessage::SetFlightModeAuth(fm, self.data_source.next_mac()))
                     .unwrap();
             }
-
-            if input.key_released(Key::ArrowDown) {
-                self.xlen /= ZOOM_FACTOR;
-            }
-
-            if input.key_released(Key::ArrowUp) {
-                self.xlen *= ZOOM_FACTOR;
-            }
         }
 
         // Redefine text_styles
@@ -307,7 +296,7 @@ impl eframe::App for Sam {
                 ui.separator();
 
                 // Opening files manually is not available on web assembly
-                #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(target_arch = "x86_64")]
                 if ui.button("🗁  Open Log File").clicked() {
                     if let Some(data_source) = open_file() {
                         self.open_log_file(data_source);
@@ -348,21 +337,14 @@ impl eframe::App for Sam {
                 });
 
                 // Some buttons
-                #[cfg(not(target_arch = "wasm32"))]
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
+                    #[cfg(not(target_arch = "wasm32"))]
                     ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
                         if ui.button("⏮  Reset").clicked() {
                             self.reset();
                         }
                     });
-
-                    if ui.button("➕").clicked() {
-                        self.xlen /= ZOOM_FACTOR;
-                    }
-
-                    if ui.button("➖").clicked() {
-                        self.xlen *= ZOOM_FACTOR;
-                    }
+                    // TODO: add toggle for stats, log scroller
                 });
             });
         });
@@ -383,7 +365,7 @@ impl eframe::App for Sam {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.button("🖴  Flash").clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
-                                    Some(title.to_string()),
+                                    Some(format!("{} (Flash)", title)),
                                     flash.to_vec()
                                 ));
                                 self.archive_panel_open = false;
@@ -391,7 +373,7 @@ impl eframe::App for Sam {
 
                             if ui.button("📡 Telemetry").clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
-                                    Some(title.to_string()),
+                                    Some(format!("{} (Telemetry)", title)),
                                     telem.to_vec()
                                 ));
                                 self.archive_panel_open = false;
@@ -513,43 +495,19 @@ impl eframe::App for Sam {
             ui.set_width(ui.available_width());
             ui.set_height(ui.available_height());
 
-            let mut maxigrid = MaxiGrid::new("plot_grid", self.maxi_grid_state.clone());
-
-            let xlen = self.xlen.clone();
-
-            // Cloning these states is ugly. TODO: refactor
-            let orientation = self.orientation_plot.clone();
-            let vertical_speed = self.vertical_speed_plot.clone();
-            let altitude = self.altitude_plot.clone();
-            let map = self.map.clone();
-            maxigrid.add_cell("Orientation",         move |ui| ui.plot_telemetry(orientation, xlen));
-            maxigrid.add_cell("Vert. Speed & Accel", move |ui| ui.plot_telemetry(vertical_speed, xlen));
-            maxigrid.add_cell("Altitude (ASL)",      move |ui| ui.plot_telemetry(altitude, xlen));
-            maxigrid.add_cell("Position", |ui| ui.map(map));
-
-            maxigrid.end_row();
-
-            let gyroscope = self.gyroscope_plot.clone();
-            let accelerometer = self.accelerometer_plot.clone();
-            let magnetometer = self.magnetometer_plot.clone();
-            let barometer = self.barometer_plot.clone();
-            maxigrid.add_cell("Gyroscope",      move |ui| ui.plot_telemetry(gyroscope, xlen));
-            maxigrid.add_cell("Accelerometers", move |ui| ui.plot_telemetry(accelerometer, xlen));
-            maxigrid.add_cell("Magnetometer",   move |ui| ui.plot_telemetry(magnetometer, xlen));
-            maxigrid.add_cell("Barometer",      move |ui| ui.plot_telemetry(barometer, xlen));
-
-            maxigrid.end_row();
-
-            let temperature = self.temperature_plot.clone();
-            let power = self.power_plot.clone();
-            let runtime = self.runtime_plot.clone();
-            let signal = self.signal_plot.clone();
-            maxigrid.add_cell("Temperature", move |ui| ui.plot_telemetry(temperature, xlen));
-            maxigrid.add_cell("Power",       move |ui| ui.plot_telemetry(power, xlen));
-            maxigrid.add_cell("Runtime",     move |ui| ui.plot_telemetry(runtime, xlen));
-            maxigrid.add_cell("Signal",      move |ui| ui.plot_telemetry(signal, xlen));
-
-            ui.add(maxigrid);
+            MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
+                .cell("Orientation",         |ui| ui.plot_telemetry(&self.orientation_plot))
+                .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
+                .cell("Altitude (ASL)",      |ui| ui.plot_telemetry(&self.altitude_plot))
+                .cell("Position",            |ui| ui.map(&self.map))
+                .cell("Gyroscope",           |ui| ui.plot_telemetry(&self.gyroscope_plot))
+                .cell("Accelerometers",      |ui| ui.plot_telemetry(&self.accelerometer_plot))
+                .cell("Magnetometer",        |ui| ui.plot_telemetry(&self.magnetometer_plot))
+                .cell("Barometer",           |ui| ui.plot_telemetry(&self.barometer_plot))
+                .cell("Temperature",         |ui| ui.plot_telemetry(&self.temperature_plot))
+                .cell("Power",               |ui| ui.plot_telemetry(&self.power_plot))
+                .cell("Runtime",             |ui| ui.plot_telemetry(&self.runtime_plot))
+                .cell("Signal",              |ui| ui.plot_telemetry(&self.signal_plot));
         });
 
         // If we have live data coming in, we need to tell egui to repaint.
@@ -558,6 +516,13 @@ impl eframe::App for Sam {
             let t = std::time::Duration::from_millis(1000 / fps);
             ctx.request_repaint_after(t);
         }
+    }
+}
+
+impl eframe::App for Sam {
+    /// Main draw method of the application
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.ui(ctx)
     }
 }
 
@@ -570,6 +535,9 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
     };
 
     let app = Sam::init(data_source);
+
+    #[cfg(feature = "profiling")]
+    puffin::set_scopes_on(true);
 
     eframe::run_native(
         "Sam Ground Station",
