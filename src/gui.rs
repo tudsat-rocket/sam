@@ -26,6 +26,7 @@ mod map;
 mod log_scroller;
 mod maxi_grid;
 mod theme;
+mod misc;
 
 use crate::state::*;
 use crate::data_source::*;
@@ -37,6 +38,7 @@ use crate::gui::map::*;
 use crate::gui::log_scroller::*;
 use crate::gui::maxi_grid::*;
 use crate::gui::theme::*;
+use crate::gui::misc::*;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
@@ -64,6 +66,7 @@ pub struct Sam {
     logo_inverted: RetainedImage,
 
     archive_panel_open: bool,
+    log_scroller_open: bool,
     maxi_grid_state: MaxiGridState,
 
     shared_plot: Rc<RefCell<SharedPlotState>>,
@@ -174,6 +177,7 @@ impl Sam {
             logo,
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
+            log_scroller_open: cfg!(target_arch = "x86_64"),
             maxi_grid_state: MaxiGridState::default(),
             shared_plot,
             orientation_plot,
@@ -320,14 +324,7 @@ impl Sam {
                 }
 
                 // Toggle archive panel
-                let text = if self.archive_panel_open {
-                    "⛃ Close Archive"
-                } else {
-                    "⛃ Open Archive"
-                };
-                if ui.button(text).clicked() {
-                    self.archive_panel_open = !self.archive_panel_open;
-                }
+                ui.toggle_button(&mut self.archive_panel_open, "🗄 Open Archive", "🗄 Close Archive");
 
                 // Show a button to the right to close the current log
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
@@ -360,7 +357,8 @@ impl Sam {
                             self.reset();
                         }
                     });
-                    // TODO: add toggle for stats, log scroller
+
+                    ui.toggle_button(&mut self.log_scroller_open, "🗊  Show Logs", "🗊  Close Logs");
                 });
             });
         });
@@ -504,15 +502,17 @@ impl Sam {
         });
 
         // Log scroller.
-        let mut frame = egui::containers::Frame::side_top_panel(&style);
-        frame.fill = colors.background_weak;
-        egui::TopBottomPanel::bottom("logbar")
-            .min_height(72.0)
-            .resizable(true)
-            .frame(frame)
-            .show(ctx, |ui| {
-                ui.log_scroller(&self.log_messages);
-            });
+        if self.log_scroller_open {
+            let mut frame = egui::containers::Frame::side_top_panel(&style);
+            frame.fill = colors.background_weak;
+            egui::TopBottomPanel::bottom("logbar")
+                .min_height(72.0)
+                .resizable(true)
+                .frame(frame)
+                .show(ctx, |ui| {
+                    ui.log_scroller(&self.log_messages);
+                });
+        }
 
         // Everything else. This has to be called after all the other panels
         // are created.
