@@ -37,7 +37,7 @@ pub async fn start() -> Result<(), JsValue> {
     eframe::start_web(
         "sam_gcs", // needs to match the canvas id in index.html
         eframe::WebOptions::default(),
-        Box::new(|_cc| Box::new(Sam::init(data_source))),
+        Box::new(|cc| Box::new(Sam::init(cc, data_source))),
     ).await?;
     Ok(())
 }

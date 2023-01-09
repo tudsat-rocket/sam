@@ -13,7 +13,7 @@ use eframe::egui;
 use eframe::emath::Align;
 use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
-use egui::{FontId, Key, Layout, RichText, Vec2, Color32};
+use egui::{FontId, Key, Layout, RichText, Vec2, Color32, FontFamily};
 use egui_extras::RetainedImage;
 
 use log::*;
@@ -88,7 +88,24 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(data_source: Box<dyn DataSource>) -> Self {
+    pub fn init(cc: &eframe::CreationContext<'_>, data_source: Box<dyn DataSource>) -> Self {
+        let ctx = &cc.egui_ctx;
+        let mut fonts = egui::FontDefinitions::default();
+        let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
+        let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
+        fonts.font_data.insert("RobotoMono".to_owned(), roboto);
+        fonts.font_data.insert("Overpass".to_owned(), lato);
+        fonts.families
+            .entry(FontFamily::Monospace)
+            .or_default()
+            .insert(0, "RobotoMono".to_owned());
+        fonts.families
+            .entry(FontFamily::Proportional)
+            .or_default()
+            .insert(0, "Overpass".to_owned());
+
+        ctx.set_fonts(fonts);
+
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
         let r = Color32::from_rgb(0xfb, 0x49, 0x34);
@@ -559,8 +576,6 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
         None => Box::new(SerialDataSource::new()),
     };
 
-    let app = Sam::init(data_source);
-
     #[cfg(feature = "profiling")]
     puffin::set_scopes_on(true);
 
@@ -570,7 +585,7 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
             initial_window_size: Some(egui::vec2(1000.0, 700.0)),
             ..Default::default()
         },
-        Box::new(|_cc| Box::new(app)),
+        Box::new(|cc| Box::new(Sam::init(cc, data_source))),
     )?;
 
     Ok(())
