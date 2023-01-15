@@ -377,7 +377,11 @@ impl Sam {
                         }
                     });
 
+                    #[cfg(not(target_arch = "wasm32"))]
+                    ui.separator();
+
                     ui.toggle_button(&mut self.log_scroller_open, "🗊  Show Logs", "🗊  Close Logs");
+                    ui.toggle_button(&mut self.shared_plot.borrow_mut().show_stats, "📈 Show Stats", "📉 Hide Stats");
                 });
             });
         });

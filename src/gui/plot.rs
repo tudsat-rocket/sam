@@ -27,6 +27,7 @@ struct PlotCacheLine {
     data: Vec<[f64; 2]>,
     last_bounds: Option<PlotBounds>,
     last_view: Vec<[f64; 2]>,
+    stats: Option<(f64, f64, f64, f64)>,
 }
 
 impl PlotCacheLine {
@@ -38,6 +39,7 @@ impl PlotCacheLine {
             data: Vec::new(),
             last_bounds: None,
             last_view: vec![],
+            stats: None,
         }
     }
 
@@ -47,12 +49,14 @@ impl PlotCacheLine {
         }
 
         self.last_bounds = None; // TODO
+        self.stats = None;
     }
 
     pub fn reset(&mut self) {
         self.data.truncate(0);
         self.last_bounds = None;
         self.last_view.truncate(0);
+        self.stats = None;
     }
 
     pub fn data_for_bounds(&mut self, bounds: PlotBounds) -> Vec<[f64; 2]> {
@@ -74,9 +78,24 @@ impl PlotCacheLine {
 
             self.last_view = self.data[imin..imax].to_vec();
             self.last_bounds = Some(bounds);
+            self.stats = None;
         }
 
         self.last_view.clone()
+    }
+
+    pub fn stats(&mut self) -> Option<(f64, f64, f64, f64)> {
+        if self.stats.is_none() && self.last_view.len() > 0 {
+            let count = self.last_view.len() as f64;
+            let mean = self.last_view.iter().map(|i| i[1]).sum::<f64>() / count;
+            let var = self.last_view.iter().map(|i| f64::powi(i[1] - mean, 2)).sum::<f64>() / count;
+            let std_dev = f64::sqrt(var);
+            let min = self.last_view.iter().map(|i| i[1]).reduce(|a, b| f64::min(a, b)).unwrap();
+            let max = self.last_view.iter().map(|i| i[1]).reduce(|a, b| f64::max(a, b)).unwrap();
+            self.stats = Some((mean, std_dev, min, max));
+        }
+
+        self.stats
     }
 }
 
@@ -137,12 +156,21 @@ impl PlotCache {
     }
 
     /// Lines to be plotted
-    pub fn plot_lines(&mut self, bounds: PlotBounds) -> Vec<Line> {
+    pub fn plot_lines(&mut self, bounds: PlotBounds, show_stats: bool) -> Vec<Line> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
         self.lines.iter_mut()
-            .map(|pcl| Line::new(pcl.data_for_bounds(bounds)).name(&pcl.name).color(pcl.color))
+            .map(|pcl| {
+                let data = pcl.data_for_bounds(bounds);
+                let stats = show_stats.then(|| pcl.stats()).flatten();
+                let legend = if let Some((mean, std_dev, min, max)) = stats {
+                    format!("{} (mean: {:.2}, std dev.: {:.2}, min: {:.2}, max: {:.2})", pcl.name, mean, std_dev, min, max)
+                } else {
+                    pcl.name.clone()
+                };
+                Line::new(data).name(legend).color(pcl.color)
+            })
             .collect()
     }
 
@@ -170,6 +198,7 @@ pub struct SharedPlotState {
     pub view_width: f64,
     pub reset_on_next_draw: bool,
     pub box_dragging: bool,
+    pub show_stats: bool,
 }
 
 impl SharedPlotState {
@@ -183,6 +212,7 @@ impl SharedPlotState {
             view_width: 10.0,
             reset_on_next_draw: false,
             box_dragging: false,
+            show_stats: false,
         }
     }
 
@@ -322,8 +352,9 @@ impl PlotUiExt for egui::Ui {
             plot = plot.reset();
         }
 
+        let show_stats = shared.show_stats;
         let ir = plot.show(self, move |plot_ui| {
-            let lines = cache.plot_lines(plot_ui.plot_bounds());
+            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats);
             let mode_lines = cache.mode_lines();
 
             for l in lines.into_iter() {
