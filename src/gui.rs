@@ -67,6 +67,7 @@ pub struct Sam {
 
     archive_panel_open: bool,
     log_scroller_open: bool,
+    replay_logs: bool,
     maxi_grid_state: MaxiGridState,
 
     shared_plot: Rc<RefCell<SharedPlotState>>,
@@ -195,6 +196,7 @@ impl Sam {
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
             log_scroller_open: cfg!(target_arch = "x86_64"),
+            replay_logs: false,
             maxi_grid_state: MaxiGridState::default(),
             shared_plot,
             orientation_plot,
@@ -397,7 +399,8 @@ impl Sam {
                             if ui.button("🖴  Flash").clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
                                     Some(format!("{} (Flash)", title)),
-                                    flash.to_vec()
+                                    flash.to_vec(),
+                                    self.replay_logs
                                 ));
                                 self.archive_panel_open = false;
                             }
@@ -405,13 +408,17 @@ impl Sam {
                             if ui.button("📡 Telemetry").clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
                                     Some(format!("{} (Telemetry)", title)),
-                                    telem.to_vec()
+                                    telem.to_vec(),
+                                    self.replay_logs
                                 ));
                                 self.archive_panel_open = false;
                             }
                         });
                     });
                 }
+
+                ui.add_space(ui.available_height() - 20.0);
+                ui.checkbox(&mut self.replay_logs, "Replay logs");
             });
         }
 

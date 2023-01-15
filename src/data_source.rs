@@ -21,6 +21,7 @@ use log::*;
 use euroc_fc_firmware::telemetry::*;
 
 use crate::serial::*;
+use crate::state::*;
 
 /// A serial port data source. The default.
 pub struct SerialDataSource {
@@ -144,8 +145,10 @@ pub struct LogFileDataSource {
     name: Option<String>,
     file: Option<File>,
     buffer: Vec<u8>,
+    messages: Vec<(Instant, DownlinkMessage)>,
     is_json: bool,
-    last_time: Instant,
+    last_time: Option<Instant>,
+    replay: bool,
 }
 
 impl LogFileDataSource {
@@ -159,15 +162,17 @@ impl LogFileDataSource {
             name: None,
             file: Some(file),
             buffer: Vec::new(),
+            messages: Vec::new(),
             is_json,
-            last_time: Instant::now(),
+            last_time: None,
+            replay: false,
         })
     }
 
     /// Create given data source using the given name and bytes. The name is
     /// only passed to the data source to allow identifying it based on the
     /// status text.
-    pub fn from_bytes(name: Option<String>, bytes: Vec<u8>) -> Self {
+    pub fn from_bytes(name: Option<String>, bytes: Vec<u8>, replay: bool) -> Self {
         let is_json = bytes[0] == b'[';
 
         Self {
@@ -175,8 +180,10 @@ impl LogFileDataSource {
             name,
             file: None,
             buffer: bytes,
+            messages: Vec::new(),
             is_json,
-            last_time: Instant::now(),
+            last_time: None,
+            replay,
         }
     }
 }
@@ -327,20 +334,41 @@ impl DataSource for LogFileDataSource {
         };
 
         self.buffer.truncate(0);
-        let msgs_with_time: Vec<_> = msgs.into_iter()
-            .scan((Instant::now(), 0), |(now, last), msg| {
-                let since_previous = u32::max(1, msg.time().saturating_sub(*last));
-                *now = *now + Duration::from_millis(since_previous as u64);
-                *last = msg.time();
-                Some((*now, msg))
-            })
-            .collect();
 
-        if let Some((t, _msg)) = msgs_with_time.last() {
-            self.last_time = *t;
+        // We have to give an Instant to every message. We can't only use
+        // the time value contained in the packet, we need to handle the
+        // occasional packet with a malformed time value.
+        let start = Instant::now();
+        self.last_time.get_or_insert(start);
+        let mut last_vehicle_times: VecDeque<u32> = VecDeque::new();
+        for msg in msgs.into_iter() {
+            let last = last_vehicle_times.front();
+
+            // time value contained in the msg in ms compared to the last, but always >= 0
+            let mut since_previous = last.map(|l| msg.time().saturating_sub(*l)).unwrap_or(0);
+
+            // The GCS msgs are sent by the ground station, immediately after the received
+            // message. The time value used in those is the runtime of the GCS, so always
+            // replace with 0.
+            if msg.gcs_lora_rssi().is_some() {
+                since_previous = 0;
+            }
+
+            self.last_time = self.last_time.map(|t| t + Duration::from_millis(since_previous as u64));
+            last_vehicle_times.push_front(u32::max(*last.unwrap_or(&0), msg.time()));
+            last_vehicle_times.truncate(5); // TODO: use these for better filtering?
+
+            self.messages.push((self.last_time.unwrap(), msg));
         }
 
-        msgs_with_time
+        let pointer = if self.replay {
+            let now = Instant::now();
+            self.messages.partition_point(|(t, _)| t <= &now)
+        } else {
+            self.messages.len()
+        };
+
+        self.messages.drain(..pointer).collect()
     }
 
     fn reset(&mut self) {
@@ -366,7 +394,11 @@ impl DataSource for LogFileDataSource {
     }
 
     fn minimum_fps(&self) -> Option<u64> {
-        None
+        if self.replay && self.last_time.map(|t| t > Instant::now()).unwrap_or(true) {
+            Some(60)
+        } else {
+            None
+        }
     }
 
     fn is_log_file(&self) -> bool {
@@ -374,6 +406,11 @@ impl DataSource for LogFileDataSource {
     }
 
     fn end(&self) -> Option<Instant> {
-        Some(self.last_time)
+        if self.replay {
+            let last = self.last_time.unwrap_or(Instant::now());
+            Some(Instant::min(Instant::now(), last))
+        } else {
+            self.last_time
+        }
     }
 }
