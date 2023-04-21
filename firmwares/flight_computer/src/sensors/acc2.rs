@@ -4,6 +4,7 @@ use hal::gpio::{Alternate, Output, Pin};
 use hal::pac::SPI3;
 use hal::prelude::*;
 use hal::spi::{Master, TransferModeNormal};
+use nalgebra::Vector3;
 use stm32f4xx_hal as hal;
 
 use crate::prelude::*;
@@ -25,7 +26,7 @@ const G_TO_MS2: f32 = 9.80665;
 pub struct Accelerometer {
     spi: Spi,
     cs: CsPin,
-    acc: Option<(f32, f32, f32)>,
+    acc: Option<Vector3<f32>>,
 }
 
 impl Accelerometer {
@@ -78,7 +79,7 @@ impl Accelerometer {
         let y = ((response[3] as i16) << 8) + (response[2] as i16);
         let z = ((response[5] as i16) << 8) + (response[4] as i16);
 
-        self.acc = Some((
+        self.acc = Some(Vector3::new(
             x as f32 * 0.049 * G_TO_MS2,
             z as f32 * 0.049 * G_TO_MS2,
             -y as f32 * 0.049 * G_TO_MS2,
@@ -104,7 +105,7 @@ impl Accelerometer {
         }
     }
 
-    pub fn accelerometer(&self) -> Option<(f32, f32, f32)> {
+    pub fn accelerometer(&self) -> Option<Vector3<f32>> {
         self.acc
     }
 }

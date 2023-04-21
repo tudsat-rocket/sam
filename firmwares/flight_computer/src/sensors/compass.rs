@@ -1,5 +1,6 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use nalgebra::Vector3;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
@@ -42,7 +43,7 @@ pub struct Compass {
     spi: SharedSpi,
     cs: CsPin,
     trim_data: Option<BMM150TrimData>,
-    mag: Option<(f32, f32, f32)>,
+    mag: Option<Vector3<f32>>,
 }
 
 impl Compass {
@@ -161,7 +162,7 @@ impl Compass {
         // TODO: check for overflows?
 
         let compensated = self.compensate_values((mag_x, mag_y, mag_z), rhall);
-        self.mag = Some((-compensated.1, -compensated.2, compensated.0));
+        self.mag = Some(Vector3::new(-compensated.1, -compensated.2, compensated.0));
 
         Ok(())
     }
@@ -181,7 +182,7 @@ impl Compass {
         }
     }
 
-    pub fn magnetometer(&self) -> Option<(f32, f32, f32)> {
+    pub fn magnetometer(&self) -> Option<Vector3<f32>> {
         self.mag
     }
 }

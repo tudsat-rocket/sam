@@ -224,7 +224,7 @@ impl<'a> Vehicle {
 
     fn acceleration(&self) -> Option<Vector3<f32>> {
         // TODO: use backup acc if necessary
-        self.imu.accelerometer().map(|v| Vector3::new(v.0, v.1, v.2))
+        self.imu.accelerometer()
     }
 
     fn altitude(&self) -> f32 {
@@ -241,9 +241,9 @@ impl<'a> Vehicle {
 
     #[cfg(not(feature = "gcs"))]
     fn update_state_estimator(&mut self) {
-        let gyro = self.imu.gyroscope().map(|v| Vector3::new(v.0, v.1, v.2));
+        let gyro = self.imu.gyroscope();
         let acc = self.acceleration();
-        let mag = self.compass.magnetometer().map(|v| Vector3::new(v.0, v.1, v.2));
+        let mag = self.compass.magnetometer();
         if let (Some(gyro), Some(acc), Some(mag)) = (&gyro, &acc, &mag) {
             self.orientation = self
                 .ahrs
@@ -474,32 +474,28 @@ impl Into<TelemetryRawSensors> for &Vehicle {
     fn into(self) -> TelemetryRawSensors {
         TelemetryRawSensors {
             time: self.time,
-            gyro: self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0)),
-            accelerometer1: self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
-            accelerometer2: self.acc.accelerometer().unwrap_or((0.0, 0.0, 0.0)),
-            magnetometer: self.compass.magnetometer().unwrap_or((0.0, 0.0, 0.0)),
-            temperature_baro: self.barometer.temperature().unwrap_or(0.0),
-            pressure_baro: self.barometer.pressure().unwrap_or(0.0),
+            gyro: self.imu.gyroscope().unwrap_or_default(),
+            accelerometer1: self.imu.accelerometer().unwrap_or_default(),
+            accelerometer2: self.acc.accelerometer().unwrap_or_default(),
+            magnetometer: self.compass.magnetometer().unwrap_or_default(),
+            temperature_baro: self.barometer.temperature().unwrap_or_default(),
+            pressure_baro: self.barometer.pressure().unwrap_or_default(),
         }
     }
 }
 
 impl Into<TelemetryRawSensorsCompressed> for &Vehicle {
     fn into(self) -> TelemetryRawSensorsCompressed {
-        let gyro = self.imu.gyroscope().unwrap_or((0.0, 0.0, 0.0));
-        let acc1 = self.imu.accelerometer().unwrap_or((0.0, 0.0, 0.0));
-        let acc2 = self.acc.accelerometer().unwrap_or((0.0, 0.0, 0.0));
-        let mag = self.compass.magnetometer().unwrap_or((0.0, 0.0, 0.0));
+        let gyro = self.imu.gyroscope().unwrap_or_default();
+        let acc1 = self.imu.accelerometer().unwrap_or_default();
+        let acc2 = self.acc.accelerometer().unwrap_or_default();
+        let mag = self.compass.magnetometer().unwrap_or_default();
         TelemetryRawSensorsCompressed {
             time: self.time,
-            gyro: ((gyro.0 * 10.0).into(), (gyro.1 * 10.0).into(), (gyro.2 * 10.0).into()),
-            accelerometer1: (
-                (acc1.0 * 100.0).into(),
-                (acc1.1 * 100.0).into(),
-                (acc1.2 * 100.0).into(),
-            ),
-            accelerometer2: ((acc2.0 * 10.0).into(), (acc2.1 * 10.0).into(), (acc2.2 * 10.0).into()),
-            magnetometer: ((mag.0 * 10.0).into(), (mag.1 * 10.0).into(), (mag.2 * 10.0).into()),
+            gyro: (gyro * 10.0).into(),
+            accelerometer1: (acc1 * 100.0).into(),
+            accelerometer2: (acc2 * 10.0).into(),
+            magnetometer: (mag * 10.0).into(),
             temperature_baro: (self.barometer.temperature().unwrap_or(0.0) * 2.0) as i8,
             pressure_baro: (self.barometer.pressure().unwrap_or(0.0) * 10.0) as u16,
         }

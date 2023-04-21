@@ -8,7 +8,7 @@ use std::string::{String, ToString};
 #[cfg(feature = "std")]
 use std::vec::Vec;
 
-use nalgebra::UnitQuaternion;
+use nalgebra::{UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
@@ -26,9 +26,7 @@ pub use LogLevel::*;
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
 #[allow(non_camel_case_types)]
-pub struct f8 {
-    raw: u8,
-}
+pub struct f8(u8);
 
 impl From<f32> for f8 {
     fn from(x: f32) -> Self {
@@ -41,21 +39,36 @@ impl From<f32> for f8 {
         let fraction_small = fraction >> 20;
 
         let raw = ((sign << 7) | (expo_small << 3) | fraction_small) as u8;
-        Self { raw }
+        Self(raw)
     }
 }
 
 impl Into<f32> for f8 {
     fn into(self) -> f32 {
-        let sign = self.raw >> 7;
-        let exponent = (self.raw & 0x7f) >> 3;
-        let fraction = self.raw & 0x7;
+        let sign = self.0 >> 7;
+        let exponent = (self.0 & 0x7f) >> 3;
+        let fraction = self.0 & 0x7;
 
         let expo_large = ((exponent as i32) - 7 + 0x80) as u32;
         let fraction_large = (fraction as u32) << 20;
 
         let bits = ((sign as u32) << 31) | (expo_large << 23) | fraction_large;
         f32::from_bits(bits)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
+pub struct CompressedVector3(f8, f8, f8);
+
+impl From<Vector3<f32>> for CompressedVector3 {
+    fn from(vec: Vector3<f32>) -> Self {
+        Self(vec.x.into(), vec.y.into(), vec.z.into())
+    }
+}
+
+impl Into<Vector3<f32>> for CompressedVector3 {
+    fn into(self) -> Vector3<f32> {
+        Vector3::new(self.0.into(), self.1.into(), self.2.into())
     }
 }
 
@@ -149,10 +162,10 @@ pub struct TelemetryMainCompressed {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryRawSensors {
     pub time: u32,
-    pub gyro: (f32, f32, f32),
-    pub accelerometer1: (f32, f32, f32),
-    pub accelerometer2: (f32, f32, f32),
-    pub magnetometer: (f32, f32, f32),
+    pub gyro: Vector3<f32>,
+    pub accelerometer1: Vector3<f32>,
+    pub accelerometer2: Vector3<f32>,
+    pub magnetometer: Vector3<f32>,
     pub temperature_baro: f32,
     pub pressure_baro: f32,
 }
@@ -160,10 +173,10 @@ pub struct TelemetryRawSensors {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryRawSensorsCompressed {
     pub time: u32,
-    pub gyro: (f8, f8, f8),
-    pub accelerometer1: (f8, f8, f8),
-    pub accelerometer2: (f8, f8, f8),
-    pub magnetometer: (f8, f8, f8),
+    pub gyro: CompressedVector3,
+    pub accelerometer1: CompressedVector3,
+    pub accelerometer2: CompressedVector3,
+    pub magnetometer: CompressedVector3,
     pub temperature_baro: i8,
     pub pressure_baro: u16, // TODO: compress this further
 }

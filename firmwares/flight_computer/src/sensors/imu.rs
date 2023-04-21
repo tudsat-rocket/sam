@@ -1,4 +1,5 @@
 use alloc::sync::Arc;
+use nalgebra::Vector3;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
@@ -31,8 +32,8 @@ pub struct Imu {
     cs: CsPin,
     gyro_scale: LSM6GyroscopeScale,
     accel_scale: LSM6AccelerometerScale,
-    gyro: Option<(f32, f32, f32)>,
-    accel: Option<(f32, f32, f32)>,
+    gyro: Option<Vector3<f32>>,
+    accel: Option<Vector3<f32>>,
 }
 
 impl Imu {
@@ -102,8 +103,8 @@ impl Imu {
 
             // rotate values to match vehicle coordinate system (invert x, swap y and z)
             // and convert to m/s^2 and deg/s
-            self.gyro = Some(self.gyro_scale.scale_raw_values((-gyro_x, gyro_z, gyro_y)));
-            self.accel = Some(self.accel_scale.scale_raw_values((-accel_x, accel_z, accel_y)));
+            self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(-gyro_x, gyro_z, gyro_y)));
+            self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(-accel_x, accel_z, accel_y)));
 
             Ok(())
         })
@@ -136,11 +137,11 @@ impl Imu {
         }
     }
 
-    pub fn accelerometer(&self) -> Option<(f32, f32, f32)> {
+    pub fn accelerometer(&self) -> Option<Vector3<f32>> {
         self.accel
     }
 
-    pub fn gyroscope(&self) -> Option<(f32, f32, f32)> {
+    pub fn gyroscope(&self) -> Option<Vector3<f32>> {
         self.gyro
     }
 }
@@ -171,7 +172,7 @@ enum LSM6AccelerometerScale {
 }
 
 impl LSM6AccelerometerScale {
-    fn scale_raw_values(&self, raw: (i16, i16, i16)) -> (f32, f32, f32) {
+    fn scale_raw_values(&self, raw: Vector3<i16>) -> Vector3<f32> {
         let factor = match self {
             Self::Max2G => (i16::MAX as f32) / (2.0 * G_TO_MS2),
             Self::Max4G => (i16::MAX as f32) / (4.0 * G_TO_MS2),
@@ -179,7 +180,7 @@ impl LSM6AccelerometerScale {
             Self::Max16G => (i16::MAX as f32) / (16.0 * G_TO_MS2),
         };
 
-        (raw.0 as f32 / factor, raw.1 as f32 / factor, raw.2 as f32 / factor)
+        Vector3::new(raw.x as f32, raw.y as f32, raw.z as f32) / factor
     }
 }
 
@@ -209,7 +210,7 @@ enum LSM6GyroscopeScale {
 }
 
 impl LSM6GyroscopeScale {
-    fn scale_raw_values(&self, raw: (i16, i16, i16)) -> (f32, f32, f32) {
+    fn scale_raw_values(&self, raw: Vector3<i16>) -> Vector3<f32> {
         let factor = match self {
             Self::Max125Dps => (i16::MAX as f32) / 125.0,
             Self::Max250Dps => (i16::MAX as f32) / 250.0,
@@ -219,7 +220,7 @@ impl LSM6GyroscopeScale {
             Self::Max4000Dps => (i16::MAX as f32) / 4000.0,
         };
 
-        (raw.0 as f32 / factor, raw.1 as f32 / factor, raw.2 as f32 / factor)
+        Vector3::new(raw.x as f32, raw.y as f32, raw.z as f32) / factor
     }
 }
 
