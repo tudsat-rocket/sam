@@ -1,43 +1,30 @@
-use alloc::sync::Arc;
-use nalgebra::Vector3;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
+use alloc::sync::Arc;
+
+use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::digital::blocking::OutputPin;
+
 use cortex_m::interrupt::{free, Mutex};
-use hal::gpio::{Alternate, Output, Pin};
-use hal::pac::SPI1;
-use hal::prelude::*;
-use hal::spi::{Master, Spi, TransferModeNormal};
-use stm32f4xx_hal as hal;
+
+use nalgebra::Vector3;
 
 use crate::prelude::*;
 
-type RawSpi = Spi<
-    SPI1,
-    (
-        Pin<'A', 5, Alternate<5>>,
-        Pin<'B', 4, Alternate<5>>,
-        Pin<'A', 7, Alternate<5>>,
-    ),
-    TransferModeNormal,
-    Master,
->;
-type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
-type CsPin = hal::gpio::Pin<'B', 15, Output>;
-
 const G_TO_MS2: f32 = 9.80665;
 
-pub struct Imu {
-    spi: SharedSpi,
-    cs: CsPin,
+pub struct Imu<SPI, CS> {
+    spi: Arc<Mutex<RefCell<SPI>>>,
+    cs: CS,
     gyro_scale: LSM6GyroscopeScale,
     accel_scale: LSM6AccelerometerScale,
     gyro: Option<Vector3<f32>>,
     accel: Option<Vector3<f32>>,
 }
 
-impl Imu {
-    pub fn init(spi: SharedSpi, cs: CsPin) -> Result<Self, hal::spi::Error> {
+impl<SPI: TransferInplace, CS: OutputPin> Imu<SPI, CS> {
+    pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let gyro_scale = LSM6GyroscopeScale::Max2000Dps;
         let accel_scale = LSM6AccelerometerScale::Max16G;
 
@@ -64,47 +51,47 @@ impl Imu {
         Ok(imu)
     }
 
-    fn write_u8(&mut self, address: LSM6RRegister, value: u8) -> Result<(), hal::spi::Error> {
+    fn write_u8(&mut self, address: LSM6RRegister, value: u8) -> Result<(), SPI::Error> {
+        let mut payload = [address as u8, value];
+
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
 
-            let mut payload = [address as u8, value];
-
-            self.cs.set_low();
-            let res = spi.transfer(&mut payload);
-            self.cs.set_high();
-
+            self.cs.set_low().ok();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().ok();
             res?;
 
             Ok(())
         })
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), hal::spi::Error> {
+    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
+        let mut payload = [(LSM6RRegister::OutTempL as u8) | 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
 
-            let mut payload = [(LSM6RRegister::OutTempL as u8) | 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-
-            self.cs.set_low();
-            let response = spi.transfer(&mut payload)?;
-            self.cs.set_high();
+            self.cs.set_low().ok();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().ok();
+            res?;
 
             // TODO: do we need this temp?
-            let _temp = ((response[2] as i16) << 8) + (response[1] as i16);
-            let gyro_x = ((response[4] as i16) << 8) + (response[3] as i16);
-            let gyro_y = ((response[6] as i16) << 8) + (response[5] as i16);
-            let gyro_z = ((response[8] as i16) << 8) + (response[7] as i16);
-            let accel_x = ((response[10] as i16) << 8) + (response[9] as i16);
-            let accel_y = ((response[12] as i16) << 8) + (response[11] as i16);
-            let accel_z = ((response[14] as i16) << 8) + (response[13] as i16);
+            let _temp = ((payload[2] as i16) << 8) + (payload[1] as i16);
+            let gyro_x = ((payload[4] as i16) << 8) + (payload[3] as i16);
+            let gyro_y = ((payload[6] as i16) << 8) + (payload[5] as i16);
+            let gyro_z = ((payload[8] as i16) << 8) + (payload[7] as i16);
+            let accel_x = ((payload[10] as i16) << 8) + (payload[9] as i16);
+            let accel_y = ((payload[12] as i16) << 8) + (payload[11] as i16);
+            let accel_z = ((payload[14] as i16) << 8) + (payload[13] as i16);
 
             // rotate values to match vehicle coordinate system (invert x, swap y and z)
             // and convert to m/s^2 and deg/s
-            self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(-gyro_x, gyro_z, gyro_y)));
-            self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(-accel_x, accel_z, accel_y)));
+            self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(gyro_x.saturating_neg(), gyro_z, gyro_y)));
+            self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(accel_x.saturating_neg(), accel_z, accel_y)));
 
             Ok(())
         })
@@ -115,7 +102,7 @@ impl Imu {
         mode: LSM6AccelerometerMode,
         scale: LSM6AccelerometerScale,
         high_res: bool,
-    ) -> Result<(), hal::spi::Error> {
+    ) -> Result<(), SPI::Error> {
         let reg = ((mode as u8) << 4) + ((scale as u8) << 2) + ((high_res as u8) << 1);
         self.write_u8(LSM6RRegister::Ctrl1Xl, reg)
     }
@@ -124,7 +111,7 @@ impl Imu {
         &mut self,
         mode: LSM6GyroscopeMode,
         scale: LSM6GyroscopeScale,
-    ) -> Result<(), hal::spi::Error> {
+    ) -> Result<(), SPI::Error> {
         let reg = ((mode as u8) << 4) + (scale as u8);
         self.write_u8(LSM6RRegister::Ctrl2G, reg)
     }

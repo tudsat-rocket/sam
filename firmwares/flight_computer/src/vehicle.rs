@@ -1,6 +1,13 @@
 use alloc::collections::VecDeque;
 
+use hal::gpio::Alternate;
+use hal::gpio::Analog;
+use hal::gpio::Input;
+use hal::pac::{SPI1, SPI2, SPI3};
 use hal::rcc::Clocks;
+use hal::spi::Master;
+use hal::spi::Spi;
+use hal::spi::TransferModeNormal;
 use stm32f4xx_hal as hal;
 use hal::gpio::{Pin, Output};
 
@@ -14,6 +21,8 @@ use num_traits::Pow;
 use crate::prelude::*;
 
 use crate::bootloader::*;
+#[cfg(feature = "rev2")]
+use crate::can::MCP2517FD;
 use crate::buzzer::*;
 use crate::flash::*;
 use crate::logging::*;
@@ -44,20 +53,71 @@ const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after w
 type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
 
+#[cfg(feature = "rev1")]
+type Spi1 = Spi<
+    SPI1,
+    (Pin<'A', 5, Alternate<5>>, Pin<'B', 4, Alternate<5>>, Pin<'A', 7, Alternate<5>>),
+    TransferModeNormal,
+    Master,
+>;
+
+#[cfg(feature = "rev2")]
+type Spi1 = Spi<
+    SPI1,
+    (Pin<'A', 5, Alternate<5>>, Pin<'A', 6, Alternate<5>>, Pin<'A', 7, Alternate<5>>),
+    TransferModeNormal,
+    Master,
+>;
+
+type Spi2 = Spi<
+    SPI2,
+    (Pin<'B', 13, Alternate<5>>, Pin<'C', 2, Alternate<5>>, Pin<'C', 3, Alternate<5>>),
+    TransferModeNormal,
+    Master,
+>;
+
+type Spi3 = Spi<
+    SPI3,
+    (Pin<'C', 10, Alternate<6>>, Pin<'C', 11, Alternate<6>>, Pin<'C', 12, Alternate<6>>),
+    TransferModeNormal,
+    Master,
+>;
+
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
     clocks: Clocks,
 
-    imu: Imu,
-    acc: Accelerometer,
-    compass: Compass,
-    barometer: Barometer,
+    imu: Imu<Spi1, Pin<'B', 15, Output>>,
+
+    #[cfg(feature = "rev1")]
+    acc: ADXL375<Spi3, Pin<'D', 2, Output>>,
+    #[cfg(feature = "rev2")]
+    acc: H3LIS331DL<Spi1, Pin<'A', 4, Output>>,
+
+    #[cfg(feature = "rev1")]
+    compass: BMM150<Spi1, Pin<'B', 14, Output>>,
+    #[cfg(feature = "rev2")]
+    compass: LIS3MDL<Spi1, Pin<'B', 10, Output>>,
+
+    barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
     gps: GPS,
-    power: PowerMonitor,
+
+    #[cfg(feature = "rev1")]
+    power: PowerMonitor<Pin<'C', 5, Analog>, Pin<'C', 4, Analog>, Pin<'A', 4, Analog>>,
+    #[cfg(feature = "rev2")]
+    power: PowerMonitor<Pin<'B', 0, Analog>, Pin<'C', 5, Analog>, Pin<'C', 4, Analog>>,
 
     usb_link: UsbLink,
-    radio: LoRaRadio,
-    flash: Flash,
+    radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
+
+    #[cfg(feature = "rev1")]
+    flash: Flash<Spi2, Pin<'B', 12, Output>>,
+    #[cfg(feature = "rev2")]
+    flash: Flash<Spi3, Pin<'D', 2, Output>>,
+
+    #[cfg(feature = "rev2")]
+    can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
+
     leds: LEDS,
     buzzer: Buzzer,
     recovery: RECOVERY,
@@ -76,19 +136,33 @@ pub struct Vehicle {
     loop_runtime_history: VecDeque<u16>,
 }
 
-impl<'a> Vehicle {
+impl Vehicle {
     #[rustfmt::skip]
     pub fn init(
         clocks: Clocks,
         usb_link: UsbLink,
-        imu: Imu,
-        acc: Accelerometer,
-        compass: Compass,
-        barometer: Barometer,
+        imu: Imu<Spi1, Pin<'B', 15, Output>>,
+        #[cfg(feature = "rev1")]
+        acc: ADXL375<Spi3, Pin<'D', 2, Output>>,
+        #[cfg(feature = "rev2")]
+        acc: H3LIS331DL<Spi1, Pin<'A', 4, Output>>,
+        #[cfg(feature = "rev1")]
+        compass: BMM150<Spi1, Pin<'B', 14, Output>>,
+        #[cfg(feature = "rev2")]
+        compass: LIS3MDL<Spi1, Pin<'B', 10, Output>>,
+        barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
         gps: GPS,
-        flash: Flash,
-        radio: LoRaRadio,
-        power: PowerMonitor,
+        #[cfg(feature = "rev1")]
+        flash: Flash<Spi2, Pin<'B', 12, Output>>,
+        #[cfg(feature = "rev2")]
+        flash: Flash<Spi3, Pin<'D', 2, Output>>,
+        radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
+        #[cfg(feature = "rev2")]
+        can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
+        #[cfg(feature = "rev1")]
+        power: PowerMonitor<Pin<'C', 5, Analog>, Pin<'C', 4, Analog>, Pin<'A', 4, Analog>>,
+        #[cfg(feature = "rev2")]
+        power: PowerMonitor<Pin<'B', 0, Analog>, Pin<'C', 5, Analog>, Pin<'C', 4, Analog>>,
         leds: LEDS,
         buzzer: Buzzer,
         recovery: RECOVERY
@@ -110,6 +184,8 @@ impl<'a> Vehicle {
             usb_link,
             flash,
             radio,
+            #[cfg(feature = "rev2")]
+            can,
             leds,
             buzzer,
             recovery,
@@ -282,16 +358,17 @@ impl<'a> Vehicle {
         Logger::update_time(self.time);
 
         // Read sensors
-        self.acc.tick();
-        self.barometer.tick();
-        self.gps.tick(self.time, &self.clocks);
         self.power.tick();
+        self.barometer.tick();
         self.imu.tick();
+        self.acc.tick(self.time, self.imu.accelerometer());
+        self.gps.tick(self.time, &self.clocks);
         self.compass.tick();
 
         self.update_state_estimator();
 
-        // TODO: write to flash, sd card
+        #[cfg(feature = "rev2")]
+        self.can.tick();
 
         // Handle incoming messages
         if let Some(msg) = self.radio.tick(self.time, self.mode) {

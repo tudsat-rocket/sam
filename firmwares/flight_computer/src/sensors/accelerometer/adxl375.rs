@@ -1,36 +1,27 @@
+use core::{cell::RefCell, ops::DerefMut};
+
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use hal::gpio::{Alternate, Output, Pin};
-use hal::pac::SPI3;
-use hal::prelude::*;
-use hal::spi::{Master, TransferModeNormal};
+use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::digital::blocking::OutputPin;
+
+use cortex_m::interrupt::{free, Mutex};
+
 use nalgebra::Vector3;
-use stm32f4xx_hal as hal;
 
 use crate::prelude::*;
 
-type Spi = hal::spi::Spi<
-    SPI3,
-    (
-        Pin<'C', 10, Alternate<6>>,
-        Pin<'C', 11, Alternate<6>>,
-        Pin<'C', 12, Alternate<6>>,
-    ),
-    TransferModeNormal,
-    Master,
->;
-type CsPin = hal::gpio::Pin<'D', 2, Output>;
-
 const G_TO_MS2: f32 = 9.80665;
 
-pub struct Accelerometer {
-    spi: Spi,
-    cs: CsPin,
+pub struct ADXL375<SPI, CS> {
+    spi: Arc<Mutex<RefCell<SPI>>>,
+    cs: CS,
     acc: Option<Vector3<f32>>,
 }
 
-impl Accelerometer {
-    pub fn init(spi: Spi, cs: CsPin) -> Result<Self, hal::spi::Error> {
+impl<SPI: TransferInplace, CS: OutputPin> ADXL375<SPI, CS> {
+    pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut acc2 = Self { spi, cs, acc: None };
 
         acc2.configure_power(ADXL375Mode::Measure)?;
@@ -44,35 +35,45 @@ impl Accelerometer {
         Ok(acc2)
     }
 
-    fn read_registers(&mut self, address: ADXL375Register, response_len: usize) -> Result<Vec<u8>, hal::spi::Error> {
+    fn read_registers(&mut self, address: ADXL375Register, response_len: usize) -> Result<Vec<u8>, SPI::Error> {
         let address = (address as u8) | 0x80 | (((response_len > 1) as u8) << 6);
         let mut payload = [alloc::vec![address], [0x00].repeat(response_len)].concat();
 
-        self.cs.set_low();
-        let response = self.spi.transfer(&mut payload);
-        self.cs.set_high();
+        free(|cs| {
+            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
+            let spi = ref_mut.deref_mut();
 
-        Ok(response?[1..].to_vec())
+            self.cs.set_low().unwrap();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().unwrap();
+            res?;
+
+            Ok(payload[1..].to_vec())
+        })
     }
 
-    fn read_u8(&mut self, address: ADXL375Register) -> Result<u8, hal::spi::Error> {
+    fn read_u8(&mut self, address: ADXL375Register) -> Result<u8, SPI::Error> {
         let res = self.read_registers(address, 1)?;
         Ok(res[0])
     }
 
-    fn write_u8(&mut self, address: ADXL375Register, value: u8) -> Result<(), hal::spi::Error> {
+    fn write_u8(&mut self, address: ADXL375Register, value: u8) -> Result<(), SPI::Error> {
         let mut payload = [address as u8, value];
 
-        self.cs.set_low();
-        let res = self.spi.transfer(&mut payload);
-        self.cs.set_high();
+        free(|cs| {
+            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
+            let spi = ref_mut.deref_mut();
 
-        res?;
+            self.cs.set_low().unwrap();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().unwrap();
+            res?;
 
-        Ok(())
+            Ok(())
+        })
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), hal::spi::Error> {
+    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
         let response = self.read_registers(ADXL375Register::DataXL, 6)?;
 
         let x = ((response[1] as i16) << 8) + (response[0] as i16);
@@ -82,23 +83,23 @@ impl Accelerometer {
         self.acc = Some(Vector3::new(
             x as f32 * 0.049 * G_TO_MS2,
             z as f32 * 0.049 * G_TO_MS2,
-            -y as f32 * 0.049 * G_TO_MS2,
+            y.saturating_neg() as f32 * 0.049 * G_TO_MS2,
         ));
 
         Ok(())
     }
 
-    fn configure_power(&mut self, mode: ADXL375Mode) -> Result<(), hal::spi::Error> {
+    fn configure_power(&mut self, mode: ADXL375Mode) -> Result<(), SPI::Error> {
         let val = (mode as u8) << 2;
         self.write_u8(ADXL375Register::PowerControl, val)
     }
 
-    fn configure_data_rate(&mut self, data_rate: ADXL375DataRate, low_power: bool) -> Result<(), hal::spi::Error> {
+    fn configure_data_rate(&mut self, data_rate: ADXL375DataRate, low_power: bool) -> Result<(), SPI::Error> {
         let val = data_rate as u8 + ((low_power as u8) << 4);
         self.write_u8(ADXL375Register::DataRateControl, val)
     }
 
-    pub fn tick(&mut self) {
+    pub fn tick(&mut self, _time: u32, _primary_acc: Option<Vector3<f32>>) {
         if let Err(e) = self.read_sensor_data() {
             self.acc = None;
             log!(Error, "{:?}", e);

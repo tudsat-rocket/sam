@@ -9,11 +9,25 @@ use num_traits::Float;
 use crate::telemetry::FlightMode;
 use Semitone::*;
 
+#[cfg(feature = "rev1")]
 type Timer = hal::pac::TIM4;
-type Pin = hal::gpio::Pin<'B', 9, hal::gpio::Alternate<2>>;
-type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<3>, Pin>;
+#[cfg(feature = "rev2")]
+type Timer = hal::pac::TIM3;
 
+#[cfg(feature = "rev1")]
+type Pin = hal::gpio::Pin<'B', 9, hal::gpio::Alternate<2>>;
+#[cfg(feature = "rev2")]
+type Pin = hal::gpio::Pin<'C', 7, hal::gpio::Alternate<2>>;
+
+#[cfg(feature = "rev1")]
+type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<3>, Pin>;
+#[cfg(feature = "rev2")]
+type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<1>, Pin>;
+
+#[cfg(feature = "rev1")]
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
+#[cfg(feature = "rev2")]
+const CHANNEL: hal::timer::Channel = hal::timer::Channel::C2;
 
 const STARTUP: [Note; 6] = [
     Note::note(C, 4, 150), Note::pause(10),

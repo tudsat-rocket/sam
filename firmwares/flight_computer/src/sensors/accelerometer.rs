@@ -1,9 +1,9 @@
 #[cfg(feature = "rev1")]
-mod bmm150;
+mod adxl375;
 #[cfg(feature = "rev2")]
-mod lis3mdl;
+mod h3lis331dl;
 
 #[cfg(feature = "rev1")]
-pub use bmm150::BMM150;
+pub use adxl375::ADXL375;
 #[cfg(feature = "rev2")]
-pub use lis3mdl::LIS3MDL;
+pub use h3lis331dl::H3LIS331DL;

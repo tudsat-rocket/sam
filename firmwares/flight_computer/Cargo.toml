@@ -38,11 +38,17 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
+[dependencies.embedded-hal-one]
+version = "=1.0.0-alpha.7"
+package = "embedded-hal"
+
 [dev-dependencies]
 defmt-test = "0.3"
 
 [features]
-default = ["no_std"]
+default = ["no_std", "rev2"]
+rev1 = []
+rev2 = []
 no_std = ["alloc-cortex-m", "stm32f4xx-hal", "cortex-m", "cortex-m-rt"]
 gcs = []
 

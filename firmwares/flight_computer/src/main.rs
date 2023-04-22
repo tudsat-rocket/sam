@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(default_alloc_error_handler)]
+#![feature(generic_const_exprs)]
 
 // This is why we need nightly, default_alloc_error_handler is (still) not
 // stabilized. This allows using Strings and everything else that requires
@@ -26,6 +27,8 @@ use stm32f4xx_hal as hal;
 
 mod bootloader;
 mod buzzer;
+#[cfg(feature = "rev2")]
+mod can;
 mod flash;
 mod logging;
 mod lora;
@@ -40,6 +43,8 @@ use euroc_fc_firmware as _;
 
 use bootloader::*;
 use buzzer::*;
+#[cfg(feature = "rev2")]
+use can::*;
 use flash::*;
 use logging::Info; // TODO
 use lora::*;
@@ -103,6 +108,7 @@ fn main() -> ! {
         .require_pll48clk()
         .sysclk(CLOCK_FREQ_MEGA_HERTZ.MHz())
         .freeze();
+    #[allow(unused_mut, unused)] // TODO
     let mut delay = cp.SYST.delay(&clocks);
 
     // Configure USB serial port for debugging
@@ -131,60 +137,109 @@ fn main() -> ! {
     let leds = (led_red, led_yellow, led_green);
 
     // Initialize SPI peripherals
+    let dma1_streams = hal::dma::StreamsTuple::new(dp.DMA1);
+    let dma2_streams = hal::dma::StreamsTuple::new(dp.DMA2);
+
     let spi_mode = Mode {
         polarity: Polarity::IdleLow,
         phase: Phase::CaptureOnFirstTransition,
     };
 
-    let spi1_sck = gpioa.pa5.into_alternate();
+    // SPI 1
+    #[cfg(feature = "rev1")]
     let spi1_miso = gpiob.pb4.into_alternate();
-    let spi1_mosi = gpioa.pa7.into_alternate();
-    let spi1_cs_imu = gpiob.pb15.into_push_pull_output_in_state(PinState::High);
-    let spi1_cs_baro = gpioc.pc6.into_push_pull_output_in_state(PinState::High);
-    let spi1_cs_mag = gpiob.pb14.into_push_pull_output_in_state(PinState::High);
-    let spi1_cs_radio = gpioa.pa1.into_push_pull_output_in_state(PinState::High);
-    let _spi1_cs_sd = gpioa.pa15.into_push_pull_output_in_state(PinState::High);
-    let spi1 = Arc::new(Mutex::new(RefCell::new(dp.SPI1.spi(
-        (spi1_sck, spi1_miso, spi1_mosi),
+    #[cfg(feature = "rev2")]
+    let spi1_miso = gpioa.pa6.into_alternate();
+
+    let spi1 = dp.SPI1.spi(
+        (gpioa.pa5.into_alternate(), spi1_miso, gpioa.pa7.into_alternate()),
         spi_mode,
         10.MHz(),
         &clocks,
-    ))));
+    );
+    let spi1_dma_stream = dma2_streams.3;
+    let spi1_dma_tx = unsafe { core::ptr::read(&spi1).use_dma().tx() };
+    let spi1 = Arc::new(Mutex::new(RefCell::new(spi1)));
+
+    let spi1_cs_imu = gpiob.pb15.into_push_pull_output_in_state(PinState::High);
+    let spi1_cs_baro = gpioc.pc6.into_push_pull_output_in_state(PinState::High);
+    #[cfg(feature = "rev1")]
+    let spi1_cs_mag = gpiob.pb14.into_push_pull_output_in_state(PinState::High);
+    #[cfg(feature = "rev2")]
+    let spi1_cs_mag = gpiob.pb10.into_push_pull_output_in_state(PinState::High);
+    #[cfg(feature = "rev2")]
+    let spi1_cs_acc = gpioa.pa4.into_push_pull_output_in_state(PinState::High);
+    let spi1_cs_radio = gpioa.pa1.into_push_pull_output_in_state(PinState::High);
+    let _spi1_cs_sd = gpioa.pa15.into_push_pull_output_in_state(PinState::High);
+
+    // SPI 1 peripherals
     let imu = Imu::init(spi1.clone(), spi1_cs_imu).unwrap();
-    let compass = Compass::init(spi1.clone(), spi1_cs_mag, &mut delay).unwrap();
+    #[cfg(feature="rev1")]
+    let compass = BMM150::init(spi1.clone(), spi1_cs_mag, &mut delay).unwrap();
+    #[cfg(feature="rev2")]
+    let compass = LIS3MDL::init(spi1.clone(), spi1_cs_mag).unwrap();
     let barometer = Barometer::init(spi1.clone(), spi1_cs_baro).unwrap();
-    let radio_irq = gpioc.pc0.into_input();
-    let radio_busy = gpioc.pc1.into_input();
-    let radio_dma_streams = hal::dma::StreamsTuple::new(dp.DMA2);
-    let radio = LoRaRadio::init(spi1, spi1_cs_radio, radio_irq, radio_busy, radio_dma_streams);
+    #[cfg(feature = "rev2")]
+    let acc = H3LIS331DL::init(spi1.clone(), spi1_cs_acc).unwrap();
+    let radio = LoRaRadio::init(
+        spi1,
+        spi1_cs_radio,
+        spi1_dma_tx,
+        spi1_dma_stream,
+        gpioc.pc0.into_input(),
+        gpioc.pc1.into_input()
+    );
 
-    let spi2_sck = gpiob.pb13.into_alternate();
-    let spi2_miso = gpioc.pc2.into_alternate();
-    let spi2_mosi = gpioc.pc3.into_alternate();
-    let spi2_cs_flash = gpiob.pb12.into_push_pull_output_in_state(PinState::High);
-    let spi2 = dp
-        .SPI2
-        .spi((spi2_sck, spi2_miso, spi2_mosi), spi_mode, 20.MHz(), &clocks);
-    let flash_dma_streams = hal::dma::StreamsTuple::new(dp.DMA1);
-    let flash = Flash::init(spi2, spi2_cs_flash, flash_dma_streams);
+    // SPI 2
+    let spi2 = dp.SPI2.spi(
+        (gpiob.pb13.into_alternate(), gpioc.pc2.into_alternate(), gpioc.pc3.into_alternate()),
+        spi_mode,
+        20.MHz(),
+        &clocks
+    );
+    #[cfg(feature = "rev1")]
+    let spi2_dma_tx = unsafe { core::ptr::read(&spi2).use_dma().tx() };
+    let spi2 = Arc::new(Mutex::new(RefCell::new(spi2)));
 
+    // SPI 2 peripherals
+    #[cfg(feature = "rev1")]
+    let flash = Flash::init(spi2, gpiob.pb12.into_push_pull_output_in_state(PinState::High), spi2_dma_tx, dma1_streams.4);
+
+    #[cfg(feature = "rev2")]
+    let can = MCP2517FD::init(spi2, gpiob.pb12.into_push_pull_output_in_state(PinState::High)).unwrap();
+
+    // SPI 3
+    // For revision 1, we need a different spi mode on SPI3
+    #[cfg(feature = "rev1")]
     let spi_mode = Mode {
         polarity: Polarity::IdleHigh,
         phase: Phase::CaptureOnSecondTransition,
     };
 
-    let spi3_sck = gpioc.pc10.into_alternate();
-    let spi3_miso = gpioc.pc11.into_alternate();
-    let spi3_mosi = gpioc.pc12.into_alternate();
-    let spi3 = dp
-        .SPI3
-        .spi((spi3_sck, spi3_miso, spi3_mosi), spi_mode, 5.MHz(), &clocks);
-    let acc = Accelerometer::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High)).unwrap();
+    let spi3 = dp.SPI3.spi(
+        (gpioc.pc10.into_alternate(), gpioc.pc11.into_alternate(), gpioc.pc12.into_alternate()),
+        spi_mode,
+        if cfg!(feature = "rev2") { 20.MHz() } else { 5.MHz() },
+        &clocks
+    );
+    #[cfg(feature = "rev2")]
+    let spi3_dma_tx = unsafe { core::ptr::read(&spi3).use_dma().tx() };
+    let spi3 = Arc::new(Mutex::new(RefCell::new(spi3)));
+
+    // SPI 3 peripherals
+    #[cfg(feature = "rev1")]
+    let acc = ADXL375::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High)).unwrap();
+
+    #[cfg(feature = "rev2")]
+    let flash = Flash::init(spi3, gpiod.pd2.into_push_pull_output_in_state(PinState::High), spi3_dma_tx, dma1_streams.7);
 
     // Initialize GPS
     let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
 
+    #[cfg(feature = "rev1")]
     let buzzer = Buzzer::init(dp.TIM4, gpiob.pb9.into_alternate::<2>(), &clocks);
+    #[cfg(feature = "rev2")]
+    let buzzer = Buzzer::init(dp.TIM3, gpioc.pc7.into_alternate::<2>(), &clocks);
 
     let gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
     let gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
@@ -195,10 +250,18 @@ fn main() -> ! {
 
     let mut adc = Adc::adc1(dp.ADC1, true, AdcConfig::default());
     adc.enable_temperature_and_vref();
-    let adc_bat_high = gpioc.pc5.into_analog();
-    let adc_bat_low = gpioc.pc4.into_analog();
-    let adc_arm = gpioa.pa4.into_analog();
-    let power = PowerMonitor::new(adc, adc_bat_high, adc_bat_low, adc_arm);
+    #[cfg(feature = "rev1")]
+    let power = PowerMonitor::new(adc,
+        gpioc.pc5.into_analog(),
+        gpioc.pc4.into_analog(),
+        gpioa.pa4.into_analog()
+    );
+    #[cfg(feature = "rev2")]
+    let power = PowerMonitor::new(adc,
+        gpiob.pb0.into_analog(),
+        gpioc.pc5.into_analog(),
+        gpioc.pc4.into_analog()
+    );
 
     // Configure main loop timer
     let mut timer = dp.TIM2.counter_hz(&clocks);
@@ -215,7 +278,21 @@ fn main() -> ! {
     }
 
     let mut vehicle = Vehicle::init(
-        clocks, usb_link, imu, acc, compass, barometer, gps, flash, radio, power, leds, buzzer, recovery
+        clocks,
+        usb_link,
+        imu,
+        acc,
+        compass,
+        barometer,
+        gps,
+        flash,
+        radio,
+        #[cfg(feature = "rev2")]
+        can,
+        power,
+        leds,
+        buzzer,
+        recovery
     );
 
     log!(Info, "Starting main loop.");

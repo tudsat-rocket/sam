@@ -1,12 +1,14 @@
+use alloc::sync::Arc;
 use alloc::vec::Vec;
+use embedded_hal_one::digital::blocking::OutputPin;
+use embedded_hal_one::spi::blocking::TransferInplace;
 use core::cell::RefCell;
+use core::ops::DerefMut;
 
 use cortex_m::interrupt::{free, Mutex};
-use embedded_hal::prelude::*;
 use hal::dma::config::DmaConfig;
-use hal::dma::{MemoryToPeripheral, Stream4, StreamsTuple, Transfer};
-use hal::gpio::{Alternate, Output, Pin};
-use hal::pac::{interrupt, Interrupt, DMA1, NVIC, SPI2};
+use hal::dma::{MemoryToPeripheral, Transfer, StreamX};
+use hal::pac::{interrupt, Interrupt, DMA1, NVIC};
 use hal::spi::Tx;
 use stm32f4xx_hal as hal;
 
@@ -16,16 +18,20 @@ use crate::prelude::*;
 use crate::telemetry::*;
 use crate::usb::*;
 
-type CsPin = Pin<'B', 12, Output>;
-type SclPin = Pin<'B', 13, Alternate<5>>;
-type MisoPin = Pin<'C', 2, Alternate<5>>;
-type MosiPin = Pin<'C', 3, Alternate<5>>;
-type Spi = hal::spi::Spi<SPI2, (SclPin, MisoPin, MosiPin)>;
+#[cfg(feature = "rev1")]
+type DmaStream = StreamX<DMA1, 4>;
+#[cfg(feature = "rev2")]
+type DmaStream = StreamX<DMA1, 7>;
+
+#[cfg(feature = "rev1")]
+type DmaTx = Tx<hal::pac::SPI2>;
+#[cfg(feature = "rev2")]
+type DmaTx = Tx<hal::pac::SPI3>;
 
 type SpiDmaTransfer = Transfer<
-    Stream4<DMA1>, // TODO
+    DmaStream,
     0,
-    Tx<SPI2>,
+    DmaTx,
     MemoryToPeripheral,
     &'static mut [u8; DMA_BUFFER_SIZE],
 >;
@@ -47,17 +53,28 @@ enum FlashState {
     Writing,
 }
 
-pub struct Flash {
+pub struct Flash<SPI, CS> {
     state: FlashState,
-    spi: Spi,
-    cs: CsPin,
+    spi: Arc<Mutex<RefCell<SPI>>>,
+    cs: CS,
     size: u32,
     pub pointer: u32,
     write_buffer: Vec<u8>,
 }
 
-#[interrupt]
-fn DMA1_STREAM4() {
+#[derive(Debug)]
+pub enum FlashError<E> {
+    Spi(E),
+    Busy
+}
+
+impl<E> From<E> for FlashError<E> {
+    fn from(e: E) -> Self {
+        Self::Spi(e)
+    }
+}
+
+fn on_interrupt() {
     cortex_m::peripheral::NVIC::unpend(Interrupt::DMA1_STREAM4);
 
     free(|cs| {
@@ -72,19 +89,29 @@ fn DMA1_STREAM4() {
     })
 }
 
-impl Flash {
-    pub fn init(mut spi: Spi, cs: CsPin, dma_streams: StreamsTuple<DMA1>) -> Self {
-        let stream = dma_streams.4;
-        let tx = unsafe {
-            let spi_copy = core::ptr::read(&mut spi);
-            let tx = spi_copy.use_dma().tx();
-            tx
-        };
+#[cfg(feature = "rev1")]
+#[interrupt]
+fn DMA1_STREAM4() {
+    on_interrupt();
+}
 
+#[cfg(feature = "rev2")]
+#[interrupt]
+fn DMA1_STREAM7() {
+    on_interrupt();
+}
+
+impl<SPI: TransferInplace, CS: OutputPin> Flash<SPI, CS> {
+    pub fn init(
+        spi: Arc<Mutex<RefCell<SPI>>>,
+        cs: CS,
+        dma_tx: DmaTx,
+        dma_stream: DmaStream
+    ) -> Self {
         let transfer = unsafe {
             Transfer::init_memory_to_peripheral(
-                stream,
-                tx,
+                dma_stream,
+                dma_tx,
                 &mut DMA_BUFFER,
                 None,
                 DmaConfig::default()
@@ -125,15 +152,19 @@ impl Flash {
         flash
     }
 
-    fn command(&mut self, opcode: W25OpCode, params: &[u8], response_len: usize) -> Result<Vec<u8>, hal::spi::Error> {
-        free(|_cs| {
-            let mut msg = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
+    fn command(&mut self, opcode: W25OpCode, params: &[u8], response_len: usize) -> Result<Vec<u8>, FlashError<SPI::Error>> {
+        free(|cs| {
+            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
+            let spi = ref_mut.deref_mut();
 
-            self.cs.set_low();
-            let response = self.spi.transfer(&mut msg);
-            self.cs.set_high();
+            let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
-            Ok(response?[(1 + params.len())..].to_vec())
+            self.cs.set_low().unwrap();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().unwrap();
+            res?;
+
+            Ok(payload[(1 + params.len())..].to_vec())
         })
     }
 
@@ -142,7 +173,7 @@ impl Flash {
             return;
         }
 
-        self.cs.set_low();
+        self.cs.set_low().unwrap();
 
         free(|cs| {
             let msg = [&[opcode as u8], params].concat();
@@ -159,7 +190,10 @@ impl Flash {
             *DMA_RESULT.borrow(cs).borrow_mut() = None;
 
             unsafe {
+                #[cfg(feature = "rev1")]
                 NVIC::unmask(hal::pac::Interrupt::DMA1_STREAM4);
+                #[cfg(feature = "rev2")]
+                NVIC::unmask(hal::pac::Interrupt::DMA1_STREAM7);
             }
         })
     }
@@ -178,18 +212,18 @@ impl Flash {
         response.map(|resp| resp[0] & 0x01 > 0).unwrap_or(true)
     }
 
-    fn read(&mut self, address: u32, len: u32) -> Result<Vec<u8>, hal::spi::Error> {
+    fn read(&mut self, address: u32, len: u32) -> Result<Vec<u8>, FlashError<SPI::Error>> {
         if self.is_busy() {
-            return Err(hal::spi::Error::Overrun);
+            return Err(FlashError::Busy);
         }
 
         let address = address.to_be_bytes();
         self.command(W25OpCode::ReadData4BAddress, &address, len as usize)
     }
 
-    fn write_dma(&mut self, address: usize, data: &[u8]) -> Result<(), hal::spi::Error> {
+    fn write_dma(&mut self, address: usize, data: &[u8]) -> Result<(), FlashError<SPI::Error>> {
         if self.is_busy() {
-            return Err(hal::spi::Error::Overrun);
+            return Err(FlashError::Busy);
         }
 
         self.command(W25OpCode::WriteEnable, &[], 0)?;
@@ -198,14 +232,14 @@ impl Flash {
         Ok(())
     }
 
-    fn erase_sector(&mut self, address: u32) -> Result<(), hal::spi::Error> {
+    fn erase_sector(&mut self, address: u32) -> Result<(), FlashError<SPI::Error>> {
         self.command(W25OpCode::WriteEnable, &[], 0)?;
         let cmd = address.to_be_bytes();
         self.command(W25OpCode::SectorErase4KB4BAddress, &cmd, 0)?;
         Ok(())
     }
 
-    fn flush_page(&mut self) -> Result<(), hal::spi::Error> {
+    fn flush_page(&mut self) -> Result<(), FlashError<SPI::Error>> {
         let data: Vec<u8> = self.write_buffer.drain(..((PAGE_SIZE - 3) as usize)).collect();
 
         if self.pointer >= FLASH_SIZE {
@@ -231,7 +265,7 @@ impl Flash {
         result
     }
 
-    pub fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), hal::spi::Error> {
+    pub fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), FlashError<SPI::Error>> {
         if self.state != FlashState::Idle {
             log_every_nth_time!(1000, Error, "Flash not idle.");
             return Ok(());
@@ -251,7 +285,7 @@ impl Flash {
         }
     }
 
-    fn configure(&mut self) -> Result<(), hal::spi::Error> {
+    fn configure(&mut self) -> Result<(), FlashError<SPI::Error>> {
         // Determine first unwritten page by binary search
         let (mut a, mut b) = (0, self.size);
         while b - a > PAGE_SIZE {
@@ -301,7 +335,7 @@ impl Flash {
         let result = free(|cs| DMA_RESULT.borrow(cs).replace(None));
         if result.is_some() {
             self.state = FlashState::Idle;
-            self.cs.set_high();
+            self.cs.set_high().unwrap();
         }
     }
 

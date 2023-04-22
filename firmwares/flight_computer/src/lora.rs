@@ -1,16 +1,19 @@
-use alloc::sync::Arc;
-use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 use core::hash::Hasher;
 
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+
+use embedded_hal::digital::v2::OutputPin;
+use embedded_hal_one::digital::blocking::InputPin;
+use embedded_hal_one::spi::blocking::TransferInplace;
+
 use cortex_m::interrupt::{free, Mutex};
-use embedded_hal::prelude::*;
 use hal::dma::config::DmaConfig;
-use hal::dma::{MemoryToPeripheral, Stream3, StreamsTuple, Transfer};
-use hal::gpio::{Alternate, Input, Output, Pin};
+use hal::dma::{MemoryToPeripheral, Transfer, StreamX};
 use hal::pac::{interrupt, Interrupt, DMA2, NVIC, SPI1};
-use hal::spi::{Master, Spi, TransferModeNormal, Tx};
+use hal::spi::Tx;
 use stm32f4xx_hal as hal;
 
 use siphasher::sip::SipHasher;
@@ -30,23 +33,8 @@ const FREQUENCY: u32 = 868_000_000;
 const RX_RETURN_DELAY: u32 = 25;
 const TRANSMISSION_TIMEOUT_MS: u32 = 25;
 
-type RawSpi = Spi<
-    SPI1,
-    (
-        Pin<'A', 5, Alternate<5>>,
-        Pin<'B', 4, Alternate<5>>,
-        Pin<'A', 7, Alternate<5>>,
-    ),
-    TransferModeNormal,
-    Master,
->;
-type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
-type CsPin = Pin<'A', 1, Output>;
-type IrqPin = Pin<'C', 0, Input>;
-type BusyPin = Pin<'C', 1, Input>;
-
 type SpiDmaTransfer = Transfer<
-    Stream3<DMA2>, // TODO
+    StreamX<DMA2, 3>, // TODO
     3,
     Tx<SPI1>,
     MemoryToPeripheral,
@@ -67,17 +55,31 @@ enum RadioState {
     Reading,
 }
 
-pub struct LoRaRadio {
+#[derive(Debug)]
+pub enum LoRaError<E> {
+    Spi(E),
+    Crc,
+    #[allow(dead_code)]
+    Busy,
+}
+
+impl<E> From<E> for LoRaError<E> {
+    fn from(e: E) -> Self {
+        Self::Spi(e)
+    }
+}
+
+pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     time: u32,
     state: RadioState,
     state_time: u32,
     last_sync: u32,
-    spi: SharedSpi,
-    cs: CsPin,
+    spi: Arc<Mutex<RefCell<SPI>>>,
+    cs: CS,
     #[allow(dead_code)] // TODO
-    irq: IrqPin,
+    irq: IRQ,
     #[allow(dead_code)] // TODO
-    busy: BusyPin,
+    busy: BUSY,
     pub high_power: bool,
     high_power_configured: bool,
     pub rssi: u8,
@@ -107,38 +109,38 @@ fn DMA2_STREAM3() {
     })
 }
 
-impl LoRaRadio {
-    pub fn init(spi: SharedSpi, cs: CsPin, irq: IrqPin, busy: BusyPin, dma_streams: StreamsTuple<DMA2>) -> Self {
-        free(|cs| {
-            let mut ref_mut = spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
+impl<
+    SPI: TransferInplace,
+    CS: OutputPin,
+    IRQ: InputPin,
+    BUSY: InputPin
+> LoRaRadio<SPI, CS, IRQ, BUSY> {
+    pub fn init(
+        spi: Arc<Mutex<RefCell<SPI>>>,
+        cs: CS,
+        dma_tx: Tx<SPI1>,
+        dma_stream: StreamX<DMA2, 3>,
+        irq: IRQ,
+        busy: BUSY
+    ) -> Self {
+        let mut transfer = unsafe {
+            Transfer::init_memory_to_peripheral(
+                dma_stream,
+                dma_tx,
+                &mut DMA_BUFFER,
+                None,
+                DmaConfig::default()
+                    .memory_increment(true)
+                    .fifo_enable(true)
+                    .fifo_error_interrupt(true)
+                    .transfer_complete_interrupt(true),
+            )
+        };
 
-            let stream = dma_streams.3;
-            let tx = unsafe {
-                let spi_copy = core::ptr::read(spi);
-                let tx = spi_copy.use_dma().tx();
-                tx
-            };
+        transfer.start(|_tx| {});
 
-            let mut transfer = unsafe {
-                Transfer::init_memory_to_peripheral(
-                    stream,
-                    tx,
-                    &mut DMA_BUFFER,
-                    None,
-                    DmaConfig::default()
-                        .memory_increment(true)
-                        .fifo_enable(true)
-                        .fifo_error_interrupt(true)
-                        .transfer_complete_interrupt(true),
-                )
-            };
-
-            transfer.start(|_tx| {});
-
-            // Hand off transfer to interrupt handler
-            free(|cs| *DMA_TRANSFER.borrow(cs).borrow_mut() = Some(transfer));
-        });
+        // Hand off transfer to interrupt handler
+        free(|cs| *DMA_TRANSFER.borrow(cs).borrow_mut() = Some(transfer));
 
         Self {
             time: 0,
@@ -168,14 +170,14 @@ impl LoRaRadio {
         opcode: LLCC68OpCode,
         params: &[u8],
         response_len: usize,
-    ) -> Result<Vec<u8>, hal::spi::Error> {
+    ) -> Result<Vec<u8>, LoRaError<SPI::Error>> {
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
 
-            let mut msg = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
+            let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
-            self.cs.set_low();
+            self.cs.set_low().ok();
 
             // At 10MHz SPI freq, the setup commands seem to require some
             // extra delay between cs going low and the SCK going high
@@ -183,10 +185,11 @@ impl LoRaRadio {
                 core::hint::spin_loop()
             }
 
-            let response = spi.transfer(&mut msg);
-            self.cs.set_high();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().ok();
+            res?;
 
-            Ok(response?[(1 + params.len())..].to_vec())
+            Ok(payload[(1 + params.len())..].to_vec())
         })
     }
 
@@ -195,7 +198,7 @@ impl LoRaRadio {
             return;
         }
 
-        self.cs.set_low();
+        self.cs.set_low().ok();
 
         // At 10MHz SPI freq, the setup commands seem to require some
         // extra delay between cs going low and the SCK going high
@@ -223,12 +226,12 @@ impl LoRaRadio {
         })
     }
 
-    fn set_packet_type(&mut self, packet_type: LLCC68PacketType) -> Result<(), hal::spi::Error> {
+    fn set_packet_type(&mut self, packet_type: LLCC68PacketType) -> Result<(), LoRaError<SPI::Error>> {
         self.command(LLCC68OpCode::SetPacketType, &[packet_type as u8], 0)?;
         Ok(())
     }
 
-    fn set_rf_frequency(&mut self, frequency: u32) -> Result<(), hal::spi::Error> {
+    fn set_rf_frequency(&mut self, frequency: u32) -> Result<(), LoRaError<SPI::Error>> {
         const XTAL_FREQ: u32 = 32_000_000;
         const PLL_STEP_SHIFT_AMOUNT: u32 = 14;
         const PLL_STEP_SCALED: u32 = XTAL_FREQ >> (25 - PLL_STEP_SHIFT_AMOUNT);
@@ -247,7 +250,7 @@ impl LoRaRadio {
         &mut self,
         output_power: LLCC68OutputPower,
         ramp_time: LLCC68RampTime,
-    ) -> Result<(), hal::spi::Error> {
+    ) -> Result<(), LoRaError<SPI::Error>> {
         let (duty_cycle, hp_max) = match output_power {
 
             LLCC68OutputPower::P14dBm => (0x02, 0x02),
@@ -269,7 +272,7 @@ impl LoRaRadio {
         mut spreading_factor: LLCC68LoRaSpreadingFactor,
         coding_rate: LLCC68LoRaCodingRate,
         low_data_rate_optimization: bool,
-    ) -> Result<(), hal::spi::Error> {
+    ) -> Result<(), LoRaError<SPI::Error>> {
         if bandwidth == LLCC68LoRaModulationBandwidth::Bw125
             && (spreading_factor == LLCC68LoRaSpreadingFactor::SF10
                 || spreading_factor == LLCC68LoRaSpreadingFactor::SF11)
@@ -296,7 +299,7 @@ impl LoRaRadio {
         payload_length: u8,
         crc: bool,
         invert_iq: bool,
-    ) -> Result<(), hal::spi::Error> {
+    ) -> Result<(), LoRaError<SPI::Error>> {
         let preamble_length = u16::max(1, preamble_length);
         self.command(
             LLCC68OpCode::SetPacketParams,
@@ -313,12 +316,12 @@ impl LoRaRadio {
         Ok(())
     }
 
-    fn set_buffer_base_addresses(&mut self, tx_address: u8, rx_address: u8) -> Result<(), hal::spi::Error> {
+    fn set_buffer_base_addresses(&mut self, tx_address: u8, rx_address: u8) -> Result<(), LoRaError<SPI::Error>> {
         self.command(LLCC68OpCode::SetBufferBaseAddress, &[tx_address, rx_address], 0)?;
         Ok(())
     }
 
-    fn set_dio1_interrupt(&mut self, irq_mask: u16, dio1_mask: u16) -> Result<(), hal::spi::Error> {
+    fn set_dio1_interrupt(&mut self, irq_mask: u16, dio1_mask: u16) -> Result<(), LoRaError<SPI::Error>> {
         self.command(
             LLCC68OpCode::SetDioIrqParams,
             &[(irq_mask >> 8) as u8, irq_mask as u8, (dio1_mask >> 8) as u8, dio1_mask as u8, 0, 0, 0, 0],
@@ -327,14 +330,26 @@ impl LoRaRadio {
         Ok(())
     }
 
-    fn switch_to_rx(&mut self) -> Result<(), hal::spi::Error> {
+    fn switch_to_rx(&mut self) -> Result<(), LoRaError<SPI::Error>> {
         self.set_lora_packet_params(12, false, UPLINK_MAX_LEN, true, false)?; // TODO
         self.set_rx_mode(0)?;
         Ok(())
     }
 
-    fn configure(&mut self) -> Result<(), hal::spi::Error> {
-        self.command(LLCC68OpCode::GetStatus, &[], 1)?;
+    fn configure(&mut self) -> Result<(), LoRaError<SPI::Error>> {
+        let mut result = self.command(LLCC68OpCode::GetStatus, &[], 1);
+        for _i in 1..5 {
+            if result.is_ok() {
+                break;
+            }
+            result = self.command(LLCC68OpCode::GetStatus, &[], 1);
+        }
+
+        result?;
+
+        self.command(LLCC68OpCode::SetDIO2AsRfSwitchCtrl, &[1], 0)?;
+        //self.command(LLCC68OpCode::CalibrateImage, &[0xd7, 0xdb], 0)?;
+        self.command(LLCC68OpCode::WriteRegister, &[0x08, 0xac, 0x96], 0)?; // boost rx gain
         self.set_packet_type(LLCC68PacketType::LoRa)?;
         self.set_rf_frequency(FREQUENCY)?;
         self.set_lora_mod_params(
@@ -344,7 +359,7 @@ impl LoRaRadio {
             false,
         )?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
-        self.set_output_power(LLCC68OutputPower::P17dBm, LLCC68RampTime::R20U)?;
+        self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R20U)?;
         self.set_dio1_interrupt(
             (LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16),
             LLCC68Interrupt::RxDone as u16,
@@ -361,7 +376,7 @@ impl LoRaRadio {
         );
     }
 
-    fn set_rx_mode(&mut self, _timeout_us: u32) -> Result<(), hal::spi::Error> {
+    fn set_rx_mode(&mut self, _timeout_us: u32) -> Result<(), LoRaError<SPI::Error>> {
         let timeout = 0; // TODO
         self.command(
             LLCC68OpCode::SetRx,
@@ -376,7 +391,7 @@ impl LoRaRadio {
         self.state_time = self.time;
     }
 
-    fn send_packet(&mut self, msg: &[u8]) -> Result<(), hal::spi::Error> {
+    fn send_packet(&mut self, msg: &[u8]) -> Result<(), LoRaError<SPI::Error>> {
         if self.state != RadioState::Idle {
             log!(Error, "skipping");
             return Ok(()); // TODO
@@ -412,7 +427,7 @@ impl LoRaRadio {
     }
 
     #[cfg(feature="gcs")]
-    fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), hal::spi::Error> {
+    fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), LoRaError<SPI::Error>> {
         let serialized = msg.serialize()
             .map(|b| b[..(b.len()-1)].to_vec()) // the last byte is always 0, not needed
             .unwrap_or_default(); // TODO
@@ -424,9 +439,9 @@ impl LoRaRadio {
         self.uplink_message = Some(msg);
     }
 
-    fn receive_data(&mut self) -> Result<Option<Vec<u8>>, hal::spi::Error> {
+    fn receive_data(&mut self) -> Result<Option<Vec<u8>>, LoRaError<SPI::Error>> {
         // No RxDone interrupt, do nothing
-        if !self.irq.is_high() {
+        if !self.irq.is_high().unwrap() {
             return Ok(None);
         }
 
@@ -446,7 +461,7 @@ impl LoRaRadio {
 
         // Abort in case of a CRC mismatch
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
-            return Err(hal::spi::Error::Crc);
+            return Err(LoRaError::Crc);
         }
 
         // Get RX buffer status (this contains the length of the received data)
@@ -470,7 +485,7 @@ impl LoRaRadio {
         Ok(Some(buffer))
     }
 
-    fn receive_message<M: Transmit + DeserializeOwned>(&mut self) -> Result<Option<M>, hal::spi::Error> {
+    fn receive_message<M: Transmit + DeserializeOwned>(&mut self) -> Result<Option<M>, LoRaError<SPI::Error>> {
         let mut buffer = self.receive_data()?.unwrap_or_default();
         if buffer.len() == 0 {
             return Ok(None);
@@ -496,7 +511,7 @@ impl LoRaRadio {
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
         let result = free(|cs| DMA_RESULT.borrow(cs).replace(None));
         if result.is_some() {
-            self.cs.set_high();
+            self.cs.set_high().ok();
         }
         result
     }

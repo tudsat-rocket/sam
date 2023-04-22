@@ -1,30 +1,16 @@
-use alloc::sync::Arc;
-use alloc::vec::Vec;
-use alloc::collections::VecDeque;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use alloc::collections::VecDeque;
+
+use embedded_hal_one::digital::blocking::OutputPin;
+use embedded_hal_one::spi::blocking::TransferInplace;
+
 use cortex_m::interrupt::{free, Mutex};
-use hal::gpio::{Alternate, Output, Pin};
-use hal::pac::SPI1;
-use hal::prelude::*;
-use hal::spi::{Master, Spi, TransferModeNormal};
-use stm32f4xx_hal as hal;
 
 use num_traits::float::Float;
-
-type RawSpi = Spi<
-    SPI1,
-    (
-        Pin<'A', 5, Alternate<5>>,
-        Pin<'B', 4, Alternate<5>>,
-        Pin<'A', 7, Alternate<5>>,
-    ),
-    TransferModeNormal,
-    Master,
->;
-type SharedSpi = Arc<Mutex<RefCell<RawSpi>>>;
-type CsPin = hal::gpio::Pin<'C', 6, Output>;
 
 const TEMP_FILTER_LEN: usize = 64;
 
@@ -37,9 +23,9 @@ struct MS5611CalibrationData {
     temp_coef_temperature: u16,
 }
 
-pub struct Barometer {
-    spi: SharedSpi,
-    cs: CsPin,
+pub struct Barometer<SPI, CS> {
+    spi: Arc<Mutex<RefCell<SPI>>>,
+    cs: CS,
     calibration_data: Option<MS5611CalibrationData>,
     read_temp: bool,
     dt_filter: VecDeque<i32>,
@@ -49,8 +35,8 @@ pub struct Barometer {
     pressure: Option<i32>,
 }
 
-impl Barometer {
-    pub fn init(spi: SharedSpi, cs: CsPin) -> Result<Self, hal::spi::Error> {
+impl<SPI: TransferInplace, CS: OutputPin> Barometer<SPI, CS> {
+    pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut baro = Self {
             spi,
             cs,
@@ -68,22 +54,23 @@ impl Barometer {
         Ok(baro)
     }
 
-    fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8>, hal::spi::Error> {
+    fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8>, SPI::Error> {
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
 
             let mut payload = [alloc::vec![command.into()], [0x00].repeat(response_len)].concat();
 
-            self.cs.set_low();
-            let response = spi.transfer(&mut payload);
-            self.cs.set_high();
+            self.cs.set_low().unwrap();
+            let res = spi.transfer_inplace(&mut payload);
+            self.cs.set_high().unwrap();
+            res?;
 
-            Ok(response?[1..].to_vec())
+            Ok(payload[1..].to_vec())
         })
     }
 
-    fn read_calibration_values(&mut self) -> Result<(), hal::spi::Error> {
+    fn read_calibration_values(&mut self) -> Result<(), SPI::Error> {
         let c1 = self.command(MS5611Command::ReadProm(1), 2)?;
         let c2 = self.command(MS5611Command::ReadProm(2), 2)?;
         let c3 = self.command(MS5611Command::ReadProm(3), 2)?;
@@ -103,7 +90,7 @@ impl Barometer {
         Ok(())
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), hal::spi::Error> {
+    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
         let response = self.command(MS5611Command::ReadAdc, 3)?;
         let value = ((response[0] as i32) << 16) + ((response[1] as i32) << 8) + (response[2] as i32);
 
@@ -164,7 +151,7 @@ impl Barometer {
         Ok(())
     }
 
-    fn start_next_conversion(&mut self) -> Result<(), hal::spi::Error> {
+    fn start_next_conversion(&mut self) -> Result<(), SPI::Error> {
         let osr = MS5611OSR::OSR256;
         if self.read_temp {
             self.command(MS5611Command::StartTempConversion(osr), 0)?;

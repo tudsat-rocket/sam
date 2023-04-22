@@ -69,7 +69,18 @@ impl Logger {
         }
         let location_trimmed = segments.join("::");
 
-        println!("[{}] [{}] {}", log_level.to_string().as_str(), location_trimmed.as_str(), msg.as_str());
+        match log_level {
+            LogLevel::Debug => debug!("[{}] {}", location_trimmed.as_str(), msg.as_str()),
+            LogLevel::Info => info!("[{}] {}", location_trimmed.as_str(), msg.as_str()),
+            LogLevel::Warning => warn!("[{}] {}", location_trimmed.as_str(), msg.as_str()),
+            LogLevel::Error | LogLevel::Critical => error!("[{}] {}", location_trimmed.as_str(), msg.as_str()),
+        }
+
+        // Debug messages are only sent via defmt.
+        if log_level == LogLevel::Debug {
+            return;
+        }
+
         free(|cs| {
             if let Some(ref mut logger) = LOGGER.borrow(cs).borrow_mut().deref_mut() {
                 logger.push_usb_message(&location_trimmed, log_level, msg);

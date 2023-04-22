@@ -1,6 +1,6 @@
+use embedded_hal::adc::Channel;
 use hal::adc::config::SampleTime;
 use hal::adc::Adc;
-use hal::gpio::{Analog, Pin};
 use hal::pac::ADC1;
 use stm32f4xx_hal as hal;
 
@@ -8,11 +8,11 @@ const ST: SampleTime = SampleTime::Cycles_480;
 const VDIV: f32 = 2.8;
 const RES: f32 = 0.01;
 
-pub struct PowerMonitor {
+pub struct PowerMonitor<HIGH, LOW, ARM> {
     adc: Adc<ADC1>,
-    pin_bat_high: Pin<'C', 5, Analog>,
-    pin_bat_low: Pin<'C', 4, Analog>,
-    pin_arm: Pin<'A', 4, Analog>,
+    pin_bat_high: HIGH,
+    pin_bat_low: LOW,
+    pin_arm: ARM,
     battery_voltage: Option<u16>,
     battery_current: Option<u16>,
     arm_voltage: Option<u16>,
@@ -20,12 +20,16 @@ pub struct PowerMonitor {
     temperature: Option<f32>,
 }
 
-impl PowerMonitor {
+impl<
+    HIGH: Channel<ADC1, ID = u8>,
+    LOW: Channel<ADC1, ID = u8>,
+    ARM: Channel<ADC1, ID = u8>
+> PowerMonitor<HIGH, LOW, ARM> {
     pub fn new(
         adc: Adc<ADC1>,
-        pin_bat_high: Pin<'C', 5, Analog>,
-        pin_bat_low: Pin<'C', 4, Analog>,
-        pin_arm: Pin<'A', 4, Analog>,
+        pin_bat_high: HIGH,
+        pin_bat_low: LOW,
+        pin_arm: ARM,
     ) -> Self {
         Self {
             adc,

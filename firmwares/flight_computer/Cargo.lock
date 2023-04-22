@@ -292,6 +292,7 @@ dependencies = [
  "defmt-rtt",
  "defmt-test",
  "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.7",
  "filter",
  "nalgebra",
  "nb 1.0.0",
