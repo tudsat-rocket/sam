@@ -18,7 +18,7 @@ use eframe::epaint::Color32;
 use siphasher::sip::SipHasher;
 use log::*;
 
-use euroc_fc_firmware::telemetry::*;
+use sting_fc_firmware::telemetry::*;
 
 use crate::serial::*;
 use crate::state::*;
@@ -63,7 +63,7 @@ impl SerialDataSource {
             telemetry_log_path,
             telemetry_log_file,
             message_receipt_times: VecDeque::new(),
-            siphasher: SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY),
+            siphasher: SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY),
             next_mac: (0, 0),
             last_time: None,
         }
@@ -121,7 +121,7 @@ impl SerialDataSource {
 
         if self.next_mac.0 > (t + 500) || (self.next_mac.0 + 500) < t {
             self.next_mac = (0, 0);
-            self.siphasher = SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY);
+            self.siphasher = SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY);
         }
 
         while self.next_mac.0 < t || !self.is_uplink_window(self.next_mac.0) {
@@ -249,7 +249,7 @@ impl DataSource for SerialDataSource {
         self.telemetry_log_path = Self::new_telemetry_log_path();
         self.telemetry_log_file = File::create(&self.telemetry_log_path);
         self.message_receipt_times.truncate(0);
-        self.siphasher = SipHasher::new_with_key(&euroc_fc_firmware::telemetry::SIPHASHER_KEY);
+        self.siphasher = SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY);
         self.next_mac = (0, 0);
     }
 

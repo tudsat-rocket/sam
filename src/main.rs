@@ -11,7 +11,7 @@ use colored::Colorize;
 use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
-use euroc_fc_firmware::telemetry::*;
+use sting_fc_firmware::telemetry::*;
 
 mod data_source;
 mod file;

@@ -5,7 +5,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use euroc_fc_firmware::telemetry::*;
+use sting_fc_firmware::telemetry::*;
 
 pub const BAUD_RATE: u32 = 115_200;
 pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(500);

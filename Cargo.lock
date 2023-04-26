@@ -1213,30 +1213,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "euroc_fc_firmware"
-version = "0.1.0"
-source = "git+ssh://git@gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git#796a89ef8b02bbd3657b19a2bef3e7cc0e14dc20"
-dependencies = [
- "ahrs",
- "crc",
- "defmt",
- "defmt-rtt",
- "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-alpha.7",
- "filter",
- "nalgebra",
- "nb 1.0.0",
- "num-traits",
- "panic-probe",
- "postcard",
- "serde",
- "siphasher",
- "ublox",
- "usb-device",
- "usbd-serial",
-]
-
-[[package]]
 name = "expat-sys"
 version = "2.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3001,7 +2977,6 @@ dependencies = [
  "egui_extras",
  "env_logger",
  "epaint",
- "euroc_fc_firmware",
  "home",
  "image",
  "indicatif",
@@ -3018,6 +2993,7 @@ dependencies = [
  "serialport",
  "siphasher",
  "slippy-map-tiles",
+ "sting_fc_firmware",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",
@@ -3365,6 +3341,30 @@ name = "stdweb-internal-runtime"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "213701ba3370744dcd1a12960caa4843b3d68b4d1c0a5d575e0d65b2ee9d16c0"
+
+[[package]]
+name = "sting_fc_firmware"
+version = "0.1.0"
+source = "git+ssh://git@gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git#7c09004f294b22c28f04106886e42f1773d5d9ad"
+dependencies = [
+ "ahrs",
+ "crc",
+ "defmt",
+ "defmt-rtt",
+ "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.7",
+ "filter",
+ "nalgebra",
+ "nb 1.0.0",
+ "num-traits",
+ "panic-probe",
+ "postcard",
+ "serde",
+ "siphasher",
+ "ublox",
+ "usb-device",
+ "usbd-serial",
+]
 
 [[package]]
 name = "str-buf"

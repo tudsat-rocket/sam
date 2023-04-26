@@ -1,7 +1,7 @@
 Sam
 ===
 
-Ground station software for the Sting FC.
+Ground station software for the Sting FC, includes both command line tools and GUI.
 
 # Running
 

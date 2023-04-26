@@ -13,7 +13,7 @@ use eframe::egui;
 use eframe::egui::PointerButton;
 use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle, LinkedAxisGroup, LinkedCursorsGroup};
 
-use euroc_fc_firmware::telemetry::FlightMode;
+use sting_fc_firmware::telemetry::FlightMode;
 
 use crate::gui::*;
 use crate::state::*;

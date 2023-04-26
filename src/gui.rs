@@ -18,7 +18,7 @@ use egui_extras::RetainedImage;
 
 use log::*;
 
-use euroc_fc_firmware::telemetry::*;
+use sting_fc_firmware::telemetry::*;
 
 mod top_bar;
 mod plot;

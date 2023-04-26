@@ -2,7 +2,7 @@
 
 use eframe::egui::Color32;
 
-use euroc_fc_firmware::telemetry::*;
+use sting_fc_firmware::telemetry::*;
 
 pub trait ColorExt {
     fn color(&self) -> Color32;
