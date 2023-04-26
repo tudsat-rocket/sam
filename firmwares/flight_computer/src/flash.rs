@@ -1,3 +1,9 @@
+//! Driver for the Winbond W25Q flash chip, including buffering of telemetry messages.
+//! This should maybe be separated into the chip driver and a higher level implementation
+//! of settings/blackbox storage.
+//!
+//! Datasheet: https://www.mouser.com/datasheet/2/949/w25q256jv_spi_revg_08032017-1489574.pdf
+
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use embedded_hal_one::digital::blocking::OutputPin;

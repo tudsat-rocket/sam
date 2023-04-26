@@ -1,3 +1,6 @@
+//! Main entrypoint for firmware. Contains mostly boilerplate stuff for
+//! initializing the STM32 and peripherals. For main flight logic see `vehicle.rs`.
+
 #![no_std]
 #![no_main]
 #![feature(default_alloc_error_handler)]
@@ -39,7 +42,7 @@ mod usb;
 mod vehicle;
 mod watchdog;
 
-use euroc_fc_firmware as _;
+use sting_fc_firmware as _;
 
 use bootloader::*;
 use buzzer::*;

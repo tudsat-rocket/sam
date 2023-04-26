@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(default_alloc_error_handler)]
 
-use euroc_fc_firmware as _; // memory layout + panic handler
+use sting_fc_firmware as _; // memory layout + panic handler
 
 // See https://crates.io/crates/defmt-test/0.3.0 for more documentation (e.g. about the 'state'
 // feature)
@@ -17,7 +17,7 @@ mod tests {
     #[allow(unused_imports)]
     use stm32f4xx_hal as hal;
 
-    use euroc_fc_firmware::telemetry::*;
+    use sting_fc_firmware::telemetry::*;
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];

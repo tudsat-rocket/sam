@@ -1,3 +1,5 @@
+//! Code for interacting with the STM32's bootloader
+
 use hal::pac::{PWR, RCC, RTC};
 use hal::rcc::Enable;
 use stm32f4xx_hal as hal;
@@ -6,9 +8,6 @@ use cortex_m::interrupt::free;
 
 use crate::log;
 use crate::logging::*;
-
-//const BOOTLOADER_ADDRESS: usize = 0x1fff0000;
-//const BOOTLOADER_REQUEST_ADDRESS: usize = 0x40024000;
 
 #[no_mangle]
 pub fn jump_to_bootloader() {
@@ -25,17 +24,6 @@ pub fn jump_to_bootloader() {
         core::arch::asm!("ldr sp,[r0, #0]"); // SP @ +0
         core::arch::asm!("ldr r0,[r0, #4]"); // PC @ +4
         core::arch::asm!("bx r0");
-
-        //core::arch::asm!("str sp, [{addr}, #0]", addr = in(reg) BOOTLOADER_ADDRESS);
-
-        //core::arch::asm!("ldr r0, =0x1FFF0000"); // ROM BASE
-        ////core::arch::asm!("ldr sp,[r0, #0]"); // SP @ +0
-        //core::arch::asm!("ldr r0,[r0, #4]"); // PC @ +4
-        //core::arch::asm!("bx {addr}", addr = in(reg) BOOTLOADER_ADDRESS + 4);
-
-        //core::arch::asm!("bx r0", in("r0") BOOTLOADER_ADDRESS + 4);
-        //let bootloader_func: extern "C" fn() = core::mem::transmute(BOOTLOADER_ADDRESS + 4);
-        //bootloader_func();
     }
 }
 

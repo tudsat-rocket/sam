@@ -1,3 +1,6 @@
+//! Main flight logic for flight computer. State estimation and ground control station
+//! stuff could maybe be moved out of here.
+
 use alloc::collections::VecDeque;
 
 use hal::gpio::Alternate;

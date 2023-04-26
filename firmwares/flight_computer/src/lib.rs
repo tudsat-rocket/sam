@@ -1,3 +1,5 @@
+//! Export of selected modules for use in external programs, such as ground station.
+
 #![cfg_attr(not(feature = "std"), no_std)]
 #![no_main]
 

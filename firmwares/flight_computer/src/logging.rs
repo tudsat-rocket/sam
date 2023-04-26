@@ -1,3 +1,6 @@
+//! Logger that allows logging both to an SWD probe via defmt and to the ground station
+//! via USB. This could also be extended to flash storage.
+
 use alloc::collections::VecDeque;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -14,7 +17,7 @@ const QUEUE_SIZE: usize = 32;
 static LOGGER: Mutex<RefCell<Option<Logger>>> = Mutex::new(RefCell::new(None));
 
 // TODO: either use defmt directly everywhere (i.e. remove USB logging), or
-// implement USB logging as a defmt logger.
+// implement USB logging as a defmt logger?
 
 pub struct Logger {
     pub time: u32,

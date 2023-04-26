@@ -1,4 +1,4 @@
-EURoC FC Firmware
+Sting FC Firmware
 =================
 
 Firmware for the Sting flight computer.

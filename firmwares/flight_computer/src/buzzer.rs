@@ -1,3 +1,6 @@
+//! Driver for the on-board buzzer, responsible for playing mode change beeps and
+//! warning tones using the STM32's timers for PWM generation.
+
 use alloc::vec::Vec;
 
 use hal::prelude::*;
@@ -8,6 +11,8 @@ use num_traits::Float;
 
 use crate::telemetry::FlightMode;
 use Semitone::*;
+
+// TODO: make this more generic, get rid of these feature flags.
 
 #[cfg(feature = "rev1")]
 type Timer = hal::pac::TIM4;
@@ -47,10 +52,44 @@ const ARMED: [Note; 6] = [
     Note::note(G, 4, 150), Note::pause(10),
 ];
 
+const LANDED: [Note; 57] = [
+    Note::note(C, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+    Note::note(F, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+
+    Note::note(As, 4, 450 - 50), Note::pause(50),
+    Note::note(As, 4, 450 - 50), Note::pause(50),
+    Note::note(G, 4, 600 - 50), Note::pause(50),
+    Note::pause(300),
+    Note::note(C, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+    Note::note(F, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+
+    Note::note(G, 4, 450 - 50), Note::pause(50),
+    Note::note(G, 4, 450 - 50), Note::pause(50),
+    Note::note(F, 4, 450 - 50), Note::pause(50),
+    Note::note(E, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 300 - 10), Note::pause(10),
+    Note::note(C, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+    Note::note(F, 4, 150 - 10), Note::pause(10),
+    Note::note(D, 4, 150 - 10), Note::pause(10),
+
+    Note::note(F, 4, 600 - 50), Note::pause(50),
+    Note::note(G, 4, 300 - 50), Note::pause(50),
+    Note::note(E, 4, 450 - 50), Note::pause(50),
+    Note::note(D, 4, 150 - 50), Note::pause(50),
+    Note::note(C, 4, 600 - 50), Note::pause(50),
+    Note::note(C, 4, 300 - 50), Note::pause(50),
+
+    Note::note(G, 4, 600 - 50), Note::pause(50),
+    Note::note(F, 4, 600 - 50), Note::pause(50),
+];
+
 pub const RECOVERY_WARNING_TIME: u32 = 750;
 const RECOVERY: [Note; 1] = [Note::note(C, 5, RECOVERY_WARNING_TIME)];
-
-const LANDED: [Note; 2] = [Note::note(F, 4, 500), Note::pause(500)];
 
 pub struct Buzzer {
     pwm: Pwm,

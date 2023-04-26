@@ -1,3 +1,5 @@
+//! Some global parameters, some of which should be replaced by in-flash storage.
+
 pub const CLOCK_FREQ_MEGA_HERTZ: u32 = 84;
 pub const MAIN_LOOP_FREQ_HERTZ: u32 = 1000;
 

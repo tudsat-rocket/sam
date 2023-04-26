@@ -1,3 +1,6 @@
+//! Contains data structures that the flight computer shares with the outside world,
+//! namely the ground station software, as well as common (de)serialization code.
+
 #[cfg(not(feature = "std"))]
 use alloc::string::{String, ToString};
 #[cfg(not(feature = "std"))]

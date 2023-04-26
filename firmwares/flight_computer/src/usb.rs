@@ -1,3 +1,6 @@
+//! USB serial link implementation, handling regular telemetry, log messsages
+//! and uplink commands.
+
 use alloc::vec::Vec;
 
 use hal::otg_fs::{UsbBus, USB};
@@ -39,9 +42,18 @@ impl UsbLink {
                 [0; 2048]
             )
         };
+
+        let product = match (cfg!(feature = "gcs"), cfg!(feature = "rev2")) {
+            (false, false) => "Sting FC (rev. 1)",
+            (false, true)  => "Sting FC (rev. 2)",
+            (true, false)  => "Sting FC GCS (rev. 1)",
+            (true, true)   => "Sting FC GCS (rev. 2)"
+        };
+
         let mut device = unsafe {
             UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x0483, 0x5740))
-                .product("FrodoFC")
+                .manufacturer("TUDSat")
+                .product(product)
                 .device_class(USB_CLASS_CDC)
                 .max_packet_size_0(64)
                 .build()

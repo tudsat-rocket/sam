@@ -1,3 +1,7 @@
+//! Driver for the MCP2517FD CAN controller.
+//!
+//! Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2517FD-External-CAN-FD-Controller-with-SPI-Interface-20005688B.pdf
+
 use core::cell::RefCell;
 use core::ops::DerefMut;
 

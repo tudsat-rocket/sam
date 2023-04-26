@@ -1,3 +1,9 @@
+//! Driver for the LLCC68 LoRa transceiver and our telemetry implementation. Just
+//! like `flash.rs`, this could probably be separated into driver and protocol
+//! implementations.
+//!
+//! Datasheet: https://www.mouser.com/pdfDocs/DS_LLCC68_V10-2.pdf
+
 use core::cell::RefCell;
 use core::ops::DerefMut;
 use core::hash::Hasher;
@@ -32,6 +38,9 @@ const FREQUENCY: u32 = 868_000_000;
 
 const RX_RETURN_DELAY: u32 = 25;
 const TRANSMISSION_TIMEOUT_MS: u32 = 25;
+
+const DOWNLINK_PACKET_SIZE: u8 = 24;
+const UPLINK_PACKET_SIZE: u8 = 16;
 
 type SpiDmaTransfer = Transfer<
     StreamX<DMA2, 3>, // TODO
