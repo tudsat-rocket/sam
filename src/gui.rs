@@ -122,9 +122,9 @@ impl Sam {
         let c = Color32::from_rgb(0x68, 0x9d, 0x6a);
 
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
-            .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.2))
-            .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.0))
-            .line("Pitch (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.1));
+            .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.z))
+            .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.x))
+            .line("Pitch (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), shared_plot.clone())
             .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel())
@@ -140,22 +140,22 @@ impl Sam {
             .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps());
 
         let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope().map(|a| a.0))
-            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope().map(|a| a.1))
-            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope().map(|a| a.2));
+            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope().map(|a| a.x))
+            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope().map(|a| a.y))
+            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope().map(|a| a.z));
 
         let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2().map(|a| a.0))
-            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2().map(|a| a.1))
-            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2().map(|a| a.2))
-            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1().map(|a| a.0))
-            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1().map(|a| a.1))
-            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1().map(|a| a.2));
+            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2().map(|a| a.x))
+            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2().map(|a| a.y))
+            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2().map(|a| a.z))
+            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1().map(|a| a.x))
+            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1().map(|a| a.y))
+            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1().map(|a| a.z));
 
         let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
-            .line("Mag (X) [µT]", r, |vs| vs.magnetometer().map(|a| a.0))
-            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer().map(|a| a.1))
-            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer().map(|a| a.2));
+            .line("Mag (X) [µT]", r, |vs| vs.magnetometer().map(|a| a.x))
+            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer().map(|a| a.y))
+            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer().map(|a| a.z));
 
         let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), shared_plot.clone())
             .line("Pressure [mbar]", c, |vs| vs.pressure());

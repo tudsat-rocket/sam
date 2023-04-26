@@ -1,19 +1,19 @@
 use std::f32::consts::PI;
 
 use euroc_fc_firmware::telemetry::*;
-use nalgebra::vector;
+use nalgebra::{vector, Vector3};
 use nalgebra::{Quaternion, UnitQuaternion};
 
 // TODO: refactor this, maybe replace with a trait implemented by downlink messages?
 
 pub trait VehicleState {
     fn mode(&self) -> Option<FlightMode>;
-    fn gyroscope(&self) -> Option<(f32, f32, f32)>;
-    fn accelerometer1(&self) -> Option<(f32, f32, f32)>;
-    fn accelerometer2(&self) -> Option<(f32, f32, f32)>;
+    fn gyroscope(&self) -> Option<Vector3<f32>>;
+    fn accelerometer1(&self) -> Option<Vector3<f32>>;
+    fn accelerometer2(&self) -> Option<Vector3<f32>>;
     fn cpu_utilization(&self) -> Option<u8>;
     fn heap_utilization(&self) -> Option<u8>;
-    fn magnetometer(&self) -> Option<(f32, f32, f32)>;
+    fn magnetometer(&self) -> Option<Vector3<f32>>;
     fn pressure(&self) -> Option<f32>;
     fn altitude_baro(&self) -> Option<f32>;
     fn altitude_gps(&self) -> Option<f32>;
@@ -41,10 +41,10 @@ pub trait VehicleState {
     fn gcs_lora_rssi_signal(&self) -> Option<u8>;
     fn gcs_lora_snr(&self) -> Option<u8>;
 
-    fn euler_angles(&self) -> Option<(f32, f32, f32)> {
+    fn euler_angles(&self) -> Option<Vector3<f32>> {
         self.orientation()
             .map(|q| q.euler_angles())
-            .map(|(r, p, y)| (r * 180.0 / PI, p * 180.0 / PI, y * 180.0 / PI))
+            .map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
     }
 }
 
@@ -57,58 +57,34 @@ impl VehicleState for DownlinkMessage {
         }
     }
 
-    fn gyroscope(&self) -> Option<(f32, f32, f32)> {
+    fn gyroscope(&self) -> Option<Vector3<f32>> {
         match self {
             Self::TelemetryRawSensors(tm) => Some(tm.gyro),
-            Self::TelemetryRawSensorsCompressed(tm) => Some(
-                (
-                    Into::<f32>::into(tm.gyro.0) / 10.0,
-                    Into::<f32>::into(tm.gyro.1) / 10.0,
-                    Into::<f32>::into(tm.gyro.2) / 10.0,
-                )
-            ),
+            Self::TelemetryRawSensorsCompressed(tm) => Some(<_ as Into<Vector3<f32>>>::into(tm.gyro) / 10.0),
             _ => None
         }
     }
 
-    fn accelerometer1(&self) -> Option<(f32, f32, f32)> {
+    fn accelerometer1(&self) -> Option<Vector3<f32>> {
         match self {
             Self::TelemetryRawSensors(tm) => Some(tm.accelerometer1),
-            Self::TelemetryRawSensorsCompressed(tm) => Some(
-                (
-                    Into::<f32>::into(tm.accelerometer1.0) / 100.0,
-                    Into::<f32>::into(tm.accelerometer1.1) / 100.0,
-                    Into::<f32>::into(tm.accelerometer1.2) / 100.0,
-                )
-            ),
+            Self::TelemetryRawSensorsCompressed(tm) => Some(<_ as Into<Vector3<f32>>>::into(tm.accelerometer1) / 100.0),
             _ => None
         }
     }
 
-    fn accelerometer2(&self) -> Option<(f32, f32, f32)> {
+    fn accelerometer2(&self) -> Option<Vector3<f32>> {
         match self {
             Self::TelemetryRawSensors(tm) => Some(tm.accelerometer2),
-            Self::TelemetryRawSensorsCompressed(tm) => Some(
-                (
-                    Into::<f32>::into(tm.accelerometer2.0) / 10.0,
-                    Into::<f32>::into(tm.accelerometer2.1) / 10.0,
-                    Into::<f32>::into(tm.accelerometer2.2) / 10.0,
-                )
-            ),
+            Self::TelemetryRawSensorsCompressed(tm) => Some(<_ as Into<Vector3<f32>>>::into(tm.accelerometer2) / 10.0),
             _ => None
         }
     }
 
-    fn magnetometer(&self) -> Option<(f32, f32, f32)> {
+    fn magnetometer(&self) -> Option<Vector3<f32>> {
         match self {
             Self::TelemetryRawSensors(tm) => Some(tm.magnetometer),
-            Self::TelemetryRawSensorsCompressed(tm) => Some(
-                (
-                    Into::<f32>::into(tm.magnetometer.0) / 10.0,
-                    Into::<f32>::into(tm.magnetometer.1) / 10.0,
-                    Into::<f32>::into(tm.magnetometer.2) / 10.0,
-                )
-            ),
+            Self::TelemetryRawSensorsCompressed(tm) => Some(<_ as Into<Vector3<f32>>>::into(tm.magnetometer) / 10.0),
             _ => None
         }
     }
