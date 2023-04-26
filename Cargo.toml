@@ -5,8 +5,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-euroc_fc_firmware = { git = "ssh://git@gitlab.com/tudsat-rocket1/microcontrollers/flight-computers/euroc_fc_firmware.git", default-features = false }
-#euroc_fc_firmware = { path = "../euroc_fc_firmware", default-features = false }
+euroc_fc_firmware = { git = "ssh://git@gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git", default-features = false }
+#euroc_fc_firmware = { path = "../sting_fc_firmware", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
