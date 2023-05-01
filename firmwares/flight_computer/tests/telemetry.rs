@@ -11,6 +11,7 @@ mod tests {
     extern crate alloc;
     use alloc::vec::Vec;
 
+    use nalgebra::{UnitQuaternion, Vector3};
     // In order for the defmt stuff to be properly linked, we need to make sure
     // we import the device HAL. The rust compiler doesn't get that, so we have
     // to suppress the warning about an unused import.
@@ -50,7 +51,7 @@ mod tests {
         assert_eq!(msg.serialize().unwrap().len(), 15);
 
         let msg = DownlinkMessage::TelemetryRawSensors(TelemetryRawSensors::default());
-        assert_eq!(msg.serialize().unwrap().len(), 60);
+        assert_eq!(msg.serialize().unwrap().len(), 64);
 
         let msg = DownlinkMessage::TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed::default());
         assert_eq!(msg.serialize().unwrap().len(), 18);
@@ -63,6 +64,87 @@ mod tests {
 
         let msg = DownlinkMessage::TelemetryGCS(TelemetryGCS::default());
         assert_eq!(msg.serialize().unwrap().len(), 7);
+
+        let msg = DownlinkMessage::TelemetryMain(TelemetryMain {
+            time: 0x12345678,
+            mode: FlightMode::Armed,
+            orientation: Some(UnitQuaternion::from_euler_angles(12.3, 23.4, 45.6)),
+            vertical_speed: 5.231,
+            vertical_accel: 15.92,
+            vertical_accel_filtered: 15.8,
+            altitude_baro: 1051.5,
+            altitude_max: 1212.5,
+            altitude: 1049.3,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 51);
+
+        let msg = DownlinkMessage::TelemetryMainCompressed(TelemetryMainCompressed {
+            time: 0x12345678,
+            mode: FlightMode::Armed,
+            orientation: (0x12, 0x23, 0x34, 0x45),
+            vertical_speed: 5.231.into(),
+            vertical_accel: 15.92.into(),
+            vertical_accel_filtered: 15.8.into(),
+            altitude_baro: 10515,
+            altitude_max: 12125,
+            altitude: 10493,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 22);
+
+        let msg = DownlinkMessage::TelemetryRawSensors(TelemetryRawSensors {
+            time: 0x12345678,
+            gyro: Vector3::new(12.3456, 23.4567, 34.5678),
+            accelerometer1: Vector3::new(1.512, 0.512, 10.241),
+            accelerometer2: Vector3::new(1.759, 0.062, 52.5112),
+            magnetometer: Vector3::new(43.123, 51.512, 24.213),
+            temperature_baro: 36.12,
+            pressure_baro: 1002.3,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 68);
+
+        let msg = DownlinkMessage::TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed {
+            time: 0x12345678,
+            gyro: Vector3::new(12.3456, 23.4567, 34.5678).into(),
+            accelerometer1: Vector3::new(1.512, 0.512, 10.241).into(),
+            accelerometer2: Vector3::new(1.759, 0.062, 52.5112).into(),
+            magnetometer: Vector3::new(43.123, 51.512, 24.213).into(),
+            temperature_baro: 36,
+            pressure_baro: 10023,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 23);
+
+        let msg = DownlinkMessage::TelemetryDiagnostics(TelemetryDiagnostics {
+            time: 0x12345678,
+            cpu_utilization: 213,
+            heap_utilization: 123,
+            temperature_core: 25,
+            cpu_voltage: 3100,
+            battery_voltage: 7412,
+            arm_voltage: 7411,
+            current: 2021,
+            lora_rssi: 127,
+            altitude_ground: 215,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 22);
+
+        let msg = DownlinkMessage::TelemetryGPS(TelemetryGPS {
+            time: 0x12345678,
+            fix_and_sats: 0xff,
+            hdop: 9999,
+            latitude: [0x12, 0x34, 0x56],
+            longitude: [0xf1, 0xf2, 0xf3],
+            altitude_asl: 1234,
+            flash_pointer: 0xff12,
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 22);
+
+        let msg = DownlinkMessage::TelemetryGCS(TelemetryGCS {
+            time: 0x12345678,
+            lora_rssi: 83,
+            lora_rssi_signal: 82,
+            lora_snr: 10
+        });
+        assert_eq!(msg.serialize().unwrap().len(), 11);
     }
 
     #[test]

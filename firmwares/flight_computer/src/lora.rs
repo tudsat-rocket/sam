@@ -42,6 +42,18 @@ const TRANSMISSION_TIMEOUT_MS: u32 = 25;
 const DOWNLINK_PACKET_SIZE: u8 = 24;
 const UPLINK_PACKET_SIZE: u8 = 16;
 
+const TX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
+    UPLINK_PACKET_SIZE
+} else {
+    DOWNLINK_PACKET_SIZE
+};
+
+const RX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
+    DOWNLINK_PACKET_SIZE
+} else {
+    UPLINK_PACKET_SIZE
+};
+
 type SpiDmaTransfer = Transfer<
     StreamX<DMA2, 3>, // TODO
     3,
@@ -340,7 +352,7 @@ impl<
     }
 
     fn switch_to_rx(&mut self) -> Result<(), LoRaError<SPI::Error>> {
-        self.set_lora_packet_params(12, false, UPLINK_MAX_LEN, true, false)?; // TODO
+        self.set_lora_packet_params(12, true, RX_PACKET_SIZE, true, false)?;
         self.set_rx_mode(0)?;
         Ok(())
     }
@@ -406,10 +418,16 @@ impl<
             return Ok(()); // TODO
         }
 
-        self.set_lora_packet_params(12, false, msg.len() as u8, true, false)?;
-        let mut params = Vec::with_capacity(msg.len() + 1);
-        params.push(TX_BASE_ADDRESS);
-        params.append(&mut msg.to_vec());
+        if msg.len() > TX_PACKET_SIZE as usize {
+            log!(Error, "message exceeds PACKET_SIZE");
+            return Ok(());
+        }
+
+        self.set_lora_packet_params(12, true, TX_PACKET_SIZE, true, false)?;
+        const CMD_SIZE: usize = (TX_PACKET_SIZE as usize) + 1;
+        let mut params: [u8; CMD_SIZE] = [0x00; CMD_SIZE];
+        params[0] = TX_BASE_ADDRESS;
+        params[1..(msg.len()+1)].copy_from_slice(msg);
         self.command_dma(LLCC68OpCode::WriteBuffer, &params);
         self.set_state(RadioState::Writing);
         Ok(())
@@ -423,7 +441,7 @@ impl<
 
         // TODO
         let serialized = match msg.serialize() {
-            Ok(b) => b[..b.len()-1].to_vec(), // last byte is always 0, not needed
+            Ok(b) => b,
             Err(e) => {
                 log!(Error, "Failed to serialize message: {:?}", e);
                 return;
@@ -437,10 +455,7 @@ impl<
 
     #[cfg(feature="gcs")]
     fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), LoRaError<SPI::Error>> {
-        let serialized = msg.serialize()
-            .map(|b| b[..(b.len()-1)].to_vec()) // the last byte is always 0, not needed
-            .unwrap_or_default(); // TODO
-        self.send_packet(&serialized)
+        self.send_packet(&msg.serialize().unwrap_or_default())
     }
 
     #[cfg(feature="gcs")]
@@ -475,12 +490,7 @@ impl<
 
         // Get RX buffer status (this contains the length of the received data)
         let rx_buffer_status = self.command(LLCC68OpCode::GetRxBufferStatus, &[], 3)?;
-
-        // Avoid unnecessarily long reads for corrupted uplink commands
-        #[cfg(feature="gcs")]
-        let len = rx_buffer_status[1];
-        #[cfg(not(feature="gcs"))]
-        let len = u8::min(rx_buffer_status[1], UPLINK_MAX_LEN);
+        let len = u8::min(rx_buffer_status[1], RX_PACKET_SIZE);
 
         // Read received data
         let buffer = self.command(
@@ -585,7 +595,7 @@ impl<
             let power = if self.high_power {
                 LLCC68OutputPower::P22dBm
             } else {
-                LLCC68OutputPower::P17dBm
+                LLCC68OutputPower::P14dBm
             };
 
             if let Err(e) = self.set_output_power(power, LLCC68RampTime::R20U) {
