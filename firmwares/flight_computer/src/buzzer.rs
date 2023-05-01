@@ -40,6 +40,121 @@ const STARTUP: [Note; 6] = [
     Note::note(G, 4, 150), Note::pause(10),
 ];
 
+#[allow(dead_code)]
+const REMNANTS: [Note; 40] = [
+    Note::note(E, 3, 200), Note::pause(10),
+    Note::note(D, 3, 200), Note::pause(10),
+    Note::note(A, 4, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+
+    Note::note(A, 4, 400), Note::pause(10),
+    Note::note(D, 5, 200), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(F, 5, 800), Note::pause(10),
+
+    Note::note(E, 3, 200), Note::pause(10),
+    Note::note(D, 3, 200), Note::pause(10),
+    Note::note(F, 3, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+
+    Note::note(F, 3, 400), Note::pause(10),
+    Note::note(D, 5, 200), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(As, 4, 800), Note::pause(10),
+];
+
+#[allow(dead_code)]
+const THUNDERSTRUCK: [Note; 64] = [
+    Note::note(B, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Fs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+
+    Note::note(Fs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+];
+
+#[allow(dead_code)]
+const SHIRE: [Note; 14] = [
+    Note::note(A, 3, 200), Note::pause(20),
+    Note::note(B, 3, 300), Note::pause(20),
+    Note::note(Cs, 4, 800), Note::pause(20),
+    Note::note(E, 4, 800), Note::pause(20),
+    Note::note(Cs, 4, 800), Note::pause(20),
+    Note::note(B, 3, 750), Note::pause(70),
+    Note::note(A, 3, 1500), Note::pause(20),
+];
+
+#[allow(dead_code)]
+const E1M1: [Note; 56] = [
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(D, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(C, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(Gs, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(A, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(D, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(C, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(Gs, 3, 500), Note::pause(10),
+];
+
 const HWARMED: [Note; 6] = [
     Note::note(A, 3, 150), Note::pause(10),
     Note::note(A, 3, 150), Note::pause(10),
@@ -186,10 +301,9 @@ struct Pitch {
 
 impl Pitch {
     fn freq(&self) -> f32 {
-        let middle_c_i = 3 * 12 + Semitone::C as u8;
-        let i = self.octave * 12 + self.semitone as u8;
-        let n = (i as f32) - (middle_c_i as f32);
-        440.0 * 2.0_f32.powf((n - 9.0) / 12.0)
+        let a_i = 3 * 12 + (Semitone::A as i32);
+        let note_i = (self.octave as i32) * 12 + (self.semitone as i32);
+        440.0 * 2.0_f32.powf((note_i - a_i) as f32 / 12.0)
     }
 }
 
