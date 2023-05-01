@@ -113,9 +113,11 @@ impl<SPI: TransferInplace, CS: OutputPin> LIS3MDL<SPI, CS> {
             LIS3MDLFullScale::Max12Gauss => 2281.0,
             LIS3MDLFullScale::Max16Gauss => 1711.0,
         };
-        let mag_x = (mag_x as f32) / lsb_to_gauss * 100.0;
-        let mag_y = (mag_y as f32) / lsb_to_gauss * 100.0;
-        let mag_z = (mag_z as f32) / lsb_to_gauss * 100.0;
+
+        // TODO: configurable calibration values
+        let mag_x = (mag_x as f32) / lsb_to_gauss * 100.0 + 522.0;
+        let mag_y = (mag_y as f32) / lsb_to_gauss * 100.0 - 30.0;
+        let mag_z = (mag_z as f32) / lsb_to_gauss * 100.0 - 760.0;
 
         self.mag = Some(Vector3::new(-mag_x, mag_z, mag_y));
 
