@@ -34,7 +34,29 @@ const RX_BASE_ADDRESS: u8 = 64;
 
 const DMA_BUFFER_SIZE: usize = 32;
 
-const FREQUENCY: u32 = 868_000_000;
+// The available channels for telemetry, assuming a 500kHz band width. This list
+// can be restricted, but ideally the number of messages per second (1000 /
+// LORA_MESSAGE_INTERVAL) should not be divisible by the number of channels. This
+// way, we don't have certain types of telemetry message, such as GPS messages,
+// only using a single channel.
+const CHANNELS: [u32; 14] = [
+    863_250_000,
+    863_750_000,
+    864_250_000,
+    864_750_000,
+    865_250_000,
+    865_750_000,
+    866_250_000,
+    866_750_000,
+    867_250_000,
+    867_750_000,
+    868_250_000,
+    868_750_000,
+    869_250_000,
+    869_750_000,
+];
+
+const CHANNEL_SEQUENCE: [usize; 14] = [0, 10, 13, 6, 3, 7, 2, 8, 5, 11, 4, 9, 12, 1];
 
 const RX_RETURN_DELAY: u32 = 25;
 const TRANSMISSION_TIMEOUT_MS: u32 = 25;
@@ -94,7 +116,6 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     time: u32,
     state: RadioState,
     state_time: u32,
-    last_sync: u32,
     spi: Arc<Mutex<RefCell<SPI>>>,
     cs: CS,
     #[allow(dead_code)] // TODO
@@ -112,6 +133,9 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     siphasher: SipHasher,
     #[cfg(not(feature="gcs"))]
     last_hash: u64,
+    last_message_received: u32,
+    #[cfg(feature="gcs")]
+    fc_time_offset: i64,
 }
 
 #[interrupt]
@@ -167,7 +191,6 @@ impl<
             time: 0,
             state: RadioState::Init,
             state_time: 0,
-            last_sync: 0,
             spi,
             cs,
             irq,
@@ -183,6 +206,9 @@ impl<
             siphasher: SipHasher::new_with_key(&SIPHASHER_KEY),
             #[cfg(not(feature="gcs"))]
             last_hash: 0,
+            last_message_received: 0,
+            #[cfg(feature="gcs")]
+            fc_time_offset: 0,
         }
     }
 
@@ -372,13 +398,13 @@ impl<
         //self.command(LLCC68OpCode::CalibrateImage, &[0xd7, 0xdb], 0)?;
         self.command(LLCC68OpCode::WriteRegister, &[0x08, 0xac, 0x96], 0)?; // boost rx gain
         self.set_packet_type(LLCC68PacketType::LoRa)?;
-        self.set_rf_frequency(FREQUENCY)?;
         self.set_lora_mod_params(
             LLCC68LoRaModulationBandwidth::Bw500,
             LLCC68LoRaSpreadingFactor::SF6,
             LLCC68LoRaCodingRate::CR4of6,
             false,
         )?;
+        self.set_rf_frequency(CHANNELS[CHANNELS.len() / 2])?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
         self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R20U)?;
         self.set_dio1_interrupt(
@@ -412,6 +438,27 @@ impl<
         self.state_time = self.time;
     }
 
+    fn switch_to_next_frequency(&mut self) -> Result<(), LoRaError<SPI::Error>> {
+        // Switch to the correct frequency for the current message interval.
+        // On the FC, this is pretty straight forward.
+
+        #[cfg(not(feature="gcs"))]
+        let t = self.time;
+        #[cfg(feature="gcs")]
+        let t = (self.time as i64).wrapping_add(self.fc_time_offset) as u32;
+
+        let message_i = (t / LORA_MESSAGE_INTERVAL) as usize % CHANNELS.len();
+        let mut res = Ok(());
+        for _i in 0..3 {
+            res = self.set_rf_frequency(CHANNELS[CHANNEL_SEQUENCE[message_i]]);
+            if res.is_ok() {
+                break;
+            }
+        }
+
+        res
+    }
+
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), LoRaError<SPI::Error>> {
         if self.state != RadioState::Idle {
             log!(Error, "skipping");
@@ -435,11 +482,6 @@ impl<
 
     #[cfg(not(feature="gcs"))]
     pub fn send_downlink_message(&mut self, msg: DownlinkMessage) {
-        if let DownlinkMessage::TelemetryGPS(_) = msg {
-            self.last_sync = self.time;
-        }
-
-        // TODO
         let serialized = match msg.serialize() {
             Ok(b) => b,
             Err(e) => {
@@ -485,6 +527,10 @@ impl<
 
         // Abort in case of a CRC mismatch
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
+            // For some reason, uplink messages get crc mismatches occasionally.
+            // Since any uplink message of consequence is authenticated anyways,
+            // we just ignore this for the flight computer.
+            #[cfg(feature="gcs")]
             return Err(LoRaError::Crc);
         }
 
@@ -513,18 +559,19 @@ impl<
         // TODO: move deserialization code to src/telemetry
         let deserialized = postcard::from_bytes_cobs(&mut buffer[1..]).ok();
         if deserialized.is_none() {
-            log!(Error, "Failed to decode message: {:02x?}", buffer);
+            log!(Error, "Failed to decode message: {:02x?}", &buffer[1..]);
         }
 
         Ok(deserialized)
     }
 
     fn is_uplink_window(&self, time: u32, first_only: bool) -> bool {
-        let mut t = time.saturating_sub(self.last_sync) % 1000;
+        let mut t = time % 1000;
+
         if !first_only {
             t -= t % LORA_MESSAGE_INTERVAL;
         }
-        t != 0 && (t % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
+        (t % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
     }
 
     fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
@@ -611,25 +658,32 @@ impl<
         self.tick_common(time);
         self.high_power = mode >= FlightMode::Armed;
 
-        if time % LORA_MESSAGE_INTERVAL == 0 {
+        if self.time % LORA_MESSAGE_INTERVAL == 0 {
             self.last_hash = self.siphasher.finish();
             self.siphasher.write_u64(self.last_hash);
+
+            if let Err(e) = self.switch_to_next_frequency() {
+                log!(Error, "Failed to switch frequencies: {:?}", e);
+            }
         }
 
-        if self.is_uplink_window(time, false) {
+        if self.is_uplink_window(self.time, false) {
             match self.receive_message() {
-                Ok(opt) => {
-                    if let Some(UplinkMessage::RebootAuth(mac)) |
-                            Some(UplinkMessage::SetFlightModeAuth(_, mac)) |
-                            Some(UplinkMessage::EraseFlashAuth(mac)) = opt {
+                Ok(Some(msg)) => {
+                    self.last_message_received = self.time;
+
+                    if let UplinkMessage::RebootAuth(mac) |
+                            UplinkMessage::SetFlightModeAuth(_, mac) |
+                            UplinkMessage::EraseFlashAuth(mac) = msg {
                         let current = self.siphasher.finish();
                         if mac != self.last_hash && mac != current {
                             log!(Error, "MAC mismatch: {:02x?} vs ({:02x?}, {:02x?})", mac, self.last_hash, current);
                             return None;
                         }
                     }
-                    opt
+                    Some(msg)
                 },
+                Ok(None) => None,
                 Err(e) => {
                     log!(Error, "Error receiving message: {:?}", e);
                     None
@@ -644,7 +698,27 @@ impl<
     pub fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
         self.tick_common(time);
 
-        if self.last_sync > 0 && (time - self.last_sync) < 5000 && self.is_uplink_window(time + 5, true) {
+        let in_contact = self.last_message_received > 0 && self.time.wrapping_sub(self.last_message_received) < 5000;
+        let fc_time = (self.time as i64).wrapping_add(self.fc_time_offset as i64) as u32;
+
+        // When not in contact with the FC we do a slow sweep across channels.
+        if !in_contact && self.time % 2000 == 0 {
+            let i = (self.time as usize / 2000) % CHANNELS.len();
+            log!(Info, "Sweeping, switching to {}MHz.", (CHANNELS[i] as f32) / 1_000_000.0);
+            if let Err(e) = self.set_rf_frequency(CHANNELS[i]) {
+                log!(Error, "Failed to switch frequencies: {:?}", e);
+            }
+            self.switch_to_rx();
+        }
+
+        if in_contact && fc_time % LORA_MESSAGE_INTERVAL == 0 {
+            if let Err(e) = self.switch_to_next_frequency() {
+                log!(Error, "Failed to switch frequencies: {:?}", e);
+            }
+            self.switch_to_rx();
+        }
+
+        if in_contact && self.is_uplink_window(fc_time.wrapping_sub(5), true) {
             let msg = self.uplink_message.take().unwrap_or(UplinkMessage::Heartbeat);
             if let Err(e) = self.send_uplink_message(msg) {
                 log!(Error, "Failed to send uplink message: {:?}", e);
@@ -654,13 +728,17 @@ impl<
         } else {
             let result: Result<Option<DownlinkMessage>, _> = self.receive_message();
             match &result {
-                Ok(msg) => {
-                    if let Some(DownlinkMessage::TelemetryGPS(_)) = msg {
-                        self.last_sync = time;
-                    } else if let Some(DownlinkMessage::TelemetryMainCompressed(tm)) = msg {
+                Ok(Some(msg)) => {
+                    self.last_message_received = self.time;
+                    self.fc_time_offset = (msg.time() as i64)
+                        .wrapping_sub(self.time as i64)
+                        .wrapping_add(15); // compensate for message delay
+
+                    if let DownlinkMessage::TelemetryMainCompressed(tm) = msg {
                         self.high_power = tm.mode >= FlightMode::Armed;
                     }
                 }
+                Ok(None) => {},
                 Err(e) => log!(Error, "Error receiving message: {:?}", e),
             }
 
