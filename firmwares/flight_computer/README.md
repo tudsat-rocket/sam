@@ -3,6 +3,8 @@ Sting FC Firmware
 
 Firmware for the Sting flight computer.
 
+![](system_architecture.png)
+
 # Setup
 
 ## STLink drivers
