@@ -240,9 +240,9 @@ fn main() -> ! {
     let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
 
     #[cfg(feature = "rev1")]
-    let pwm = dp.TIM4.pwm_hz(Channel4::new(gpiob.pb9), 440.Hz(), &clocks);
+    let pwm = dp.TIM4.pwm_hz(Channel4::new(gpiob.pb9.into_alternate()), 440.Hz(), &clocks);
     #[cfg(feature = "rev2")]
-    let pwm = dp.TIM3.pwm_hz(Channel2::new(gpioc.pc7), 440.Hz(), &clocks);
+    let pwm = dp.TIM3.pwm_hz(Channel2::new(gpioc.pc7.into_alternate()), 440.Hz(), &clocks);
 
     let buzzer = Buzzer::init(pwm);
 

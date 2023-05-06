@@ -316,9 +316,6 @@ impl Vehicle {
     pub fn tick(&mut self) {
         let cycles_before = hal::pac::DWT::cycle_count();
 
-        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
-        Logger::update_time(self.time);
-
         // Read sensors
         self.power.tick();
         self.barometer.tick();
@@ -374,6 +371,9 @@ impl Vehicle {
             .flatten();
         self.flash.tick(self.time, flash_message);
 
+        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
+        Logger::update_time(self.time);
+
         // get CPU usage (max of RUNTIME_HISTORY_LEN last iterations)
         self.loop_runtime_history.truncate(RUNTIME_HISTORY_LEN - 1);
         let cycles_elapsed = hal::pac::DWT::cycle_count().wrapping_sub(cycles_before);
@@ -382,9 +382,6 @@ impl Vehicle {
 
     #[cfg(feature = "gcs")]
     pub fn tick(&mut self) {
-        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
-        Logger::update_time(self.time);
-
         let downlink_msg = self.radio.tick(self.time);
         let uplink_msg = self.usb_link.tick(self.time).and_then(|msg| {
             match msg {
@@ -418,6 +415,9 @@ impl Vehicle {
             self.usb_link.send_message(msg);
             self.usb_link.send_message(gcs_message);
         }
+
+        self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
+        Logger::update_time(self.time);
     }
 
     #[cfg(not(feature = "gcs"))]

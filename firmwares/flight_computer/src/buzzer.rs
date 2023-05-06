@@ -230,26 +230,24 @@ impl Buzzer {
     }
 
     pub fn tick(&mut self, time: u32) {
-        if self.current_index >= self.current_melody.len() {
-            if self.repeat {
+        let note = self.current_melody.get(self.current_index);
+        if note.map(|n| time.wrapping_sub(self.time_note_change) > n.duration).unwrap_or(false) {
+            self.current_index += 1;
+            self.time_note_change = time;
+
+            if self.current_index >= self.current_melody.len() && self.repeat {
                 self.current_index = 0;
-            } else {
-                self.pwm.disable(CHANNEL);
-                return;
             }
+        } else if time != self.time_note_change {
+            return;
         }
 
-        let current_note = &self.current_melody[self.current_index];
-        if let Some(freq) = current_note.freq() {
+        let note = self.current_melody.get(self.current_index);
+        if let Some(freq) = note.map(|n| n.freq()).flatten() {
             self.pwm.set_period((freq as u32).Hz());
             self.pwm.enable(CHANNEL);
         } else {
             self.pwm.disable(CHANNEL);
-        }
-
-        if time - self.time_note_change > current_note.duration {
-            self.current_index += 1;
-            self.time_note_change = time;
         }
     }
 
