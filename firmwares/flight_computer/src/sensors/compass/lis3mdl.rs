@@ -3,7 +3,7 @@ use core::ops::DerefMut;
 
 use alloc::sync::Arc;
 
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
 
 use cortex_m::interrupt::{free, Mutex};
@@ -19,7 +19,7 @@ pub struct LIS3MDL<SPI, CS> {
     mag: Option<Vector3<f32>>
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> LIS3MDL<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
     pub fn init(
         spi: Arc<Mutex<RefCell<SPI>>>,
         cs: CS
@@ -57,7 +57,7 @@ impl<SPI: TransferInplace, CS: OutputPin> LIS3MDL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().ok();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().ok();
             res?;
 
@@ -73,7 +73,7 @@ impl<SPI: TransferInplace, CS: OutputPin> LIS3MDL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().ok();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().ok();
             res?;
 
@@ -90,7 +90,7 @@ impl<SPI: TransferInplace, CS: OutputPin> LIS3MDL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().ok();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().ok();
             res
         })?;

@@ -7,12 +7,12 @@ use core::ops::DerefMut;
 
 use cortex_m::interrupt::{free, Mutex};
 use embedded_hal::serial::Read;
-use hal::gpio::{Alternate, Pin};
-use hal::pac::{interrupt, Interrupt, USART2};
+use stm32f4xx_hal as hal;
 use hal::prelude::*;
+use hal::gpio::{Pin};
+use hal::pac::{interrupt, Interrupt, USART2};
 use hal::rcc::Clocks;
 use hal::serial::Serial;
-use stm32f4xx_hal as hal;
 
 use ublox::{AlignmentToReferenceTime, CfgPrtUartBuilder, CfgRateBuilder, UartPortId};
 
@@ -24,9 +24,7 @@ const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
 const MEASUREMENT_RATE_MS: u16 = 100;
 
-type SERIAL = Serial<USART2, (Pin<'A', 2, Alternate<7>>, Pin<'A', 3, Alternate<7>>)>;
-
-static UART: Mutex<RefCell<Option<SERIAL>>> = Mutex::new(RefCell::new(None));
+static UART: Mutex<RefCell<Option<Serial<USART2>>>> = Mutex::new(RefCell::new(None));
 static NMEA_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(false));
 static mut NMEA_BUFFER: Option<Vec<u8>> = None;
 
@@ -71,15 +69,16 @@ pub struct GPS {
 
 impl GPS {
     pub fn init(dp_uart: USART2, tx: Pin<'A', 2>, rx: Pin<'A', 3>, clocks: &Clocks) -> Self {
-        let tx = tx.into_alternate::<7>();
-        let rx = rx.into_alternate::<7>();
         let baud = BAUD_RATE_OPTIONS[0];
-
         log!(Info, "Starting with baud rate {}.", baud);
         let config = hal::serial::config::Config::default()
             .baudrate(baud.bps())
             .parity_none();
-        let mut uart: SERIAL = dp_uart.serial((tx, rx), config, clocks).unwrap();
+        let mut uart = dp_uart.serial(
+            (tx.into_alternate(), rx.into_alternate()),
+            config,
+            clocks
+        ).unwrap();
         uart.listen(hal::serial::Event::Rxne);
 
         free(|cs| {
@@ -129,7 +128,7 @@ impl GPS {
         let config = hal::serial::config::Config::default()
             .baudrate(new_baud_rate.bps())
             .parity_none();
-        let mut uart: SERIAL = dp_uart.serial((tx, rx), config, clocks).unwrap();
+        let mut uart = dp_uart.serial((tx, rx), config, clocks).unwrap();
         uart.listen(hal::serial::Event::Rxne);
 
         self.baud_rate = new_baud_rate;

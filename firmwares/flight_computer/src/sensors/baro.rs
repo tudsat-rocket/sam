@@ -5,8 +5,8 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use alloc::collections::VecDeque;
 
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
-use embedded_hal_one::spi::blocking::TransferInplace;
 
 use cortex_m::interrupt::{free, Mutex};
 
@@ -35,7 +35,7 @@ pub struct Barometer<SPI, CS> {
     pressure: Option<i32>,
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> Barometer<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut baro = Self {
             spi,
@@ -62,7 +62,7 @@ impl<SPI: TransferInplace, CS: OutputPin> Barometer<SPI, CS> {
             let mut payload = [alloc::vec![command.into()], [0x00].repeat(response_len)].concat();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 

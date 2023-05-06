@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use hal::prelude::*;
-use hal::rcc::Clocks;
+use hal::timer::pwm::PwmHz;
 use stm32f4xx_hal as hal;
 
 use num_traits::Float;
@@ -13,6 +13,7 @@ use crate::telemetry::FlightMode;
 use Semitone::*;
 
 // TODO: make this more generic, get rid of these feature flags.
+// To do this, some of the required traits need to be exposed by stm32f4xx_hal
 
 #[cfg(feature = "rev1")]
 type Timer = hal::pac::TIM4;
@@ -20,14 +21,11 @@ type Timer = hal::pac::TIM4;
 type Timer = hal::pac::TIM3;
 
 #[cfg(feature = "rev1")]
-type Pin = hal::gpio::Pin<'B', 9, hal::gpio::Alternate<2>>;
+type Pins = hal::timer::Channel4<Timer, false>;
 #[cfg(feature = "rev2")]
-type Pin = hal::gpio::Pin<'C', 7, hal::gpio::Alternate<2>>;
+type Pins = hal::timer::Channel2<Timer, false>;
 
-#[cfg(feature = "rev1")]
-type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<3>, Pin>;
-#[cfg(feature = "rev2")]
-type Pwm = hal::timer::PwmHz<Timer, hal::timer::Ch<1>, Pin>;
+type Pwm = hal::timer::PwmHz<Timer, Pins>;
 
 #[cfg(feature = "rev1")]
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
@@ -207,7 +205,7 @@ pub const RECOVERY_WARNING_TIME: u32 = 750;
 const RECOVERY: [Note; 1] = [Note::note(C, 5, RECOVERY_WARNING_TIME)];
 
 pub struct Buzzer {
-    pwm: Pwm,
+    pwm: PwmHz<Timer, Pins>,
     current_melody: Vec<Note>,
     current_index: usize,
     time_note_change: u32,
@@ -215,8 +213,7 @@ pub struct Buzzer {
 }
 
 impl Buzzer {
-    pub fn init(timer: Timer, pin: Pin, clocks: &Clocks) -> Self {
-        let mut pwm = timer.pwm_hz(pin, 440.Hz(), clocks);
+    pub fn init(mut pwm: Pwm) -> Self {
         pwm.set_duty(CHANNEL, pwm.get_max_duty() / 2);
 
         let current_melody = STARTUP.to_vec();

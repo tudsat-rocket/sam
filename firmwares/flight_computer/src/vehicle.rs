@@ -3,14 +3,11 @@
 
 use alloc::collections::VecDeque;
 
-use hal::gpio::Alternate;
 use hal::gpio::Analog;
 use hal::gpio::Input;
 use hal::pac::{SPI1, SPI2, SPI3};
 use hal::rcc::Clocks;
-use hal::spi::Master;
 use hal::spi::Spi;
-use hal::spi::TransferModeNormal;
 use stm32f4xx_hal as hal;
 use hal::gpio::{Pin, Output};
 
@@ -56,35 +53,9 @@ const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after w
 type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
 
-#[cfg(feature = "rev1")]
-type Spi1 = Spi<
-    SPI1,
-    (Pin<'A', 5, Alternate<5>>, Pin<'B', 4, Alternate<5>>, Pin<'A', 7, Alternate<5>>),
-    TransferModeNormal,
-    Master,
->;
-
-#[cfg(feature = "rev2")]
-type Spi1 = Spi<
-    SPI1,
-    (Pin<'A', 5, Alternate<5>>, Pin<'A', 6, Alternate<5>>, Pin<'A', 7, Alternate<5>>),
-    TransferModeNormal,
-    Master,
->;
-
-type Spi2 = Spi<
-    SPI2,
-    (Pin<'B', 13, Alternate<5>>, Pin<'C', 2, Alternate<5>>, Pin<'C', 3, Alternate<5>>),
-    TransferModeNormal,
-    Master,
->;
-
-type Spi3 = Spi<
-    SPI3,
-    (Pin<'C', 10, Alternate<6>>, Pin<'C', 11, Alternate<6>>, Pin<'C', 12, Alternate<6>>),
-    TransferModeNormal,
-    Master,
->;
+type Spi1 = Spi<SPI1, false, u8>;
+type Spi2 = Spi<SPI2, false, u8>;
+type Spi3 = Spi<SPI3, false, u8>;
 
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {

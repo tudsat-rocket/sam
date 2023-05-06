@@ -13,7 +13,7 @@ use alloc::vec::Vec;
 
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal_one::digital::blocking::InputPin;
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 
 use cortex_m::interrupt::{free, Mutex};
 use hal::dma::config::DmaConfig;
@@ -155,7 +155,7 @@ fn DMA2_STREAM3() {
 }
 
 impl<
-    SPI: TransferInplace,
+    SPI: SpiBus,
     CS: OutputPin,
     IRQ: InputPin,
     BUSY: InputPin
@@ -232,7 +232,7 @@ impl<
                 core::hint::spin_loop()
             }
 
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().ok();
             res?;
 

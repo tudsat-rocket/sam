@@ -23,12 +23,12 @@ cortex-m-rt = { version = "0.7", optional = true }
 # Only load this for no_std, since it forces us to use nightly
 alloc-cortex-m = { version = "0.4", optional = true }
 # Same here, but this is because it can cause issues when the library is loaded in wasm or x86
-stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="7e500316a87b98202d783251201615a17329eb7b", optional = true }
+stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="a0971b2a2cb83292489ff3619bece79a63c81269", optional = true }
 usbd-serial = "0.1.1"
 usb-device ="0.2.9"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 postcard = "1.0"
-crc = "2"
+crc = "3"
 ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
 nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
@@ -39,7 +39,7 @@ defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 [dependencies.embedded-hal-one]
-version = "=1.0.0-alpha.7"
+version = "=1.0.0-alpha.8"
 package = "embedded-hal"
 
 [dev-dependencies]

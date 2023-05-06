@@ -38,7 +38,7 @@ pub fn reboot_to_bootloader() {
 
     // Write bootloader request to RTC backup register
     let rtc = unsafe { &(*RTC::ptr()) };
-    rtc.bkpr[0].write(|w| unsafe { w.bits(1) });
+    rtc.bkpr[0].write(|w| w.bits(1));
 
     reboot();
 }
@@ -54,7 +54,7 @@ pub fn init_bootloader() {
     // to bootloader
     let rtc = unsafe { &(*RTC::ptr()) };
     if rtc.bkpr[0].read().bits() > 0 {
-        rtc.bkpr[0].write(|w| unsafe { w.bits(0) });
+        rtc.bkpr[0].write(|w| w.bits(0));
         defmt::info!("Jumping to bootloader...");
 
         jump_to_bootloader();

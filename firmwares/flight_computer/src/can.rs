@@ -7,7 +7,7 @@ use core::ops::DerefMut;
 
 use alloc::sync::Arc;
 
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
 
 use cortex_m::interrupt::{free, Mutex};
@@ -21,7 +21,7 @@ pub struct MCP2517FD<SPI, CS> {
 }
 
 
-impl<SPI: TransferInplace, CS: OutputPin> MCP2517FD<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> MCP2517FD<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut mcp = Self {
             spi,
@@ -90,7 +90,7 @@ impl<SPI: TransferInplace, CS: OutputPin> MCP2517FD<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 
@@ -109,7 +109,7 @@ impl<SPI: TransferInplace, CS: OutputPin> MCP2517FD<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 
@@ -128,7 +128,7 @@ impl<SPI: TransferInplace, CS: OutputPin> MCP2517FD<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 
@@ -147,7 +147,7 @@ impl<SPI: TransferInplace, CS: OutputPin> MCP2517FD<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 

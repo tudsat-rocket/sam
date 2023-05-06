@@ -3,7 +3,7 @@ use core::ops::DerefMut;
 
 use alloc::{sync::Arc, collections::VecDeque, vec::Vec};
 
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
 
 use cortex_m::interrupt::{free, Mutex};
@@ -23,7 +23,7 @@ pub struct H3LIS331DL<SPI, CS> {
     zero_offset: Vector3<f32>
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> H3LIS331DL<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> H3LIS331DL<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut h3lis = Self {
             spi,
@@ -60,7 +60,7 @@ impl<SPI: TransferInplace, CS: OutputPin> H3LIS331DL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 
@@ -76,7 +76,7 @@ impl<SPI: TransferInplace, CS: OutputPin> H3LIS331DL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 
@@ -93,7 +93,7 @@ impl<SPI: TransferInplace, CS: OutputPin> H3LIS331DL<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut buffer);
+            let res = spi.transfer_in_place(&mut buffer);
             self.cs.set_high().unwrap();
             res?;
 

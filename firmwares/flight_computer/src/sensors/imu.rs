@@ -3,7 +3,7 @@ use core::ops::DerefMut;
 
 use alloc::sync::Arc;
 
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
 
 use cortex_m::interrupt::{free, Mutex};
@@ -23,7 +23,7 @@ pub struct Imu<SPI, CS> {
     accel: Option<Vector3<f32>>,
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> Imu<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let gyro_scale = LSM6GyroscopeScale::Max2000Dps;
         let accel_scale = LSM6AccelerometerScale::Max16G;
@@ -59,7 +59,7 @@ impl<SPI: TransferInplace, CS: OutputPin> Imu<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().ok();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().ok();
             res?;
 
@@ -75,7 +75,7 @@ impl<SPI: TransferInplace, CS: OutputPin> Imu<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().ok();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().ok();
             res?;
 

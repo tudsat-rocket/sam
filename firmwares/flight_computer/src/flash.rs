@@ -7,7 +7,7 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use embedded_hal_one::digital::blocking::OutputPin;
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use core::cell::RefCell;
 use core::ops::DerefMut;
 
@@ -107,7 +107,7 @@ fn DMA1_STREAM7() {
     on_interrupt();
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> Flash<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
     pub fn init(
         spi: Arc<Mutex<RefCell<SPI>>>,
         cs: CS,
@@ -166,7 +166,7 @@ impl<SPI: TransferInplace, CS: OutputPin> Flash<SPI, CS> {
             let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 

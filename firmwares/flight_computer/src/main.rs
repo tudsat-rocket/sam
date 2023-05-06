@@ -3,7 +3,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(default_alloc_error_handler)]
 #![feature(generic_const_exprs)]
 
 // This is why we need nightly, default_alloc_error_handler is (still) not
@@ -21,11 +20,12 @@ use cortex_m;
 use hal::adc::config::AdcConfig;
 use hal::adc::Adc;
 use hal::gpio::PinState;
+use hal::gpio::alt::otg_fs::{Dm, Dp};
 use hal::otg_fs::USB;
 use hal::pac::{interrupt, Interrupt, TIM2};
 use hal::prelude::*;
 use hal::spi::{Mode, Phase, Polarity};
-use hal::timer::{CounterHz, Event};
+use hal::timer::{CounterHz, Event, Channel2};
 use stm32f4xx_hal as hal;
 
 mod bootloader;
@@ -119,8 +119,8 @@ fn main() -> ! {
         usb_global: dp.OTG_FS_GLOBAL,
         usb_device: dp.OTG_FS_DEVICE,
         usb_pwrclk: dp.OTG_FS_PWRCLK,
-        pin_dm: gpioa.pa11.into_alternate(),
-        pin_dp: gpioa.pa12.into_alternate(),
+        pin_dm: Dm::PA11(gpioa.pa11.into_alternate()),
+        pin_dp: Dp::PA12(gpioa.pa12.into_alternate()),
         hclk: clocks.hclk(),
     };
     let usb_link = UsbLink::init(usb);
@@ -240,9 +240,11 @@ fn main() -> ! {
     let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
 
     #[cfg(feature = "rev1")]
-    let buzzer = Buzzer::init(dp.TIM4, gpiob.pb9.into_alternate::<2>(), &clocks);
+    let pwm = dp.TIM4.pwm_hz(Channel2::new(gpiob.pb9), 440.Hz(), &clocks);
     #[cfg(feature = "rev2")]
-    let buzzer = Buzzer::init(dp.TIM3, gpioc.pc7.into_alternate::<2>(), &clocks);
+    let pwm = dp.TIM3.pwm_hz(Channel2::new(gpioc.pc7), 440.Hz(), &clocks);
+
+    let buzzer = Buzzer::init(pwm);
 
     let gpio_drogue = gpioc.pc8.into_push_pull_output_in_state(PinState::Low);
     let gpio_main = gpioc.pc9.into_push_pull_output_in_state(PinState::Low);
