@@ -251,7 +251,6 @@ fn main() -> ! {
     let recovery = (gpio_drogue, gpio_main);
 
     // TODO: sd
-    // TODO: auxiliary IO
 
     let mut adc = Adc::adc1(dp.ADC1, true, AdcConfig::default());
     adc.enable_temperature_and_vref();

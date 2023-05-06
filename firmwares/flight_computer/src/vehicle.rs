@@ -24,7 +24,6 @@ use crate::bootloader::*;
 #[cfg(feature = "rev2")]
 use crate::can::MCP2517FD;
 use crate::buzzer::*;
-use crate::flash::*;
 use crate::logging::*;
 use crate::lora::*;
 use crate::params::*;
@@ -50,59 +49,60 @@ const MAX_FLIGHT_TIME: u32 = 12000; // maximum time in flight to trigger recover
 
 const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after warning tone, in ms)
 
-type LEDS = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
-type RECOVERY = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
+type LEDs = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
+type Recovery = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
 
 type Spi1 = Spi<SPI1, false, u8>;
 type Spi2 = Spi<SPI2, false, u8>;
 type Spi3 = Spi<SPI3, false, u8>;
 
+#[cfg(feature = "rev1")]
+type Accelerometer = ADXL375<Spi3, Pin<'D', 2, Output>>;
+#[cfg(feature = "rev2")]
+type Accelerometer = H3LIS331DL<Spi1, Pin<'A', 4, Output>>;
+
+#[cfg(feature = "rev1")]
+type Compass = BMM150<Spi1, Pin<'B', 14, Output>>;
+#[cfg(feature = "rev2")]
+type Compass = LIS3MDL<Spi1, Pin<'B', 10, Output>>;
+
+#[cfg(feature = "rev1")]
+type Power = PowerMonitor<Pin<'C', 5, Analog>, Pin<'C', 4, Analog>, Pin<'A', 4, Analog>>;
+#[cfg(feature = "rev2")]
+type Power = PowerMonitor<Pin<'B', 0, Analog>, Pin<'C', 5, Analog>, Pin<'C', 4, Analog>>;
+
+#[cfg(feature = "rev1")]
+type Flash = crate::flash::Flash<Spi2, Pin<'B', 12, Output>>;
+#[cfg(feature = "rev2")]
+type Flash = crate::flash::Flash<Spi3, Pin<'D', 2, Output>>;
+
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
     clocks: Clocks,
-
+    // sensors
     imu: Imu<Spi1, Pin<'B', 15, Output>>,
-
-    #[cfg(feature = "rev1")]
-    acc: ADXL375<Spi3, Pin<'D', 2, Output>>,
-    #[cfg(feature = "rev2")]
-    acc: H3LIS331DL<Spi1, Pin<'A', 4, Output>>,
-
-    #[cfg(feature = "rev1")]
-    compass: BMM150<Spi1, Pin<'B', 14, Output>>,
-    #[cfg(feature = "rev2")]
-    compass: LIS3MDL<Spi1, Pin<'B', 10, Output>>,
-
+    acc: Accelerometer,
+    compass: Compass,
     barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
     gps: GPS,
-
-    #[cfg(feature = "rev1")]
-    power: PowerMonitor<Pin<'C', 5, Analog>, Pin<'C', 4, Analog>, Pin<'A', 4, Analog>>,
-    #[cfg(feature = "rev2")]
-    power: PowerMonitor<Pin<'B', 0, Analog>, Pin<'C', 5, Analog>, Pin<'C', 4, Analog>>,
-
+    power: Power,
+    // other peripherals
     usb_link: UsbLink,
     radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
-
-    #[cfg(feature = "rev1")]
-    flash: Flash<Spi2, Pin<'B', 12, Output>>,
-    #[cfg(feature = "rev2")]
-    flash: Flash<Spi3, Pin<'D', 2, Output>>,
-
+    flash: Flash,
     #[cfg(feature = "rev2")]
     can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
-
-    leds: LEDS,
+    // outputs
+    leds: LEDs,
     buzzer: Buzzer,
-    recovery: RECOVERY,
-
+    recovery: Recovery,
+    // vehicle state
     ahrs: ahrs::Mahony<f32>,
     kalman: KalmanFilter<f32, U3, U2, U0>,
     orientation: Option<Unit<Quaternion<f32>>>,
     acceleration_world: Option<Vector3<f32>>,
     altitude_ground: f32,
     altitude_max: f32,
-
     pub time: u32,
     mode: FlightMode,
     mode_time: u32,
@@ -116,30 +116,18 @@ impl Vehicle {
         clocks: Clocks,
         usb_link: UsbLink,
         imu: Imu<Spi1, Pin<'B', 15, Output>>,
-        #[cfg(feature = "rev1")]
-        acc: ADXL375<Spi3, Pin<'D', 2, Output>>,
-        #[cfg(feature = "rev2")]
-        acc: H3LIS331DL<Spi1, Pin<'A', 4, Output>>,
-        #[cfg(feature = "rev1")]
-        compass: BMM150<Spi1, Pin<'B', 14, Output>>,
-        #[cfg(feature = "rev2")]
-        compass: LIS3MDL<Spi1, Pin<'B', 10, Output>>,
+        acc: Accelerometer,
+        compass: Compass,
         barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
         gps: GPS,
-        #[cfg(feature = "rev1")]
-        flash: Flash<Spi2, Pin<'B', 12, Output>>,
-        #[cfg(feature = "rev2")]
-        flash: Flash<Spi3, Pin<'D', 2, Output>>,
+        flash: Flash,
         radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
         #[cfg(feature = "rev2")]
         can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
-        #[cfg(feature = "rev1")]
-        power: PowerMonitor<Pin<'C', 5, Analog>, Pin<'C', 4, Analog>, Pin<'A', 4, Analog>>,
-        #[cfg(feature = "rev2")]
-        power: PowerMonitor<Pin<'B', 0, Analog>, Pin<'C', 5, Analog>, Pin<'C', 4, Analog>>,
-        leds: LEDS,
+        power: Power,
+        leds: LEDs,
         buzzer: Buzzer,
-        recovery: RECOVERY
+        recovery: Recovery
     ) -> Self {
         let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
         let ahrs = ahrs::Mahony::new(dt, MAHONY_KP, MAHONY_KI);
