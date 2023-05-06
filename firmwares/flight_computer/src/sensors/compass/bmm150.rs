@@ -5,7 +5,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 
 use embedded_hal_one::digital::blocking::OutputPin;
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 
 use cortex_m::interrupt::{free, Mutex};
 use hal::prelude::*;
@@ -35,7 +35,7 @@ pub struct BMM150<SPI, CS> {
     mag: Option<Vector3<f32>>,
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> BMM150<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> BMM150<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS, delay: &mut SysDelay) -> Result<Self, SPI::Error> {
         let mut bmm = Self {
             spi,
@@ -63,7 +63,7 @@ impl<SPI: TransferInplace, CS: OutputPin> BMM150<SPI, CS> {
             let mut payload = [alloc::vec![(address as u8) | 0x80], [0x00].repeat(response_len)].concat();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 
@@ -79,7 +79,7 @@ impl<SPI: TransferInplace, CS: OutputPin> BMM150<SPI, CS> {
             let mut payload = [address as u8, value];
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 

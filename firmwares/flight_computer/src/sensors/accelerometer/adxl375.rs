@@ -3,7 +3,7 @@ use core::{cell::RefCell, ops::DerefMut};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
-use embedded_hal_one::spi::blocking::TransferInplace;
+use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
 
 use cortex_m::interrupt::{free, Mutex};
@@ -20,7 +20,7 @@ pub struct ADXL375<SPI, CS> {
     acc: Option<Vector3<f32>>,
 }
 
-impl<SPI: TransferInplace, CS: OutputPin> ADXL375<SPI, CS> {
+impl<SPI: SpiBus, CS: OutputPin> ADXL375<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
         let mut acc2 = Self { spi, cs, acc: None };
 
@@ -44,7 +44,7 @@ impl<SPI: TransferInplace, CS: OutputPin> ADXL375<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 
@@ -65,7 +65,7 @@ impl<SPI: TransferInplace, CS: OutputPin> ADXL375<SPI, CS> {
             let spi = ref_mut.deref_mut();
 
             self.cs.set_low().unwrap();
-            let res = spi.transfer_inplace(&mut payload);
+            let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().unwrap();
             res?;
 
