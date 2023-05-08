@@ -51,7 +51,7 @@ const CHANNELS: [u32; 14] = [
 
 const CHANNEL_SEQUENCE: [usize; 14] = [0, 10, 13, 6, 3, 7, 2, 8, 5, 11, 4, 9, 12, 1];
 
-const TRANSMISSION_TIMEOUT_MS: u32 = 12;
+const TRANSMISSION_TIMEOUT_MS: u32 = 15;
 
 const DOWNLINK_PACKET_SIZE: u8 = 24;
 const UPLINK_PACKET_SIZE: u8 = 14;
@@ -315,7 +315,7 @@ impl<
         self.set_packet_type(LLCC68PacketType::LoRa)?;
         self.set_lora_mod_params(
             LLCC68LoRaModulationBandwidth::Bw500,
-            LLCC68LoRaSpreadingFactor::SF6,
+            LLCC68LoRaSpreadingFactor::SF7,
             LLCC68LoRaCodingRate::CR4of6,
             false,
         )?;
@@ -602,7 +602,7 @@ impl<
             }
         }
 
-        if in_contact && self.is_uplink_window(fc_time.wrapping_sub(5), true) {
+        if in_contact && self.is_uplink_window(fc_time.wrapping_sub(2), true) {
             let msg = self.uplink_message.take().unwrap_or(UplinkMessage::Heartbeat);
             if let Err(e) = self.send_uplink_message(msg) {
                 log!(Error, "Failed to send uplink message: {:?}", e);
