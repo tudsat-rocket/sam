@@ -151,6 +151,7 @@ mod tests {
     fn uplink_msg_sizes_correct() {
         let msg = UplinkMessage::Heartbeat;
         assert_eq!(msg.serialize().unwrap().len(), 3);
+        assert_eq!(msg.serialize().unwrap(), [0x01, 0x01, 0x00]);
 
         let msg = UplinkMessage::Reboot;
         assert_eq!(msg.serialize().unwrap().len(), 3);
@@ -164,8 +165,8 @@ mod tests {
         let msg = UplinkMessage::SetFlightMode(FlightMode::Idle);
         assert_eq!(msg.serialize().unwrap().len(), 4);
 
-        let msg = UplinkMessage::SetFlightModeAuth(FlightMode::Idle, 0x1234);
-        assert_eq!(msg.serialize().unwrap().len(), 6);
+        let msg = UplinkMessage::SetFlightModeAuth(FlightMode::RecoveryDrogue, 0x1234567812345678);
+        assert_eq!(msg.serialize().unwrap().len(), 13);
 
         let msg = UplinkMessage::ReadFlash(0x0100, 0x1000);
         assert_eq!(msg.serialize().unwrap().len(), 7);

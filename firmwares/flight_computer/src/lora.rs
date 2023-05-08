@@ -16,11 +16,6 @@ use embedded_hal_one::digital::blocking::InputPin;
 use embedded_hal_one::spi::blocking::SpiBus;
 
 use cortex_m::interrupt::{free, Mutex};
-use hal::dma::config::DmaConfig;
-use hal::dma::{MemoryToPeripheral, Transfer, StreamX};
-use hal::pac::{interrupt, Interrupt, DMA2, NVIC, SPI1};
-use hal::spi::Tx;
-use stm32f4xx_hal as hal;
 
 use siphasher::sip::SipHasher;
 use serde::de::DeserializeOwned;
@@ -31,8 +26,6 @@ use crate::telemetry::*;
 // both RX and TX get half of the available 256 bytes
 const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 64;
-
-const DMA_BUFFER_SIZE: usize = 32;
 
 // The available channels for telemetry, assuming a 500kHz band width. This list
 // can be restricted, but ideally the number of messages per second (1000 /
@@ -58,11 +51,10 @@ const CHANNELS: [u32; 14] = [
 
 const CHANNEL_SEQUENCE: [usize; 14] = [0, 10, 13, 6, 3, 7, 2, 8, 5, 11, 4, 9, 12, 1];
 
-const RX_RETURN_DELAY: u32 = 25;
-const TRANSMISSION_TIMEOUT_MS: u32 = 25;
+const TRANSMISSION_TIMEOUT_MS: u32 = 12;
 
 const DOWNLINK_PACKET_SIZE: u8 = 24;
-const UPLINK_PACKET_SIZE: u8 = 16;
+const UPLINK_PACKET_SIZE: u8 = 14;
 
 const TX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
     UPLINK_PACKET_SIZE
@@ -76,26 +68,11 @@ const RX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
     UPLINK_PACKET_SIZE
 };
 
-type SpiDmaTransfer = Transfer<
-    StreamX<DMA2, 3>, // TODO
-    3,
-    Tx<SPI1>,
-    MemoryToPeripheral,
-    &'static mut [u8; DMA_BUFFER_SIZE],
->;
-
-static DMA_TRANSFER: Mutex<RefCell<Option<SpiDmaTransfer>>> = Mutex::new(RefCell::new(None));
-static DMA_RESULT: Mutex<RefCell<Option<Result<(), ()>>>> = Mutex::new(RefCell::new(None));
-static mut DMA_BUFFER: [u8; DMA_BUFFER_SIZE] = [0; DMA_BUFFER_SIZE];
-
 #[derive(Debug, PartialEq, Eq)]
-#[allow(dead_code)] // TODO
 enum RadioState {
     Init,
     Idle,
-    Writing,
     Transmitting,
-    Reading,
 }
 
 #[derive(Debug)]
@@ -118,9 +95,7 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     state_time: u32,
     spi: Arc<Mutex<RefCell<SPI>>>,
     cs: CS,
-    #[allow(dead_code)] // TODO
     irq: IRQ,
-    #[allow(dead_code)] // TODO
     busy: BUSY,
     pub high_power: bool,
     high_power_configured: bool,
@@ -138,22 +113,6 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     fc_time_offset: i64,
 }
 
-#[interrupt]
-fn DMA2_STREAM3() {
-    cortex_m::peripheral::NVIC::unpend(Interrupt::DMA2_STREAM3);
-
-    free(|cs| {
-        let transfer = &mut *DMA_TRANSFER.borrow(cs).borrow_mut();
-        if let Some(ref mut transfer) = transfer.as_mut() {
-            transfer.clear_fifo_error_interrupt();
-            transfer.clear_transfer_complete_interrupt();
-        }
-
-        let result = Some(Ok(())); // TODO: properly track errors
-        *DMA_RESULT.borrow(cs).borrow_mut() = result;
-    })
-}
-
 impl<
     SPI: SpiBus,
     CS: OutputPin,
@@ -163,30 +122,9 @@ impl<
     pub fn init(
         spi: Arc<Mutex<RefCell<SPI>>>,
         cs: CS,
-        dma_tx: Tx<SPI1>,
-        dma_stream: StreamX<DMA2, 3>,
         irq: IRQ,
         busy: BUSY
     ) -> Self {
-        let mut transfer = unsafe {
-            Transfer::init_memory_to_peripheral(
-                dma_stream,
-                dma_tx,
-                &mut DMA_BUFFER,
-                None,
-                DmaConfig::default()
-                    .memory_increment(true)
-                    .fifo_enable(true)
-                    .fifo_error_interrupt(true)
-                    .transfer_complete_interrupt(true),
-            )
-        };
-
-        transfer.start(|_tx| {});
-
-        // Hand off transfer to interrupt handler
-        free(|cs| *DMA_TRANSFER.borrow(cs).borrow_mut() = Some(transfer));
-
         Self {
             time: 0,
             state: RadioState::Init,
@@ -218,6 +156,10 @@ impl<
         params: &[u8],
         response_len: usize,
     ) -> Result<Vec<u8>, LoRaError<SPI::Error>> {
+        if self.busy.is_high().unwrap_or(false) {
+            return Err(LoRaError::Busy);
+        }
+
         free(|cs| {
             let mut ref_mut = self.spi.borrow(cs).borrow_mut();
             let spi = ref_mut.deref_mut();
@@ -225,13 +167,6 @@ impl<
             let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
             self.cs.set_low().ok();
-
-            // At 10MHz SPI freq, the setup commands seem to require some
-            // extra delay between cs going low and the SCK going high
-            for _i in 0..300 {
-                core::hint::spin_loop()
-            }
-
             let res = spi.transfer_in_place(&mut payload);
             self.cs.set_high().ok();
             res?;
@@ -240,37 +175,14 @@ impl<
         })
     }
 
-    fn command_dma(&mut self, opcode: LLCC68OpCode, params: &[u8]) -> () {
-        if params.len() > DMA_BUFFER_SIZE - 1 {
-            return;
-        }
+    fn read_register(&mut self, address: u16) -> Result<u8, LoRaError<SPI::Error>> {
+        Ok(self.command(LLCC68OpCode::ReadRegister, &address.to_be_bytes(), 2)?[1])
+    }
 
-        self.cs.set_low().ok();
-
-        // At 10MHz SPI freq, the setup commands seem to require some
-        // extra delay between cs going low and the SCK going high
-        for _i in 0..=200 {
-            core::hint::spin_loop()
-        }
-
-        free(|cs| {
-            let msg = [&[opcode as u8], params, &[0].repeat(DMA_BUFFER_SIZE - params.len() - 1)].concat();
-
-            let mut transfer = DMA_TRANSFER.borrow(cs).borrow_mut();
-            if let Some(ref mut transfer) = transfer.as_mut() {
-                unsafe {
-                    DMA_BUFFER = msg.try_into().unwrap();
-                    transfer.next_transfer(&mut DMA_BUFFER).unwrap();
-                    transfer.start(|_tx| {});
-                }
-            }
-
-            *DMA_RESULT.borrow(cs).borrow_mut() = None;
-
-            unsafe {
-                NVIC::unmask(hal::pac::Interrupt::DMA2_STREAM3);
-            }
-        })
+    fn write_register(&mut self, address: u16, value: u8) -> Result<(), LoRaError<SPI::Error>> {
+        let buffer = [(address >> 8) as u8, address as u8, value];
+        self.command(LLCC68OpCode::WriteRegister, &buffer, 0)?;
+        Ok(())
     }
 
     fn set_packet_type(&mut self, packet_type: LLCC68PacketType) -> Result<(), LoRaError<SPI::Error>> {
@@ -309,7 +221,10 @@ impl<
         self.command(LLCC68OpCode::SetTxParams, &[22, ramp_time as u8], 0)?;
         //self.command(LLCC68OpCode::SetTxParams, &[0, ramp_time as u8], 0)?;
 
-        // TODO: also set txclampconfig
+        // workaround to prevent overly protective power clamping (chapter 15.2, p. 97)
+        let tx_clamp_config = self.read_register(0x08d8)?;
+        self.write_register(0x08d8, tx_clamp_config | 0x1e)?;
+
         Ok(())
     }
 
@@ -396,7 +311,7 @@ impl<
 
         self.command(LLCC68OpCode::SetDIO2AsRfSwitchCtrl, &[1], 0)?;
         //self.command(LLCC68OpCode::CalibrateImage, &[0xd7, 0xdb], 0)?;
-        self.command(LLCC68OpCode::WriteRegister, &[0x08, 0xac, 0x96], 0)?; // boost rx gain
+        self.write_register(0x08ac, 0x96)?; // boost rx gain (9.6, p. 53)
         self.set_packet_type(LLCC68PacketType::LoRa)?;
         self.set_lora_mod_params(
             LLCC68LoRaModulationBandwidth::Bw500,
@@ -415,12 +330,14 @@ impl<
         Ok(())
     }
 
-    fn set_tx_mode_dma(&mut self, timeout_us: u32) {
+    fn set_tx_mode(&mut self, timeout_us: u32) -> Result<(), LoRaError<SPI::Error>> {
         let timeout = ((timeout_us as f32) / 15.625) as u32;
-        self.command_dma(
+        self.command(
             LLCC68OpCode::SetTx,
             &[(timeout >> 16) as u8, (timeout >> 8) as u8, timeout as u8],
-        );
+            0
+        )?;
+        Ok(())
     }
 
     fn set_rx_mode(&mut self, _timeout_us: u32) -> Result<(), LoRaError<SPI::Error>> {
@@ -448,15 +365,7 @@ impl<
         let t = (self.time as i64).wrapping_add(self.fc_time_offset) as u32;
 
         let message_i = (t / LORA_MESSAGE_INTERVAL) as usize % CHANNELS.len();
-        let mut res = Ok(());
-        for _i in 0..3 {
-            res = self.set_rf_frequency(CHANNELS[CHANNEL_SEQUENCE[message_i]]);
-            if res.is_ok() {
-                break;
-            }
-        }
-
-        res
+        self.set_rf_frequency(CHANNELS[CHANNEL_SEQUENCE[message_i]])
     }
 
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), LoRaError<SPI::Error>> {
@@ -470,13 +379,23 @@ impl<
             return Ok(());
         }
 
+        // The LLCC68 datasheet mentions this workaround to prevent modulation quality
+        // issues with 500khz bandwidth. (chapter 15.1, p. 97)
+        // This should be changed if we change bandwidths.
+        let reg = self.read_register(0x0889)?;
+        if reg & 0xfb != reg {
+            log!(Info, "Applying LLCC68 mod quality workaround.");
+            self.write_register(0x0889, reg & 0xfb)?;
+        }
+
         self.set_lora_packet_params(12, true, TX_PACKET_SIZE, true, false)?;
         const CMD_SIZE: usize = (TX_PACKET_SIZE as usize) + 1;
         let mut params: [u8; CMD_SIZE] = [0x00; CMD_SIZE];
         params[0] = TX_BASE_ADDRESS;
         params[1..(msg.len()+1)].copy_from_slice(msg);
-        self.command_dma(LLCC68OpCode::WriteBuffer, &params);
-        self.set_state(RadioState::Writing);
+        self.command(LLCC68OpCode::WriteBuffer, &params, 0)?;
+        self.set_tx_mode(TRANSMISSION_TIMEOUT_MS * 1000)?;
+        self.set_state(RadioState::Transmitting);
         Ok(())
     }
 
@@ -497,6 +416,10 @@ impl<
 
     #[cfg(feature="gcs")]
     fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), LoRaError<SPI::Error>> {
+        if msg != UplinkMessage::Heartbeat {
+            log!(Info, "Sending {:02x?}", msg.serialize().unwrap());
+        }
+
         self.send_packet(&msg.serialize().unwrap_or_default())
     }
 
@@ -527,10 +450,6 @@ impl<
 
         // Abort in case of a CRC mismatch
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
-            // For some reason, uplink messages get crc mismatches occasionally.
-            // Since any uplink message of consequence is authenticated anyways,
-            // we just ignore this for the flight computer.
-            #[cfg(feature="gcs")]
             return Err(LoRaError::Crc);
         }
 
@@ -551,15 +470,15 @@ impl<
     }
 
     fn receive_message<M: Transmit + DeserializeOwned>(&mut self) -> Result<Option<M>, LoRaError<SPI::Error>> {
-        let mut buffer = self.receive_data()?.unwrap_or_default();
+        let buffer = self.receive_data()?.unwrap_or_default();
         if buffer.len() == 0 {
             return Ok(None);
         }
 
         // TODO: move deserialization code to src/telemetry
-        let deserialized = postcard::from_bytes_cobs(&mut buffer[1..]).ok();
+        let deserialized = postcard::from_bytes_cobs(&mut buffer.clone()[1..]).ok();
         if deserialized.is_none() {
-            log!(Error, "Failed to decode message: {:02x?}", &buffer[1..]);
+            log!(Error, "{}: Failed to decode message: {:02x?}", self.time, &buffer[1..]);
         }
 
         Ok(deserialized)
@@ -574,14 +493,6 @@ impl<
         (t % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
     }
 
-    fn check_dma_result(&mut self) -> Option<Result<(), ()>> {
-        let result = free(|cs| DMA_RESULT.borrow(cs).replace(None));
-        if result.is_some() {
-            self.cs.set_high().ok();
-        }
-        result
-    }
-
     fn tick_common(&mut self, time: u32) {
         self.time = time;
 
@@ -591,51 +502,16 @@ impl<
             } else {
                 self.set_state(RadioState::Idle);
             }
-        } else if self.state == RadioState::Writing {
-            if let Some(_result) = self.check_dma_result() {
-                self.set_tx_mode_dma(TRANSMISSION_TIMEOUT_MS * 1000);
-                self.set_state(RadioState::Transmitting);
-            }
-        } else if self.state == RadioState::Transmitting {
-            if let Some(_result) = self.check_dma_result() {
-                self.set_state(RadioState::Idle);
-            }
         }
 
         // Return to rx mode after transmission. A delay is necessary in order
         // to allow the LLCC68 to actually finish the transmission
-        if self.state == RadioState::Idle && time == self.state_time + RX_RETURN_DELAY {
-            // The ground station only sends single messages, so always go
-            // back to receiving
-            #[cfg(feature="gcs")]
-            {
-                for _i in 0..3 { // TODO: why is this necessary?
-                    if let Err(_e) = self.switch_to_rx() {
-                        //log!(Error, "Failed to return to RX mode: {:?}", e);
-                    } else {
-                        break
-                    }
-                }
+        if self.state == RadioState::Transmitting && time == self.state_time.wrapping_add(TRANSMISSION_TIMEOUT_MS + 2) {
+            if let Err(e) = self.switch_to_rx() {
+                log!(Error, "Failed to return to RX mode: {:?}", e);
+            } else {
+                self.set_state(RadioState::Idle);
             }
-
-            // The vehicle switches to RX mode if the next radio interval
-            // is an uplink window
-            #[cfg(not(feature="gcs"))]
-            {
-                let next_msg = self.time + LORA_MESSAGE_INTERVAL - (self.time % LORA_MESSAGE_INTERVAL);
-                if self.is_uplink_window(next_msg, false) {
-                    if let Err(_e) = self.switch_to_rx() {
-                        //log!(Error, "Failed to return to RX mode: {:?}", e);
-                    }
-                }
-            }
-        }
-
-        if (self.state == RadioState::Writing || self.state == RadioState::Transmitting)
-            && ((self.state_time + TRANSMISSION_TIMEOUT_MS) < self.time)
-        {
-            log!(Error, "LoRa DMA timeout");
-            self.set_state(RadioState::Idle);
         }
 
         if self.high_power != self.high_power_configured {
@@ -658,10 +534,16 @@ impl<
         self.tick_common(time);
         self.high_power = mode >= FlightMode::Armed;
 
-        if self.time % LORA_MESSAGE_INTERVAL == 0 {
+        if self.time > 0 && self.time % LORA_MESSAGE_INTERVAL == 0 {
             self.last_hash = self.siphasher.finish();
             self.siphasher.write_u64(self.last_hash);
+        }
 
+        if self.state != RadioState::Idle {
+            return None;
+        }
+
+        if self.time % LORA_MESSAGE_INTERVAL == 0 {
             if let Err(e) = self.switch_to_next_frequency() {
                 log!(Error, "Failed to switch frequencies: {:?}", e);
             }
@@ -698,6 +580,10 @@ impl<
     pub fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
         self.tick_common(time);
 
+        if self.state != RadioState::Idle {
+            return None;
+        }
+
         let in_contact = self.last_message_received > 0 && self.time.wrapping_sub(self.last_message_received) < 5000;
         let fc_time = (self.time as i64).wrapping_add(self.fc_time_offset as i64) as u32;
 
@@ -705,17 +591,15 @@ impl<
         if !in_contact && self.time % 2000 == 0 {
             let i = (self.time as usize / 2000) % CHANNELS.len();
             log!(Info, "Sweeping, switching to {}MHz.", (CHANNELS[i] as f32) / 1_000_000.0);
-            if let Err(e) = self.set_rf_frequency(CHANNELS[i]) {
+            if let Err(e) = self.set_rf_frequency(CHANNELS[i]).and_then(|()| self.switch_to_rx()) {
                 log!(Error, "Failed to switch frequencies: {:?}", e);
             }
-            self.switch_to_rx();
         }
 
         if in_contact && fc_time % LORA_MESSAGE_INTERVAL == 0 {
-            if let Err(e) = self.switch_to_next_frequency() {
+            if let Err(e) = self.switch_to_next_frequency().and_then(|()| self.switch_to_rx()) {
                 log!(Error, "Failed to switch frequencies: {:?}", e);
             }
-            self.switch_to_rx();
         }
 
         if in_contact && self.is_uplink_window(fc_time.wrapping_sub(5), true) {
@@ -732,7 +616,7 @@ impl<
                     self.last_message_received = self.time;
                     self.fc_time_offset = (msg.time() as i64)
                         .wrapping_sub(self.time as i64)
-                        .wrapping_add(15); // compensate for message delay
+                        .wrapping_add(TRANSMISSION_TIMEOUT_MS as i64); // compensate for message delay
 
                     if let DownlinkMessage::TelemetryMainCompressed(tm) = msg {
                         self.high_power = tm.mode >= FlightMode::Armed;

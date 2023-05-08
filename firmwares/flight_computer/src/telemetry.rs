@@ -23,7 +23,7 @@ pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0
 #[allow(dead_code)]
 pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
-pub const UPLINK_MAX_LEN: u8 = 16;
+pub const UPLINK_MAX_LEN: u8 = 14;
 
 pub use LogLevel::*;
 

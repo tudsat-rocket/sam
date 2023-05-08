@@ -19,7 +19,7 @@ use defmt::*;
 use cortex_m;
 use hal::adc::config::AdcConfig;
 use hal::adc::Adc;
-use hal::gpio::PinState;
+use hal::gpio::{PinState, Speed};
 use hal::gpio::alt::otg_fs::{Dm, Dp};
 use hal::otg_fs::USB;
 use hal::pac::{interrupt, Interrupt, TIM2};
@@ -141,7 +141,6 @@ fn main() -> ! {
 
     // Initialize SPI peripherals
     let dma1_streams = hal::dma::StreamsTuple::new(dp.DMA1);
-    let dma2_streams = hal::dma::StreamsTuple::new(dp.DMA2);
 
     let spi_mode = Mode {
         polarity: Polarity::IdleLow,
@@ -150,18 +149,20 @@ fn main() -> ! {
 
     // SPI 1
     #[cfg(feature = "rev1")]
-    let spi1_miso = gpiob.pb4.into_alternate();
+    let spi1_miso = gpiob.pb4;
     #[cfg(feature = "rev2")]
-    let spi1_miso = gpioa.pa6.into_alternate();
+    let spi1_miso = gpioa.pa6;
 
     let spi1 = dp.SPI1.spi(
-        (gpioa.pa5.into_alternate(), spi1_miso, gpioa.pa7.into_alternate()),
+        (
+            gpioa.pa5.into_alternate().speed(Speed::VeryHigh),
+            spi1_miso.into_alternate().speed(Speed::VeryHigh),
+            gpioa.pa7.into_alternate().speed(Speed::VeryHigh),
+        ),
         spi_mode,
         10.MHz(),
         &clocks,
     );
-    let spi1_dma_stream = dma2_streams.3;
-    let spi1_dma_tx = unsafe { core::ptr::read(&spi1).use_dma().tx() };
     let spi1 = Arc::new(Mutex::new(RefCell::new(spi1)));
 
     let spi1_cs_imu = gpiob.pb15.into_push_pull_output_in_state(PinState::High);
@@ -187,15 +188,17 @@ fn main() -> ! {
     let radio = LoRaRadio::init(
         spi1,
         spi1_cs_radio,
-        spi1_dma_tx,
-        spi1_dma_stream,
         gpioc.pc0.into_input(),
         gpioc.pc1.into_input()
     );
 
     // SPI 2
     let spi2 = dp.SPI2.spi(
-        (gpiob.pb13.into_alternate(), gpioc.pc2.into_alternate(), gpioc.pc3.into_alternate()),
+        (
+            gpiob.pb13.into_alternate().speed(Speed::VeryHigh),
+            gpioc.pc2.into_alternate().speed(Speed::VeryHigh),
+            gpioc.pc3.into_alternate().speed(Speed::VeryHigh),
+        ),
         spi_mode,
         20.MHz(),
         &clocks
@@ -220,7 +223,11 @@ fn main() -> ! {
     };
 
     let spi3 = dp.SPI3.spi(
-        (gpioc.pc10.into_alternate(), gpioc.pc11.into_alternate(), gpioc.pc12.into_alternate()),
+        (
+            gpioc.pc10.into_alternate().speed(Speed::VeryHigh),
+            gpioc.pc11.into_alternate().speed(Speed::VeryHigh),
+            gpioc.pc12.into_alternate().speed(Speed::VeryHigh),
+        ),
         spi_mode,
         if cfg!(feature = "rev2") { 20.MHz() } else { 5.MHz() },
         &clocks
