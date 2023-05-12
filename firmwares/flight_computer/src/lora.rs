@@ -6,7 +6,6 @@
 
 use core::cell::RefCell;
 use core::ops::DerefMut;
-use core::hash::Hasher;
 
 use alloc::sync::Arc;
 use alloc::vec::Vec;
@@ -17,7 +16,6 @@ use embedded_hal_one::spi::blocking::SpiBus;
 
 use cortex_m::interrupt::{free, Mutex};
 
-use siphasher::sip::SipHasher;
 use serde::de::DeserializeOwned;
 
 use crate::prelude::*;
@@ -54,7 +52,7 @@ const CHANNEL_SEQUENCE: [usize; 14] = [0, 10, 13, 6, 3, 7, 2, 8, 5, 11, 4, 9, 12
 const TRANSMISSION_TIMEOUT_MS: u32 = 15;
 
 const DOWNLINK_PACKET_SIZE: u8 = 24;
-const UPLINK_PACKET_SIZE: u8 = 14;
+const UPLINK_PACKET_SIZE: u8 = 16;
 
 const TX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
     UPLINK_PACKET_SIZE
@@ -104,13 +102,10 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     pub snr: u8,
     #[cfg(feature="gcs")]
     uplink_message: Option<UplinkMessage>,
-    #[cfg(not(feature="gcs"))]
-    siphasher: SipHasher,
-    #[cfg(not(feature="gcs"))]
-    last_hash: u64,
     last_message_received: u32,
     #[cfg(feature="gcs")]
     fc_time_offset: i64,
+    ignore_busy: bool,
 }
 
 impl<
@@ -140,13 +135,10 @@ impl<
             snr: 0,
             #[cfg(feature="gcs")]
             uplink_message: None,
-            #[cfg(not(feature="gcs"))]
-            siphasher: SipHasher::new_with_key(&SIPHASHER_KEY),
-            #[cfg(not(feature="gcs"))]
-            last_hash: 0,
             last_message_received: 0,
             #[cfg(feature="gcs")]
             fc_time_offset: 0,
+            ignore_busy: true,
         }
     }
 
@@ -156,7 +148,7 @@ impl<
         params: &[u8],
         response_len: usize,
     ) -> Result<Vec<u8>, LoRaError<SPI::Error>> {
-        if self.busy.is_high().unwrap_or(false) {
+        if self.busy.is_high().unwrap_or(false) && !self.ignore_busy {
             return Err(LoRaError::Busy);
         }
 
@@ -309,6 +301,13 @@ impl<
 
         result?;
 
+        // The busy line can either indicate a running command or that the LLCC68
+        // is in sleep mode (for instance if a previous setmode command failed).
+        // Successfully running a command means it should be back now, so we can
+        // go back to treating the busy line more seriously, since we want to make
+        // sure the following commands are executed.
+        self.ignore_busy = false;
+
         self.command(LLCC68OpCode::SetDIO2AsRfSwitchCtrl, &[1], 0)?;
         //self.command(LLCC68OpCode::CalibrateImage, &[0xd7, 0xdb], 0)?;
         self.write_register(0x08ac, 0x96)?; // boost rx gain (9.6, p. 53)
@@ -327,6 +326,12 @@ impl<
             LLCC68Interrupt::RxDone as u16,
         )?;
         self.switch_to_rx()?;
+
+        // After the configuration we can treat the busy line a bit more relaxed,
+        // it sometimes can go high seemingly incorrectly (or if mode change
+        // fails), but during normal operation this should solve itself.
+        self.ignore_busy = true;
+
         Ok(())
     }
 
@@ -428,6 +433,16 @@ impl<
         self.uplink_message = Some(msg);
     }
 
+    #[cfg(feature="gcs")]
+    pub fn next_authentication(&mut self, cmd: &Command, key: &[u8; 16]) -> u64 {
+        let mut fc_time = (self.time as i64).wrapping_add(self.fc_time_offset as i64) as u32;
+        fc_time += LORA_MESSAGE_INTERVAL - (fc_time % LORA_MESSAGE_INTERVAL);
+        while !self.is_uplink_window(fc_time, true) {
+            fc_time += LORA_MESSAGE_INTERVAL;
+        }
+        cmd.authenticate(fc_time, key)
+    }
+
     fn receive_data(&mut self) -> Result<Option<Vec<u8>>, LoRaError<SPI::Error>> {
         // No RxDone interrupt, do nothing
         if !self.irq.is_high().unwrap() {
@@ -506,7 +521,7 @@ impl<
 
         // Return to rx mode after transmission. A delay is necessary in order
         // to allow the LLCC68 to actually finish the transmission
-        if self.state == RadioState::Transmitting && time == self.state_time.wrapping_add(TRANSMISSION_TIMEOUT_MS + 2) {
+        if self.state == RadioState::Transmitting && time >= self.state_time.wrapping_add(TRANSMISSION_TIMEOUT_MS + 2) {
             if let Err(e) = self.switch_to_rx() {
                 log!(Error, "Failed to return to RX mode: {:?}", e);
             } else {
@@ -530,14 +545,9 @@ impl<
     }
 
     #[cfg(not(feature = "gcs"))]
-    pub fn tick(&mut self, time: u32, mode: FlightMode) -> Option<UplinkMessage> {
+    pub fn tick(&mut self, time: u32, mode: FlightMode) -> Option<Command> {
         self.tick_common(time);
         self.high_power = mode >= FlightMode::Armed;
-
-        if self.time > 0 && self.time % LORA_MESSAGE_INTERVAL == 0 {
-            self.last_hash = self.siphasher.finish();
-            self.siphasher.write_u64(self.last_hash);
-        }
 
         if self.state != RadioState::Idle {
             return None;
@@ -554,16 +564,23 @@ impl<
                 Ok(Some(msg)) => {
                     self.last_message_received = self.time;
 
-                    if let UplinkMessage::RebootAuth(mac) |
-                            UplinkMessage::SetFlightModeAuth(_, mac) |
-                            UplinkMessage::EraseFlashAuth(mac) = msg {
-                        let current = self.siphasher.finish();
-                        if mac != self.last_hash && mac != current {
-                            log!(Error, "MAC mismatch: {:02x?} vs ({:02x?}, {:02x?})", mac, self.last_hash, current);
-                            return None;
+                    match msg {
+                        UplinkMessage::Heartbeat => None,
+                        UplinkMessage::CommandAuth(cmd, auth) => {
+                            let start_of_interval = self.time - (self.time % LORA_MESSAGE_INTERVAL);
+                            let correct = cmd.authenticate(start_of_interval, &SIPHASHER_KEY);
+                            if auth == correct {
+                                Some(cmd)
+                            } else {
+                                log!(Error, "MAC mismatch: {:016x} vs {:016x}", auth, correct);
+                                None
+                            }
+                        },
+                        msg => {
+                            log!(Warning, "Unsupported message type via LoRa: {:?}", msg);
+                            None
                         }
                     }
-                    Some(msg)
                 },
                 Ok(None) => None,
                 Err(e) => {
@@ -623,7 +640,9 @@ impl<
                     }
                 }
                 Ok(None) => {},
-                Err(e) => log!(Error, "Error receiving message: {:?}", e),
+                Err(e) => {
+                    log!(Error, "Error receiving message: {:?}", e);
+                }
             }
 
             result.unwrap_or(None)

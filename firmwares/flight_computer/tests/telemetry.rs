@@ -18,7 +18,7 @@ mod tests {
     #[allow(unused_imports)]
     use stm32f4xx_hal as hal;
 
-    use sting_fc_firmware::telemetry::*;
+    use sting_fc_firmware::telemetry::{*, Command};
 
     const HEAP_SIZE: usize = 4096;
     static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
@@ -153,29 +153,29 @@ mod tests {
         assert_eq!(msg.serialize().unwrap().len(), 3);
         assert_eq!(msg.serialize().unwrap(), [0x01, 0x01, 0x00]);
 
-        let msg = UplinkMessage::Reboot;
-        assert_eq!(msg.serialize().unwrap().len(), 3);
-
-        let msg = UplinkMessage::RebootAuth(0x1234);
-        assert_eq!(msg.serialize().unwrap().len(), 5);
-
-        let msg = UplinkMessage::RebootToBootloader;
-        assert_eq!(msg.serialize().unwrap().len(), 3);
-
-        let msg = UplinkMessage::SetFlightMode(FlightMode::Idle);
+        let msg = UplinkMessage::Command(Command::Reboot);
         assert_eq!(msg.serialize().unwrap().len(), 4);
 
-        let msg = UplinkMessage::SetFlightModeAuth(FlightMode::RecoveryDrogue, 0x1234567812345678);
+        let msg = UplinkMessage::CommandAuth(Command::Reboot, 0x1234123412341234);
         assert_eq!(msg.serialize().unwrap().len(), 13);
+
+        let msg = UplinkMessage::Command(Command::RebootToBootloader);
+        assert_eq!(msg.serialize().unwrap().len(), 4);
+
+        let msg = UplinkMessage::Command(Command::SetFlightMode(FlightMode::Idle));
+        assert_eq!(msg.serialize().unwrap().len(), 5);
+
+        let msg = UplinkMessage::CommandAuth(Command::SetFlightMode(FlightMode::Armed), 0x1234567812345678);
+        assert_eq!(msg.serialize().unwrap().len(), 14);
 
         let msg = UplinkMessage::ReadFlash(0x0100, 0x1000);
         assert_eq!(msg.serialize().unwrap().len(), 7);
 
-        let msg = UplinkMessage::EraseFlash;
-        assert_eq!(msg.serialize().unwrap().len(), 3);
+        let msg = UplinkMessage::Command(Command::EraseFlash);
+        assert_eq!(msg.serialize().unwrap().len(), 4);
 
-        let msg = UplinkMessage::EraseFlashAuth(0x1234);
-        assert_eq!(msg.serialize().unwrap().len(), 5);
+        let msg = UplinkMessage::CommandAuth(Command::EraseFlash, 0x1234123412341234);
+        assert_eq!(msg.serialize().unwrap().len(), 13);
     }
 
     #[test]

@@ -330,23 +330,25 @@ impl Vehicle {
         self.can.tick();
 
         // Handle incoming messages
-        if let Some(msg) = self.radio.tick(self.time, self.mode) {
-            match msg {
-                UplinkMessage::RebootAuth(_) => reboot(),
-                UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),
-                UplinkMessage::EraseFlashAuth(_) => self.flash.erase(),
+        if let Some(cmd) = self.radio.tick(self.time, self.mode) {
+            match cmd {
+                Command::Reboot => reboot(),
+                Command::SetFlightMode(fm) => self.switch_mode(fm),
+                Command::EraseFlash => self.flash.erase(),
                 _ => {},
             }
         }
 
         if let Some(msg) = self.usb_link.tick(self.time) {
             match msg {
-                UplinkMessage::Heartbeat => {}
-                UplinkMessage::Reboot | UplinkMessage::RebootAuth(_) => reboot(),
-                UplinkMessage::RebootToBootloader => reboot_to_bootloader(),
-                UplinkMessage::SetFlightMode(fm) | UplinkMessage::SetFlightModeAuth(fm, _) => self.switch_mode(fm),
+                UplinkMessage::Heartbeat => {},
+                UplinkMessage::Command(cmd) | UplinkMessage::CommandAuth(cmd, _) | UplinkMessage::CommandPreAuth(cmd, _) => match cmd {
+                    Command::Reboot => reboot(),
+                    Command::RebootToBootloader => reboot_to_bootloader(),
+                    Command::SetFlightMode(fm) => self.switch_mode(fm),
+                    Command::EraseFlash => self.flash.erase()
+                },
                 UplinkMessage::ReadFlash(adr, size) => self.flash.downlink(&mut self.usb_link, adr, size),
-                UplinkMessage::EraseFlash | UplinkMessage::EraseFlashAuth(_) => self.flash.erase()
             }
         }
 
@@ -386,9 +388,13 @@ impl Vehicle {
         let uplink_msg = self.usb_link.tick(self.time).and_then(|msg| {
             match msg {
                 UplinkMessage::Heartbeat => None,
-                UplinkMessage::RebootToBootloader => {
+                UplinkMessage::Command(Command::RebootToBootloader) => {
                     reboot_to_bootloader();
                     None
+                },
+                UplinkMessage::CommandPreAuth(cmd, key) => {
+                    let auth = self.radio.next_authentication(&cmd, &key);
+                    Some(UplinkMessage::CommandAuth(cmd, auth))
                 },
                 msg => Some(msg)
             }

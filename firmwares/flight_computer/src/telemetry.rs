@@ -5,7 +5,9 @@
 use alloc::string::{String, ToString};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
+use siphasher::sip::SipHasher;
 
+use core::hash::Hasher;
 #[cfg(feature = "std")]
 use std::string::{String, ToString};
 #[cfg(feature = "std")]
@@ -23,7 +25,7 @@ pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0
 #[allow(dead_code)]
 pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
-pub const UPLINK_MAX_LEN: u8 = 14;
+pub const UPLINK_MAX_LEN: u8 = 24;
 
 pub use LogLevel::*;
 
@@ -232,6 +234,19 @@ pub enum LogLevel {
     Critical,
 }
 
+impl ToString for LogLevel {
+    fn to_string(&self) -> String {
+        match self {
+            Debug => "DEBUG",
+            Info => "INFO",
+            Warning => "WARNING",
+            Error => "ERROR",
+            Critical => "CRITICAL",
+        }
+        .to_string()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownlinkMessage {
     TelemetryMain(TelemetryMain),
@@ -263,27 +278,39 @@ impl DownlinkMessage {
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
 pub enum UplinkMessage {
+    /// Heartbeat command, allows the flight computer to track signal strength
+    /// without sending commands
     Heartbeat,
-    Reboot,
-    RebootAuth(u64),
-    RebootToBootloader,
-    SetFlightMode(FlightMode),
-    SetFlightModeAuth(FlightMode, u64),
-    ReadFlash(u32, u32),
-    EraseFlash,
-    EraseFlashAuth(u64),
+    /// Unauthenticated command. Only works via USB.
+    Command(Command),
+    /// Authenticated command, necessary when sending via LoRa.
+    CommandAuth(Command, u64),
+    /// Command along with authentication key. This is sent from ground station
+    /// software to ground station and used to generate the actual authentication
+    /// code for transmission. This means the ground station PCB doesn't have to
+    /// remember any keys, but can use its accurate tracking of FC time for MAC
+    /// calculation.
+    CommandPreAuth(Command, [u8; 16]),
+    ReadFlash(u32, u32), // TODO: make this a command as well?
 }
 
-impl ToString for LogLevel {
-    fn to_string(&self) -> String {
-        match self {
-            Debug => "DEBUG",
-            Info => "INFO",
-            Warning => "WARNING",
-            Error => "ERROR",
-            Critical => "CRITICAL",
-        }
-        .to_string()
+#[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]
+pub enum Command {
+    Reboot,
+    RebootToBootloader,
+    SetFlightMode(FlightMode),
+    EraseFlash,
+}
+
+impl Command {
+    pub fn authenticate(&self, time: u32, key: &[u8; 16]) -> u64 {
+        let mut buf: [u8; 4] = [0x00; 4];
+        let serialized = postcard::to_slice_cobs(self, &mut buf).unwrap();
+
+        let mut siphasher = SipHasher::new_with_key(key);
+        siphasher.write_u32(time);
+        siphasher.write(serialized);
+        siphasher.finish()
     }
 }
 
