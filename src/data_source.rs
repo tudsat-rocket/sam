@@ -1,7 +1,6 @@
 //! Data sources serve as an abstraction for the origin of the displayed data.
 //! This data source can either be a serial port device, or an opened log file.
 
-use core::hash::Hasher;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -15,7 +14,6 @@ use std::time::Instant;
 use instant::Instant;
 
 use eframe::epaint::Color32;
-use siphasher::sip::SipHasher;
 use log::*;
 
 use sting_fc_firmware::telemetry::*;
@@ -36,8 +34,6 @@ pub struct SerialDataSource {
     telemetry_log_file: Result<File, std::io::Error>,
 
     message_receipt_times: VecDeque<(Instant, u32)>,
-    siphasher: SipHasher,
-    next_mac: (u32, u64),
     last_time: Option<Instant>,
 }
 
@@ -63,8 +59,6 @@ impl SerialDataSource {
             telemetry_log_path,
             telemetry_log_file,
             message_receipt_times: VecDeque::new(),
-            siphasher: SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY),
-            next_mac: (0, 0),
             last_time: None,
         }
     }
@@ -107,34 +101,6 @@ impl SerialDataSource {
             }
         }
 
-    }
-
-    /// Update message authentication code. TODO: refactor
-    fn update_mac(&mut self) {
-        // predict current time on vehicle;
-        let t = self
-            .message_receipt_times
-            .iter()
-            .last()
-            .map(|(i, t)| t + i.elapsed().as_millis() as u32)
-            .unwrap_or(0);
-
-        if self.next_mac.0 > (t + 500) || (self.next_mac.0 + 500) < t {
-            self.next_mac = (0, 0);
-            self.siphasher = SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY);
-        }
-
-        while self.next_mac.0 < t || !self.is_uplink_window(self.next_mac.0) {
-            self.next_mac.0 += LORA_MESSAGE_INTERVAL;
-            self.next_mac.1 = self.siphasher.finish();
-            self.siphasher.write_u64(self.next_mac.1);
-        }
-    }
-
-    /// Determines if the given time is an uplink window.
-    /// TODO: should be unnecessary after MAC refactor
-    fn is_uplink_window(&self, time: u32) -> bool {
-        (time % LORA_UPLINK_INTERVAL) == LORA_UPLINK_MODULO
     }
 }
 
@@ -194,12 +160,10 @@ pub trait DataSource {
     fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)>;
     /// Reset data source if applicable.
     fn reset(&mut self);
-    /// Calculate the next message authentication code. TODO: refactor
-    fn next_mac(&self) -> u64;
     /// Send an uplink message to the connected device if applicable.
-    /// TODO: maybe replace with command enum later, and handle details
-    /// like MACs internally
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>>;
+    /// Send an authenticated uplink command
+    fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>>;
     /// Return the color and content of the status indicator (e.g. for
     /// connection status)
     fn status(&self) -> (Color32, String);
@@ -215,8 +179,6 @@ pub trait DataSource {
 
 impl DataSource for SerialDataSource {
     fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)> {
-        self.update_mac();
-
         self.message_receipt_times
             .retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
@@ -249,16 +211,17 @@ impl DataSource for SerialDataSource {
         self.telemetry_log_path = Self::new_telemetry_log_path();
         self.telemetry_log_file = File::create(&self.telemetry_log_path);
         self.message_receipt_times.truncate(0);
-        self.siphasher = SipHasher::new_with_key(&sting_fc_firmware::telemetry::SIPHASHER_KEY);
-        self.next_mac = (0, 0);
-    }
-
-    fn next_mac(&self) -> u64 {
-        self.next_mac.1
     }
 
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         self.uplink_tx.send(msg)
+    }
+
+    fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
+        // Since the authentication code is dependent on the current (flight computer)
+        // time, we let the ground control MCU handle the actual code computation,
+        // as it is a lot better at precisely tracking the current FC time.
+        self.send(UplinkMessage::CommandPreAuth(cmd, SIPHASHER_KEY))
     }
 
     fn status(&self) -> (Color32, String) {
@@ -374,11 +337,11 @@ impl DataSource for LogFileDataSource {
     fn reset(&mut self) {
     }
 
-    fn next_mac(&self) -> u64 {
-        0xffffffff
+    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+        Ok(())
     }
 
-    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+    fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         Ok(())
     }
 

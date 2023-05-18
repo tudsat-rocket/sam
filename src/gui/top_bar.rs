@@ -31,7 +31,7 @@ pub trait TopBarUiExt {
     fn command_button(
         &mut self,
         label: &'static str,
-        msg: UplinkMessage,
+        cmd: Command,
         data_source: &mut Box<dyn DataSource>,
     );
     fn flight_mode_button(
@@ -83,11 +83,11 @@ impl TopBarUiExt for egui::Ui {
     fn command_button(
         &mut self,
         label: &'static str,
-        msg: UplinkMessage,
+        cmd: Command,
         data_source: &mut Box<dyn DataSource>,
     ) {
         if self.button(label).clicked() {
-            data_source.send(msg).unwrap();
+            data_source.send_command(cmd).unwrap();
         }
     }
 
@@ -112,7 +112,7 @@ impl TopBarUiExt for egui::Ui {
 
         if self.add_sized([w, self.available_height() - 10.0], button).clicked() {
             data_source
-                .send(UplinkMessage::SetFlightModeAuth(fm, data_source.next_mac()))
+                .send_command(Command::SetFlightMode(fm))
                 .unwrap();
         }
     }

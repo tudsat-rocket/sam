@@ -309,7 +309,7 @@ impl Sam {
             };
             if let Some(fm) = fm {
                 self.data_source
-                    .send(UplinkMessage::SetFlightModeAuth(fm, self.data_source.next_mac()))
+                    .send_command(Command::SetFlightMode(fm))
                     .unwrap();
             }
         }
@@ -495,8 +495,8 @@ impl Sam {
                 ui.vertical(|ui| {
                     let size = Vec2::new(ui.available_width(), ui.available_height() * 0.4);
                     ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
-                        ui.command_button("⟲  Reboot", UplinkMessage::RebootAuth(self.data_source.next_mac()), &mut self.data_source);
-                        ui.command_button("🗑 Erase Flash", UplinkMessage::EraseFlashAuth(self.data_source.next_mac()), &mut self.data_source);
+                        ui.command_button("⟲  Reboot", Command::Reboot, &mut self.data_source);
+                        ui.command_button("🗑 Erase Flash", Command::EraseFlash, &mut self.data_source);
 
                         let flash_pointer: f32 = self
                             .current(|vs| vs.flash_pointer())

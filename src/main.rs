@@ -251,8 +251,8 @@ fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
         .open_native()?;
 
     let msg = match bootloader {
-        true => UplinkMessage::RebootToBootloader,
-        false => UplinkMessage::Reboot,
+        true => UplinkMessage::Command(Command::RebootToBootloader),
+        false => UplinkMessage::Command(Command::Reboot),
     };
 
     port.write(&msg.serialize().unwrap())?;
