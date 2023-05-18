@@ -222,6 +222,10 @@ impl Vehicle {
     }
 
     fn switch_mode(&mut self, mode: FlightMode) {
+        if mode == self.mode {
+            return;
+        }
+
         self.mode = mode;
         self.mode_time = self.time;
         self.condition_true_since = None;
