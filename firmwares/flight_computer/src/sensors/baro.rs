@@ -12,8 +12,11 @@ use cortex_m::interrupt::{free, Mutex};
 
 use num_traits::float::Float;
 
+use crate::prelude::*;
+
 const TEMP_FILTER_LEN: usize = 64;
 
+#[derive(Debug)]
 struct MS5611CalibrationData {
     pressure_sensitivity: u16,
     pressure_offset: u16,
@@ -21,6 +24,18 @@ struct MS5611CalibrationData {
     temp_coef_pressure_offset: u16,
     reference_temperature: u16,
     temp_coef_temperature: u16,
+}
+
+impl MS5611CalibrationData {
+    pub fn valid(&self) -> bool {
+        // We assume that every value needs to be non-zero.
+        self.pressure_sensitivity != 0x0000 &&
+            self.pressure_offset != 0x0000 &&
+            self.temp_coef_pressure_sensitivity != 0x0000 &&
+            self.temp_coef_pressure_offset != 0x0000 &&
+            self.reference_temperature != 0x0000 &&
+            self.temp_coef_temperature != 0x0000
+    }
 }
 
 pub struct Barometer<SPI, CS> {
@@ -49,7 +64,20 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
             pressure: None,
         };
 
-        baro.read_calibration_values()?;
+        baro.reset()?;
+
+        for _i in 0..10 {
+            baro.read_calibration_values()?;
+            if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
+                break;
+            }
+        }
+
+        if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
+            log!(Info, "MS5611 successfully initialized.");
+        } else {
+            log!(Error, "Failed to initialize MS5611");
+        }
 
         Ok(baro)
     }
@@ -68,6 +96,11 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
 
             Ok(payload[1..].to_vec())
         })
+    }
+
+    fn reset(&mut self) -> Result<(), SPI::Error> {
+        self.command(MS5611Command::Reset, 0)?;
+        Ok(())
     }
 
     fn read_calibration_values(&mut self) -> Result<(), SPI::Error> {
@@ -135,17 +168,7 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
 
             self.temp = Some(temp as i32);
             let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> 15;
-
-            // If the value is too drastically different from the last, skip it
-            self.pressure = if let Some(last_pressure) = self.pressure {
-                if ((p as i32) - last_pressure).abs() > 100 {
-                    Some(last_pressure)
-                } else {
-                    Some(p as i32)
-                }
-            } else {
-                Some(p as i32)
-            }
+            self.pressure = Some(p as i32);
         }
 
         Ok(())
