@@ -66,7 +66,7 @@ impl UsbLink {
             serial,
             poll_counter: 0,
             log_counter: 0,
-            uplink_buffer: Vec::with_capacity(128),
+            uplink_buffer: Vec::with_capacity(1024),
             time: 0,
             last_heartbeat: None,
         }
@@ -113,11 +113,11 @@ impl UsbLink {
         let read = self.serial.read(&mut buf).unwrap_or(0);
         self.uplink_buffer.extend(&buf[..read]);
 
-        if self.uplink_buffer.len() > UPLINK_MAX_LEN as usize {
+        if self.uplink_buffer.len() > 512 {
             self.uplink_buffer.truncate(0);
         }
 
-        match postcard::take_from_bytes_cobs(&mut self.uplink_buffer) {
+        match postcard::take_from_bytes_cobs(&mut self.uplink_buffer.clone()) {
             Ok((msg, rest)) => {
                 self.uplink_buffer = rest.to_vec();
 

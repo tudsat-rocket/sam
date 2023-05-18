@@ -37,6 +37,8 @@ siphasher = { version = "0.3", default-features = false }
 defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
+rand = { version = "0.8", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
 
 [dependencies.embedded-hal-one]
 version = "=1.0.0-alpha.8"

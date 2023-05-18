@@ -3,12 +3,12 @@
 
 use alloc::collections::VecDeque;
 
+use stm32f4xx_hal as hal;
 use hal::gpio::Analog;
 use hal::gpio::Input;
 use hal::pac::{SPI1, SPI2, SPI3};
 use hal::rcc::Clocks;
 use hal::spi::Spi;
-use stm32f4xx_hal as hal;
 use hal::gpio::{Pin, Output};
 
 #[cfg(not(feature = "gcs"))]
@@ -28,26 +28,13 @@ use crate::logging::*;
 use crate::lora::*;
 use crate::params::*;
 use crate::sensors::*;
+use crate::settings::*;
 use crate::telemetry::*;
 use crate::usb::*;
 
 const RUNTIME_HISTORY_LEN: usize = 200;
 
-const STD_DEV_ACCELEROMETER: f32 = 0.5;
-const STD_DEV_BAROMETER: f32 = 1.0;
-const STD_DEV_PROCESS: f32 = 0.005;
 const G: f32 = 9.80665;
-
-const MIN_TAKEOFF_ACC: f32 = 30.0; // minimum vertical acceleration for takeoff detection (m/s^2)
-const MIN_TAKEOFF_ACC_DURATION: u32 = 50; // time MIN_TAKEOFF_ACC has to be exceeded (ms)
-const APOGEE_VERTICAL_DISTANCE: f32 = 1.0; // minimum vertical distance to max altitude for apogee
-                                           // detection (m)
-const APOGEE_FALLING_TIME: u32 = 1000; // time APOGEE_VERTICAL_DISTANCE has to be exceeded for
-                                       // recovery to be started (ms)
-const MIN_FLIGHT_TIME: u32 = 5000; // minimum time in flight to trigger recovery (ms)
-const MAX_FLIGHT_TIME: u32 = 12000; // maximum time in flight to trigger recovery (ms)
-
-const RECOVERY_DURATION: u32 = 2000; // time to enable recovery outputs (after warning tone, in ms)
 
 type LEDs = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type Recovery = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
@@ -108,6 +95,7 @@ pub struct Vehicle {
     mode_time: u32,
     condition_true_since: Option<u32>,
     loop_runtime_history: VecDeque<u16>,
+    settings: Settings,
 }
 
 impl Vehicle {
@@ -120,8 +108,8 @@ impl Vehicle {
         compass: Compass,
         barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
         gps: GPS,
-        flash: Flash,
-        radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
+        mut flash: Flash,
+        mut radio: LoRaRadio<Spi1, Pin<'A', 1, Output>, Pin<'C', 0, Input>, Pin<'C', 1, Input>>,
         #[cfg(feature = "rev2")]
         can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
         power: Power,
@@ -129,9 +117,31 @@ impl Vehicle {
         buzzer: Buzzer,
         recovery: Recovery
     ) -> Self {
+        // Use this to reset settings without ground station during development.
+        //flash.write_settings(&Settings::default()).unwrap();
+
+        #[cfg(not(feature="gcs"))]
+        let settings = {
+            match flash.read_settings() {
+                Ok(settings) => settings,
+                Err(e) => {
+                    log!(Error, "Failed to read settings: {:?}, reverting to defaults.", e);
+                    Settings::default()
+                }
+            }
+        };
+
+        #[cfg(not(feature="gcs"))]
+        log!(Info, "Loaded Settings: {:#?}", settings);
+
+        #[cfg(feature="gcs")]
+        let settings = Settings::default();
+
+        radio.apply_settings(&settings.lora);
+
         let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
-        let ahrs = ahrs::Mahony::new(dt, MAHONY_KP, MAHONY_KI);
-        let kalman = Self::init_kalman(dt);
+        let ahrs = ahrs::Mahony::new(dt, settings.mahony_kp, settings.mahony_ki);
+        let kalman = Self::init_kalman(dt, &settings);
 
         Self {
             clocks,
@@ -163,11 +173,12 @@ impl Vehicle {
             mode: FlightMode::Idle,
             mode_time: 0,
             condition_true_since: None,
-            loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN)
+            loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
+            settings
         }
     }
 
-    fn init_kalman(dt: f32) -> KalmanFilter<f32, U3, U2, U0> {
+    fn init_kalman(dt: f32, settings: &Settings) -> KalmanFilter<f32, U3, U2, U0> {
         let mut kalman = KalmanFilter::default();
         kalman.x = Vector3::new(0.0, 0.0, 0.0);
 
@@ -183,20 +194,20 @@ impl Vehicle {
         );
 
         kalman.P = Matrix3::new(
-            STD_DEV_BAROMETER * STD_DEV_BAROMETER, 0.0, 0.0,
+            settings.std_dev_barometer.pow(2), 0.0, 0.0,
             0.0, 1.0, 0.0,
-            0.0, 0.0, STD_DEV_ACCELEROMETER * STD_DEV_ACCELEROMETER,
+            0.0, 0.0, settings.std_dev_accelerometer.pow(2),
         );
 
         kalman.Q = Matrix3::new(
             0.25f32 * dt.pow(4), 0.5f32 * dt.pow(3), 0.5f32 * dt.pow(2),
             0.5f32 * dt.pow(3), dt.pow(2), dt,
             0.5f32 * dt.pow(2), dt, 1.0f32,
-        ) * STD_DEV_PROCESS * STD_DEV_PROCESS;
+        ) * settings.std_dev_process.pow(2);
 
         kalman.R *= Matrix2::new(
-            STD_DEV_BAROMETER * STD_DEV_BAROMETER, 0.0,
-            0.0, STD_DEV_ACCELEROMETER * STD_DEV_ACCELEROMETER
+            settings.std_dev_barometer.pow(2), 0.0,
+            0.0, settings.std_dev_accelerometer.pow(2)
         );
 
         kalman
@@ -233,21 +244,35 @@ impl Vehicle {
         let elapsed = self.time.checked_sub(self.mode_time).unwrap_or(0);
         let armv = self.power.arm_voltage().unwrap_or(0);
         let vacc = self.acceleration().map(|acc| acc.z).unwrap_or(0.0);
-        let rec_min_dur = crate::buzzer::RECOVERY_WARNING_TIME + RECOVERY_DURATION;
+        let rec_min_dur = self.settings.outputs_warning_time + self.settings.outputs_high_time;
 
         let new_mode = match self.mode {
-            FlightMode::Idle => self.true_since(armv >= 1000, 100).then(|| FlightMode::HardwareArmed),
-            FlightMode::HardwareArmed => self.true_since(armv < 100, 100).then(|| FlightMode::Idle),
-            FlightMode::Armed => self.true_since(vacc > MIN_TAKEOFF_ACC, MIN_TAKEOFF_ACC_DURATION).then(|| FlightMode::Flight),
+            FlightMode::Idle => self.true_since(armv >= 100, 100).then(|| FlightMode::HardwareArmed),
+            FlightMode::HardwareArmed => self.true_since(armv < 10, 100).then(|| FlightMode::Idle),
+            FlightMode::Armed => self.true_since(vacc > self.settings.min_takeoff_acc, self.settings.min_takeoff_acc_time).then(|| FlightMode::Flight),
             FlightMode::Flight => {
-                let falling = self.true_since(self.altitude() + APOGEE_VERTICAL_DISTANCE < self.altitude_max, APOGEE_FALLING_TIME);
-                let min_exceeded = elapsed > MIN_FLIGHT_TIME;
-                let max_exceeded = elapsed > MAX_FLIGHT_TIME;
+                let falling = self.true_since(self.vertical_speed() < 0.0, self.settings.apogee_min_falling_time);
+                let min_exceeded = elapsed > self.settings.min_time_to_apogee;
+                let max_exceeded = elapsed > self.settings.max_time_to_apogee;
                 ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
             }
-            //FlightMode::RecoveryDrogue => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
-            FlightMode::RecoveryDrogue => Some(FlightMode::RecoveryMain),
-            FlightMode::RecoveryMain => (elapsed > rec_min_dur).then(|| FlightMode::Landed), // TODO: detect landing instead
+            FlightMode::RecoveryDrogue => {
+                match self.settings.main_output_mode {
+                    MainOutputMode::AtApogee => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
+                    MainOutputMode::BelowAltitude => {
+                        let below_alt = self.altitude() < self.settings.main_output_deployment_altitude;
+                        (elapsed > rec_min_dur && below_alt).then(|| FlightMode::RecoveryMain)
+                    },
+                    MainOutputMode::Never => {
+                        let landed = self.true_since(self.acceleration().map(|acc| (9.5..10.0).contains(&acc.magnitude())).unwrap_or(true), 1000);
+                        (elapsed > rec_min_dur && landed).then(|| FlightMode::Landed)
+                    },
+                }
+            },
+            FlightMode::RecoveryMain => {
+                let landed = self.true_since(self.acceleration().map(|acc| (9.5..10.0).contains(&acc.magnitude())).unwrap_or(true), 1000);
+                (elapsed > rec_min_dur && landed).then(|| FlightMode::Landed)
+            },
             FlightMode::Landed => None
         };
 
@@ -255,8 +280,8 @@ impl Vehicle {
             self.switch_mode(fm);
         }
 
-        let recovery_high = elapsed > crate::buzzer::RECOVERY_WARNING_TIME && elapsed < rec_min_dur;
-        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
+        let recovery_high = elapsed > self.settings.outputs_warning_time && elapsed < rec_min_dur;
+        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
         self.recovery.1.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
     }
 
@@ -285,7 +310,7 @@ impl Vehicle {
         if let (Some(gyro), Some(acc), Some(mag)) = (&gyro, &acc, &mag) {
             self.orientation = self
                 .ahrs
-                .update(gyro, acc, mag)
+                .update(&(gyro * 3.14159 / 180.0), acc, mag)
                 .ok()
                 .map(|q| *q);
             self.acceleration_world = self.orientation
@@ -342,13 +367,23 @@ impl Vehicle {
         if let Some(msg) = self.usb_link.tick(self.time) {
             match msg {
                 UplinkMessage::Heartbeat => {},
-                UplinkMessage::Command(cmd) | UplinkMessage::CommandAuth(cmd, _) | UplinkMessage::CommandPreAuth(cmd, _) => match cmd {
+                UplinkMessage::Command(cmd) => match cmd {
                     Command::Reboot => reboot(),
                     Command::RebootToBootloader => reboot_to_bootloader(),
                     Command::SetFlightMode(fm) => self.switch_mode(fm),
                     Command::EraseFlash => self.flash.erase()
                 },
                 UplinkMessage::ReadFlash(adr, size) => self.flash.downlink(&mut self.usb_link, adr, size),
+                UplinkMessage::ReadSettings => self.usb_link.send_message(DownlinkMessage::Settings(self.settings.clone())),
+                UplinkMessage::WriteSettings(settings) => {
+                    if let Err(e) = self.flash.write_settings(&settings) {
+                        log!(Error, "Failed to save settings: {:?}", e);
+                    } else {
+                        log!(Info, "Successfully saved settings, rebooting...");
+                        cortex_m::peripheral::SCB::sys_reset();
+                    }
+                },
+                UplinkMessage::ApplyLoRaSettings(_) => {}
             }
         }
 
@@ -392,10 +427,11 @@ impl Vehicle {
                     reboot_to_bootloader();
                     None
                 },
-                UplinkMessage::CommandPreAuth(cmd, key) => {
-                    let auth = self.radio.next_authentication(&cmd, &key);
-                    Some(UplinkMessage::CommandAuth(cmd, auth))
+                UplinkMessage::ApplyLoRaSettings(lora_settings) => {
+                    self.radio.apply_settings(&lora_settings);
+                    None
                 },
+                UplinkMessage::ReadSettings => None,
                 msg => Some(msg)
             }
         });

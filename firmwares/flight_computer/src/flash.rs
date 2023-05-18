@@ -21,6 +21,7 @@ use stm32f4xx_hal as hal;
 use crc::{Crc, CRC_16_IBM_SDLC};
 
 use crate::prelude::*;
+use crate::settings::*;
 use crate::telemetry::*;
 use crate::usb::*;
 
@@ -43,7 +44,7 @@ type SpiDmaTransfer = Transfer<
 >;
 
 const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
-const PAGE_SIZE: u32 = 256;
+const PAGE_SIZE: usize = 256;
 const SECTOR_SIZE: u32 = 4096;
 
 const DMA_BUFFER_SIZE: usize = 256 + 1 + 4;
@@ -71,10 +72,12 @@ pub struct Flash<SPI, CS> {
 #[derive(Debug)]
 pub enum FlashError<E> {
     Spi(E),
-    Busy
+    Serialization(postcard::Error),
+    Busy,
+    Crc,
 }
 
-impl<E> From<E> for FlashError<E> {
+impl<E: Sized> From<E> for FlashError<E> {
     fn from(e: E) -> Self {
         Self::Spi(e)
     }
@@ -227,6 +230,17 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
         self.command(W25OpCode::ReadData4BAddress, &address, len as usize)
     }
 
+    fn write(&mut self, address: usize, data: &[u8]) -> Result<(), FlashError<SPI::Error>> {
+        if self.is_busy() {
+            return Err(FlashError::Busy);
+        }
+
+        self.command(W25OpCode::WriteEnable, &[], 0)?;
+        let cmd = [&address.to_be_bytes(), data].concat();
+        self.command(W25OpCode::PageProgram4BAddress, &cmd, 0)?;
+        Ok(())
+    }
+
     fn write_dma(&mut self, address: usize, data: &[u8]) -> Result<(), FlashError<SPI::Error>> {
         if self.is_busy() {
             return Err(FlashError::Busy);
@@ -246,7 +260,7 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
     }
 
     fn flush_page(&mut self) -> Result<(), FlashError<SPI::Error>> {
-        let data: Vec<u8> = self.write_buffer.drain(..((PAGE_SIZE - 3) as usize)).collect();
+        let data: Vec<u8> = self.write_buffer.drain(..(PAGE_SIZE - 3)).collect();
 
         if self.pointer >= FLASH_SIZE {
             log_every_nth_time!(1000, Error, "Flash storage full, skipping page flush.");
@@ -255,14 +269,14 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
 
         let crc = X25.checksum(&data);
 
-        let mut page = Vec::with_capacity(PAGE_SIZE as usize);
+        let mut page = Vec::with_capacity(PAGE_SIZE);
         page.push(0x00);
         page.extend(data);
         page.push((crc >> 8) as u8);
         page.push(crc as u8);
 
         let result = self.write_dma(self.pointer as usize, &page);
-        self.pointer += PAGE_SIZE;
+        self.pointer += PAGE_SIZE as u32;
 
         if result.is_ok() {
             self.state = FlashState::Writing;
@@ -278,13 +292,13 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
         }
 
         let serialized = msg.serialize().unwrap_or_default();
-        if serialized.len() > (2 * PAGE_SIZE as usize) - self.write_buffer.len() {
+        if serialized.len() > 2 * PAGE_SIZE - self.write_buffer.len() {
             log!(Error, "Flash message too big.");
             return Ok(());
         }
 
         self.write_buffer.extend(serialized);
-        if self.write_buffer.len() > (PAGE_SIZE - 3) as usize {
+        if self.write_buffer.len() > PAGE_SIZE - 3 {
             self.flush_page()
         } else {
             Ok(())
@@ -293,8 +307,8 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
 
     fn configure(&mut self) -> Result<(), FlashError<SPI::Error>> {
         // Determine first unwritten page by binary search
-        let (mut a, mut b) = (0, self.size);
-        while b - a > PAGE_SIZE {
+        let (mut a, mut b) = (FLASH_HEADER_SIZE, self.size);
+        while b - a > PAGE_SIZE as u32 {
             let mid = (a + b) / 2;
             if self.read(mid, 1)?[0] == 0xff {
                 b = mid;
@@ -321,7 +335,7 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
 
         self.pointer -= self.pointer % SECTOR_SIZE;
 
-        for address in (self.pointer..(self.pointer + SECTOR_SIZE)).step_by(PAGE_SIZE as usize) {
+        for address in (self.pointer..(self.pointer + SECTOR_SIZE)).step_by(PAGE_SIZE) {
             let page_erased = self.read(address, 256)
                 .map(|page_content| !page_content.iter().any(|b| *b != 0xff))
                 .unwrap_or(false);
@@ -380,6 +394,66 @@ impl<SPI: SpiBus, CS: OutputPin> Flash<SPI, CS> {
         log!(Info, "Erasing flash.");
         self.state = FlashState::Erasing;
         self.pointer = self.size - 1;
+    }
+
+    pub fn read_settings(&mut self) -> Result<Settings, FlashError<SPI::Error>> {
+        let page = self.read(0x00, FLASH_HEADER_SIZE)?;
+
+        let (settings, crc) = page.split_at(FLASH_HEADER_SIZE as usize - 2);
+        let crc = u16::from_be_bytes([crc[0], crc[1]]);
+
+        if crc != X25.checksum(&settings) {
+            return Err(FlashError::Crc);
+        }
+
+        Ok(postcard::from_bytes(&settings).map_err(|e| FlashError::Serialization(e))?)
+    }
+
+    pub fn write_settings(&mut self, settings: &Settings) -> Result<(), FlashError<SPI::Error>> {
+        let mut buf: [u8; 1024] = [0x00; 1024];
+        let serialized = postcard::to_slice(settings, &mut buf).unwrap();
+
+        let mut sector: [u8; FLASH_HEADER_SIZE as usize] = [0x00; FLASH_HEADER_SIZE as usize];
+        sector[..serialized.len()].copy_from_slice(serialized);
+
+        let crc = X25.checksum(&sector[..(FLASH_HEADER_SIZE as usize - 2)]);
+        sector[FLASH_HEADER_SIZE as usize - 2] = (crc >> 8) as u8;
+        sector[FLASH_HEADER_SIZE as usize - 1] = crc as u8;
+
+        let mut res = Ok(());
+        for _i in 0..3 {
+            res = self.erase_sector(0x00);
+            if res.is_ok() {
+                break;
+            }
+        }
+        res?;
+
+        // Wait for flash to finish erasing before writing
+        for _i in 0..2000 {
+            if !self.is_busy() {
+                break;
+            }
+        }
+
+        // We can only write a single page at a time
+        for i in 0..(FLASH_HEADER_SIZE as usize / PAGE_SIZE) {
+            self.write(PAGE_SIZE * i, &sector[(PAGE_SIZE * i)..(PAGE_SIZE * (i+1))])?;
+
+            // Wait for flash to finish writing
+            for _i in 0..100 {
+                if !self.is_busy() {
+                    break;
+                }
+            }
+        }
+
+        // Read back what we have written to make sure the changes are persisted.
+        if &self.read_settings()? != settings {
+            Err(FlashError::Crc)
+        } else {
+            Ok(())
+        }
     }
 }
 

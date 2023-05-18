@@ -17,15 +17,13 @@ use nalgebra::{UnitQuaternion, Vector3};
 use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 
-// TODO: get this from some kind of parameter storage?
+use crate::settings::*;
+
 pub const LORA_MESSAGE_INTERVAL: u32 = 25;
 pub const LORA_UPLINK_INTERVAL: u32 = 200;
 pub const LORA_UPLINK_MODULO: u32 = 100;
-pub const SIPHASHER_KEY: [u8; 16] = [0x64, 0xab, 0x31, 0x54, 0x02, 0x8e, 0x99, 0xc5, 0x29, 0x77, 0x2a, 0xf5, 0xba, 0x95, 0x07, 0x06];
-#[allow(dead_code)]
 pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
-pub const UPLINK_MAX_LEN: u8 = 24;
 
 pub use LogLevel::*;
 
@@ -257,7 +255,8 @@ pub enum DownlinkMessage {
     TelemetryGPS(TelemetryGPS),
     TelemetryGCS(TelemetryGCS),
     Log(u32, String, LogLevel, String),
-    FlashContent(u32, Vec<u8>)
+    FlashContent(u32, Vec<u8>),
+    Settings(Settings)
 }
 
 impl DownlinkMessage {
@@ -272,6 +271,7 @@ impl DownlinkMessage {
             DownlinkMessage::TelemetryGCS(tm) => tm.time,
             DownlinkMessage::Log(t, _, _, _) => *t,
             DownlinkMessage::FlashContent(_, _) => 0,
+            DownlinkMessage::Settings(_) => 0,
         }
     }
 }
@@ -281,17 +281,11 @@ pub enum UplinkMessage {
     /// Heartbeat command, allows the flight computer to track signal strength
     /// without sending commands
     Heartbeat,
-    /// Unauthenticated command. Only works via USB.
     Command(Command),
-    /// Authenticated command, necessary when sending via LoRa.
-    CommandAuth(Command, u64),
-    /// Command along with authentication key. This is sent from ground station
-    /// software to ground station and used to generate the actual authentication
-    /// code for transmission. This means the ground station PCB doesn't have to
-    /// remember any keys, but can use its accurate tracking of FC time for MAC
-    /// calculation.
-    CommandPreAuth(Command, [u8; 16]),
     ReadFlash(u32, u32), // TODO: make this a command as well?
+    ReadSettings,
+    WriteSettings(Settings),
+    ApplyLoRaSettings(LoRaSettings),
 }
 
 #[derive(PartialEq, Clone, Debug, Serialize, Deserialize)]

@@ -41,6 +41,7 @@ mod telemetry;
 mod usb;
 mod vehicle;
 mod watchdog;
+mod settings;
 
 use sting_fc_firmware as _;
 

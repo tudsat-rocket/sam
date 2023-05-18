@@ -8,6 +8,7 @@ extern crate alloc;
 
 mod params;
 pub mod telemetry;
+pub mod settings;
 pub use params::*;
 
 #[cfg(feature = "no_std")]

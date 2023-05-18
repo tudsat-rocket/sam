@@ -6,7 +6,9 @@
 
 use core::cell::RefCell;
 use core::ops::DerefMut;
+use core::hash::Hasher;
 
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 
@@ -16,20 +18,21 @@ use embedded_hal_one::spi::blocking::SpiBus;
 
 use cortex_m::interrupt::{free, Mutex};
 
+use rand::prelude::*;
+use rand_chacha::ChaCha20Rng;
 use serde::de::DeserializeOwned;
+use siphasher::sip::SipHasher;
+use stm32f4xx_hal::gpio::PinPull;
 
 use crate::prelude::*;
+use crate::settings::LoRaSettings;
 use crate::telemetry::*;
 
 // both RX and TX get half of the available 256 bytes
 const TX_BASE_ADDRESS: u8 = 0;
 const RX_BASE_ADDRESS: u8 = 64;
 
-// The available channels for telemetry, assuming a 500kHz band width. This list
-// can be restricted, but ideally the number of messages per second (1000 /
-// LORA_MESSAGE_INTERVAL) should not be divisible by the number of channels. This
-// way, we don't have certain types of telemetry message, such as GPS messages,
-// only using a single channel.
+// The available channels for telemetry, assuming a 500kHz band width.
 const CHANNELS: [u32; 14] = [
     863_250_000,
     863_750_000,
@@ -47,11 +50,9 @@ const CHANNELS: [u32; 14] = [
     869_750_000,
 ];
 
-const CHANNEL_SEQUENCE: [usize; 14] = [0, 10, 13, 6, 3, 7, 2, 8, 5, 11, 4, 9, 12, 1];
+const TRANSMISSION_TIMEOUT_MS: u32 = 17;
 
-const TRANSMISSION_TIMEOUT_MS: u32 = 15;
-
-const DOWNLINK_PACKET_SIZE: u8 = 24;
+const DOWNLINK_PACKET_SIZE: u8 = 26;
 const UPLINK_PACKET_SIZE: u8 = 16;
 
 const TX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
@@ -66,6 +67,16 @@ const RX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
     UPLINK_PACKET_SIZE
 };
 
+#[cfg(feature = "gcs")]
+type TxHmac = u64;
+#[cfg(not(feature = "gcs"))]
+type TxHmac = u16;
+
+#[cfg(feature = "gcs")]
+type RxHmac = u16;
+#[cfg(not(feature = "gcs"))]
+type RxHmac = u64;
+
 #[derive(Debug, PartialEq, Eq)]
 enum RadioState {
     Init,
@@ -77,8 +88,8 @@ enum RadioState {
 pub enum LoRaError<E> {
     Spi(E),
     Crc,
-    #[allow(dead_code)]
     Busy,
+    Timeout,
 }
 
 impl<E> From<E> for LoRaError<E> {
@@ -97,6 +108,7 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     busy: BUSY,
     pub high_power: bool,
     high_power_configured: bool,
+    frequency: u32,
     pub rssi: u8,
     pub rssi_signal: u8,
     pub snr: u8,
@@ -106,13 +118,17 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     #[cfg(feature="gcs")]
     fc_time_offset: i64,
     ignore_busy: bool,
+    authentication_key: [u8; 16],
+    channels: [bool; CHANNELS.len()],
+    binding_phrase: String,
+    sequence: Option<[usize; CHANNELS.len()]>,
 }
 
 impl<
     SPI: SpiBus,
     CS: OutputPin,
     IRQ: InputPin,
-    BUSY: InputPin
+    BUSY: InputPin + PinPull
 > LoRaRadio<SPI, CS, IRQ, BUSY> {
     pub fn init(
         spi: Arc<Mutex<RefCell<SPI>>>,
@@ -130,6 +146,7 @@ impl<
             busy,
             high_power: false,
             high_power_configured: false,
+            frequency: CHANNELS[CHANNELS.len() / 2],
             rssi: 255,
             rssi_signal: 255,
             snr: 0,
@@ -139,6 +156,10 @@ impl<
             #[cfg(feature="gcs")]
             fc_time_offset: 0,
             ignore_busy: true,
+            authentication_key: [0x00; 16],
+            channels: [true; CHANNELS.len()],
+            binding_phrase: "".into(),
+            sequence: None,
         }
     }
 
@@ -194,6 +215,7 @@ impl<
 
         let params = [(pll >> 24) as u8, (pll >> 16) as u8, (pll >> 8) as u8, pll as u8];
         self.command(LLCC68OpCode::SetRfFrequency, &params, 0)?;
+        self.frequency = frequency;
         Ok(())
     }
 
@@ -291,15 +313,26 @@ impl<
     }
 
     fn configure(&mut self) -> Result<(), LoRaError<SPI::Error>> {
-        let mut result = self.command(LLCC68OpCode::GetStatus, &[], 1);
-        for _i in 1..5 {
-            if result.is_ok() {
+        self.ignore_busy = true;
+        self.busy.set_internal_resistor(stm32f4xx_hal::gpio::Pull::Down);
+
+        // Force the device to sleep to reset configuration, then wait for it
+        // to finish setting up.
+        self.command(LLCC68OpCode::SetSleep, &[0x00], 0)?;
+
+        let mut done = false;
+        for _i in 0..50 {
+            done = self.command(LLCC68OpCode::GetStatus, &[], 1)
+                .map(|x| (x[0] >> 4) == 0x2)
+                .unwrap_or(false);
+            if done {
                 break;
             }
-            result = self.command(LLCC68OpCode::GetStatus, &[], 1);
         }
 
-        result?;
+        if !done {
+            return Err(LoRaError::Timeout);
+        }
 
         // The busy line can either indicate a running command or that the LLCC68
         // is in sleep mode (for instance if a previous setmode command failed).
@@ -307,6 +340,7 @@ impl<
         // go back to treating the busy line more seriously, since we want to make
         // sure the following commands are executed.
         self.ignore_busy = false;
+        self.busy.set_internal_resistor(stm32f4xx_hal::gpio::Pull::None);
 
         self.command(LLCC68OpCode::SetDIO2AsRfSwitchCtrl, &[1], 0)?;
         //self.command(LLCC68OpCode::CalibrateImage, &[0xd7, 0xdb], 0)?;
@@ -318,7 +352,7 @@ impl<
             LLCC68LoRaCodingRate::CR4of6,
             false,
         )?;
-        self.set_rf_frequency(CHANNELS[CHANNELS.len() / 2])?;
+        self.set_rf_frequency(self.frequency)?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
         self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R20U)?;
         self.set_dio1_interrupt(
@@ -360,6 +394,45 @@ impl<
         self.state_time = self.time;
     }
 
+    fn generate_sequence(&mut self, channels: [bool; CHANNELS.len()], binding_phrase: &String) -> Option<[usize; CHANNELS.len()]> {
+        let mut available: Vec<_> = channels.iter()
+            .enumerate()
+            .filter_map(|(i, x)| x.then(|| i))
+            .collect();
+
+        if available.len() == 0 {
+            return None;
+        }
+
+        // Generate a u64 from binding phrase to seed rng
+        let mut siphasher = SipHasher::new_with_key(&[0x00; 16]);
+        siphasher.write(binding_phrase.as_bytes());
+        let seed = siphasher.finish();
+        let mut rng = ChaCha20Rng::seed_from_u64(seed);
+
+        // Fill sequence from available channels. If we disable some channels,
+        // we repeat the process until we have enough.
+        let mut sequence = Vec::new();
+        while sequence.len() < CHANNELS.len() {
+            available.shuffle(&mut rng);
+            sequence.extend(available.clone());
+        }
+
+        Some(sequence[..CHANNELS.len()].try_into().unwrap())
+    }
+
+    pub fn apply_settings(&mut self, settings: &LoRaSettings) {
+        self.authentication_key = settings.authentication_key.to_be_bytes();
+        if settings.channels == self.channels && settings.binding_phrase == self.binding_phrase {
+            return;
+        }
+
+        self.channels = settings.channels;
+        self.binding_phrase = settings.binding_phrase.clone();
+        self.sequence = self.generate_sequence(settings.channels, &settings.binding_phrase);
+        log!(Info, "Generated sequence {:?} using phrase {:?}", self.sequence, settings.binding_phrase);
+    }
+
     fn switch_to_next_frequency(&mut self) -> Result<(), LoRaError<SPI::Error>> {
         // Switch to the correct frequency for the current message interval.
         // On the FC, this is pretty straight forward.
@@ -370,14 +443,37 @@ impl<
         let t = (self.time as i64).wrapping_add(self.fc_time_offset) as u32;
 
         let message_i = (t / LORA_MESSAGE_INTERVAL) as usize % CHANNELS.len();
-        self.set_rf_frequency(CHANNELS[CHANNEL_SEQUENCE[message_i]])
+        self.set_rf_frequency(CHANNELS[self.sequence.map(|s| s[message_i]).unwrap_or(0)])
+    }
+
+    fn start_of_current_interval(&self) -> u32 {
+        // Returns the start of the current message interval. The result is
+        // always in FC time, and is used for message authentication.
+        #[cfg(not(feature="gcs"))]
+        let t = self.time;
+        #[cfg(feature="gcs")]
+        let t = (self.time as i64).wrapping_add(self.fc_time_offset) as u32;
+
+        t.wrapping_sub(t % LORA_MESSAGE_INTERVAL)
     }
 
     fn send_packet(&mut self, msg: &[u8]) -> Result<(), LoRaError<SPI::Error>> {
+        if self.sequence.is_none() {
+            return Ok(());
+        }
+
         if self.state != RadioState::Idle {
             log!(Error, "skipping");
             return Ok(()); // TODO
         }
+
+        // Prepend message authentication
+        let mut siphasher = SipHasher::new_with_key(&self.authentication_key);
+        #[cfg(feature="gcs")] // only include time for uplink messages, prevents replay attacks
+        siphasher.write(&self.start_of_current_interval().to_be_bytes());
+        siphasher.write(&msg);
+        let hash = (siphasher.finish() as TxHmac).to_be_bytes();
+        let msg = [&hash, msg].concat();
 
         if msg.len() > TX_PACKET_SIZE as usize {
             log!(Error, "message exceeds PACKET_SIZE");
@@ -397,7 +493,7 @@ impl<
         const CMD_SIZE: usize = (TX_PACKET_SIZE as usize) + 1;
         let mut params: [u8; CMD_SIZE] = [0x00; CMD_SIZE];
         params[0] = TX_BASE_ADDRESS;
-        params[1..(msg.len()+1)].copy_from_slice(msg);
+        params[1..(msg.len()+1)].copy_from_slice(&msg);
         self.command(LLCC68OpCode::WriteBuffer, &params, 0)?;
         self.set_tx_mode(TRANSMISSION_TIMEOUT_MS * 1000)?;
         self.set_state(RadioState::Transmitting);
@@ -421,26 +517,12 @@ impl<
 
     #[cfg(feature="gcs")]
     fn send_uplink_message(&mut self, msg: UplinkMessage) -> Result<(), LoRaError<SPI::Error>> {
-        if msg != UplinkMessage::Heartbeat {
-            log!(Info, "Sending {:02x?}", msg.serialize().unwrap());
-        }
-
         self.send_packet(&msg.serialize().unwrap_or_default())
     }
 
     #[cfg(feature="gcs")]
     pub fn queue_uplink_message(&mut self, msg: UplinkMessage) {
         self.uplink_message = Some(msg);
-    }
-
-    #[cfg(feature="gcs")]
-    pub fn next_authentication(&mut self, cmd: &Command, key: &[u8; 16]) -> u64 {
-        let mut fc_time = (self.time as i64).wrapping_add(self.fc_time_offset as i64) as u32;
-        fc_time += LORA_MESSAGE_INTERVAL - (fc_time % LORA_MESSAGE_INTERVAL);
-        while !self.is_uplink_window(fc_time, true) {
-            fc_time += LORA_MESSAGE_INTERVAL;
-        }
-        cmd.authenticate(fc_time, key)
     }
 
     fn receive_data(&mut self) -> Result<Option<Vec<u8>>, LoRaError<SPI::Error>> {
@@ -485,13 +567,29 @@ impl<
     }
 
     fn receive_message<M: Transmit + DeserializeOwned>(&mut self) -> Result<Option<M>, LoRaError<SPI::Error>> {
-        let buffer = self.receive_data()?.unwrap_or_default();
-        if buffer.len() == 0 {
+        let mut buffer = self.receive_data()?.unwrap_or_default();
+        if buffer.len() < UPLINK_PACKET_SIZE as usize {
             return Ok(None);
         }
 
-        // TODO: move deserialization code to src/telemetry
-        let deserialized = postcard::from_bytes_cobs(&mut buffer.clone()[1..]).ok();
+        let (hmac, serialized) = buffer[1..].split_at_mut(core::mem::size_of::<RxHmac>());
+        let serialized_end = serialized.iter()
+            .position(|b| *b == 0)
+            .map(|i| i + 1)
+            .unwrap_or(serialized.len());
+
+        let mut siphasher = SipHasher::new_with_key(&self.authentication_key);
+        #[cfg(not(feature="gcs"))] // only include time for uplink messages, prevents replay attacks
+        siphasher.write(&self.start_of_current_interval().to_be_bytes());
+        siphasher.write(&serialized[..serialized_end]);
+        let correct = (siphasher.finish() as RxHmac).to_be_bytes();
+
+        if correct != hmac {
+            log!(Warning, "HMAC mismatch.");
+            return Ok(None);
+        }
+
+        let deserialized = postcard::from_bytes_cobs(serialized).ok();
         if deserialized.is_none() {
             log!(Error, "{}: Failed to decode message: {:02x?}", self.time, &buffer[1..]);
         }
@@ -566,15 +664,8 @@ impl<
 
                     match msg {
                         UplinkMessage::Heartbeat => None,
-                        UplinkMessage::CommandAuth(cmd, auth) => {
-                            let start_of_interval = self.time - (self.time % LORA_MESSAGE_INTERVAL);
-                            let correct = cmd.authenticate(start_of_interval, &SIPHASHER_KEY);
-                            if auth == correct {
-                                Some(cmd)
-                            } else {
-                                log!(Error, "MAC mismatch: {:016x} vs {:016x}", auth, correct);
-                                None
-                            }
+                        UplinkMessage::Command(cmd) => {
+                            Some(cmd)
                         },
                         msg => {
                             log!(Warning, "Unsupported message type via LoRa: {:?}", msg);
