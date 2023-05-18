@@ -290,28 +290,25 @@ impl Sam {
         self.shared_plot.borrow_mut().set_end(self.data_source.end());
 
         // Check for keyboard inputs. TODO: clean up
-        {
-            let input = ctx.input();
-            let fm = if input.modifiers.command_only() && input.key_down(Key::Num0) {
-                Some(FlightMode::Idle)
-            } else if input.modifiers.command_only() && input.key_down(Key::A) {
-                Some(FlightMode::Armed)
-            } else if input.modifiers.command_only() && input.key_down(Key::I) {
-                Some(FlightMode::Flight)
-            } else if input.modifiers.command_only() && input.key_down(Key::D) {
-                Some(FlightMode::RecoveryDrogue)
-            } else if input.modifiers.command_only() && input.key_down(Key::M) {
-                Some(FlightMode::RecoveryMain)
-            } else if input.modifiers.command_only() && input.key_down(Key::L) {
-                Some(FlightMode::Landed)
-            } else {
-                None
-            };
-            if let Some(fm) = fm {
-                self.data_source
-                    .send_command(Command::SetFlightMode(fm))
-                    .unwrap();
-            }
+        let fm = if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::Num0)) {
+            Some(FlightMode::Idle)
+        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::A)) {
+            Some(FlightMode::Armed)
+        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::I)) {
+            Some(FlightMode::Flight)
+        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::D)) {
+            Some(FlightMode::RecoveryDrogue)
+        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::M)) {
+            Some(FlightMode::RecoveryMain)
+        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::L)) {
+            Some(FlightMode::Landed)
+        } else {
+            None
+        };
+        if let Some(fm) = fm {
+            self.data_source
+                .send_command(Command::SetFlightMode(fm))
+                .unwrap();
         }
 
         // Redefine text_styles

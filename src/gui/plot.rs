@@ -6,12 +6,13 @@ use std::rc::Rc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 use eframe::egui::plot::PlotBounds;
+use egui::plot::AxisBools;
 #[cfg(target_arch = "wasm32")]
 use instant::Instant;
 
 use eframe::egui;
 use eframe::egui::PointerButton;
-use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle, LinkedAxisGroup, LinkedCursorsGroup};
+use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle};
 
 use sting_fc_firmware::telemetry::FlightMode;
 
@@ -184,10 +185,6 @@ impl PlotCache {
 
 /// State shared by all linked plots
 pub struct SharedPlotState {
-    /// Axis group (shared by all plots)
-    pub axes: LinkedAxisGroup,
-    /// Cursor group (shared by all plots)
-    pub cursors: LinkedCursorsGroup,
     /// First x-axis value
     pub start: Instant,
     /// Last x-axis value
@@ -204,8 +201,6 @@ pub struct SharedPlotState {
 impl SharedPlotState {
     pub fn new() -> Self {
         Self {
-            axes: LinkedAxisGroup::new(true, false),
-            cursors: LinkedCursorsGroup::new(true, false),
             start: Instant::now(),
             end: Instant::now(),
             attached_to_edge: true,
@@ -326,12 +321,12 @@ impl PlotUiExt for egui::Ui {
             .position(Corner::LeftTop);
 
         let mut plot = egui::widgets::plot::Plot::new(&state.title)
-            .link_axis(shared.axes.clone())
-            .link_cursor(shared.cursors.clone())
+            .link_axis("plot_axis_group", true, false)
+            .link_cursor("plot_cursor_gropu", true, false)
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
-            .allow_scroll_y(false)
-            .allow_drag_y(false)
-            .allow_zoom_y(false)
+            .allow_scroll(false) // TODO: x only
+            .allow_drag(AxisBools::new(true, false))
+            .allow_zoom(AxisBools::new(true, false))
             .include_x(shared.view_start())
             .include_x(shared.view_end())
             .auto_bounds_y()
@@ -369,10 +364,10 @@ impl PlotUiExt for egui::Ui {
         // We have to check the interaction response to notice whether the plot
         // has been dragged or otherwise detached from the end of the data.
         if let Some(_hover_pos) = ir.response.hover_pos() {
-            let zoom_delta = self.input().zoom_delta_2d();
-            let scroll_delta = self.input().scroll_delta;
+            let zoom_delta = self.input(|i| i.zoom_delta_2d());
+            let scroll_delta = self.input(|i| i.scroll_delta);
             if zoom_delta.x != 1.0 {
-                shared.process_zoom(self.input().zoom_delta_2d());
+                shared.process_zoom(self.input(|i| i.zoom_delta_2d()));
             } else if scroll_delta.x != 0.0 {
                 shared.attached_to_edge = false;
             }
