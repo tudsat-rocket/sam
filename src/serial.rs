@@ -130,17 +130,6 @@ fn downlink_monitor(
             }
         }
 
-        // While no device is connected, we spend most of our time waiting for a
-        // serial port, CPU usage is mostly tied to the speed of this check.
-        // This check much faster than `serialport::available_ports`, which
-        // calls libudev, so this improves CPU usage and battery life somewhat.
-        #[cfg(target_os = "linux")]
-        while !std::path::PathBuf::from("/dev/ttyACM0").exists() {
-            std::thread::sleep(Duration::from_millis(100));
-        }
-
-        // No such mechanism on other OSs at the moment.
-        #[cfg(not(target_os = "linux"))]
         std::thread::sleep(Duration::from_millis(100));
     }
 }

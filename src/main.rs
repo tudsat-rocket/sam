@@ -18,6 +18,7 @@ mod file;
 mod gui;
 mod serial;
 mod state;
+mod settings;
 mod telemetry_ext;
 
 use serial::*;

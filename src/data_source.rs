@@ -16,9 +16,11 @@ use instant::Instant;
 use eframe::epaint::Color32;
 use log::*;
 
+use sting_fc_firmware::settings::*;
 use sting_fc_firmware::telemetry::*;
 
 use crate::serial::*;
+use crate::settings::AppSettings;
 use crate::state::*;
 
 /// A serial port data source. The default.
@@ -30,6 +32,8 @@ pub struct SerialDataSource {
     serial_port: Option<String>,
     serial_status: SerialStatus,
 
+    lora_settings: LoRaSettings,
+
     telemetry_log_path: PathBuf,
     telemetry_log_file: Result<File, std::io::Error>,
 
@@ -39,7 +43,7 @@ pub struct SerialDataSource {
 
 impl SerialDataSource {
     /// Create a new serial port data source.
-    pub fn new() -> Self {
+    pub fn new(lora_settings: LoRaSettings) -> Self {
         let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
         let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
         let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
@@ -56,6 +60,7 @@ impl SerialDataSource {
             uplink_tx,
             serial_port: None,
             serial_status: SerialStatus::Init,
+            lora_settings,
             telemetry_log_path,
             telemetry_log_file,
             message_receipt_times: VecDeque::new(),
@@ -175,6 +180,9 @@ pub trait DataSource {
     /// Is the data source a file. TODO: a bit unelegant
     fn is_log_file(&self) -> bool;
     fn end(&self) -> Option<Instant>;
+
+    fn apply_settings(&mut self, _settings: &AppSettings) {
+    }
 }
 
 impl DataSource for SerialDataSource {
@@ -185,6 +193,10 @@ impl DataSource for SerialDataSource {
         for (status, port) in self.serial_status_rx.try_iter() {
             self.serial_status = status;
             self.serial_port = port;
+
+            if self.serial_status == SerialStatus::Connected {
+                self.uplink_tx.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
+            }
         }
 
         let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
@@ -218,10 +230,7 @@ impl DataSource for SerialDataSource {
     }
 
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        // Since the authentication code is dependent on the current (flight computer)
-        // time, we let the ground control MCU handle the actual code computation,
-        // as it is a lot better at precisely tracking the current FC time.
-        self.send(UplinkMessage::CommandPreAuth(cmd, SIPHASHER_KEY))
+        self.send(UplinkMessage::Command(cmd))
     }
 
     fn status(&self) -> (Color32, String) {
@@ -273,6 +282,11 @@ impl DataSource for SerialDataSource {
                 t + postroll
             }
         })
+    }
+
+    fn apply_settings(&mut self, settings: &AppSettings) {
+        self.lora_settings = settings.lora.clone();
+        self.uplink_tx.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
     }
 }
 

@@ -22,14 +22,12 @@ use egui::mutex::Mutex;
 use crate::state::*;
 use crate::gui::*;
 
-const MAPBOX_ACCESS_TOKEN: &str = "pk.eyJ1Ijoia29mZmVpbmZsdW1taSIsImEiOiJjbGE0cDl4MWkwcXJoM3VxcXBmeHJhdGpzIn0.Md170HfUJM_BLss3zb0bMg";
-
-fn tile_mapbox_url(tile: &Tile) -> String {
+fn tile_mapbox_url(tile: &Tile, access_token: &String) -> String {
     format!("https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/512/{}/{}/{}@2x?access_token={}",
         tile.zoom(),
         tile.x(),
         tile.y(),
-        MAPBOX_ACCESS_TOKEN
+        access_token
     )
 }
 
@@ -38,7 +36,7 @@ fn tile_id(tile: &Tile) -> String {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
     let cache_dir = project_dirs.cache_dir();
     if !cache_dir.exists() {
@@ -54,7 +52,7 @@ fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         return Ok(buffer);
     }
 
-    let response = reqwest::blocking::get(tile_mapbox_url(&tile))?
+    let response = reqwest::blocking::get(tile_mapbox_url(&tile, access_token))?
         .error_for_status()?;
     let bytes = response.bytes()?.to_vec();
 
@@ -65,15 +63,15 @@ fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_tile_image(tile: &Tile) -> Result<ColorImage, Box<dyn std::error::Error>> {
-    let bytes = load_tile_bytes(tile)?;
+fn load_tile_image(tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
+    let bytes = load_tile_bytes(tile, access_token)?;
     let image = egui_extras::image::load_image_bytes(&bytes)?;
     Ok(image)
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    let url = tile_mapbox_url(&tile);
+async fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let url = tile_mapbox_url(&tile, access_token);
     let response = reqwest::get(url).await?
         .error_for_status()?;
     let bytes = response.bytes().await?.to_vec();
@@ -82,8 +80,8 @@ async fn load_tile_bytes(tile: &Tile) -> Result<Vec<u8>, Box<dyn std::error::Err
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn load_tile_image(tile: &Tile) -> Result<ColorImage, Box<dyn std::error::Error>> {
-    let bytes = load_tile_bytes(tile).await?;
+async fn load_tile_image(tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
+    let bytes = load_tile_bytes(tile, access_token).await?;
     let image = egui_extras::image::load_image_bytes(&bytes)?;
     Ok(image)
 }
@@ -223,21 +221,28 @@ impl MapCache {
 pub struct MapState {
     pub tile_cache: Arc<Mutex<TileCache>>,
     pub cache: Rc<RefCell<MapCache>>,
+    access_token: String,
 }
 
 impl MapState {
-    pub fn new() -> Self {
+    pub fn new(access_token: String) -> Self {
         Self {
             tile_cache: Arc::new(Mutex::new(TileCache::new())),
             cache: Rc::new(RefCell::new(MapCache::new())),
+            access_token
         }
+    }
+
+    pub fn set_access_token(&mut self, token: String) {
+        self.access_token = token;
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     fn load_tile(&self, tile: Tile) {
         let cache = self.tile_cache.clone();
+        let at = self.access_token.clone();
         std::thread::spawn(move || {
-            match load_tile_image(&tile) {
+            match load_tile_image(&tile, &at) {
                 Ok(image) => cache.lock().insert(tile, image),
                 Err(e) => log::error!("{:?}", e),
             }
@@ -250,7 +255,7 @@ impl MapState {
     fn load_tile(&self, tile: Tile) {
         let cache = self.tile_cache.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            match load_tile_image(&tile).await {
+            match load_tile_image(&tile, &self.access_token).await {
                 Ok(image) => cache.lock().insert(tile, image),
                 Err(e) => log::error!("{:?}", e),
             }

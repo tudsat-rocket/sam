@@ -1302,12 +1302,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-storage"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "723dce4e9f25b6e6c5f35628e144794e5b459216ed7da97b7c4b66cdb3fa82ca"
-
-[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3648,14 +3642,14 @@ dependencies = [
  "defmt-rtt",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.8",
- "embedded-storage",
  "filter",
- "heapless",
  "nalgebra",
  "nb 1.0.0",
  "num-traits",
  "panic-probe",
  "postcard",
+ "rand",
+ "rand_chacha",
  "serde",
  "siphasher",
  "ublox",

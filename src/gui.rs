@@ -12,12 +12,13 @@ use instant::Instant;
 use eframe::egui;
 use eframe::emath::Align;
 use egui::FontFamily::Proportional;
-use egui::TextStyle::*;
-use egui::{FontId, Key, Layout, RichText, Vec2, Color32, FontFamily};
+use egui::{TextStyle::*, Button, DragValue, TextEdit, RichText};
+use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily};
 use egui_extras::RetainedImage;
 
 use log::*;
 
+use sting_fc_firmware::settings::*;
 use sting_fc_firmware::telemetry::*;
 
 mod top_bar;
@@ -31,6 +32,7 @@ mod misc;
 use crate::state::*;
 use crate::data_source::*;
 use crate::file::*;
+use crate::settings::AppSettings;
 
 use crate::gui::top_bar::*;
 use crate::gui::plot::*;
@@ -55,12 +57,22 @@ const ARCHIVE: [(&str, &[u8], &[u8]); 2] = [
     ),
 ];
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum GuiTab {
+    Launch,
+    Plot,
+    Configure
+}
+
 // The main state object of our GUI application
 pub struct Sam {
+    settings: AppSettings,
     data_source: Box<dyn DataSource>,
+    tab: GuiTab,
 
     telemetry_msgs: Rc<RefCell<Vec<(Instant, DownlinkMessage)>>>,
     log_messages: Vec<(u32, String, LogLevel, String)>,
+    fc_settings: Option<Settings>,
 
     logo: RetainedImage,
     logo_inverted: RetainedImage,
@@ -89,7 +101,7 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(cc: &eframe::CreationContext<'_>, data_source: Box<dyn DataSource>) -> Self {
+    pub fn init(cc: &eframe::CreationContext<'_>, settings: AppSettings, data_source: Box<dyn DataSource>) -> Self {
         let ctx = &cc.egui_ctx;
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
@@ -124,7 +136,7 @@ impl Sam {
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
             .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.z))
             .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.x))
-            .line("Pitch (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y));
+            .line("Yaw (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), shared_plot.clone())
             .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel())
@@ -186,12 +198,15 @@ impl Sam {
         let bytes = include_bytes!("../assets/logo_inverted.png");
         let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
         let telemetry_msgs = Rc::new(RefCell::new(Vec::new()));
-        let map = MapState::new(); // TODO
+        let map = MapState::new(settings.mapbox_access_token.clone()); // TODO
 
         Self {
+            settings,
             data_source,
+            tab: GuiTab::Plot,
             telemetry_msgs,
             log_messages: Vec::new(),
+            fc_settings: None,
             logo,
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
@@ -237,6 +252,7 @@ impl Sam {
         info!("Resetting.");
         self.telemetry_msgs.borrow_mut().truncate(0);
         self.log_messages.truncate(0);
+        self.fc_settings = None;
         self.data_source.reset();
         let now = Instant::now();
         self.all_plots(|plot| plot.reset(now));
@@ -247,6 +263,11 @@ impl Sam {
     fn process_telemetry(&mut self, time: Instant, msg: DownlinkMessage) {
         if let DownlinkMessage::Log(t, l, ll, m) = msg {
             self.log_messages.push((t, l, ll, m));
+            return;
+        }
+
+        if let DownlinkMessage::Settings(settings) = msg {
+            self.fc_settings = Some(settings);
             return;
         }
 
@@ -271,7 +292,7 @@ impl Sam {
     /// Closes the currently opened data source
     fn close_log_file(&mut self) {
         self.reset();
-        self.data_source = Box::new(SerialDataSource::new());
+        self.data_source = Box::new(SerialDataSource::new(self.settings.lora.clone()));
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
@@ -287,7 +308,20 @@ impl Sam {
             self.process_telemetry(time, msg);
         }
 
+        // TODO: only send this if we know it's not a ground station?
+        if self.fc_settings.is_none() && self.telemetry_msgs.borrow().len() > 0 {
+            self.data_source.send(UplinkMessage::ReadSettings).unwrap();
+        }
+
         self.shared_plot.borrow_mut().set_end(self.data_source.end());
+
+        if ctx.input(|i| i.key_down(Key::F1)) {
+            self.tab = GuiTab::Launch;
+        } else if ctx.input(|i| i.key_down(Key::F2)) {
+            self.tab = GuiTab::Plot;
+        } else if ctx.input(|i| i.key_down(Key::F3)) {
+            self.tab = GuiTab::Configure;
+        }
 
         // Check for keyboard inputs. TODO: clean up
         let fm = if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::Num0)) {
@@ -331,6 +365,12 @@ impl Sam {
 
                 ui.separator();
 
+                ui.selectable_value(&mut self.tab, GuiTab::Launch, "🚀 Launch (F1)");
+                ui.selectable_value(&mut self.tab, GuiTab::Plot, "📈 Plot (F2)");
+                ui.selectable_value(&mut self.tab, GuiTab::Configure, "⚙  Configure (F3)");
+
+                ui.separator();
+
                 // Opening files manually is not available on web assembly
                 #[cfg(target_arch = "x86_64")]
                 if ui.button("🗁  Open Log File").clicked() {
@@ -361,8 +401,9 @@ impl Sam {
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() / 2.0);
                     let (status_color, status_text) = self.data_source.status();
-                    ui.label(RichText::new(status_text).color(status_color));
-                    ui.label(self.data_source.info_text());
+                    ui.colored_label(status_color, status_text);
+                    ui.label(self.fc_settings.as_ref().map(|s| s.identifier.clone()).unwrap_or_default());
+                    ui.colored_label(Color32::GRAY, self.data_source.info_text());
                 });
 
                 // Some buttons
@@ -545,19 +586,404 @@ impl Sam {
             ui.set_width(ui.available_width());
             ui.set_height(ui.available_height());
 
-            MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
-                .cell("Orientation",         |ui| ui.plot_telemetry(&self.orientation_plot))
-                .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
-                .cell("Altitude (ASL)",      |ui| ui.plot_telemetry(&self.altitude_plot))
-                .cell("Position",            |ui| ui.map(&self.map))
-                .cell("Gyroscope",           |ui| ui.plot_telemetry(&self.gyroscope_plot))
-                .cell("Accelerometers",      |ui| ui.plot_telemetry(&self.accelerometer_plot))
-                .cell("Magnetometer",        |ui| ui.plot_telemetry(&self.magnetometer_plot))
-                .cell("Barometer",           |ui| ui.plot_telemetry(&self.barometer_plot))
-                .cell("Temperature",         |ui| ui.plot_telemetry(&self.temperature_plot))
-                .cell("Power",               |ui| ui.plot_telemetry(&self.power_plot))
-                .cell("Runtime",             |ui| ui.plot_telemetry(&self.runtime_plot))
-                .cell("Signal",              |ui| ui.plot_telemetry(&self.signal_plot));
+            match self.tab {
+                GuiTab::Launch => {}, // TODO
+                GuiTab::Plot => {
+                    MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
+                        .cell("Orientation",         |ui| ui.plot_telemetry(&self.orientation_plot))
+                        .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
+                        .cell("Altitude (ASL)",      |ui| ui.plot_telemetry(&self.altitude_plot))
+                        .cell("Position",            |ui| ui.map(&self.map))
+                        .cell("Gyroscope",           |ui| ui.plot_telemetry(&self.gyroscope_plot))
+                        .cell("Accelerometers",      |ui| ui.plot_telemetry(&self.accelerometer_plot))
+                        .cell("Magnetometer",        |ui| ui.plot_telemetry(&self.magnetometer_plot))
+                        .cell("Barometer",           |ui| ui.plot_telemetry(&self.barometer_plot))
+                        .cell("Temperature",         |ui| ui.plot_telemetry(&self.temperature_plot))
+                        .cell("Power",               |ui| ui.plot_telemetry(&self.power_plot))
+                        .cell("Runtime",             |ui| ui.plot_telemetry(&self.runtime_plot))
+                        .cell("Signal",              |ui| ui.plot_telemetry(&self.signal_plot));
+                },
+                GuiTab::Configure => {
+                    ui.horizontal(|ui| {
+                        ui.set_width(ui.available_width());
+                        ui.set_height(ui.available_height());
+
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width()/2.0);
+                            ui.set_height(ui.available_height());
+
+                            ui.add_space(10.0);
+                            ui.heading("GCS Settings");
+                            ui.add_space(10.0);
+
+                            egui::Grid::new("app_settings_grid")
+                                .num_columns(2)
+                                .spacing([40.0, 4.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    ui.label("MapBox Access Token");
+                                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.settings.mapbox_access_token));
+                                    ui.end_row();
+
+                                    ui.label("LoRa channel selection (500kHz BW)");
+                                    ui.vertical(|ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.toggle_value(&mut self.settings.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
+                                            ui.label(RichText::new("MHz").weak().size(10.0));
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.toggle_value(&mut self.settings.lora.channels[7],  RichText::new("866.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[8],  RichText::new("867.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[9],  RichText::new("867.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[10], RichText::new("868.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[11], RichText::new("868.75").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[12], RichText::new("869.25").monospace().size(10.0));
+                                            ui.toggle_value(&mut self.settings.lora.channels[13], RichText::new("869.75").monospace().size(10.0));
+                                            ui.label(RichText::new("MHz").weak().size(10.0));
+                                        });
+                                    });
+                                    ui.end_row();
+
+                                    ui.label("LoRa binding phrase");
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        if ui.button("⬅ Copy from FC").clicked() {
+                                            self.settings.lora.binding_phrase = self.fc_settings
+                                                .as_ref()
+                                                .map(|s| s.lora.binding_phrase.clone())
+                                                .unwrap_or(self.settings.lora.binding_phrase.clone());
+                                        }
+
+                                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.settings.lora.binding_phrase));
+                                    });
+                                    ui.end_row();
+
+                                    ui.label("LoRa uplink key");
+                                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                        if ui.button("⬅ Copy from FC").clicked() {
+                                            self.settings.lora.authentication_key = self.fc_settings
+                                                .as_ref()
+                                                .map(|s| s.lora.authentication_key.clone())
+                                                .unwrap_or(self.settings.lora.authentication_key.clone());
+                                        }
+
+                                        if ui.button("🔃Rekey").clicked() {
+                                            self.settings.lora.authentication_key = rand::random();
+                                        }
+
+                                        ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                            ui.monospace(format!("{:032x}", self.settings.lora.authentication_key));
+                                        })
+                                    });
+                                    ui.end_row();
+                                });
+
+                            ui.add_space(20.0);
+
+                            ui.horizontal_centered(|ui| {
+                                ui.set_width(ui.available_width());
+
+                                if ui.button("🔃Reload").clicked() {
+                                    self.settings = AppSettings::load()
+                                        .unwrap_or(AppSettings::default());
+                                }
+
+                                if ui.button("💾 Save Settings").clicked() {
+                                    self.settings.save().unwrap();
+                                    self.map.set_access_token(self.settings.mapbox_access_token.clone());
+                                    self.data_source.apply_settings(&self.settings);
+                                }
+                            });
+                        });
+
+                        ui.separator();
+
+                        ui.vertical(|ui| {
+                            ui.set_width(ui.available_width());
+
+                            ui.add_space(10.0);
+                            ui.heading("FC Settings");
+                            ui.add_space(10.0);
+
+                            if let Some(settings) = self.fc_settings.as_mut() {
+                                egui::Grid::new("fc_settings_grid")
+                                    .num_columns(2)
+                                    .spacing([40.0, 4.0])
+                                    .striped(true)
+                                    .show(ui, |ui| {
+                                        ui.label("Identifier");
+                                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut settings.identifier));
+                                        ui.end_row();
+
+                                        ui.label("LoRa channel selection (500kHz BW)");
+                                        ui.vertical(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.toggle_value(&mut settings.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
+                                                ui.label(RichText::new("MHz").weak().size(10.0));
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.toggle_value(&mut settings.lora.channels[7],  RichText::new("866.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[8],  RichText::new("867.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[9],  RichText::new("867.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[10], RichText::new("868.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[11], RichText::new("868.75").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[12], RichText::new("869.25").monospace().size(10.0));
+                                                ui.toggle_value(&mut settings.lora.channels[13], RichText::new("869.75").monospace().size(10.0));
+                                                ui.label(RichText::new("MHz").weak().size(10.0));
+                                            });
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("LoRa binding phrase");
+                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                            if ui.button("➡ Copy from GCS").clicked() {
+                                                settings.lora.binding_phrase = self.settings.lora.binding_phrase.clone();
+                                            }
+
+                                            ui.add_sized(ui.available_size(), TextEdit::singleline(&mut settings.lora.binding_phrase));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("LoRa uplink key");
+                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                            if ui.button("➡ Copy from GCS").clicked() {
+                                                settings.lora.authentication_key = self.settings.lora.authentication_key.clone();
+                                            }
+
+                                            if ui.button("🔃Rekey").clicked() {
+                                                settings.lora.authentication_key = rand::random();
+                                            }
+
+                                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                                ui.monospace(format!("{:032x}", settings.lora.authentication_key));
+                                            });
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Gyroscope cal. offsets");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("X");
+                                            ui.add(DragValue::new(&mut settings.gyro_offset.x)
+                                                   .suffix(" °/s")
+                                                   .speed(0.1)
+                                                   .clamp_range(-2000.0..=2000.0));
+
+                                            ui.weak("Y");
+                                            ui.add(DragValue::new(&mut settings.gyro_offset.y)
+                                                   .suffix(" °/s")
+                                                   .speed(0.1)
+                                                   .clamp_range(-2000.0..=2000.0));
+
+                                            ui.weak("Z");
+                                            ui.add(DragValue::new(&mut settings.gyro_offset.z)
+                                                   .suffix(" °/s")
+                                                   .speed(0.1)
+                                                   .clamp_range(-2000.0..=2000.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Main accelerometer cal. offsets");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("X");
+                                            ui.add(DragValue::new(&mut settings.acc_offset.x)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-1000.0..=1000.0));
+
+                                            ui.weak("Y");
+                                            ui.add(DragValue::new(&mut settings.acc_offset.y)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-1000.0..=1000.0));
+
+                                            ui.weak("Z");
+                                            ui.add(DragValue::new(&mut settings.acc_offset.z)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-1000.0..=1000.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Backup accelerometer cal. offsets");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("X");
+                                            ui.add(DragValue::new(&mut settings.acc2_offset.x)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-4000.0..=4000.0));
+
+                                            ui.weak("Y");
+                                            ui.add(DragValue::new(&mut settings.acc2_offset.y)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-4000.0..=4000.0));
+
+                                            ui.weak("Z");
+                                            ui.add(DragValue::new(&mut settings.acc2_offset.z)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.01)
+                                                   .clamp_range(-4000.0..=4000.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Magnetometer cal. offsets");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("X");
+                                            ui.add(DragValue::new(&mut settings.mag_offset.x)
+                                                   .suffix(" µT")
+                                                   .speed(0.1)
+                                                   .clamp_range(-1000.0..=1000.0));
+
+                                            ui.weak("Y");
+                                            ui.add(DragValue::new(&mut settings.mag_offset.y)
+                                                   .suffix(" µT")
+                                                   .speed(0.1)
+                                                   .clamp_range(-1000.0..=1000.0));
+
+                                            ui.weak("Z");
+                                            ui.add(DragValue::new(&mut settings.mag_offset.z)
+                                                   .suffix(" µT")
+                                                   .speed(0.1)
+                                                   .clamp_range(-1000.0..=1000.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Mahony gains");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("kP");
+                                            ui.add(DragValue::new(&mut settings.mahony_kp)
+                                                   .speed(0.001)
+                                                   .clamp_range(0.0..=10.0));
+
+                                            ui.weak(" kI");
+                                            ui.add(DragValue::new(&mut settings.mahony_ki)
+                                                   .speed(0.001)
+                                                   .clamp_range(0.0..=10.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Kalman std devs.");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("accelerometer");
+                                            ui.add(DragValue::new(&mut settings.std_dev_accelerometer)
+                                                   .speed(0.001)
+                                                   .clamp_range(0.0..=10.0));
+
+                                            ui.weak(" barometer");
+                                            ui.add(DragValue::new(&mut settings.std_dev_barometer)
+                                                   .speed(0.001)
+                                                   .clamp_range(0.0..=10.0));
+
+                                            ui.weak(" process");
+                                            ui.add(DragValue::new(&mut settings.std_dev_process)
+                                                   .speed(0.001)
+                                                   .clamp_range(0.0..=10.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Takeoff detection mode");
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::Acceleration, "acceleration");
+                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::Breakwire, "CAN breakwire");
+                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::AccelerationAndBreakwire, "both");
+                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::AccelerationOrBreakwire, "either");
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Takeoff detection acceleration");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("at least");
+                                            ui.add(DragValue::new(&mut settings.min_takeoff_acc)
+                                                   .suffix(" m/s²")
+                                                   .speed(0.1)
+                                                   .clamp_range(0.0..=1000.0));
+                                            ui.weak("for");
+                                            ui.add(DragValue::new(&mut settings.min_takeoff_acc_time)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=1000));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Apogee drogue deployment");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("between");
+                                            ui.add(DragValue::new(&mut settings.min_time_to_apogee)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=1000000));
+                                            ui.weak("and");
+                                            ui.add(DragValue::new(&mut settings.max_time_to_apogee)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=1000000));
+                                            ui.weak("post-launch, after falling for");
+                                            ui.add(DragValue::new(&mut settings.apogee_min_falling_time)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=10000));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Main deployment");
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::Never, "never");
+                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::AtApogee, "at apogee");
+                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::BelowAltitude, "below altitude of ");
+                                            ui.add(DragValue::new(&mut settings.main_output_deployment_altitude)
+                                                   .suffix(" m")
+                                                   .speed(0.1)
+                                                   .clamp_range(0.0..=10000.0));
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Recovery output times");
+                                        ui.horizontal(|ui| {
+                                            ui.weak("enabled for");
+                                            ui.add(DragValue::new(&mut settings.outputs_high_time)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=10000));
+                                            ui.weak("after");
+                                            ui.add(DragValue::new(&mut settings.outputs_warning_time)
+                                                   .suffix(" ms")
+                                                   .speed(1)
+                                                   .clamp_range(0..=10000));
+                                            ui.weak("of warning tone");
+                                        });
+                                        ui.end_row();
+                                    });
+                            } else {
+                                ui.colored_label(Color32::GRAY, "Not connected.");
+                            }
+
+                            ui.add_space(20.0);
+
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                if ui.add_enabled(self.fc_settings.is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
+                                    let settings = self.fc_settings.clone().unwrap();
+                                    self.data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
+                                }
+
+                                if ui.button("🔃Reload").clicked() {
+                                    self.data_source.send(UplinkMessage::ReadSettings).unwrap();
+                                }
+                            });
+                        });
+                    });
+                }
+            }
         });
 
         // If we have live data coming in, we need to tell egui to repaint.
@@ -579,9 +1005,11 @@ impl eframe::App for Sam {
 /// The main entrypoint for the egui interface.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    let app_settings = AppSettings::load().ok().unwrap_or(AppSettings::default());
+
     let data_source: Box<dyn DataSource> = match log_file {
         Some(path) => Box::new(LogFileDataSource::new(path)?),
-        None => Box::new(SerialDataSource::new()),
+        None => Box::new(SerialDataSource::new(app_settings.lora.clone())),
     };
 
     #[cfg(feature = "profiling")]
@@ -593,7 +1021,7 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
             initial_window_size: Some(egui::vec2(1000.0, 700.0)),
             ..Default::default()
         },
-        Box::new(|cc| Box::new(Sam::init(cc, data_source))),
+        Box::new(|cc| Box::new(Sam::init(cc, app_settings, data_source))),
     )?;
 
     Ok(())
