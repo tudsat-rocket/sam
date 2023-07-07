@@ -213,6 +213,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool) -> Result<(), Box<dyn std::
                         let crc_calc = X25.checksum(&page_data);
                         if crc_stored != crc_calc {
                             warn!("CRC mismatch for page 0x{:08x}", address + (i as u32) * 256);
+                            continue;
                         }
 
                         f.write_all(&page_data)?;
