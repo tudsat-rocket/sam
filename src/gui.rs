@@ -13,7 +13,7 @@ use eframe::egui;
 use eframe::emath::Align;
 use egui::FontFamily::Proportional;
 use egui::{TextStyle::*, Button, DragValue, TextEdit, RichText};
-use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily};
+use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily, SelectableLabel};
 use egui_extras::RetainedImage;
 
 use log::*;
@@ -531,6 +531,36 @@ impl Sam {
                 });
 
                 ui.vertical(|ui| {
+                    ui.label("Data Rate [Hz]");
+                    ui.horizontal(|ui| {
+                        let current = self.current(|vs| vs.telemetry_data_rate()).unwrap_or_default();
+                        if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == TelemetryDataRate::Low, "20")).clicked() {
+                            self.data_source.send_command(Command::SetDataRate(TelemetryDataRate::Low)).unwrap();
+                        }
+                        if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == TelemetryDataRate::High, "40")).clicked() {
+                            self.data_source.send_command(Command::SetDataRate(TelemetryDataRate::High)).unwrap();
+                        }
+                    });
+
+                    ui.label("Transmit Power [dBm]");
+                    ui.horizontal(|ui| {
+                        let current = self.current(|vs| vs.transmit_power()).unwrap_or_default();
+                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P14dBm, "14")).clicked() {
+                            self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
+                        }
+                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P17dBm, "17")).clicked() {
+                            self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P17dBm)).unwrap();
+                        }
+                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P20dBm, "20")).clicked() {
+                            self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P20dBm)).unwrap();
+                        }
+                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P22dBm, "22")).clicked() {
+                            self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
+                        }
+                    });
+                });
+
+                ui.vertical(|ui| {
                     let size = Vec2::new(ui.available_width(), ui.available_height() * 0.4);
                     ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
                         ui.command_button("⟲  Reboot", Command::Reboot, &mut self.data_source);
@@ -768,6 +798,14 @@ impl Sam {
                                             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                                                 ui.monospace(format!("{:032x}", settings.lora.authentication_key));
                                             });
+                                        });
+                                        ui.end_row();
+
+                                        ui.label("Default Data Rate");
+                                        ui.horizontal(|ui| {
+                                            ui.selectable_value(&mut settings.default_data_rate, TelemetryDataRate::Low, "Low");
+                                            ui.selectable_value(&mut settings.default_data_rate, TelemetryDataRate::High, "High");
+                                            ui.label(RichText::new("(20Hz vs 40Hz; higher data incl. raw IMU values, may interfere w/ GPS)").weak().size(10.0));
                                         });
                                         ui.end_row();
 

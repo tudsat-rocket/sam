@@ -37,9 +37,11 @@ pub trait VehicleState {
     fn current(&self) -> Option<f32>;
     fn flash_pointer(&self) -> Option<u32>;
     fn vehicle_lora_rssi(&self) -> Option<u8>;
+    fn transmit_power(&self) -> Option<TransmitPower>;
+    fn telemetry_data_rate(&self) -> Option<TelemetryDataRate>;
     fn gcs_lora_rssi(&self) -> Option<u8>;
     fn gcs_lora_rssi_signal(&self) -> Option<u8>;
-    fn gcs_lora_snr(&self) -> Option<u8>;
+    fn gcs_lora_snr(&self) -> Option<i8>;
 
     fn euler_angles(&self) -> Option<Vector3<f32>> {
         self.orientation()
@@ -294,6 +296,20 @@ impl VehicleState for DownlinkMessage {
         }
     }
 
+    fn transmit_power(&self) -> Option<TransmitPower> {
+        match self {
+            Self::TelemetryDiagnostics(tm) => Some((tm.transmit_power_and_data_rate & 0x7f).into()),
+            _ => None
+        }
+    }
+
+    fn telemetry_data_rate(&self) -> Option<TelemetryDataRate> {
+        match self {
+            Self::TelemetryDiagnostics(tm) => Some((tm.transmit_power_and_data_rate >> 7).into()),
+            _ => None
+        }
+    }
+
     fn gcs_lora_rssi(&self) -> Option<u8> {
         match self {
             Self::TelemetryGCS(tm) => Some(tm.lora_rssi),
@@ -308,7 +324,7 @@ impl VehicleState for DownlinkMessage {
         }
     }
 
-    fn gcs_lora_snr(&self) -> Option<u8> {
+    fn gcs_lora_snr(&self) -> Option<i8> {
         match self {
             Self::TelemetryGCS(tm) => Some(tm.lora_snr),
             _ => None
