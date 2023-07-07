@@ -50,7 +50,9 @@ const CHANNELS: [u32; 14] = [
     869_750_000,
 ];
 
-const TRANSMISSION_TIMEOUT_MS: u32 = 17;
+const TRANSMISSION_TIMEOUT_MS: u32 = 18;
+#[cfg(feature="gcs")]
+const FC_GCS_TIME_OFFSET_MS: i64 = 16;
 
 const DOWNLINK_PACKET_SIZE: u8 = 26;
 const UPLINK_PACKET_SIZE: u8 = 16;
@@ -66,6 +68,8 @@ const RX_PACKET_SIZE: u8 = if cfg!(feature = "gcs") {
 } else {
     UPLINK_PACKET_SIZE
 };
+
+const RAMP_TIME: LLCC68RampTime = LLCC68RampTime::R800U;
 
 #[cfg(feature = "gcs")]
 type TxHmac = u64;
@@ -106,12 +110,12 @@ pub struct LoRaRadio<SPI, CS, IRQ, BUSY> {
     cs: CS,
     irq: IRQ,
     busy: BUSY,
-    pub high_power: bool,
-    high_power_configured: bool,
+    pub transmit_power: TransmitPower,
+    transmit_power_setpoint: TransmitPower,
     frequency: u32,
     pub rssi: u8,
     pub rssi_signal: u8,
-    pub snr: u8,
+    pub snr: i8,
     #[cfg(feature="gcs")]
     uplink_message: Option<UplinkMessage>,
     last_message_received: u32,
@@ -144,8 +148,8 @@ impl<
             cs,
             irq,
             busy,
-            high_power: false,
-            high_power_configured: false,
+            transmit_power: TransmitPower::P14dBm,
+            transmit_power_setpoint: TransmitPower::P14dBm,
             frequency: CHANNELS[CHANNELS.len() / 2],
             rssi: 255,
             rssi_signal: 255,
@@ -161,6 +165,14 @@ impl<
             binding_phrase: "".into(),
             sequence: None,
         }
+    }
+
+    pub fn set_transmit_power(&mut self, tx_power: TransmitPower) {
+        self.transmit_power_setpoint = tx_power;
+    }
+
+    pub fn set_max_transmit_power(&mut self) {
+        self.transmit_power_setpoint = TransmitPower::P22dBm;
     }
 
     fn command(
@@ -354,7 +366,7 @@ impl<
         )?;
         self.set_rf_frequency(self.frequency)?;
         self.set_buffer_base_addresses(TX_BASE_ADDRESS, RX_BASE_ADDRESS)?;
-        self.set_output_power(LLCC68OutputPower::P14dBm, LLCC68RampTime::R20U)?;
+        self.set_output_power(LLCC68OutputPower::P14dBm, RAMP_TIME)?;
         self.set_dio1_interrupt(
             (LLCC68Interrupt::RxDone as u16) | (LLCC68Interrupt::CrcErr as u16),
             LLCC68Interrupt::RxDone as u16,
@@ -543,9 +555,13 @@ impl<
         let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4)?;
         self.rssi = packet_status[1];
         self.rssi_signal = packet_status[3];
-        self.snr = packet_status[2];
+        self.snr = packet_status[2] as i8;
 
         // Abort in case of a CRC mismatch
+        // Sometimes this seems to trigger unnecessarily, especially for uplink
+        // messages. Since those are HMACed pretty heavily anyways, we ignore
+        // CRC mismatches for uplink messages.
+        #[cfg(feature = "gcs")]
         if irq_status & (LLCC68Interrupt::CrcErr as u16) > 0 {
             return Err(LoRaError::Crc);
         }
@@ -627,25 +643,27 @@ impl<
             }
         }
 
-        if self.high_power != self.high_power_configured {
-            let power = if self.high_power {
-                LLCC68OutputPower::P22dBm
-            } else {
-                LLCC68OutputPower::P14dBm
+        if self.transmit_power != self.transmit_power_setpoint {
+            // this is ugly of course, but it keeps the telemetry and driver
+            // types nice and separate.
+            let power = match self.transmit_power_setpoint {
+                TransmitPower::P14dBm => LLCC68OutputPower::P14dBm,
+                TransmitPower::P17dBm => LLCC68OutputPower::P17dBm,
+                TransmitPower::P20dBm => LLCC68OutputPower::P20dBm,
+                TransmitPower::P22dBm => LLCC68OutputPower::P22dBm
             };
 
-            if let Err(e) = self.set_output_power(power, LLCC68RampTime::R20U) {
+            if let Err(e) = self.set_output_power(power, RAMP_TIME) {
                 log!(Error, "Error setting power level: {:?}", e);
             } else {
-                self.high_power_configured = self.high_power;
+                self.transmit_power = self.transmit_power_setpoint;
             }
         }
     }
 
     #[cfg(not(feature = "gcs"))]
-    pub fn tick(&mut self, time: u32, mode: FlightMode) -> Option<Command> {
+    pub fn tick(&mut self, time: u32) -> Option<Command> {
         self.tick_common(time);
-        self.high_power = mode >= FlightMode::Armed;
 
         if self.state != RadioState::Idle {
             return None;
@@ -724,10 +742,10 @@ impl<
                     self.last_message_received = self.time;
                     self.fc_time_offset = (msg.time() as i64)
                         .wrapping_sub(self.time as i64)
-                        .wrapping_add(TRANSMISSION_TIMEOUT_MS as i64); // compensate for message delay
+                        .wrapping_add(FC_GCS_TIME_OFFSET_MS); // compensate for message delay
 
-                    if let DownlinkMessage::TelemetryMainCompressed(tm) = msg {
-                        self.high_power = tm.mode >= FlightMode::Armed;
+                    if let DownlinkMessage::TelemetryDiagnostics(tm) = msg {
+                        self.transmit_power_setpoint = (tm.transmit_power_and_data_rate & 0x7f).into();
                     }
                 }
                 Ok(None) => {},
@@ -816,7 +834,7 @@ enum LLCC68PacketType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-enum LLCC68OutputPower {
+pub enum LLCC68OutputPower {
     P14dBm = 14,
     P17dBm = 17,
     P20dBm = 20,

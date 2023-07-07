@@ -96,6 +96,7 @@ pub struct Vehicle {
     condition_true_since: Option<u32>,
     loop_runtime_history: VecDeque<u16>,
     settings: Settings,
+    data_rate: TelemetryDataRate,
 }
 
 impl Vehicle {
@@ -138,6 +139,7 @@ impl Vehicle {
         let settings = Settings::default();
 
         radio.apply_settings(&settings.lora);
+        let data_rate = settings.default_data_rate;
 
         let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
         let ahrs = ahrs::Mahony::new(dt, settings.mahony_kp, settings.mahony_ki);
@@ -174,7 +176,8 @@ impl Vehicle {
             mode_time: 0,
             condition_true_since: None,
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
-            settings
+            settings,
+            data_rate,
         }
     }
 
@@ -221,15 +224,20 @@ impl Vehicle {
         self.condition_true_since.map(|dur| dur >= duration).unwrap_or(false)
     }
 
-    fn switch_mode(&mut self, mode: FlightMode) {
-        if mode == self.mode {
+    fn switch_mode(&mut self, new_mode: FlightMode) {
+        if new_mode == self.mode {
             return;
         }
 
-        self.mode = mode;
+        // We are going to or beyond Armed, switch to max tx power
+        if new_mode >= FlightMode::Armed && self.mode < FlightMode::Armed {
+            self.radio.set_max_transmit_power();
+        }
+
+        self.mode = new_mode;
         self.mode_time = self.time;
         self.condition_true_since = None;
-        self.buzzer.switch_mode(self.time, mode);
+        self.buzzer.switch_mode(self.time, new_mode);
     }
 
     pub fn tick_mode(&mut self) {
@@ -340,6 +348,18 @@ impl Vehicle {
         }
     }
 
+    fn handle_command(&mut self, cmd: Command) {
+        log!(Info, "Received command: {:?}", cmd);
+        match cmd {
+            Command::Reboot => reboot(),
+            Command::SetFlightMode(fm) => self.switch_mode(fm),
+            Command::SetTransmitPower(txp) => self.radio.set_transmit_power(txp),
+            Command::SetDataRate(dr) => self.data_rate = dr,
+            Command::EraseFlash => self.flash.erase(),
+            _ => {},
+        }
+    }
+
     /// Called every MAIN_LOOP_FREQ_HERTZ Hz.
     #[cfg(not(feature = "gcs"))]
     pub fn tick(&mut self) {
@@ -359,23 +379,17 @@ impl Vehicle {
         self.can.tick();
 
         // Handle incoming messages
-        if let Some(cmd) = self.radio.tick(self.time, self.mode) {
-            match cmd {
-                Command::Reboot => reboot(),
-                Command::SetFlightMode(fm) => self.switch_mode(fm),
-                Command::EraseFlash => self.flash.erase(),
-                _ => {},
-            }
+        if let Some(cmd) = self.radio.tick(self.time) {
+            self.handle_command(cmd);
         }
 
         if let Some(msg) = self.usb_link.tick(self.time) {
             match msg {
                 UplinkMessage::Heartbeat => {},
-                UplinkMessage::Command(cmd) => match cmd {
-                    Command::Reboot => reboot(),
-                    Command::RebootToBootloader => reboot_to_bootloader(),
-                    Command::SetFlightMode(fm) => self.switch_mode(fm),
-                    Command::EraseFlash => self.flash.erase()
+                UplinkMessage::Command(cmd) => if let Command::RebootToBootloader = cmd {
+                    reboot_to_bootloader()
+                } else {
+                    self.handle_command(cmd)
                 },
                 UplinkMessage::ReadFlash(adr, size) => self.flash.downlink(&mut self.usb_link, adr, size),
                 UplinkMessage::ReadSettings => self.usb_link.send_message(DownlinkMessage::Settings(self.settings.clone())),
@@ -441,7 +455,7 @@ impl Vehicle {
         });
 
         let rssi_led = (self.time % 100) > (self.radio.rssi as u32);
-        self.leds.0.set_state((!self.radio.high_power).into());
+        self.leds.0.set_state((!(self.radio.transmit_power >= TransmitPower::P20dBm)).into());
         self.leds.1.set_state((!rssi_led).into());
         self.leds.2.set_state((!true).into());
         self.buzzer.tick(self.time);
@@ -489,7 +503,7 @@ impl Vehicle {
             Some(DownlinkMessage::TelemetryDiagnostics(self.into()))
         } else if self.time % 100 == 50 {
             Some(DownlinkMessage::TelemetryMainCompressed(self.into()))
-        } else if self.time % 50 == 25 {
+        } else if self.time % 50 == 25 && self.data_rate == TelemetryDataRate::High {
             Some(DownlinkMessage::TelemetryRawSensorsCompressed(self.into()))
         } else {
             None
@@ -593,6 +607,7 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             .fold(0, |a, b| u16::max(a, *b));
         let cpu_util = 100.0 * (loop_runtime as f32) / (1_000_000.0 / MAIN_LOOP_FREQ_HERTZ as f32);
         let heap_util = 100.0 * (crate::ALLOCATOR.used() as f32) / (crate::HEAP_SIZE as f32);
+        let power_and_dr = ((self.data_rate as u8) << 7) | (self.radio.transmit_power as u8);
 
         TelemetryDiagnostics {
             time: self.time,
@@ -605,6 +620,7 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             current: self.power.battery_current().unwrap_or(0),
             lora_rssi: self.radio.rssi,
             altitude_ground: (self.altitude_ground * 10.0) as u16,
+            transmit_power_and_data_rate: power_and_dr,
         }
     }
 }

@@ -6,6 +6,8 @@ use alloc::string::String;
 use nalgebra::Vector3;
 use serde::{Serialize, Deserialize};
 
+use crate::telemetry::TelemetryDataRate;
+
 /// Enum identifying takeoff detection source
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub enum TakeoffDetectionMode {
@@ -97,6 +99,8 @@ pub struct Settings {
     pub outputs_high_time: u32,
     /// LoRa settings
     pub lora: LoRaSettings,
+    /// Telemetry data rate
+    pub default_data_rate: TelemetryDataRate,
 }
 
 impl Default for Settings {
@@ -129,6 +133,7 @@ impl Default for Settings {
             outputs_warning_time: 500,
             outputs_high_time: 2000,
             lora: LoRaSettings::default(),
+            default_data_rate: TelemetryDataRate::default(),
         }
     }
 }

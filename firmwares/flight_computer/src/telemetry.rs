@@ -136,6 +136,44 @@ impl From<u8> for GPSFixType {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+pub enum TransmitPower {
+    #[default]
+    P14dBm = 0x00,
+    P17dBm = 0x01,
+    P20dBm = 0x02,
+    P22dBm = 0x03,
+}
+
+impl From<u8> for TransmitPower {
+    fn from(x: u8) -> Self {
+        match x {
+            0x00 => TransmitPower::P14dBm,
+            0x01 => TransmitPower::P17dBm,
+            0x02 => TransmitPower::P20dBm,
+            0x03 => TransmitPower::P22dBm,
+            _ => TransmitPower::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+pub enum TelemetryDataRate {
+    #[default]
+    Low = 0x0,
+    High = 0x1,
+}
+
+impl From<u8> for TelemetryDataRate {
+    fn from(x: u8) -> Self {
+        match x {
+            0x00 => TelemetryDataRate::Low,
+            0x01 => TelemetryDataRate::High,
+            _ => TelemetryDataRate::default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryMain {
     pub time: u32,
@@ -201,6 +239,7 @@ pub struct TelemetryDiagnostics {
     //pub consumed: u16,
     pub lora_rssi: u8,
     pub altitude_ground: u16,
+    pub transmit_power_and_data_rate: u8,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -220,7 +259,7 @@ pub struct TelemetryGCS {
     pub time: u32,
     pub lora_rssi: u8,
     pub lora_rssi_signal: u8,
-    pub lora_snr: u8,
+    pub lora_snr: i8,
 }
 
 #[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize)]
@@ -293,6 +332,8 @@ pub enum Command {
     Reboot,
     RebootToBootloader,
     SetFlightMode(FlightMode),
+    SetTransmitPower(TransmitPower),
+    SetDataRate(TelemetryDataRate),
     EraseFlash,
 }
 
