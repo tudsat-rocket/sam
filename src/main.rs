@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::fs::File;
-use std::io::{Error, ErrorKind, Read, Write};
+use std::io::{Error, ErrorKind, Read, Write, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -11,6 +11,7 @@ use colored::Colorize;
 use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
+use state::VehicleState;
 use sting_fc_firmware::telemetry::*;
 
 mod data_source;
@@ -46,12 +47,24 @@ enum CliCommand {
         force: bool,
         #[clap(short = 'r', help = "Dump entire, raw flash, not just telemetry")]
         raw: bool,
+        #[clap(short = 's', help = "Start address. Default 0x00 (raw mode), 0x1000 (start of log section) otherwise")]
+        start: Option<u32>,
+    },
+    ExtractFlashLogs {
+        path: PathBuf
     },
     /// Convert a binary flash/telem log to a JSON file
     #[clap(name = "bin2json")]
     Bin2Json {
         input: Option<PathBuf>,
         output: Option<PathBuf>
+    },
+    #[clap(name = "bin2kml")]
+    Bin2Kml {
+        input: Option<PathBuf>,
+        output: Option<PathBuf>,
+        #[clap(short = 'n', help = "Name of the track in the KML file. Default: Sting FC Track")]
+        name: Option<String>,
     },
     /// Convert a JSON file to a binary flash/telem log
     #[clap(name = "json2bin")]
@@ -141,6 +154,7 @@ fn read_flash_chunk(
 
     loop {
         if let Some(DownlinkMessage::FlashContent(adr, content)) = downlink_rx.iter().next() {
+            println!("{:02x?} {:?} {:02x?} {:02x?}", address, size, adr, content);
             if address != adr || size != (content.len() as u32) {
                 return Err(Box::new(Error::new(ErrorKind::InvalidData, "Data mismatch.")));
             }
@@ -157,9 +171,14 @@ fn read_flash_chunk(
     }
 }
 
-fn dump_flash(path: PathBuf, force: bool, raw: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn dump_flash(
+    path: PathBuf,
+    force: bool,
+    raw: bool,
+    start: Option<u32>
+) -> Result<(), Box<dyn std::error::Error>> {
     const NUM_ATTEMPTS: u32 = 10;
-    const CHUNK_SIZE: u32 = 1024;
+    const CHUNK_SIZE: u32 = 256;
     const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
     if path.exists() && !force {
@@ -187,9 +206,9 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool) -> Result<(), Box<dyn std::
     );
 
     // Only dump the header in raw mode
-    let start_address = if raw { 0x00 } else { FLASH_HEADER_SIZE };
+    let start = start.unwrap_or(if raw { 0x00 } else { FLASH_HEADER_SIZE });
 
-    for address in (start_address..flash_size).step_by(CHUNK_SIZE as usize) {
+    for address in (start..flash_size).step_by(CHUNK_SIZE as usize) {
         pb.set_position(address as u64);
 
         let mut attempts = 0;
@@ -232,15 +251,55 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool) -> Result<(), Box<dyn std::
 
             attempts += 1;
             if attempts >= NUM_ATTEMPTS {
-                return Err(Box::new(Error::new(
-                    ErrorKind::ConnectionAborted,
-                    "Failed to read page.",
-                )));
+                error!("Failed to read page 0x{:08x?}, storing as 0xffs, continuing.", address);
+                f.write_all(&[0xff; 256])?;
+                break;
             }
         }
     }
 
     pb.finish();
+
+    Ok(())
+}
+
+fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
+
+    let mut f = File::open(path)?;
+    f.seek(SeekFrom::Start(FLASH_HEADER_SIZE as u64))?;
+
+    let mut chunk_buffer: [u8; 256] = [0x00; 256];
+    let mut address = FLASH_HEADER_SIZE;
+    loop {
+        if let Err(e) = f.read_exact(&mut chunk_buffer) {
+            if e.kind() == ErrorKind::BrokenPipe || e.kind() == ErrorKind::UnexpectedEof {
+                break
+            } else {
+                return Err(Box::new(e));
+            }
+        }
+
+        let contents = if chunk_buffer[0] == 0x00 {
+            let data = &chunk_buffer[1..(256 - 2)];
+            let crc_stored = ((chunk_buffer[256 - 2] as u16) << 8) + (chunk_buffer[256 - 1] as u16);
+            Some((data, crc_stored))
+        } else if chunk_buffer[256 - 1] == 0x00 {
+            let data = &chunk_buffer[0..(256 - 3)];
+            let crc_stored = ((chunk_buffer[256 - 3] as u16) << 8) + (chunk_buffer[256 - 2] as u16);
+            Some((data, crc_stored))
+        } else {
+            None
+        };
+
+        if contents.map(|(data, crc)| X25.checksum(&data) == crc).unwrap_or(false) {
+            std::io::stdout().write(contents.unwrap().0)?;
+        } else {
+            warn!("No valid data found for page {:02x?}, skipping page: {:02x?}", address, chunk_buffer);
+        }
+
+        address += 256;
+    }
 
     Ok(())
 }
@@ -282,6 +341,63 @@ fn bin2json(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
     Ok(())
 }
 
+fn bin2kml(input: Option<PathBuf>, output: Option<PathBuf>, name: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut input = open_file_or_stdin(input)?;
+    let mut output = create_file_or_stdout(output)?;
+
+    let mut buffer = Vec::new();
+    input.read_to_end(&mut buffer)?;
+
+    let coordinates: Vec<String> = buffer.split_mut(|b| *b == 0x00)
+        .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
+        .filter(|msg| msg.longitude().is_some() && msg.latitude().is_some() && msg.altitude_gps().is_some())
+        .map(|msg| (msg.longitude().unwrap(), msg.latitude().unwrap(), msg.altitude_gps().unwrap()))
+        .map(|(ln,lt,alt)| format!("     {},{},{}", ln,lt,alt + 100.0))
+        .collect();
+
+    let name = name.unwrap_or("Sting FC Track".into());
+
+    let xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<kml xmlns=\"http://www.opengis.net/kml/2.2\">
+ <Document>
+  <name>{name}</name>
+  <description><![CDATA[{name}
+{len} Trackpoints + 0 Placemarks]]></description>
+  <Style id=\"TrackStyle\">
+   <LineStyle>
+    <color>ff00ff00</color>
+    <width>3</width>
+   </LineStyle>
+   <PolyStyle>
+    <color>7f0000ff</color>
+   </PolyStyle>
+   <BalloonStyle>
+    <text></text>
+   </BalloonStyle>
+  </Style>
+
+  <Placemark id=\"sting_fc\">
+   <name>Sting FC</name>
+   <description></description>
+   <styleUrl>#TrackStyle</styleUrl>
+   <LineString>
+    <extrude>0</extrude>
+    <tessellate>0</tessellate>
+    <altitudeMode>clampToGround</altitudeMode>
+    <coordinates>
+     {coords}
+    </coordinates>
+   </LineString>
+  </Placemark>
+
+ </Document>
+</kml>", name=name, len=coordinates.len(), coords=coordinates.join("\n"));
+
+    output.write(xml.as_bytes())?;
+
+    Ok(())
+}
+
 fn json2bin(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let input = open_file_or_stdin(input)?;
     let mut output = create_file_or_stdout(output)?;
@@ -304,8 +420,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match args.command.unwrap_or(CliCommand::Gui { log_path: None }) {
         CliCommand::Gui { log_path } => gui::main(log_path),
         CliCommand::Logcat { verbose } => logcat(verbose),
-        CliCommand::DumpFlash { path, force, raw } => dump_flash(path, force, raw),
+        CliCommand::DumpFlash { path, force, raw, start } => dump_flash(path, force, raw, start),
+        CliCommand::ExtractFlashLogs { path } => extract_flash_logs(path),
         CliCommand::Bin2Json { input, output } => bin2json(input, output),
+        CliCommand::Bin2Kml { input, output, name } => bin2kml(input, output, name),
         CliCommand::Json2Bin { input, output } => json2bin(input, output),
         CliCommand::Reboot => reboot(false),
         CliCommand::Bootloader => reboot(true),

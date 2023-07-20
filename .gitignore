@@ -1,5 +1,9 @@
 /target
 *.log
 *.json
+*.gpx
+*.kml
 !archive/*.json
+!archive/*.gpx
+!archive/*.kml
 *.exe
