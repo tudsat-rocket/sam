@@ -11,12 +11,6 @@ use hal::rcc::Clocks;
 use hal::spi::Spi;
 use hal::gpio::{Pin, Output};
 
-#[cfg(not(feature = "gcs"))]
-use ahrs::Ahrs;
-use filter::kalman::kalman_filter::KalmanFilter;
-use nalgebra::*;
-use num_traits::Pow;
-
 #[allow(unused_imports)]
 use crate::prelude::*;
 
@@ -29,12 +23,11 @@ use crate::lora::*;
 use crate::params::*;
 use crate::sensors::*;
 use crate::settings::*;
+use crate::state_estimation::StateEstimator;
 use crate::telemetry::*;
 use crate::usb::*;
 
 const RUNTIME_HISTORY_LEN: usize = 200;
-
-const G: f32 = 9.80665;
 
 type LEDs = (Pin<'C',13,Output>, Pin<'C',14,Output>, Pin<'C',15,Output>);
 type Recovery = (Pin<'C', 8, Output>, Pin<'C', 9, Output>);
@@ -84,13 +77,8 @@ pub struct Vehicle {
     buzzer: Buzzer,
     recovery: Recovery,
     // vehicle state
-    ahrs: ahrs::Mahony<f32>,
-    kalman: KalmanFilter<f32, U3, U2, U0>,
-    orientation: Option<Unit<Quaternion<f32>>>,
-    acceleration_world: Option<Vector3<f32>>,
-    altitude_ground: f32,
-    altitude_max: f32,
     pub time: u32,
+    state_estimator: StateEstimator,
     mode: FlightMode,
     mode_time: u32,
     condition_true_since: Option<u32>,
@@ -104,9 +92,9 @@ impl Vehicle {
     pub fn init(
         clocks: Clocks,
         usb_link: UsbLink,
-        imu: Imu<Spi1, Pin<'B', 15, Output>>,
-        acc: Accelerometer,
-        compass: Compass,
+        mut imu: Imu<Spi1, Pin<'B', 15, Output>>,
+        mut acc: Accelerometer,
+        mut compass: Compass,
         barometer: Barometer<Spi1, Pin<'C', 6, Output>>,
         gps: GPS,
         mut flash: Flash,
@@ -144,10 +132,6 @@ impl Vehicle {
         compass.set_offset(settings.mag_offset);
         let data_rate = settings.default_data_rate;
 
-        let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
-        let ahrs = ahrs::Mahony::new(dt, settings.mahony_kp, settings.mahony_ki);
-        let kalman = Self::init_kalman(dt, &settings);
-
         Self {
             clocks,
 
@@ -167,14 +151,8 @@ impl Vehicle {
             buzzer,
             recovery,
 
-            ahrs,
-            kalman,
-            orientation: None,
-            acceleration_world: None,
-            altitude_ground: 0.0,
-            altitude_max: -10_000.0,
-
             time: 0,
+            state_estimator: StateEstimator::new(MAIN_LOOP_FREQ_HERTZ as f32, settings.clone()),
             mode: FlightMode::Idle,
             mode_time: 0,
             condition_true_since: None,
@@ -182,49 +160,6 @@ impl Vehicle {
             settings,
             data_rate,
         }
-    }
-
-    fn init_kalman(dt: f32, settings: &Settings) -> KalmanFilter<f32, U3, U2, U0> {
-        let mut kalman = KalmanFilter::default();
-        kalman.x = Vector3::new(0.0, 0.0, 0.0);
-
-        kalman.F = Matrix3::new(
-            1.0, dt, dt * dt * 0.5,
-            0.0, 1.0, dt,
-            0.0, 0.0, 1.0
-        );
-
-        kalman.H = Matrix2x3::new(
-            1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0
-        );
-
-        kalman.P = Matrix3::new(
-            settings.std_dev_barometer.pow(2), 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.pow(2),
-        );
-
-        kalman.Q = Matrix3::new(
-            0.25f32 * dt.pow(4), 0.5f32 * dt.pow(3), 0.5f32 * dt.pow(2),
-            0.5f32 * dt.pow(3), dt.pow(2), dt,
-            0.5f32 * dt.pow(2), dt, 1.0f32,
-        ) * settings.std_dev_process.pow(2);
-
-        kalman.R *= Matrix2::new(
-            settings.std_dev_barometer.pow(2), 0.0,
-            0.0, settings.std_dev_accelerometer.pow(2)
-        );
-
-        kalman
-    }
-
-    fn true_since(&mut self, cond: bool, duration: u32) -> bool {
-        let dur = self.condition_true_since
-            .map(|d| d + 1000 / crate::MAIN_LOOP_FREQ_HERTZ)
-            .unwrap_or(0);
-        self.condition_true_since = cond.then(|| dur);
-        self.condition_true_since.map(|dur| dur >= duration).unwrap_or(false)
     }
 
     fn switch_mode(&mut self, new_mode: FlightMode) {
@@ -238,117 +173,7 @@ impl Vehicle {
         }
 
         self.mode = new_mode;
-        self.mode_time = self.time;
-        self.condition_true_since = None;
         self.buzzer.switch_mode(self.time, new_mode);
-    }
-
-    pub fn tick_mode(&mut self) {
-        if self.mode < FlightMode::Armed {
-            self.altitude_ground = self.altitude();
-        }
-
-        if self.mode <= FlightMode::Armed {
-            self.altitude_max = self.altitude();
-        }
-
-        if self.mode == FlightMode::Flight {
-            self.altitude_max = f32::max(self.altitude_max, self.altitude());
-        }
-
-        let elapsed = self.time.checked_sub(self.mode_time).unwrap_or(0);
-        let armv = self.power.arm_voltage().unwrap_or(0);
-        let vacc = self.acceleration().map(|acc| acc.z).unwrap_or(0.0);
-        let rec_min_dur = self.settings.outputs_warning_time + self.settings.outputs_high_time;
-
-        let new_mode = match self.mode {
-            FlightMode::Idle => self.true_since(armv >= 100, 100).then(|| FlightMode::HardwareArmed),
-            FlightMode::HardwareArmed => self.true_since(armv < 10, 100).then(|| FlightMode::Idle),
-            FlightMode::Armed => self.true_since(vacc > self.settings.min_takeoff_acc, self.settings.min_takeoff_acc_time).then(|| FlightMode::Flight),
-            FlightMode::Flight => {
-                let falling = self.true_since(self.vertical_speed() < 0.0, self.settings.apogee_min_falling_time);
-                let min_exceeded = elapsed > self.settings.min_time_to_apogee;
-                let max_exceeded = elapsed > self.settings.max_time_to_apogee;
-                ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
-            }
-            FlightMode::RecoveryDrogue => {
-                match self.settings.main_output_mode {
-                    MainOutputMode::AtApogee => (elapsed > rec_min_dur).then(|| FlightMode::RecoveryMain),
-                    MainOutputMode::BelowAltitude => {
-                        let below_alt = self.altitude() < self.settings.main_output_deployment_altitude;
-                        (elapsed > rec_min_dur && below_alt).then(|| FlightMode::RecoveryMain)
-                    },
-                    MainOutputMode::Never => {
-                        let landed = self.true_since(self.acceleration().map(|acc| (9.5..10.0).contains(&acc.magnitude())).unwrap_or(true), 1000);
-                        (elapsed > rec_min_dur && landed).then(|| FlightMode::Landed)
-                    },
-                }
-            },
-            FlightMode::RecoveryMain => {
-                let landed = self.true_since(self.acceleration().map(|acc| (9.5..10.0).contains(&acc.magnitude())).unwrap_or(true), 1000);
-                (elapsed > rec_min_dur && landed).then(|| FlightMode::Landed)
-            },
-            FlightMode::Landed => None
-        };
-
-        if let Some(fm) = new_mode {
-            self.switch_mode(fm);
-        }
-
-        let recovery_high = elapsed > self.settings.outputs_warning_time && elapsed < rec_min_dur;
-        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
-        self.recovery.1.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
-    }
-
-    fn acceleration(&self) -> Option<Vector3<f32>> {
-        // TODO: use backup acc if necessary
-        self.imu.accelerometer()
-    }
-
-    fn altitude(&self) -> f32 {
-        self.kalman.x.x
-    }
-
-    fn vertical_speed(&self) -> f32 {
-        self.kalman.x.y
-    }
-
-    fn vertical_accel(&self) -> f32 {
-        self.kalman.x.z
-    }
-
-    #[cfg(not(feature = "gcs"))]
-    fn update_state_estimator(&mut self) {
-        let gyro = self.imu.gyroscope();
-        let acc = self.acceleration();
-        let mag = self.compass.magnetometer();
-        if let (Some(gyro), Some(acc), Some(mag)) = (&gyro, &acc, &mag) {
-            self.orientation = self
-                .ahrs
-                .update(&(gyro * 3.14159 / 180.0), acc, mag)
-                .ok()
-                .map(|q| *q);
-            self.acceleration_world = self.orientation
-                .map(|quat| quat.transform_vector(acc) - Vector3::new(0.0, 0.0, G));
-        } else {
-            self.orientation = None;
-            self.acceleration_world = None;
-        }
-
-        let altitude_baro = self.barometer.altitude()
-            .and_then(|a| (!a.is_nan()).then(|| a));
-        let accel_z = self.acceleration_world.map(|a| a.z)
-            .and_then(|a| (!a.is_nan()).then(|| a));
-
-        match (accel_z, altitude_baro) {
-            (Some(accel_z), Some(altitude_baro)) => {
-                let z = Vector2::new(altitude_baro, accel_z);
-                self.kalman.update(&z, None, None);
-                self.kalman.predict(None, None, None, None);
-            },
-            // TODO: handle error cases
-            _ => {}
-        }
     }
 
     fn handle_command(&mut self, cmd: Command) {
@@ -376,12 +201,26 @@ impl Vehicle {
         self.gps.tick(self.time, &self.clocks);
         self.compass.tick();
 
-        self.update_state_estimator();
+        // Update state estimator
+        self.state_estimator.update(
+            self.time,
+            self.mode,
+            self.imu.gyroscope(),
+            self.imu.accelerometer(),
+            self.acc.accelerometer(),
+            self.compass.magnetometer(),
+            self.barometer.altitude()
+        );
 
+        // Switch to new mode if necessary
+        if let Some(fm) = self.state_estimator.new_mode(self.power.arm_voltage().unwrap_or(0)) {
+            self.switch_mode(fm);
+        }
+
+        // Handle incoming messages
         #[cfg(feature = "rev2")]
         self.can.tick();
 
-        // Handle incoming messages
         if let Some(cmd) = self.radio.tick(self.time) {
             self.handle_command(cmd);
         }
@@ -408,7 +247,12 @@ impl Vehicle {
             }
         }
 
-        self.tick_mode();
+        // Set outputs
+        let elapsed = self.time.wrapping_sub(self.mode_time);
+        let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
+        let recovery_high = elapsed > self.settings.outputs_warning_time && elapsed < recovery_duration;
+        self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
+        self.recovery.1.set_state(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
 
         let (r,y,g) = self.mode.led_state(self.time);
         self.leds.0.set_state((!r).into());
@@ -416,6 +260,7 @@ impl Vehicle {
         self.leds.2.set_state((!g).into());
         self.buzzer.tick(self.time);
 
+        // Send telemetry
         if let Some(msg) = self.next_usb_telem() {
             self.usb_link.send_message(msg);
         }
@@ -424,6 +269,7 @@ impl Vehicle {
             self.radio.send_downlink_message(msg);
         }
 
+        // Write data to flash
         let flash_message = (self.mode >= FlightMode::Armed)
             .then(|| self.next_flash_telem())
             .flatten();
@@ -537,20 +383,20 @@ impl Into<TelemetryMain> for &Vehicle {
         TelemetryMain {
             time: self.time,
             mode: self.mode.clone(),
-            orientation: self.orientation.clone(),
-            vertical_speed: self.vertical_speed(),
-            vertical_accel: self.acceleration_world.map(|a| a.z).unwrap_or(0.0),
-            vertical_accel_filtered: self.vertical_accel(),
+            orientation: self.state_estimator.orientation.clone(),
+            vertical_speed: self.state_estimator.vertical_speed(),
+            vertical_accel: self.state_estimator.acceleration_world().map(|a| a.z).unwrap_or(0.0),
+            vertical_accel_filtered: self.state_estimator.vertical_accel(),
             altitude_baro: self.barometer.altitude().unwrap_or(0.0),
-            altitude: self.altitude(),
-            altitude_max: self.altitude_max,
+            altitude: self.state_estimator.altitude(),
+            altitude_max: self.state_estimator.altitude_max,
         }
     }
 }
 
 impl Into<TelemetryMainCompressed> for &Vehicle {
     fn into(self) -> TelemetryMainCompressed {
-        let quat = self.orientation.clone().map(|q| q.coords).map(|q| {
+        let quat = self.state_estimator.orientation.clone().map(|q| q.coords).map(|q| {
             (
                 (127.0 + q.x * 127.0) as u8,
                 (127.0 + q.y * 127.0) as u8,
@@ -562,12 +408,12 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             time: self.time,
             mode: self.mode.clone(),
             orientation: quat.unwrap_or((127, 127, 127, 127)),
-            vertical_speed: (self.vertical_speed() * 10.0).into(),
-            vertical_accel: self.acceleration_world.map(|a| a.z * 10.0).unwrap_or(0.0).into(),
-            vertical_accel_filtered: (self.vertical_accel() * 10.0).into(),
+            vertical_speed: (self.state_estimator.vertical_speed() * 10.0).into(),
+            vertical_accel: self.state_estimator.acceleration_world().map(|a| a.z * 10.0).unwrap_or(0.0).into(),
+            vertical_accel_filtered: (self.state_estimator.vertical_accel() * 10.0).into(),
             altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
-            altitude: (self.altitude() * 10.0) as u16,
-            altitude_max: (self.altitude_max * 10.0) as u16,
+            altitude: (self.state_estimator.altitude() * 10.0) as u16,
+            altitude_max: (self.state_estimator.altitude_max * 10.0) as u16,
         }
     }
 }
@@ -622,7 +468,7 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
             arm_voltage: self.power.arm_voltage().unwrap_or(0),
             current: self.power.battery_current().unwrap_or(0),
             lora_rssi: self.radio.rssi,
-            altitude_ground: (self.altitude_ground * 10.0) as u16,
+            altitude_ground: (self.state_estimator.altitude_ground * 10.0) as u16,
             transmit_power_and_data_rate: power_and_dr,
         }
     }

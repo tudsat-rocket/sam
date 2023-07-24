@@ -42,6 +42,7 @@ mod usb;
 mod vehicle;
 mod watchdog;
 mod settings;
+mod state_estimation;
 
 use sting_fc_firmware as _;
 

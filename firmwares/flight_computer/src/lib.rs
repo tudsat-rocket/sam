@@ -10,6 +10,7 @@ mod params;
 pub mod telemetry;
 pub mod settings;
 pub use params::*;
+pub mod state_estimation;
 
 #[cfg(feature = "no_std")]
 use defmt_rtt as _; // global logger (TODO)
