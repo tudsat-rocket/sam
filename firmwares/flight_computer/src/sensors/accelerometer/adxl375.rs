@@ -18,11 +18,12 @@ pub struct ADXL375<SPI, CS> {
     spi: Arc<Mutex<RefCell<SPI>>>,
     cs: CS,
     acc: Option<Vector3<f32>>,
+    offset: Vector3<f32>,
 }
 
 impl<SPI: SpiBus, CS: OutputPin> ADXL375<SPI, CS> {
     pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
-        let mut acc2 = Self { spi, cs, acc: None };
+        let mut acc2 = Self { spi, cs, acc: None, offset: Vector3::default() };
 
         acc2.configure_power(ADXL375Mode::Measure)?;
         acc2.write_u8(ADXL375Register::DataFormat, 0b00001011)?;
@@ -99,15 +100,19 @@ impl<SPI: SpiBus, CS: OutputPin> ADXL375<SPI, CS> {
         self.write_u8(ADXL375Register::DataRateControl, val)
     }
 
-    pub fn tick(&mut self, _time: u32, _primary_acc: Option<Vector3<f32>>) {
+    pub fn tick(&mut self) {
         if let Err(e) = self.read_sensor_data() {
             self.acc = None;
             log!(Error, "{:?}", e);
         }
     }
 
+    pub fn set_offset(&mut self, offset: Vector3<f32>) {
+        self.offset = offset;
+    }
+
     pub fn accelerometer(&self) -> Option<Vector3<f32>> {
-        self.acc
+        self.acc.map(|a| a - self.offset)
     }
 }
 

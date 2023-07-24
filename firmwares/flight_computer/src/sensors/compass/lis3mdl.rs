@@ -16,7 +16,8 @@ pub struct LIS3MDL<SPI, CS> {
     spi: Arc<Mutex<RefCell<SPI>>>,
     cs: CS,
     scale: LIS3MDLFullScale,
-    mag: Option<Vector3<f32>>
+    mag: Option<Vector3<f32>>,
+    offset: Vector3<f32>
 }
 
 impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
@@ -29,6 +30,7 @@ impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
             cs,
             scale: LIS3MDLFullScale::Max16Gauss,
             mag: None,
+            offset: Vector3::default()
         };
 
         let whoami = lis3.read_u8(LIS3MDLRegister::WhoAmI)?;
@@ -114,10 +116,9 @@ impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
             LIS3MDLFullScale::Max16Gauss => 1711.0,
         };
 
-        // TODO: configurable calibration values
-        let mag_x = (mag_x as f32) / lsb_to_gauss * 100.0 + 522.0;
-        let mag_y = (mag_y as f32) / lsb_to_gauss * 100.0 - 30.0;
-        let mag_z = (mag_z as f32) / lsb_to_gauss * 100.0 - 760.0;
+        let mag_x = (mag_x as f32) / lsb_to_gauss * 100.0;
+        let mag_y = (mag_y as f32) / lsb_to_gauss * 100.0;
+        let mag_z = (mag_z as f32) / lsb_to_gauss * 100.0;
 
         self.mag = Some(Vector3::new(-mag_x, mag_z, mag_y));
 
@@ -131,8 +132,12 @@ impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
         }
     }
 
+    pub fn set_offset(&mut self, offset: Vector3<f32>) {
+        self.offset = offset;
+    }
+
     pub fn magnetometer(&self) -> Option<Vector3<f32>> {
-        self.mag
+        self.mag.map(|m| m - self.offset)
     }
 }
 

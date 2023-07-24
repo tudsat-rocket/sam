@@ -21,6 +21,8 @@ pub struct Imu<SPI, CS> {
     accel_scale: LSM6AccelerometerScale,
     gyro: Option<Vector3<f32>>,
     accel: Option<Vector3<f32>>,
+    gyro_offset: Vector3<f32>,
+    accel_offset: Vector3<f32>,
 }
 
 impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
@@ -35,6 +37,8 @@ impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
             accel_scale,
             gyro: None,
             accel: None,
+            gyro_offset: Vector3::default(),
+            accel_offset: Vector3::default(),
         };
 
         // TODO: check status register?
@@ -124,12 +128,17 @@ impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
         }
     }
 
+    pub fn set_offsets(&mut self, gyro_offset: Vector3<f32>, accel_offset: Vector3<f32>) {
+        self.gyro_offset = gyro_offset;
+        self.accel_offset = accel_offset;
+    }
+
     pub fn accelerometer(&self) -> Option<Vector3<f32>> {
-        self.accel
+        self.accel.map(|a| a - self.accel_offset)
     }
 
     pub fn gyroscope(&self) -> Option<Vector3<f32>> {
-        self.gyro
+        self.gyro.map(|g| g - self.gyro_offset)
     }
 }
 

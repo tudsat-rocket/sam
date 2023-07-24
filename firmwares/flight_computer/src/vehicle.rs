@@ -139,6 +139,9 @@ impl Vehicle {
         let settings = Settings::default();
 
         radio.apply_settings(&settings.lora);
+        imu.set_offsets(settings.gyro_offset, settings.acc_offset);
+        acc.set_offset(settings.acc2_offset);
+        compass.set_offset(settings.mag_offset);
         let data_rate = settings.default_data_rate;
 
         let dt = 1.0 / (MAIN_LOOP_FREQ_HERTZ as f32);
@@ -369,7 +372,7 @@ impl Vehicle {
         self.power.tick();
         self.barometer.tick();
         self.imu.tick();
-        self.acc.tick(self.time, self.imu.accelerometer());
+        self.acc.tick();
         self.gps.tick(self.time, &self.clocks);
         self.compass.tick();
 

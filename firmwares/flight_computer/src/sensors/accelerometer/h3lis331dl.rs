@@ -1,7 +1,7 @@
-use core::{cell::RefCell, cmp::Ordering};
+use core::cell::RefCell;
 use core::ops::DerefMut;
 
-use alloc::{sync::Arc, collections::VecDeque, vec::Vec};
+use alloc::sync::Arc;
 
 use embedded_hal_one::spi::blocking::SpiBus;
 use embedded_hal_one::digital::blocking::OutputPin;
@@ -13,14 +13,12 @@ use nalgebra::Vector3;
 use crate::prelude::*;
 
 const G_TO_MS2: f32 = 9.80665;
-const OFFSET_ALPHA: f32 = 0.005;
 
 pub struct H3LIS331DL<SPI, CS> {
     spi: Arc<Mutex<RefCell<SPI>>>,
     cs: CS,
     acc: Option<Vector3<f32>>,
-    zero_offset_filter: VecDeque<Vector3<f32>>,
-    zero_offset: Vector3<f32>
+    offset: Vector3<f32>
 }
 
 impl<SPI: SpiBus, CS: OutputPin> H3LIS331DL<SPI, CS> {
@@ -29,8 +27,7 @@ impl<SPI: SpiBus, CS: OutputPin> H3LIS331DL<SPI, CS> {
             spi,
             cs,
             acc: None,
-            zero_offset_filter: VecDeque::with_capacity(8),
-            zero_offset: Vector3::default(),
+            offset: Vector3::default()
         };
 
         let mut whoami = 0;
@@ -108,43 +105,19 @@ impl<SPI: SpiBus, CS: OutputPin> H3LIS331DL<SPI, CS> {
         })
     }
 
-    pub fn tick(&mut self, time: u32, primary_acc: Option<Vector3<f32>>) {
+    pub fn tick(&mut self) {
         if let Err(e) = self.read_sensor_data() {
             self.acc = None;
             log!(Error, "Failed to read backup-up acc. data: {:?}", e);
         }
+    }
 
-        // Since the zero offset of this accelerometer can be all over the place,
-        // we use the values from the primary accelerometer to figure out the zero
-        // offset during the first seconds after power-up.
-        if time > 3000 {
-            return;
-        }
-
-        if let (Some(primary), Some(this)) = (primary_acc, self.acc) {
-            let diff = primary - this;
-
-            self.zero_offset_filter.truncate(7);
-            self.zero_offset_filter.push_front(diff);
-
-            let mut sorted_x: Vec<f32> = self.zero_offset_filter.iter().map(|f| f.x).collect();
-            let mut sorted_y: Vec<f32> = self.zero_offset_filter.iter().map(|f| f.y).collect();
-            let mut sorted_z: Vec<f32> = self.zero_offset_filter.iter().map(|f| f.z).collect();
-
-            sorted_x.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-            sorted_y.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-            sorted_z.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
-            let i = self.zero_offset_filter.len() / 2;
-            let diff = Vector3::new(sorted_x[i], sorted_y[i], sorted_z[i]);
-
-            self.zero_offset = (1.0 - OFFSET_ALPHA) * self.zero_offset + OFFSET_ALPHA * diff;
-        }
+    pub fn set_offset(&mut self, offset: Vector3<f32>) {
+        self.offset = offset;
     }
 
     pub fn accelerometer(&self) -> Option<Vector3<f32>> {
-        self.acc.map(|acc| acc + self.zero_offset)
-        //self.acc
+        self.acc.map(|acc| acc - self.offset)
     }
 }
 

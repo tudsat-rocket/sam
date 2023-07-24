@@ -107,13 +107,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             identifier: "Sting FC".into(),
-            // TODO: unused
             gyro_offset: Vector3::default(),
-            // TODO: unused
             acc_offset: Vector3::default(),
-            // TODO: unused
             acc2_offset: Vector3::default(),
-            // TODO: unused
             mag_offset: Vector3::default(),
             mahony_kp: 0.5,
             mahony_ki: 0.0,

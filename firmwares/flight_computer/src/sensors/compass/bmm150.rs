@@ -33,6 +33,7 @@ pub struct BMM150<SPI, CS> {
     cs: CS,
     trim_data: Option<BMM150TrimData>,
     mag: Option<Vector3<f32>>,
+    offset: Vector3<f32>
 }
 
 impl<SPI: SpiBus, CS: OutputPin> BMM150<SPI, CS> {
@@ -42,6 +43,7 @@ impl<SPI: SpiBus, CS: OutputPin> BMM150<SPI, CS> {
             cs,
             trim_data: None,
             mag: None,
+            offset: Vector3::default()
         };
 
         bmm.set_power_control(true)?;
@@ -171,8 +173,12 @@ impl<SPI: SpiBus, CS: OutputPin> BMM150<SPI, CS> {
         }
     }
 
+    pub fn set_offset(&mut self, offset: Vector3<f32>) {
+        self.offset = offset;
+    }
+
     pub fn magnetometer(&self) -> Option<Vector3<f32>> {
-        self.mag
+        self.mag.map(|m| m - self.offset)
     }
 }
 
