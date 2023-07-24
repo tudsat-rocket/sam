@@ -26,6 +26,7 @@ use crate::settings::*;
 use crate::state_estimation::StateEstimator;
 use crate::telemetry::*;
 use crate::usb::*;
+use crate::runcam::*;
 
 const RUNTIME_HISTORY_LEN: usize = 200;
 
@@ -76,6 +77,7 @@ pub struct Vehicle {
     leds: LEDs,
     buzzer: Buzzer,
     recovery: Recovery,
+    runcam: RuncamCamera,
     // vehicle state
     pub time: u32,
     state_estimator: StateEstimator,
@@ -104,7 +106,8 @@ impl Vehicle {
         power: Power,
         leds: LEDs,
         buzzer: Buzzer,
-        recovery: Recovery
+        recovery: Recovery,
+        runcam: RuncamCamera,
     ) -> Self {
         // Use this to reset settings without ground station during development.
         //flash.write_settings(&Settings::default()).unwrap();
@@ -150,6 +153,7 @@ impl Vehicle {
             leds,
             buzzer,
             recovery,
+            runcam,
 
             time: 0,
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQ_HERTZ as f32, settings.clone()),
@@ -274,6 +278,8 @@ impl Vehicle {
             .then(|| self.next_flash_telem())
             .flatten();
         self.flash.tick(self.time, flash_message);
+
+        self.runcam.tick(self.time, self.mode);
 
         self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
         Logger::update_time(self.time);

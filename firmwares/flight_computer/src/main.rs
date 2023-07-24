@@ -43,6 +43,7 @@ mod vehicle;
 mod watchdog;
 mod settings;
 mod state_estimation;
+mod runcam;
 
 use sting_fc_firmware as _;
 
@@ -58,6 +59,7 @@ use sensors::*;
 use usb::*;
 use vehicle::*;
 use watchdog::*;
+use runcam::*;
 
 mod prelude {
     pub use crate::logging::*;
@@ -276,6 +278,8 @@ fn main() -> ! {
         gpioc.pc4.into_analog()
     );
 
+    let runcam = RuncamCamera::init(dp.USART1, gpioa.pa9, gpioa.pa10, &clocks);
+
     // Configure main loop timer
     let mut timer = dp.TIM2.counter_hz(&clocks);
     timer.start(MAIN_LOOP_FREQ_HERTZ.Hz()).unwrap();
@@ -305,7 +309,8 @@ fn main() -> ! {
         power,
         leds,
         buzzer,
-        recovery
+        recovery,
+        runcam
     );
 
     log!(Info, "Starting main loop.");
