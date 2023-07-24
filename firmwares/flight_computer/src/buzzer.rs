@@ -3,6 +3,7 @@
 
 use alloc::vec::Vec;
 
+use hal::pac::GPIOC;
 use hal::prelude::*;
 use hal::timer::pwm::PwmHz;
 use stm32f4xx_hal as hal;
@@ -244,9 +245,21 @@ impl Buzzer {
 
         let note = self.current_melody.get(self.current_index);
         if let Some(freq) = note.map(|n| n.freq()).flatten() {
+            unsafe {
+                (*GPIOC::ptr()).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 14) | (0b10 << 14)));
+                (*GPIOC::ptr()).otyper.modify(|r, w| w.bits(r.bits() & !(0b1 << 7)));
+            }
             self.pwm.set_period((freq as u32).Hz());
             self.pwm.enable(CHANNEL);
         } else {
+            // We set the buzzer output pin into an open-drain state when not using it to
+            // reduce leakage current. Since the HAL doesn't provide a straight-forward way
+            // to do that, we do it manually.
+            // TODO: do it for rev1 too
+            unsafe {
+                (*GPIOC::ptr()).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 14) | (0b01 << 14)));
+                (*GPIOC::ptr()).otyper.modify(|r, w| w.bits(r.bits() | (0b1 << 7)));
+            }
             self.pwm.disable(CHANNEL);
         }
     }
