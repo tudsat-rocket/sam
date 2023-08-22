@@ -17,6 +17,7 @@ mod telemetry_ext;
 #[allow(unused_variables)]
 #[allow(unused_imports)]
 mod serial;
+mod simulation;
 mod settings;
 
 pub use crate::gui::*;

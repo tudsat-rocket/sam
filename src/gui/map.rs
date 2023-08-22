@@ -20,7 +20,6 @@ use egui::{Context, Color32, ColorImage, TextureHandle, Vec2};
 use egui::mutex::Mutex;
 
 use crate::state::*;
-use crate::gui::*;
 
 fn tile_mapbox_url(tile: &Tile, access_token: &String) -> String {
     format!("https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/512/{}/{}/{}@2x?access_token={}",
@@ -138,25 +137,32 @@ pub struct MapCache {
     max_alt: f64,
     pub center: (f64, f64),
     pub hdop_circle_points: Option<Vec<[f64; 2]>>,
+    gradient_lookup: Vec<Color32>,
 }
 
 impl MapCache {
     pub fn new() -> Self {
+        let gradient_lookup = (0..=100)
+            .map(|i| colorgrad::yl_or_rd().at((i as f64) / 100.0).to_rgba8())
+            .map(|color| Color32::from_rgb(color[0], color[1], color[2]))
+            .collect();
+
         MapCache {
             points: Vec::new(),
             plot_points: Vec::new(),
             max_alt: 300.0,
             center: (49.861445, 8.68519),
-            hdop_circle_points: None
+            hdop_circle_points: None,
+            gradient_lookup
         }
     }
 
-    pub fn push(&mut self, _x: Instant, msg: &DownlinkMessage) {
-        if let (Some(lat), Some(lng)) = (msg.latitude(), msg.longitude()) {
+    pub fn push(&mut self, _x: Instant, vs: &VehicleState) {
+        if let (Some(lat), Some(lng)) = (vs.latitude, vs.longitude) {
             let (lat, lng) = (lat as f64, lng as f64);
-            let altitude_ground = msg.altitude_ground().unwrap_or(0.0);
-            let alt = msg.altitude_gps().map(|alt| alt - altitude_ground).unwrap_or(0.0) as f64;
-            let hdop = msg.hdop().unwrap_or(9999);
+            let altitude_ground = vs.altitude_ground.unwrap_or(0.0);
+            let alt = vs.altitude_gps.map(|alt| alt - altitude_ground).unwrap_or(0.0) as f64;
+            let hdop = vs.hdop.unwrap_or(9999);
 
             self.points.push((lat, lng, alt));
             self.max_alt = f64::max(self.max_alt, alt);
@@ -168,8 +174,7 @@ impl MapCache {
                     puffin::profile_scope!("map_line_creation");
 
                     let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
-                    let color = colorgrad::yl_or_rd().at(1.0 - pair[0].2 / self.max_alt).to_rgba8();
-                    let color = Color32::from_rgb(color[0], color[1], color[2]);
+                    let color = self.gradient_lookup[((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize];
                     (points, color)
                     })
                 .collect();
@@ -294,8 +299,8 @@ impl MapState {
         Box::new(iter)
     }
 
-    pub fn push(&self, x: Instant, msg: &DownlinkMessage) {
-        self.cache.borrow_mut().push(x, msg);
+    pub fn push(&self, x: Instant, vs: &VehicleState) {
+        self.cache.borrow_mut().push(x, vs);
     }
 
     pub fn reset(&self) {

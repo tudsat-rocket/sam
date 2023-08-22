@@ -15,7 +15,6 @@ colored = "2"
 image = { version = "0.24", features = ["png"] }
 egui = "0.22"
 eframe = "0.22"
-epaint = "0.22"
 egui_extras = { version = "0.22", features = ["image"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"
@@ -29,10 +28,16 @@ directories = "4.0"
 slippy-map-tiles = "0.16"
 colorgrad = "0.6"
 rand = "0.8"
+statrs = "0.16.0"
 
 # Used for profiling
 puffin = { version = "0.14", optional = true }
 puffin_egui = { version = "0.19", optional = true }
+
+[patch.crates-io]
+egui = { git = "https://github.com/emilk/egui", branch = "master" }
+eframe = { git = "https://github.com/emilk/egui", branch = "master" }
+egui_extras = { git = "https://github.com/emilk/egui", branch = "master" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 rfd = "0.10"

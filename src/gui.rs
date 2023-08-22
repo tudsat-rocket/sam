@@ -10,15 +10,13 @@ use std::time::Instant;
 use instant::Instant;
 
 use eframe::egui;
-use eframe::emath::Align;
 use egui::FontFamily::Proportional;
-use egui::{TextStyle::*, Button, DragValue, TextEdit, RichText};
+use egui::{Align, TextStyle::*, Button, TextEdit, RichText, CollapsingHeader};
 use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily, SelectableLabel};
 use egui_extras::RetainedImage;
 
 use log::*;
 
-use sting_fc_firmware::settings::*;
 use sting_fc_firmware::telemetry::*;
 
 mod top_bar;
@@ -28,9 +26,12 @@ mod log_scroller;
 mod maxi_grid;
 mod theme;
 mod misc;
+mod fc_settings;
+mod simulation_settings;
 
 use crate::state::*;
 use crate::data_source::*;
+use crate::simulation::*;
 use crate::file::*;
 use crate::settings::AppSettings;
 
@@ -41,6 +42,8 @@ use crate::gui::log_scroller::*;
 use crate::gui::maxi_grid::*;
 use crate::gui::theme::*;
 use crate::gui::misc::*;
+use crate::gui::fc_settings::*;
+use crate::gui::simulation_settings::*;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
@@ -69,10 +72,6 @@ pub struct Sam {
     settings: AppSettings,
     data_source: Box<dyn DataSource>,
     tab: GuiTab,
-
-    telemetry_msgs: Rc<RefCell<Vec<(Instant, DownlinkMessage)>>>,
-    log_messages: Vec<(u32, String, LogLevel, String)>,
-    fc_settings: Option<Settings>,
 
     logo: RetainedImage,
     logo_inverted: RetainedImage,
@@ -136,77 +135,78 @@ impl Sam {
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
             .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.z))
             .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.x))
-            .line("Yaw (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y));
+            .line("Yaw (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y))
+            .line("True Roll (Z) [°]", b1, |vs| vs.true_euler_angles().map(|a| a.z))
+            .line("True Pitch (X) [°]", r1, |vs| vs.true_euler_angles().map(|a| a.x))
+            .line("True Yaw (Y) [°]", g1, |vs| vs.true_euler_angles().map(|a| a.y));
 
-        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (Some(-1.0), Some(1.0)), shared_plot.clone())
-            .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel())
-            .line("Vertical Accel (Filt.) [m/s²]", o, |vs| vs.vertical_accel_filtered())
-            .line("Vario [m/s]", b, |vs| vs.vertical_speed());
+        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
+            .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel)
+            .line("Vertical Accel (Filt.) [m/s²]", o, |vs| vs.vertical_accel_filtered)
+            .line("Vario [m/s]", b, |vs| vs.vertical_speed)
+            .line("True Vertical Accel [m/s²]", g, |vs| vs.true_vertical_accel)
+            .line("True Vario [m/s]", b1, |vs| vs.true_vertical_speed);
 
         // TODO: ylimits
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), shared_plot.clone())
-            .line("Altitude (Ground) [m]", br, |vs| vs.altitude_ground())
-            //.line("Altitude (Max) [m]", r, |vs| vs.altitude_max())
-            .line("Altitude (Baro) [m]", b1, |vs| vs.altitude_baro())
-            .line("Altitude [m]", b, |vs| vs.altitude())
-            .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps());
+            .line("Altitude (Ground) [m]", br, |vs| vs.altitude_ground)
+            //.line("Altitude (Max) [m]", r, |vs| vs.altitude_max)
+            .line("Altitude (Baro) [m]", b1, |vs| vs.altitude_baro)
+            .line("Altitude [m]", b, |vs| vs.altitude)
+            .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope().map(|a| a.x))
-            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope().map(|a| a.y))
-            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope().map(|a| a.z));
+            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope.map(|a| a.x))
+            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope.map(|a| a.y))
+            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope.map(|a| a.z));
 
         let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2().map(|a| a.x))
-            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2().map(|a| a.y))
-            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2().map(|a| a.z))
-            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1().map(|a| a.x))
-            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1().map(|a| a.y))
-            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1().map(|a| a.z));
+            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2.map(|a| a.x))
+            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2.map(|a| a.y))
+            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2.map(|a| a.z))
+            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1.map(|a| a.x))
+            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1.map(|a| a.y))
+            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1.map(|a| a.z));
 
         let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
-            .line("Mag (X) [µT]", r, |vs| vs.magnetometer().map(|a| a.x))
-            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer().map(|a| a.y))
-            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer().map(|a| a.z));
+            .line("Mag (X) [µT]", r, |vs| vs.magnetometer.map(|a| a.x))
+            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer.map(|a| a.y))
+            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer.map(|a| a.z));
 
-        let barometer_plot = PlotState::new("Barometer", (Some(900.0), Some(1100.0)), shared_plot.clone())
-            .line("Pressure [mbar]", c, |vs| vs.pressure());
+        let barometer_plot = PlotState::new("Pressures", (Some(900.0), Some(1100.0)), shared_plot.clone())
+            .line("Baro Pressure [mbar]", c, |vs| vs.pressure_baro);
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Baro. Temp. [°C]", c, |vs| vs.temperature_baro())
-            .line("Core Temp. [°C]", b, |vs| vs.temperature_core());
+            .line("Baro. Temp. [°C]", c, |vs| vs.temperature_baro)
+            .line("Core Temp. [°C]", b, |vs| vs.temperature_core);
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Arm Voltage [V]", o, |vs| vs.arm_voltage())
-            .line("Battery Voltage [V]", g, |vs| vs.battery_voltage())
-            .line("Current [A]", o1, |vs| vs.current())
-            .line("Core Voltage [V]", b, |vs| vs.cpu_voltage());
+            .line("Arm Voltage [V]", o, |vs| vs.arm_voltage)
+            .line("Battery Voltage [V]", g, |vs| vs.battery_voltage)
+            .line("Current [A]", o1, |vs| vs.current)
+            .line("Charge Voltage [V]", b, |vs| vs.charge_voltage);
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", o, |vs| vs.cpu_utilization().map(|u| u as f32))
-            .line("Heap Util. [%]", g, |vs| vs.heap_utilization().map(|u| u as f32));
+            .line("CPU Util. [%]", o, |vs| vs.cpu_utilization.map(|u| u as f32))
+            .line("Heap Util. [%]", g, |vs| vs.heap_utilization.map(|u| u as f32));
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
-            .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi().map(|x| x as f32 / -2.0))
-            .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal().map(|x| x as f32 / -2.0))
-            .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr().map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi().map(|x| x as f32 / -2.0));
+            .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
+            .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
+            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0));
 
         let bytes = include_bytes!("../assets/logo.png");
         let logo = RetainedImage::from_image_bytes("logo.png", bytes).unwrap();
 
         let bytes = include_bytes!("../assets/logo_inverted.png");
         let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
-        let telemetry_msgs = Rc::new(RefCell::new(Vec::new()));
         let map = MapState::new(settings.mapbox_access_token.clone()); // TODO
 
         Self {
             settings,
             data_source,
             tab: GuiTab::Plot,
-            telemetry_msgs,
-            log_messages: Vec::new(),
-            fc_settings: None,
             logo,
             logo_inverted,
             archive_panel_open: cfg!(target_arch = "wasm32"),
@@ -248,50 +248,34 @@ impl Sam {
     }
 
     /// Resets the GUI
-    fn reset(&mut self) {
+    fn reset(&mut self, keep_position: bool) {
         info!("Resetting.");
-        self.telemetry_msgs.borrow_mut().truncate(0);
-        self.log_messages.truncate(0);
-        self.fc_settings = None;
         self.data_source.reset();
         let now = Instant::now();
-        self.all_plots(|plot| plot.reset(now));
+        self.all_plots(|plot| plot.reset(now, keep_position));
         self.map.reset();
     }
 
-    /// Incorporates a new downlink message
-    fn process_telemetry(&mut self, time: Instant, msg: DownlinkMessage) {
-        if let DownlinkMessage::Log(t, l, ll, m) = msg {
-            self.log_messages.push((t, l, ll, m));
-            return;
-        }
-
-        if let DownlinkMessage::Settings(settings) = msg {
-            self.fc_settings = Some(settings);
-            return;
-        }
-
-        self.all_plots(|plot| plot.push(time, &msg));
-        self.map.push(time, &msg);
-        self.telemetry_msgs.borrow_mut().push((time, msg.clone()));
+    fn show_all(&mut self) {
+        self.all_plots(|plot| plot.show_all());
     }
 
     /// Returns the "current" value for the given callback. This is the last
     /// known of the value at the current time.
     /// TODO: incorporate cursor position
-    fn current<T>(&self, callback: impl Fn(&DownlinkMessage) -> Option<T>) -> Option<T> {
-        self.telemetry_msgs.borrow().iter().rev().find_map(|(_t, msg)| callback(msg))
+    fn current<T>(&mut self, callback: impl Fn(&VehicleState) -> Option<T>) -> Option<T> {
+        self.data_source.vehicle_states().rev().find_map(|(_t, msg)| callback(msg))
     }
 
     /// Opens a log file data source
     fn open_log_file(&mut self, ds: LogFileDataSource) {
-        self.reset();
+        self.reset(false);
         self.data_source = Box::new(ds);
     }
 
     /// Closes the currently opened data source
-    fn close_log_file(&mut self) {
-        self.reset();
+    fn close_data_source(&mut self) {
+        self.reset(false);
         self.data_source = Box::new(SerialDataSource::new(self.settings.lora.clone()));
     }
 
@@ -303,13 +287,15 @@ impl Sam {
         #[cfg(feature = "profiling")]
         puffin_egui::profiler_window(ctx);
 
-        // Process new messages TODO. iter
-        for (time, msg) in self.data_source.next_messages() {
-            self.process_telemetry(time, msg);
+        // Process new messages
+        let new: Vec<(Instant, VehicleState)> = self.data_source.new_vehicle_states().cloned().collect();
+        for (time, vs) in &new {
+            self.all_plots(|plot| plot.push(*time, vs));
+            self.map.push(*time, vs);
         }
 
         // TODO: only send this if we know it's not a ground station?
-        if self.fc_settings.is_none() && self.telemetry_msgs.borrow().len() > 0 {
+        if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
             self.data_source.send(UplinkMessage::ReadSettings).unwrap();
         }
 
@@ -373,20 +359,28 @@ impl Sam {
 
                 // Opening files manually is not available on web assembly
                 #[cfg(target_arch = "x86_64")]
-                if ui.button("🗁  Open Log File").clicked() {
+                if ui.selectable_label(false, "🗁  Open Log File").clicked() {
                     if let Some(data_source) = open_file() {
                         self.open_log_file(data_source);
                     }
                 }
 
                 // Toggle archive panel
-                ui.toggle_button(&mut self.archive_panel_open, "🗄 Open Archive", "🗄 Close Archive");
+                let text = if self.archive_panel_open { "🗄 Close Archive" } else { "🗄 Open Archive" };
+                ui.toggle_value(&mut self.archive_panel_open, text);
+
+                // Toggle archive panel
+                if ui.selectable_label(self.data_source.simulation_settings().is_some(), "💻 Simulate").clicked() {
+                    self.data_source = Box::new(SimulationDataSource::default());
+                    self.reset(false);
+                    self.show_all();
+                }
 
                 // Show a button to the right to close the current log
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if self.data_source.is_log_file() {
+                    if self.data_source.is_log_file() || self.data_source.simulation_settings().is_some() {
                         if ui.button("❌").clicked() {
-                            self.close_log_file();
+                            self.close_data_source();
                         }
                     }
                 });
@@ -402,7 +396,7 @@ impl Sam {
                     ui.set_width(ui.available_width() / 2.0);
                     let (status_color, status_text) = self.data_source.status();
                     ui.colored_label(status_color, status_text);
-                    ui.label(self.fc_settings.as_ref().map(|s| s.identifier.clone()).unwrap_or_default());
+                    ui.label(self.data_source.fc_settings().map(|s| s.identifier.clone()).unwrap_or_default());
                     ui.colored_label(Color32::GRAY, self.data_source.info_text());
                 });
 
@@ -411,7 +405,7 @@ impl Sam {
                     #[cfg(not(target_arch = "wasm32"))]
                     ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
                         if ui.button("⏮  Reset").clicked() {
-                            self.reset();
+                            self.reset(false);
                         }
                     });
 
@@ -464,6 +458,39 @@ impl Sam {
             });
         }
 
+        if self.data_source.simulation_settings().is_some() {
+            let old_settings = self.data_source.simulation_settings().unwrap().clone();
+
+            egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {
+                ui.heading("Simulation");
+                ui.add_space(20.0);
+
+                CollapsingHeader::new("Simulation Parameters").default_open(true).show(ui, |ui| {
+                    let settings = self.data_source.simulation_settings().unwrap();
+                    settings.ui(ui)
+                });
+
+                CollapsingHeader::new("(Simulated) FC Settings").default_open(false).show(ui, |ui| {
+                    let settings = self.data_source.simulation_settings().unwrap();
+                    settings.fc_settings.ui(ui, None)
+                });
+
+                ui.add_space(20.0);
+
+                let changed = *self.data_source.simulation_settings().unwrap() != old_settings;
+                let released = false;
+                ui.horizontal(|ui| {
+                    if ui.button("Reset").clicked() {
+                        *(self.data_source.simulation_settings().unwrap()) = SimulationSettings::default();
+                    }
+
+                    if ui.button("↻  Rerun").clicked() || (changed && released) {
+                        self.reset(true);
+                    }
+                });
+            });
+        }
+
         // Top panel containing text indicators and flight mode buttons
         egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -478,28 +505,26 @@ impl Sam {
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() * 0.55);
 
-                    let time = self.telemetry_msgs.borrow().last().map(|(_t, msg)| format!("{:10.3}", (msg.time() as f32) / 1000.0));
-                    let mode = self.current(|vs| vs.mode()).map(|s| format!("{:?}", s));
-                    let battery_voltage = self.current(|vs| vs.battery_voltage()).map(|v| format!("{:.2}", v));
-                    let vertical_speed = self.current(|vs| vs.vertical_speed()).map(|v| format!("{:.2}", v));
+                    let time = self.data_source.vehicle_states().last().map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
+                    let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
+                    let battery_voltage = self.current(|vs| vs.battery_voltage).map(|v| format!("{:.2}", v));
+                    let vertical_speed = self.current(|vs| vs.vertical_speed).map(|v| format!("{:.2}", v));
 
-                    let alt_ground = self.current(|vs| vs.altitude_ground()).unwrap_or(0.0);
-                    let alt = self.current(|vs| vs.altitude()).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_max = self.current(|vs| vs.altitude_max()).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_baro = self.current(|vs| vs.altitude_baro()).map(|a| format!("{:.1}", a));
-                    let alt_gps = self.current(|vs| vs.altitude_gps()).map(|a| format!("{:.1}", a));
+                    let alt_ground = self.current(|vs| vs.altitude_ground).unwrap_or(0.0);
+                    let alt = self.current(|vs| vs.altitude).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_max = self.current(|vs| vs.altitude_max).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
+                    let alt_baro = self.current(|vs| vs.altitude_baro).map(|a| format!("{:.1}", a));
+                    let alt_gps = self.current(|vs| vs.altitude_gps).map(|a| format!("{:.1}", a));
 
-                    let last_gps_msg = self
-                        .telemetry_msgs
-                        .borrow()
-                        .iter()
+                    let last_gps = self.data_source
+                        .vehicle_states()
                         .rev()
-                        .find_map(|(_t, msg)| msg.gps_fix().is_some().then(|| msg))
+                        .find_map(|(_t, vs)| vs.gps_fix.is_some().then(|| vs))
                         .cloned();
-                    let gps_status = last_gps_msg.as_ref().map(|vs| format!("{:?} ({})", vs.gps_fix().unwrap(), vs.num_satellites().unwrap_or(0)));
-                    let hdop = last_gps_msg.as_ref().map(|vs| format!("{:.2}", vs.hdop().unwrap_or(9999) as f32 / 100.0));
-                    let latitude = last_gps_msg.as_ref().and_then(|vs| vs.latitude()).map(|l| format!("{:.6}", l));
-                    let longitude = last_gps_msg.as_ref().and_then(|vs| vs.longitude()).map(|l| format!("{:.6}", l));
+                    let gps_status = last_gps.as_ref().map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0)));
+                    let hdop = last_gps.as_ref().map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0));
+                    let latitude = last_gps.as_ref().and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l));
+                    let longitude = last_gps.as_ref().and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l));
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 3.0);
@@ -533,7 +558,7 @@ impl Sam {
                 ui.vertical(|ui| {
                     ui.label("Data Rate [Hz]");
                     ui.horizontal(|ui| {
-                        let current = self.current(|vs| vs.telemetry_data_rate()).unwrap_or_default();
+                        let current = self.current(|vs| vs.telemetry_data_rate).unwrap_or_default();
                         if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == TelemetryDataRate::Low, "20")).clicked() {
                             self.data_source.send_command(Command::SetDataRate(TelemetryDataRate::Low)).unwrap();
                         }
@@ -544,7 +569,7 @@ impl Sam {
 
                     ui.label("Transmit Power [dBm]");
                     ui.horizontal(|ui| {
-                        let current = self.current(|vs| vs.transmit_power()).unwrap_or_default();
+                        let current = self.current(|vs| vs.transmit_power).unwrap_or_default();
                         if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P14dBm, "14")).clicked() {
                             self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
                         }
@@ -567,7 +592,7 @@ impl Sam {
                         ui.command_button("🗑 Erase Flash", Command::EraseFlash, &mut self.data_source);
 
                         let flash_pointer: f32 = self
-                            .current(|vs| vs.flash_pointer())
+                            .current(|vs| vs.flash_pointer)
                             .map(|fp| (fp as f32) / 1024.0 / 1024.0)
                             .unwrap_or_default();
                         let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
@@ -575,7 +600,7 @@ impl Sam {
                         let text = format!("🖴  Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size);
                         ui.flash_bar(ui.available_width() * 0.6, f, text);
 
-                        let voltage = self.current(|vs| vs.battery_voltage()).unwrap_or_default();
+                        let voltage = self.current(|vs| vs.battery_voltage).unwrap_or_default();
                         let f = (voltage - 6.0) / (8.4 - 6.0);
                         let text = format!("🔋 Battery: {:.2}V", voltage);
                         ui.battery_bar(ui.available_width(), f, text);
@@ -584,7 +609,7 @@ impl Sam {
                     ui.horizontal_centered(|ui| {
                         ui.set_height(ui.available_height() - spacing);
                         let w = ui.available_width() / 7.0 - style.spacing.item_spacing.x * (6.0 / 7.0);
-                        let current = self.current(|vs| vs.mode());
+                        let current = self.current(|vs| vs.mode);
                         ui.flight_mode_button(w, FlightMode::Idle, current, &mut self.data_source);
                         ui.flight_mode_button(w, FlightMode::HardwareArmed, current, &mut self.data_source);
                         ui.flight_mode_button(w, FlightMode::Armed, current, &mut self.data_source);
@@ -606,7 +631,7 @@ impl Sam {
                 .resizable(true)
                 .frame(frame)
                 .show(ctx, |ui| {
-                    ui.log_scroller(&self.log_messages);
+                    ui.log_scroller(self.data_source.log_messages());
                 });
         }
 
@@ -683,8 +708,8 @@ impl Sam {
                                     ui.label("LoRa binding phrase");
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if ui.button("⬅ Copy from FC").clicked() {
-                                            self.settings.lora.binding_phrase = self.fc_settings
-                                                .as_ref()
+                                            self.settings.lora.binding_phrase = self.data_source
+                                                .fc_settings()
                                                 .map(|s| s.lora.binding_phrase.clone())
                                                 .unwrap_or(self.settings.lora.binding_phrase.clone());
                                         }
@@ -696,8 +721,8 @@ impl Sam {
                                     ui.label("LoRa uplink key");
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if ui.button("⬅ Copy from FC").clicked() {
-                                            self.settings.lora.authentication_key = self.fc_settings
-                                                .as_ref()
+                                            self.settings.lora.authentication_key = self.data_source
+                                                .fc_settings()
                                                 .map(|s| s.lora.authentication_key.clone())
                                                 .unwrap_or(self.settings.lora.authentication_key.clone());
                                         }
@@ -740,268 +765,8 @@ impl Sam {
                             ui.heading("FC Settings");
                             ui.add_space(10.0);
 
-                            if let Some(settings) = self.fc_settings.as_mut() {
-                                egui::Grid::new("fc_settings_grid")
-                                    .num_columns(2)
-                                    .spacing([40.0, 4.0])
-                                    .striped(true)
-                                    .show(ui, |ui| {
-                                        ui.label("Identifier");
-                                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut settings.identifier));
-                                        ui.end_row();
-
-                                        ui.label("LoRa channel selection (500kHz BW)");
-                                        ui.vertical(|ui| {
-                                            ui.horizontal(|ui| {
-                                                ui.toggle_value(&mut settings.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
-                                                ui.label(RichText::new("MHz").weak().size(10.0));
-                                            });
-                                            ui.horizontal(|ui| {
-                                                ui.toggle_value(&mut settings.lora.channels[7],  RichText::new("866.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[8],  RichText::new("867.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[9],  RichText::new("867.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[10], RichText::new("868.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[11], RichText::new("868.75").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[12], RichText::new("869.25").monospace().size(10.0));
-                                                ui.toggle_value(&mut settings.lora.channels[13], RichText::new("869.75").monospace().size(10.0));
-                                                ui.label(RichText::new("MHz").weak().size(10.0));
-                                            });
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("LoRa binding phrase");
-                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            if ui.button("➡ Copy from GCS").clicked() {
-                                                settings.lora.binding_phrase = self.settings.lora.binding_phrase.clone();
-                                            }
-
-                                            ui.add_sized(ui.available_size(), TextEdit::singleline(&mut settings.lora.binding_phrase));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("LoRa uplink key");
-                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            if ui.button("➡ Copy from GCS").clicked() {
-                                                settings.lora.authentication_key = self.settings.lora.authentication_key.clone();
-                                            }
-
-                                            if ui.button("🔃Rekey").clicked() {
-                                                settings.lora.authentication_key = rand::random();
-                                            }
-
-                                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                                ui.monospace(format!("{:032x}", settings.lora.authentication_key));
-                                            });
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Default Data Rate");
-                                        ui.horizontal(|ui| {
-                                            ui.selectable_value(&mut settings.default_data_rate, TelemetryDataRate::Low, "Low");
-                                            ui.selectable_value(&mut settings.default_data_rate, TelemetryDataRate::High, "High");
-                                            ui.label(RichText::new("(20Hz vs 40Hz; higher data incl. raw IMU values, may interfere w/ GPS)").weak().size(10.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Gyroscope cal. offsets");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("X");
-                                            ui.add(DragValue::new(&mut settings.gyro_offset.x)
-                                                   .suffix(" °/s")
-                                                   .speed(0.1)
-                                                   .clamp_range(-2000.0..=2000.0));
-
-                                            ui.weak("Y");
-                                            ui.add(DragValue::new(&mut settings.gyro_offset.y)
-                                                   .suffix(" °/s")
-                                                   .speed(0.1)
-                                                   .clamp_range(-2000.0..=2000.0));
-
-                                            ui.weak("Z");
-                                            ui.add(DragValue::new(&mut settings.gyro_offset.z)
-                                                   .suffix(" °/s")
-                                                   .speed(0.1)
-                                                   .clamp_range(-2000.0..=2000.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Main accelerometer cal. offsets");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("X");
-                                            ui.add(DragValue::new(&mut settings.acc_offset.x)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-1000.0..=1000.0));
-
-                                            ui.weak("Y");
-                                            ui.add(DragValue::new(&mut settings.acc_offset.y)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-1000.0..=1000.0));
-
-                                            ui.weak("Z");
-                                            ui.add(DragValue::new(&mut settings.acc_offset.z)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-1000.0..=1000.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Backup accelerometer cal. offsets");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("X");
-                                            ui.add(DragValue::new(&mut settings.acc2_offset.x)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-4000.0..=4000.0));
-
-                                            ui.weak("Y");
-                                            ui.add(DragValue::new(&mut settings.acc2_offset.y)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-4000.0..=4000.0));
-
-                                            ui.weak("Z");
-                                            ui.add(DragValue::new(&mut settings.acc2_offset.z)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.01)
-                                                   .clamp_range(-4000.0..=4000.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Magnetometer cal. offsets");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("X");
-                                            ui.add(DragValue::new(&mut settings.mag_offset.x)
-                                                   .suffix(" µT")
-                                                   .speed(0.1)
-                                                   .clamp_range(-1000.0..=1000.0));
-
-                                            ui.weak("Y");
-                                            ui.add(DragValue::new(&mut settings.mag_offset.y)
-                                                   .suffix(" µT")
-                                                   .speed(0.1)
-                                                   .clamp_range(-1000.0..=1000.0));
-
-                                            ui.weak("Z");
-                                            ui.add(DragValue::new(&mut settings.mag_offset.z)
-                                                   .suffix(" µT")
-                                                   .speed(0.1)
-                                                   .clamp_range(-1000.0..=1000.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Mahony gains");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("kP");
-                                            ui.add(DragValue::new(&mut settings.mahony_kp)
-                                                   .speed(0.001)
-                                                   .clamp_range(0.0..=10.0));
-
-                                            ui.weak(" kI");
-                                            ui.add(DragValue::new(&mut settings.mahony_ki)
-                                                   .speed(0.001)
-                                                   .clamp_range(0.0..=10.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Kalman std devs.");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("accelerometer");
-                                            ui.add(DragValue::new(&mut settings.std_dev_accelerometer)
-                                                   .speed(0.001)
-                                                   .clamp_range(0.0..=10.0));
-
-                                            ui.weak(" barometer");
-                                            ui.add(DragValue::new(&mut settings.std_dev_barometer)
-                                                   .speed(0.001)
-                                                   .clamp_range(0.0..=10.0));
-
-                                            ui.weak(" process");
-                                            ui.add(DragValue::new(&mut settings.std_dev_process)
-                                                   .speed(0.001)
-                                                   .clamp_range(0.0..=10.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Takeoff detection mode");
-                                        ui.horizontal(|ui| {
-                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::Acceleration, "acceleration");
-                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::Breakwire, "CAN breakwire");
-                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::AccelerationAndBreakwire, "both");
-                                            ui.selectable_value(&mut settings.takeoff_detection_mode, TakeoffDetectionMode::AccelerationOrBreakwire, "either");
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Takeoff detection acceleration");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("at least");
-                                            ui.add(DragValue::new(&mut settings.min_takeoff_acc)
-                                                   .suffix(" m/s²")
-                                                   .speed(0.1)
-                                                   .clamp_range(0.0..=1000.0));
-                                            ui.weak("for");
-                                            ui.add(DragValue::new(&mut settings.min_takeoff_acc_time)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=1000));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Apogee drogue deployment");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("between");
-                                            ui.add(DragValue::new(&mut settings.min_time_to_apogee)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=1000000));
-                                            ui.weak("and");
-                                            ui.add(DragValue::new(&mut settings.max_time_to_apogee)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=1000000));
-                                            ui.weak("post-launch, after falling for");
-                                            ui.add(DragValue::new(&mut settings.apogee_min_falling_time)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=10000));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Main deployment");
-                                        ui.horizontal(|ui| {
-                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::Never, "never");
-                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::AtApogee, "at apogee");
-                                            ui.selectable_value(&mut settings.main_output_mode, MainOutputMode::BelowAltitude, "below altitude of ");
-                                            ui.add(DragValue::new(&mut settings.main_output_deployment_altitude)
-                                                   .suffix(" m")
-                                                   .speed(0.1)
-                                                   .clamp_range(0.0..=10000.0));
-                                        });
-                                        ui.end_row();
-
-                                        ui.label("Recovery output times");
-                                        ui.horizontal(|ui| {
-                                            ui.weak("enabled for");
-                                            ui.add(DragValue::new(&mut settings.outputs_high_time)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=10000));
-                                            ui.weak("after");
-                                            ui.add(DragValue::new(&mut settings.outputs_warning_time)
-                                                   .suffix(" ms")
-                                                   .speed(1)
-                                                   .clamp_range(0..=10000));
-                                            ui.weak("of warning tone");
-                                        });
-                                        ui.end_row();
-                                    });
+                            if let Some(settings) = self.data_source.fc_settings_mut() {
+                                settings.ui(ui, Some(&self.settings));
                             } else {
                                 ui.colored_label(Color32::GRAY, "Not connected.");
                             }
@@ -1009,8 +774,8 @@ impl Sam {
                             ui.add_space(20.0);
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.add_enabled(self.fc_settings.is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
-                                    let settings = self.fc_settings.clone().unwrap();
+                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
+                                    let settings = self.data_source.fc_settings().cloned().unwrap();
                                     self.data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
                                 }
 

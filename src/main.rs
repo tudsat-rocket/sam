@@ -20,6 +20,7 @@ mod gui;
 mod serial;
 mod state;
 mod settings;
+mod simulation;
 mod telemetry_ext;
 
 use serial::*;
@@ -350,8 +351,9 @@ fn bin2kml(input: Option<PathBuf>, output: Option<PathBuf>, name: Option<String>
 
     let coordinates: Vec<String> = buffer.split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
-        .filter(|msg| msg.longitude().is_some() && msg.latitude().is_some() && msg.altitude_gps().is_some())
-        .map(|msg| (msg.longitude().unwrap(), msg.latitude().unwrap(), msg.altitude_gps().unwrap()))
+        .map(|msg| msg.into())
+        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_gps.is_some())
+        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_gps.unwrap()))
         .map(|(ln,lt,alt)| format!("     {},{},{}", ln,lt,alt + 100.0))
         .collect();
 

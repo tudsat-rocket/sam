@@ -7,6 +7,7 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, SendError};
 use std::time::Duration;
+use std::slice::Iter;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -21,6 +22,7 @@ use sting_fc_firmware::telemetry::*;
 
 use crate::serial::*;
 use crate::settings::AppSettings;
+use crate::simulation::SimulationSettings;
 use crate::state::*;
 
 /// A serial port data source. The default.
@@ -37,6 +39,9 @@ pub struct SerialDataSource {
     telemetry_log_path: PathBuf,
     telemetry_log_file: Result<File, std::io::Error>,
 
+    vehicle_states: Vec<(Instant, VehicleState)>,
+    log_messages: Vec<(u32, String, LogLevel, String)>,
+    fc_settings: Option<Settings>,
     message_receipt_times: VecDeque<(Instant, u32)>,
     last_time: Option<Instant>,
 }
@@ -63,6 +68,9 @@ impl SerialDataSource {
             lora_settings,
             telemetry_log_path,
             telemetry_log_file,
+            vehicle_states: Vec::new(),
+            log_messages: Vec::new(),
+            fc_settings: None,
             message_receipt_times: VecDeque::new(),
             last_time: None,
         }
@@ -118,6 +126,8 @@ pub struct LogFileDataSource {
     buffer: Vec<u8>,
     messages: Vec<(Instant, DownlinkMessage)>,
     is_json: bool,
+    vehicle_states: Vec<(Instant, VehicleState)>,
+    log_messages: Vec<(u32, String, LogLevel, String)>,
     last_time: Option<Instant>,
     replay: bool,
 }
@@ -135,6 +145,8 @@ impl LogFileDataSource {
             buffer: Vec::new(),
             messages: Vec::new(),
             is_json,
+            vehicle_states: Vec::new(),
+            log_messages: Vec::new(),
             last_time: None,
             replay: false,
         })
@@ -153,6 +165,8 @@ impl LogFileDataSource {
             buffer: bytes,
             messages: Vec::new(),
             is_json,
+            vehicle_states: Vec::new(),
+            log_messages: Vec::new(),
             last_time: None,
             replay,
         }
@@ -161,8 +175,17 @@ impl LogFileDataSource {
 
 /// Trait shared by all data sources.
 pub trait DataSource {
-    /// New messages. TODO: replace with iterator?
-    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)>;
+    /// Return an iterator over only the states that have arrived since last time.
+    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)>;
+    /// Return an iterator over all known states of the vehicle.
+    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)>;
+    /// Return an iterator over all log messages
+    fn log_messages<'a>(&'a mut self) -> Iter<'_, (u32, String, LogLevel, String)>;
+    /// Return the current flight computer settings, if known.
+    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings>;
+    /// Return the current flight computer settings, if known.
+    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings>;
+
     /// Reset data source if applicable.
     fn reset(&mut self);
     /// Send an uplink message to the connected device if applicable.
@@ -177,16 +200,22 @@ pub trait DataSource {
     /// The minimum fps required for the data source. Occasional redraws
     /// are necessary if data source is live.
     fn minimum_fps(&self) -> Option<u64>;
-    /// Is the data source a file. TODO: a bit unelegant
-    fn is_log_file(&self) -> bool;
     fn end(&self) -> Option<Instant>;
+
+    fn is_log_file(&self) -> bool {
+        false
+    }
+
+    fn simulation_settings(&mut self) -> Option<&mut SimulationSettings> {
+        None
+    }
 
     fn apply_settings(&mut self, _settings: &AppSettings) {
     }
 }
 
 impl DataSource for SerialDataSource {
-    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)> {
+    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
         self.message_receipt_times
             .retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
@@ -200,28 +229,58 @@ impl DataSource for SerialDataSource {
         }
 
         let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
-        msgs.into_iter()
-            .map(|msg| {
-                self.write_to_telemetry_log(&msg);
 
-                match msg {
-                    DownlinkMessage::Log(_, _, _, _) => {},
-                    DownlinkMessage::TelemetryGCS(_) => {},
-                    _ => {
-                        self.message_receipt_times.push_back((Instant::now(), msg.time()));
-                    }
+        let start_i = self.vehicle_states.len();
+        for msg in msgs.into_iter() {
+            self.write_to_telemetry_log(&msg);
+
+            // TODO
+            if let DownlinkMessage::TelemetryGCS(..) = msg {
+            } else {
+                self.message_receipt_times.push_back((Instant::now(), msg.time()));
+            }
+
+            match msg {
+                DownlinkMessage::Log(t, loc, ll, txt) => {
+                    self.log_messages.push((t, loc, ll, txt));
+                },
+                DownlinkMessage::Settings(settings) => {
+                    self.fc_settings = Some(settings);
                 }
+                _ => {
+                    let now = Instant::now();
+                    let vs: VehicleState = msg.into();
+                    self.vehicle_states.push((now, vs.clone()));
+                    self.last_time = Some(now);
+                }
+            }
+        }
 
-                let now = Instant::now();
-                self.last_time = Some(now);
-                (now, msg)
-            })
-            .collect()
+        self.vehicle_states[start_i..].iter()
+    }
+
+    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+        self.vehicle_states.iter()
+    }
+
+    fn log_messages<'a>(&'a mut self) -> Iter<'_, (u32, String, LogLevel, String)> {
+        self.log_messages.iter()
+    }
+
+    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
+        self.fc_settings.as_ref()
+    }
+
+    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
+        self.fc_settings.as_mut()
     }
 
     fn reset(&mut self) {
         self.telemetry_log_path = Self::new_telemetry_log_path();
         self.telemetry_log_file = File::create(&self.telemetry_log_path);
+        self.vehicle_states.truncate(0);
+        self.log_messages.truncate(0);
+        self.fc_settings = None;
         self.message_receipt_times.truncate(0);
     }
 
@@ -268,10 +327,6 @@ impl DataSource for SerialDataSource {
         }
     }
 
-    fn is_log_file(&self) -> bool {
-        false
-    }
-
     fn end(&self) -> Option<Instant> {
         let postroll = Duration::from_secs_f64(10.0);
 
@@ -291,7 +346,7 @@ impl DataSource for SerialDataSource {
 }
 
 impl DataSource for LogFileDataSource {
-    fn next_messages<'a>(&'a mut self) -> Vec<(Instant, DownlinkMessage)> {
+    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -321,23 +376,23 @@ impl DataSource for LogFileDataSource {
         for msg in msgs.into_iter() {
             let last = last_vehicle_times.front();
 
-            // time value contained in the msg in ms compared to the last, but always >= 0
-            let mut since_previous = last.map(|l| msg.time().saturating_sub(*l)).unwrap_or(0);
-
             // The GCS msgs are sent by the ground station, immediately after the received
             // message. The time value used in those is the runtime of the GCS, so always
             // replace with 0.
-            if msg.gcs_lora_rssi().is_some() {
-                since_previous = 0;
-            }
+            let since_previous = if let DownlinkMessage::TelemetryGCS(..) = msg {
+                0
+            } else {
+                last.map(|l| msg.time().saturating_sub(*l)).unwrap_or(0)
+            };
 
             self.last_time = self.last_time.map(|t| t + Duration::from_millis(since_previous as u64));
             last_vehicle_times.push_front(u32::max(*last.unwrap_or(&0), msg.time()));
             last_vehicle_times.truncate(5); // TODO: use these for better filtering?
-
+                                            //
             self.messages.push((self.last_time.unwrap(), msg));
         }
 
+        let start_i = self.vehicle_states.len();
         let pointer = if self.replay {
             let now = Instant::now();
             self.messages.partition_point(|(t, _)| t <= &now)
@@ -345,10 +400,33 @@ impl DataSource for LogFileDataSource {
             self.messages.len()
         };
 
-        self.messages.drain(..pointer).collect()
+        for (t, msg) in self.messages.drain(..pointer) {
+            self.vehicle_states.push((t, msg.into()));
+        }
+
+        self.vehicle_states[start_i..].iter()
+    }
+
+    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+        self.vehicle_states.iter()
+    }
+
+    fn log_messages<'a>(&'a mut self) -> Iter<'_, (u32, String, LogLevel, String)> {
+        self.log_messages.iter()
+    }
+
+    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
+        None // TODO: store these in flash?
+    }
+
+    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
+        None
     }
 
     fn reset(&mut self) {
+        self.messages.truncate(0);
+        self.vehicle_states.truncate(0);
+        self.log_messages.truncate(0);
     }
 
     fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {

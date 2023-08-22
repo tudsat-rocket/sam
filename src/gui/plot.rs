@@ -14,8 +14,6 @@ use eframe::egui;
 use eframe::egui::PointerButton;
 use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle};
 
-use sting_fc_firmware::telemetry::FlightMode;
-
 use crate::gui::*;
 use crate::state::*;
 use crate::telemetry_ext::*;
@@ -24,7 +22,7 @@ use crate::telemetry_ext::*;
 struct PlotCacheLine {
     name: String,
     color: Color32,
-    pub callback: Box<dyn FnMut(&DownlinkMessage) -> Option<f32>>,
+    pub callback: Box<dyn FnMut(&VehicleState) -> Option<f32>>,
     data: Vec<[f64; 2]>,
     last_bounds: Option<PlotBounds>,
     last_view: Vec<[f64; 2]>,
@@ -32,7 +30,7 @@ struct PlotCacheLine {
 }
 
 impl PlotCacheLine {
-    pub fn new(name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
+    pub fn new(name: &str, color: Color32, cb: impl FnMut(&VehicleState) -> Option<f32> + 'static) -> Self {
         Self {
             name: name.to_string(),
             color,
@@ -44,8 +42,8 @@ impl PlotCacheLine {
         }
     }
 
-    pub fn push(&mut self, x: f64, msg: &DownlinkMessage) {
-        if let Some(value) = (self.callback)(msg) {
+    pub fn push(&mut self, x: f64, vs: &VehicleState) {
+        if let Some(value) = (self.callback)(vs) {
             self.data.push([x, value.into()]);
         }
 
@@ -120,21 +118,21 @@ impl PlotCache {
         }
     }
 
-    fn add_line(&mut self, name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) {
+    fn add_line(&mut self, name: &str, color: Color32, cb: impl FnMut(&VehicleState) -> Option<f32> + 'static) {
         self.lines.push(PlotCacheLine::new(name, color, cb));
     }
 
     /// Incorporate some new data into the cache.
-    pub fn push(&mut self, x: Instant, msg: &DownlinkMessage) {
+    pub fn push(&mut self, x: Instant, vs: &VehicleState) {
         let x = x.duration_since(self.start).as_secs_f64();
 
         // Value to be plotted.
         for l in self.lines.iter_mut() {
-            l.push(x, msg);
+            l.push(x, vs);
         }
 
         // Vertical lines for mode transitions
-        if let Some(mode) = msg.mode() {
+        if let Some(mode) = vs.mode {
             if self.mode_transitions.last().map(|l| l.1 != mode).unwrap_or(true) {
                 self.mode_transitions.push((x, mode));
             }
@@ -142,7 +140,7 @@ impl PlotCache {
     }
 
     /// Reset the cache.
-    pub fn reset(&mut self, start: Instant) {
+    pub fn reset(&mut self, start: Instant, keep_position: bool) {
         for l in self.lines.iter_mut() {
             l.reset();
         }
@@ -153,7 +151,7 @@ impl PlotCache {
         // To reset some of the egui internals (state stored in the linked
         // axes/cursor groups), we also need to call reset on the egui object
         // during the next draw. Slightly hacky.
-        self.reset_on_next_draw = true;
+        self.reset_on_next_draw = !keep_position;
     }
 
     /// Lines to be plotted
@@ -223,6 +221,11 @@ impl SharedPlotState {
         self.box_dragging = false;
     }
 
+    pub fn show_all(&mut self) {
+        self.view_width = (self.end - self.start).as_secs_f64();
+        self.reset_on_next_draw = true;
+    }
+
     pub fn process_zoom(&mut self, zoom_delta: Vec2) {
         self.view_width /= zoom_delta[0] as f64;
         // Zooming detaches the egui plot from the edge usually, so reattach
@@ -286,20 +289,24 @@ impl PlotState {
         }
     }
 
-    pub fn line(self, name: &str, color: Color32, cb: impl FnMut(&DownlinkMessage) -> Option<f32> + 'static) -> Self {
+    pub fn line(self, name: &str, color: Color32, cb: impl FnMut(&VehicleState) -> Option<f32> + 'static) -> Self {
         self.cache.borrow_mut().add_line(name, color, cb);
         self
     }
 
     // Add some newly downlinked data to the cache.
-    pub fn push(&mut self, x: Instant, msg: &DownlinkMessage) {
-        self.cache.borrow_mut().push(x, msg)
+    pub fn push(&mut self, x: Instant, vs: &VehicleState) {
+        self.cache.borrow_mut().push(x, vs)
     }
 
     // Reset the plot, for instance when loading a different file.
-    pub fn reset(&mut self, start: Instant) {
-        self.cache.borrow_mut().reset(start);
+    pub fn reset(&mut self, start: Instant, keep_position: bool) {
+        self.cache.borrow_mut().reset(start, keep_position);
         self.shared.borrow_mut().reset(start);
+    }
+
+    pub fn show_all(&mut self) {
+        self.shared.borrow_mut().show_all();
     }
 }
 
@@ -312,8 +319,8 @@ impl PlotUiExt for egui::Ui {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        let mut cache = state.cache.borrow_mut();
         let mut shared = state.shared.borrow_mut();
+        let mut cache = state.cache.borrow_mut();
 
         let legend = Legend::default()
             .text_style(egui::TextStyle::Small)

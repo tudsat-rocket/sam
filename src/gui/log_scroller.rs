@@ -6,16 +6,16 @@ use sting_fc_firmware::telemetry::*;
 use crate::telemetry_ext::*;
 
 pub trait LogUiExt {
-    fn log_scroller(
+    fn log_scroller<'a>(
         &mut self,
-        log_messages: &Vec<(u32, String, LogLevel, String)>
+        log_messages: impl Iterator<Item=&'a (u32, String, LogLevel, String)>
     );
 }
 
 impl LogUiExt for egui::Ui {
-    fn log_scroller(
+    fn log_scroller<'a>(
         &mut self,
-        log_messages: &Vec<(u32, String, LogLevel, String)>
+        log_messages: impl Iterator<Item=&'a (u32, String, LogLevel, String)>
     ) {
         let h = self.available_height();
         egui::ScrollArea::vertical()

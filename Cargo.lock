@@ -139,9 +139,9 @@ name = "ahrs"
 version = "0.5.0"
 source = "git+https://github.com/KoffeinFlummi/ahrs-rs#fefedda6fc761eca27b76ace5bc48f5fd35be692"
 dependencies = [
- "nalgebra",
+ "nalgebra 0.31.4",
  "num-traits",
- "simba",
+ "simba 0.7.3",
 ]
 
 [[package]]
@@ -1154,8 +1154,7 @@ checksum = "b601108bca3af7650440ace4ca55b2daf52c36f2635be3587d77b16efd8d0691"
 [[package]]
 name = "ecolor"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e479a7fa3f23d4e794f8b2f8b3568dd4e47886ad1b12c9c095e141cb591eb63"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "bytemuck",
 ]
@@ -1163,8 +1162,7 @@ dependencies = [
 [[package]]
 name = "eframe"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf4596583a2c680c55b6feaa748f74890c4f9cb9c7cb69d6117110444cb65b2f"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "bytemuck",
  "cocoa",
@@ -1180,6 +1178,7 @@ dependencies = [
  "objc",
  "percent-encoding",
  "raw-window-handle",
+ "static_assertions",
  "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -1202,8 +1201,7 @@ dependencies = [
 [[package]]
 name = "egui"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a3aef8ec3ae1b772f340170c65bf27d5b8c28f543a0116c844d2ac08d01123e7"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "accesskit",
  "ahash",
@@ -1215,8 +1213,7 @@ dependencies = [
 [[package]]
 name = "egui-winit"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a49155fd4a0a4fb21224407a91de0030847972ef90fc64edb63621caea61cb2"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "accesskit_winit",
  "arboard",
@@ -1232,8 +1229,7 @@ dependencies = [
 [[package]]
 name = "egui_extras"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9278f4337b526f0d57e5375e5a7340a311fa6ee8f9fcc75721ac50af13face02"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "egui 0.22.0",
  "image",
@@ -1243,8 +1239,7 @@ dependencies = [
 [[package]]
 name = "egui_glow"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f8c2752cdf1b0ef5fcda59a898cacabad974d4f5880e92a420b2c917022da64"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "bytemuck",
  "egui 0.22.0",
@@ -1270,8 +1265,7 @@ checksum = "5277249c8c3430e7127e4f2c40a77485e7baf11ae132ce9b3253a8ed710df0a0"
 [[package]]
 name = "emath"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3857d743a6e0741cdd60b622a74c7a36ea75f5f8f11b793b41d905d2c9721a4b"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "bytemuck",
 ]
@@ -1362,12 +1356,10 @@ dependencies = [
 [[package]]
 name = "epaint"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09333964d4d57f40a85338ba3ca5ed4716070ab184dcfed966b35491c5c64f3b"
+source = "git+https://github.com/emilk/egui?branch=master#1023f937a67f3771e25c45cc49067acb71740e97"
 dependencies = [
  "ab_glyph",
  "ahash",
- "atomic_refcell",
  "bytemuck",
  "ecolor 0.22.0",
  "emath 0.22.0",
@@ -1453,7 +1445,7 @@ name = "filter"
 version = "0.2.1-dev"
 source = "git+https://github.com/KoffeinFlummi/filter-rs#5945c79426c9a16767929eb15a33efa4e51a4a39"
 dependencies = [
- "nalgebra",
+ "nalgebra 0.31.4",
  "num-traits",
 ]
 
@@ -2333,6 +2325,24 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d506eb7e08d6329505faa8a3a00a5dcc6de9f76e0c77e4b75763ae3c770831ff"
+dependencies = [
+ "approx",
+ "matrixmultiply",
+ "nalgebra-macros",
+ "num-complex",
+ "num-rational",
+ "num-traits",
+ "rand",
+ "rand_distr",
+ "simba 0.6.0",
+ "typenum",
+]
+
+[[package]]
+name = "nalgebra"
 version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20bd243ab3dbb395b39ee730402d2e5405e448c75133ec49cc977762c4cba3d1"
@@ -2344,7 +2354,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "serde",
- "simba",
+ "simba 0.7.3",
  "typenum",
 ]
 
@@ -2956,6 +2966,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_distr"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
+dependencies = [
+ "num-traits",
+ "rand",
+]
+
+[[package]]
 name = "raw-window-handle"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3224,13 +3244,12 @@ dependencies = [
  "egui 0.22.0",
  "egui_extras",
  "env_logger",
- "epaint 0.22.0",
  "home",
  "image",
  "indicatif",
  "instant",
  "log",
- "nalgebra",
+ "nalgebra 0.31.4",
  "postcard",
  "puffin",
  "puffin_egui",
@@ -3242,6 +3261,7 @@ dependencies = [
  "serialport",
  "siphasher",
  "slippy-map-tiles",
+ "statrs",
  "sting_fc_firmware",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -3443,6 +3463,19 @@ dependencies = [
 
 [[package]]
 name = "simba"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0b7840f121a46d63066ee7a99fc81dcabbc6105e437cae43528cea199b5a05f"
+dependencies = [
+ "approx",
+ "num-complex",
+ "num-traits",
+ "paste",
+ "wide",
+]
+
+[[package]]
+name = "simba"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3fd720c48c53cace224ae62bef1bbff363a70c68c4802a78b5cc6159618176"
@@ -3562,6 +3595,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "statrs"
+version = "0.16.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d08e5e1748192713cc281da8b16924fb46be7b0c2431854eadc785823e5696e"
+dependencies = [
+ "approx",
+ "lazy_static",
+ "nalgebra 0.29.0",
+ "num-traits",
+ "rand",
+]
+
+[[package]]
 name = "stdweb"
 version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3623,7 +3669,7 @@ dependencies = [
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.8",
  "filter",
- "nalgebra",
+ "nalgebra 0.31.4",
  "nb 1.0.0",
  "num-traits",
  "panic-probe",
