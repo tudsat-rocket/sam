@@ -193,7 +193,7 @@ impl StateEstimator {
                 }
             },
             FlightMode::RecoveryMain => {
-                let condition = self.acceleration.map(|acc| (GRAVITY*0.95..GRAVITY*1.05).contains(&acc.magnitude())).unwrap_or(true);
+                let condition = self.acceleration.map(|acc| (GRAVITY*0.95..GRAVITY*1.05).contains(&acc.magnitude())).unwrap_or(true) && self.vertical_speed().abs() < 1.0;
                 let landed = self.true_since(condition, 1000);
                 (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
             },
