@@ -8,8 +8,8 @@ pub fn init_watchdog() {
 
     // Set clock prescaler and reset counter
     // IWDG timeout (seconds) is (1/32000) * 4 * 2^PR * (RL + 1),
-    // For PR = 0 & RL = 0x7ff, the timeout is 256ms
-    iwdg.pr.write(|w| unsafe { w.bits(0) });
+    // For PR = 1 & RL = 0x7ff, the timeout is 512ms
+    iwdg.pr.write(|w| unsafe { w.bits(1) });
     iwdg.rlr.write(|w| unsafe { w.bits(0x7ff) });
 
     iwdg.kr.write(|w| unsafe { w.bits(0xaaaa) });
