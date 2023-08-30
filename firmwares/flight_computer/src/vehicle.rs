@@ -279,7 +279,7 @@ impl Vehicle {
             .flatten();
         self.flash.tick(self.time, flash_message);
 
-        self.runcam.tick(self.time, self.mode);
+        self.runcam.tick(self.mode);
 
         self.time += 1_000 / crate::MAIN_LOOP_FREQ_HERTZ;
         Logger::update_time(self.time);
