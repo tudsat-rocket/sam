@@ -1,5 +1,5 @@
 [target.thumbv7em-none-eabihf]
-runner = "probe-run --chip stm32f401rct6"
+runner = "probe-rs run --chip stm32f401rct6"
 rustflags = [
     "-C", "linker=flip-link",
     "-C", "link-arg=-Tlink.x",
@@ -11,3 +11,6 @@ rustflags = [
 
 [build]
 target = "thumbv7em-none-eabihf"
+
+[env]
+DEFMT_LOG = "trace"
