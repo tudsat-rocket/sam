@@ -328,12 +328,9 @@ impl<
         self.ignore_busy = true;
         self.busy.set_internal_resistor(stm32f4xx_hal::gpio::Pull::Down);
 
-        // Force the device to sleep to reset configuration, then wait for it
-        // to finish setting up.
-        self.command(LLCC68OpCode::SetSleep, &[0x00], 0)?;
-
+        // Wait for LLCC68 to enter standby mode
         let mut done = false;
-        for _i in 0..50 {
+        for _i in 0..200 {
             done = self.command(LLCC68OpCode::GetStatus, &[], 1)
                 .map(|x| (x[0] >> 4) == 0x2)
                 .unwrap_or(false);
@@ -343,6 +340,8 @@ impl<
         }
 
         if !done {
+            // Force the device to sleep to reset configuration
+            self.command(LLCC68OpCode::SetSleep, &[0x00], 0)?;
             return Err(LoRaError::Timeout);
         }
 
@@ -704,6 +703,10 @@ impl<
 
     #[cfg(feature = "gcs")]
     pub fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
+        if self.sequence.is_none() || time < 3000 {
+            return None;
+        }
+
         self.tick_common(time);
 
         if self.state != RadioState::Idle {
