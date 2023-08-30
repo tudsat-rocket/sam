@@ -64,12 +64,14 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
             pressure: None,
         };
 
-        baro.reset()?;
+        for _i in 0..3 {
+            baro.reset()?;
 
-        for _i in 0..10 {
-            baro.read_calibration_values()?;
-            if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
-                break;
+            for _j in 0..50 {
+                baro.read_calibration_values()?;
+                if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
+                    break;
+                }
             }
         }
 
