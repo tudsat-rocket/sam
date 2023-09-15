@@ -11,16 +11,16 @@ use crate::telemetry_ext::*;
 use crate::data_source::*;
 
 // TODO: move to telemetry_ext?
-fn flight_mode_style(fm: FlightMode) -> (&'static str, Color32, Color32) {
+fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
     let fg = Color32::from_rgb(0x28, 0x28, 0x28);
     match fm {
-        FlightMode::Idle => ("IDLE",             fg, fm.color()),
-        FlightMode::HardwareArmed => ("HWARMED", fg, fm.color()),
-        FlightMode::Armed => ("ARMED",           fg, fm.color()),
-        FlightMode::Flight => ("FLIGHT",         fg, fm.color()),
-        FlightMode::RecoveryDrogue => ("DROGUE", fg, fm.color()),
-        FlightMode::RecoveryMain => ("MAIN",     fg, fm.color()),
-        FlightMode::Landed => ("LANDED",         fg, fm.color()),
+        FlightMode::Idle           => ("IDLE",    "F5",  fg, fm.color()),
+        FlightMode::HardwareArmed  => ("HWARMED", "F6",  fg, fm.color()),
+        FlightMode::Armed          => ("ARMED",   "F7",  fg, fm.color()),
+        FlightMode::Flight         => ("FLIGHT",  "F8",  fg, fm.color()),
+        FlightMode::RecoveryDrogue => ("DROGUE",  "F9",  fg, fm.color()),
+        FlightMode::RecoveryMain   => ("MAIN",    "F10", fg, fm.color()),
+        FlightMode::Landed         => ("LANDED",  "F11", fg, fm.color()),
     }
 }
 
@@ -98,14 +98,17 @@ impl TopBarUiExt for egui::Ui {
         current: Option<FlightMode>,
         data_source: &mut Box<dyn DataSource>,
     ) {
-        let (label, fg, bg) = flight_mode_style(fm);
+        let (label, shortcut, fg, bg) = flight_mode_style(fm);
+        let main_text = RichText::new(format!("{}\n", label)).monospace();
+        let shortcut_text = RichText::new(format!("\nSh+{}", shortcut)).monospace();
 
         let button = if current.map(|c| c == fm).unwrap_or(false) {
-            let label = RichText::new(label).monospace().color(fg);
-            Button::new(label).fill(bg)
+            Button::new(main_text.color(fg))
+                .shortcut_text(shortcut_text.color(fg))
+                .fill(bg)
         } else {
-            let label = RichText::new(label).monospace();
-            Button::new(label)
+            Button::new(main_text)
+                .shortcut_text(shortcut_text)
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::new(2.0, bg))
         };

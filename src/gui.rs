@@ -12,7 +12,7 @@ use instant::Instant;
 use eframe::egui;
 use egui::FontFamily::Proportional;
 use egui::{Align, TextStyle::*, Button, TextEdit, RichText, CollapsingHeader};
-use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily, SelectableLabel};
+use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily, SelectableLabel, Modifiers};
 use egui_extras::RetainedImage;
 
 use log::*;
@@ -301,31 +301,34 @@ impl Sam {
 
         self.shared_plot.borrow_mut().set_end(self.data_source.end());
 
-        if ctx.input(|i| i.key_down(Key::F1)) {
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
             self.tab = GuiTab::Launch;
-        } else if ctx.input(|i| i.key_down(Key::F2)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
             self.tab = GuiTab::Plot;
-        } else if ctx.input(|i| i.key_down(Key::F3)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
             self.tab = GuiTab::Configure;
         }
 
-        // Check for keyboard inputs. TODO: clean up
-        let fm = if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::Num0)) {
+        // Check for keyboard inputs.
+        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
             Some(FlightMode::Idle)
-        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::A)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
+            Some(FlightMode::HardwareArmed)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
             Some(FlightMode::Armed)
-        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::I)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
             Some(FlightMode::Flight)
-        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::D)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
             Some(FlightMode::RecoveryDrogue)
-        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::M)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {
             Some(FlightMode::RecoveryMain)
-        } else if ctx.input(|i| i.modifiers.command_only()) && ctx.input(|i| i.key_down(Key::L)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F11)) {
             Some(FlightMode::Landed)
         } else {
             None
         };
-        if let Some(fm) = fm {
+
+        if let Some(fm) = shortcut_mode {
             self.data_source
                 .send_command(Command::SetFlightMode(fm))
                 .unwrap();
@@ -503,7 +506,7 @@ impl Sam {
                 let spacing = 3.0; // TODO: this is ugly
 
                 ui.horizontal_centered(|ui| {
-                    ui.set_width(ui.available_width() * 0.55);
+                    ui.set_width(ui.available_width() * 0.50);
 
                     let time = self.data_source.vehicle_states().last().map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
                     let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
@@ -527,7 +530,7 @@ impl Sam {
                     let longitude = last_gps.as_ref().and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l));
 
                     ui.vertical(|ui| {
-                        ui.set_width(ui.available_width() / 3.0);
+                        ui.set_width(ui.available_width() / 4.0);
                         ui.add_space(spacing);
                         ui.telemetry_value("🕐", "Time [s]", time);
                         ui.telemetry_value("🏷", "Mode", mode);
