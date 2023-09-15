@@ -35,9 +35,9 @@ puffin = { version = "0.14", optional = true }
 puffin_egui = { version = "0.19", optional = true }
 
 [patch.crates-io]
-egui = { git = "https://github.com/emilk/egui", branch = "master" }
-eframe = { git = "https://github.com/emilk/egui", branch = "master" }
-egui_extras = { git = "https://github.com/emilk/egui", branch = "master" }
+egui = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
+eframe = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
+egui_extras = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
 
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 rfd = "0.10"
