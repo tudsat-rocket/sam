@@ -360,7 +360,7 @@ impl Sam {
                 // Opening files manually is not available on web assembly
                 #[cfg(target_arch = "x86_64")]
                 if ui.selectable_label(false, "🗁  Open Log File").clicked() {
-                    if let Some(data_source) = open_file() {
+                    if let Some(data_source) = open_log_file() {
                         self.open_log_file(data_source);
                     }
                 }
@@ -777,6 +777,17 @@ impl Sam {
                                 if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
                                     let settings = self.data_source.fc_settings().cloned().unwrap();
                                     self.data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
+                                }
+
+                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
+                                    save_fc_settings_file(&self.data_source.fc_settings().unwrap());
+                                }
+
+                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked() {
+                                    if let Some(settings) = open_fc_settings_file() {
+                                        info!("Loaded settings: {:?}", settings);
+                                        *self.data_source.fc_settings_mut().unwrap() = settings;
+                                    }
                                 }
 
                                 if ui.button("🔃Reload").clicked() {
