@@ -1,5 +1,6 @@
 use egui::{RichText, Layout, Align, TextEdit, DragValue, Ui, InnerResponse};
-use sting_fc_firmware::{settings::{Settings, TakeoffDetectionMode, MainOutputMode}, telemetry::TelemetryDataRate};
+use sting_fc_firmware::settings::*;
+use sting_fc_firmware::telemetry::TelemetryDataRate;
 
 use crate::settings::AppSettings;
 
@@ -84,19 +85,19 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Gyroscope cal. offsets");
                 ui.horizontal(|ui| {
                     ui.weak("X");
-                    ui.add(DragValue::new(&mut self.gyro_offset.x)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.gyro_offset.x)
                            .suffix(" °/s")
                            .speed(0.1)
                            .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Y");
-                    ui.add(DragValue::new(&mut self.gyro_offset.y)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.gyro_offset.y)
                            .suffix(" °/s")
                            .speed(0.1)
                            .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Z");
-                    ui.add(DragValue::new(&mut self.gyro_offset.z)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.gyro_offset.z)
                            .suffix(" °/s")
                            .speed(0.1)
                            .clamp_range(-2000.0..=2000.0));
@@ -106,41 +107,41 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Main accelerometer cal. offsets");
                 ui.horizontal(|ui| {
                     ui.weak("X");
-                    ui.add(DragValue::new(&mut self.acc_offset.x)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc_offset.x)
                            .suffix(" m/s²")
                            .speed(0.01)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Y");
-                    ui.add(DragValue::new(&mut self.acc_offset.y)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc_offset.y)
                            .suffix(" m/s²")
                            .speed(0.01)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Z");
-                    ui.add(DragValue::new(&mut self.acc_offset.z)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc_offset.z)
                            .suffix(" m/s²")
                            .speed(0.01)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
                 });
                 ui.end_row();
 
                 ui.label("Backup accelerometer cal. offsets");
                 ui.horizontal(|ui| {
                     ui.weak("X");
-                    ui.add(DragValue::new(&mut self.acc2_offset.x)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc2_offset.x)
                            .suffix(" m/s²")
                            .speed(0.01)
                            .clamp_range(-4000.0..=4000.0));
 
                     ui.weak("Y");
-                    ui.add(DragValue::new(&mut self.acc2_offset.y)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc2_offset.y)
                            .suffix(" m/s²")
                            .speed(0.01)
                            .clamp_range(-4000.0..=4000.0));
 
                     ui.weak("Z");
-                    ui.add(DragValue::new(&mut self.acc2_offset.z)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.acc2_offset.z)
                            .suffix(" m/s²")
                            .speed(0.01)
                            .clamp_range(-4000.0..=4000.0));
@@ -150,22 +151,22 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Magnetometer cal. offsets");
                 ui.horizontal(|ui| {
                     ui.weak("X");
-                    ui.add(DragValue::new(&mut self.mag_offset.x)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.mag_offset.x)
                            .suffix(" µT")
                            .speed(0.1)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Y");
-                    ui.add(DragValue::new(&mut self.mag_offset.y)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.mag_offset.y)
                            .suffix(" µT")
                            .speed(0.1)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
 
                     ui.weak("Z");
-                    ui.add(DragValue::new(&mut self.mag_offset.z)
+                    ui.add_sized([100.0, ui.available_height()], DragValue::new(&mut self.mag_offset.z)
                            .suffix(" µT")
                            .speed(0.1)
-                           .clamp_range(-1000.0..=1000.0));
+                           .clamp_range(-2000.0..=2000.0));
                 });
                 ui.end_row();
 
@@ -206,8 +207,8 @@ impl FcSettingsUiExt for Settings {
                 ui.horizontal(|ui| {
                     ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::Acceleration, "acceleration");
                     ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::Breakwire, "CAN breakwire");
-                    ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::AccelerationAndBreakwire, "both");
-                    ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::AccelerationOrBreakwire, "either");
+                    ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::AccelerationAndBreakwire, "AND");
+                    ui.selectable_value(&mut self.takeoff_detection_mode, TakeoffDetectionMode::AccelerationOrBreakwire, "OR");
                 });
                 ui.end_row();
 
@@ -255,6 +256,12 @@ impl FcSettingsUiExt for Settings {
                            .suffix(" m")
                            .speed(0.1)
                            .clamp_range(0.0..=10000.0));
+                    ui.weak("at least");
+                    ui.add(DragValue::new(&mut self.min_time_to_main)
+                           .suffix(" ms")
+                           .speed(1)
+                           .clamp_range(0..=1000000));
+                    ui.weak("after drogue");
                 });
                 ui.end_row();
 
@@ -270,7 +277,19 @@ impl FcSettingsUiExt for Settings {
                            .suffix(" ms")
                            .speed(1)
                            .clamp_range(0..=10000));
-                    ui.weak("of warning tone");
+                    ui.weak("of");
+                    ui.add(DragValue::new(&mut self.outputs_warning_frequency)
+                           .suffix(" Hz")
+                           .speed(1.0)
+                           .clamp_range(100.0..=10000.0));
+                    ui.weak("warning tone");
+                });
+                ui.end_row();
+
+                ui.label("FC Orientation");
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.orientation, Orientation::ZUp, "Z+");
+                    ui.selectable_value(&mut self.orientation, Orientation::ZDown, "Z-");
                 });
                 ui.end_row();
             })
