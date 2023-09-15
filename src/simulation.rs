@@ -4,6 +4,7 @@ use std::slice::Iter;
 
 use egui::Color32;
 use nalgebra::{Vector3, UnitQuaternion};
+use rand::RngCore;
 use rand::rngs::ThreadRng;
 use rand::distributions::Distribution;
 
@@ -42,6 +43,10 @@ pub struct SimulationSettings {
     pub std_dev_magnetometer: f32,
     pub std_dev_barometer: f32,
 
+    pub barometer_anomaly_probability: f32,
+    pub barometer_anomaly_value: f32,
+    pub barometer_anomaly_delay: u32,
+
     pub fc_settings: Settings,
 }
 
@@ -56,11 +61,11 @@ impl Default for SimulationSettings {
 
             sim_duration: 240_000,
             sim_start_delay: 10_000,
-            thrust_duration: 3_000,
+            thrust_duration: 2_000,
             thrust: 120.0,
 
-            drag_flight: 0.005,
-            drag_drogue: 0.5,
+            drag_flight: 0.01,
+            drag_drogue: 1.0,
             drag_main:   5.0,
 
             std_dev_gyroscope: 0.07,
@@ -68,6 +73,10 @@ impl Default for SimulationSettings {
             std_dev_accelerometer2: 0.7,
             std_dev_magnetometer: 0.05,
             std_dev_barometer: 0.5,
+
+            barometer_anomaly_probability: 0.00001,
+            barometer_anomaly_value: 0.0,
+            barometer_anomaly_delay: 0,
 
             fc_settings: Settings::default(),
         }
@@ -186,7 +195,7 @@ impl SimulationState {
 
         // advance true state of the vehicle
         self.acceleration = if self.time >= self.settings.sim_start_delay && self.time < self.settings.sim_start_delay + self.settings.thrust_duration {
-            self.orientation.transform_vector(&Vector3::new(0.0, 0.0, 200.0))
+            self.orientation.transform_vector(&Vector3::new(0.0, 0.0, self.settings.thrust))
         } else {
             Vector3::new(0.0, 0.0, -GRAVITY)
         };
@@ -231,6 +240,12 @@ impl SimulationState {
         self.magnetometer = self.sample_magnetometer();
         self.altitude_baro = self.sample_barometer();
 
+        if self.time > self.settings.barometer_anomaly_delay &&
+            self.rng.next_u32() < (self.settings.barometer_anomaly_probability * u32::MAX as f32) as u32
+        {
+            self.altitude_baro = Some(self.settings.barometer_anomaly_value);
+        }
+
         // update state estimation with sampled sensor values
         self.state_estimator.update(
             self.time,
@@ -242,7 +257,8 @@ impl SimulationState {
             self.altitude_baro
         );
 
-        if let Some(mode) = self.state_estimator.new_mode(if self.time >= (self.settings.sim_start_delay - 5000) { 8400 } else { 0 }) {
+        let arm_voltage = if self.time >= (self.settings.sim_start_delay - 5000) { 8400 } else { 0 };
+        if let Some(mode) = self.state_estimator.new_mode(arm_voltage, None) {
             self.mode = mode;
         }
     }

@@ -56,7 +56,7 @@ impl SimulationSettingsUiExt for SimulationSettings {
                     ui.add(DragValue::new(&mut self.sim_duration)
                            .suffix(" ms")
                            .speed(100)
-                           .clamp_range(10000..=100000));
+                           .clamp_range(10000..=1000000));
 
                     ui.weak("with a start delay of");
                     ui.add(DragValue::new(&mut self.sim_start_delay)
@@ -100,6 +100,29 @@ impl SimulationSettingsUiExt for SimulationSettings {
                            .suffix("")
                            .speed(0.01)
                            .clamp_range(0.0..=500.0));
+                });
+                ui.end_row();
+
+                ui.label("Barometer Anomalies");
+                ui.horizontal(|ui| {
+
+                    ui.weak("Value of");
+                    ui.add(DragValue::new(&mut self.barometer_anomaly_value)
+                           .suffix("m")
+                           .speed(0.1)
+                           .clamp_range(-10000.0..=20000.0));
+
+                    ui.weak("with a probability of");
+                    ui.add(DragValue::new(&mut self.barometer_anomaly_probability)
+                           .suffix("")
+                           .speed(0.0001)
+                           .clamp_range(0.0..=1.0));
+
+                    ui.weak("starting after");
+                    ui.add(DragValue::new(&mut self.barometer_anomaly_delay)
+                           .suffix("ms")
+                           .speed(1)
+                           .clamp_range(0.0..=1000000.0));
                 });
                 ui.end_row();
 
