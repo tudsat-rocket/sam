@@ -28,13 +28,19 @@ struct MS5611CalibrationData {
 
 impl MS5611CalibrationData {
     pub fn valid(&self) -> bool {
-        // We assume that every value needs to be non-zero.
+        // We assume that every value needs to be non-zero and non-0xffff.
         self.pressure_sensitivity != 0x0000 &&
             self.pressure_offset != 0x0000 &&
             self.temp_coef_pressure_sensitivity != 0x0000 &&
             self.temp_coef_pressure_offset != 0x0000 &&
             self.reference_temperature != 0x0000 &&
-            self.temp_coef_temperature != 0x0000
+            self.temp_coef_temperature != 0x0000 &&
+            self.pressure_sensitivity != 0xffff &&
+            self.pressure_offset != 0xffff &&
+            self.temp_coef_pressure_sensitivity != 0xffff &&
+            self.temp_coef_pressure_offset != 0xffff &&
+            self.reference_temperature != 0xffff &&
+            self.temp_coef_temperature != 0xffff
     }
 }
 
@@ -64,13 +70,17 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
             pressure: None,
         };
 
-        for _i in 0..3 {
+        'outer: for _i in 0..3 { // did you know that rust has loop labels?
             baro.reset()?;
 
             for _j in 0..50 {
+                for _ik in 0..10000 {
+                    core::hint::spin_loop();
+                }
+
                 baro.read_calibration_values()?;
                 if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
-                    break;
+                    break 'outer;
                 }
             }
         }
