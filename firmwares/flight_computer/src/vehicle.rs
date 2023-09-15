@@ -130,7 +130,7 @@ impl Vehicle {
         can: MCP2517FD<Spi2, Pin<'B', 12, Output>>,
         power: Power,
         leds: LEDs,
-        buzzer: Buzzer,
+        mut buzzer: Buzzer,
         recovery: Recovery,
         runcam: RuncamCamera,
     ) -> Self {
@@ -154,6 +154,7 @@ impl Vehicle {
         #[cfg(feature="gcs")]
         let settings = Settings::default();
 
+        buzzer.set_warning_tone(settings.outputs_warning_frequency, settings.outputs_warning_time);
         radio.apply_settings(&settings.lora);
         imu.set_offsets(settings.gyro_offset, settings.acc_offset);
         acc.set_offset(settings.acc2_offset);

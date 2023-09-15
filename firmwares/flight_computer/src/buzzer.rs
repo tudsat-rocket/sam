@@ -1,9 +1,7 @@
 //! Driver for the on-board buzzer, responsible for playing mode change beeps and
 //! warning tones using the STM32's timers for PWM generation.
 
-use alloc::vec::Vec;
-
-use hal::pac::GPIOC;
+use hal::pac::*;
 use hal::prelude::*;
 use hal::timer::pwm::PwmHz;
 use stm32f4xx_hal as hal;
@@ -32,6 +30,11 @@ type Pwm = hal::timer::PwmHz<Timer, Pins>;
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
 #[cfg(feature = "rev2")]
 const CHANNEL: hal::timer::Channel = hal::timer::Channel::C2;
+
+#[cfg(feature = "rev1")]
+const GPIO_REG: *const hal::pac::gpiob::RegisterBlock = GPIOB::ptr();
+#[cfg(feature = "rev2")]
+const GPIO_REG: *const hal::pac::gpioh::RegisterBlock = GPIOC::ptr();
 
 const STARTUP: [Note; 6] = [
     Note::note(C, 4, 150), Note::pause(10),
@@ -87,11 +90,10 @@ const LANDED: [Note; 57] = [
     Note::note(F, 4, 600 - 50), Note::pause(50),
 ];
 
-pub const RECOVERY_WARNING_TIME: u32 = 750;
-const RECOVERY: [Note; 1] = [Note::note(C, 5, RECOVERY_WARNING_TIME)];
-
 pub struct Buzzer {
     pwm: PwmHz<Timer, Pins>,
+    warning_note: Note,
+    current_tone: Option<Note>,
     current_melody: Option<&'static [Note]>,
     current_index: usize,
     time_note_change: u32,
@@ -104,6 +106,8 @@ impl Buzzer {
 
         let buzzer = Self {
             pwm,
+            warning_note: Note::note(C, 5, 500),
+            current_tone: None,
             current_melody: Some(&STARTUP),
             current_index: 0,
             time_note_change: 0,
@@ -114,11 +118,18 @@ impl Buzzer {
     }
 
     fn current_frequency(&self) -> Option<f32> {
-        self.current_melody
+        let melody_note = self.current_melody
             .map(|m| m.get(self.current_index))
-            .flatten()
+            .flatten();
+
+        self.current_tone.as_ref()
+            .or(melody_note)
             .map(|n| n.freq())
             .flatten()
+    }
+
+    pub fn set_warning_tone(&mut self, frequency: f32, duration: u32) {
+        self.warning_note = Note::frequency(frequency, duration);
     }
 
     pub fn tick(&mut self, time: u32) {
@@ -136,34 +147,48 @@ impl Buzzer {
             }
         }
 
+        if let Some(note) = &self.current_tone {
+            if time.wrapping_sub(self.time_note_change) > note.duration {
+                self.current_tone = None;
+            } else if time != self.time_note_change {
+                return;
+            }
+        }
+
+        // We set the buzzer output pin into an open-drain state when not using it to
+        // reduce leakage current. Since the HAL doesn't provide a straight-forward way
+        // to do that, we do it manually.
+        let gpio_pin = if cfg!(feature = "rev2") { 7 } else { 9 };
         if let Some(freq) = self.current_frequency() {
             unsafe {
-                (*GPIOC::ptr()).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 14) | (0b10 << 14)));
-                (*GPIOC::ptr()).otyper.modify(|r, w| w.bits(r.bits() & !(0b1 << 7)));
+                (*GPIO_REG).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 2*gpio_pin) | (0b10 << 2*gpio_pin)));
+                (*GPIO_REG).otyper.modify(|r, w| w.bits(r.bits() & !(0b1 << gpio_pin)));
             }
             self.pwm.set_period((freq as u32).Hz());
             self.pwm.enable(CHANNEL);
         } else {
-            // We set the buzzer output pin into an open-drain state when not using it to
-            // reduce leakage current. Since the HAL doesn't provide a straight-forward way
-            // to do that, we do it manually.
-            // TODO: do it for rev1 too
             unsafe {
-                (*GPIOC::ptr()).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 14) | (0b01 << 14)));
-                (*GPIOC::ptr()).otyper.modify(|r, w| w.bits(r.bits() | (0b1 << 7)));
+                (*GPIO_REG).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 2*gpio_pin) | (0b01 << 2*gpio_pin)));
+                (*GPIO_REG).otyper.modify(|r, w| w.bits(r.bits() | (0b1 << gpio_pin)));
             }
             self.pwm.disable(CHANNEL);
         }
     }
 
     pub fn switch_mode(&mut self, time: u32, mode: FlightMode) {
+        self.current_tone = if mode == FlightMode::RecoveryDrogue || mode == FlightMode::RecoveryMain {
+            Some(self.warning_note.clone())
+        } else {
+            None
+        };
+
         self.current_melody = match mode {
             FlightMode::HardwareArmed => Some(&HWARMED),
             FlightMode::Armed => Some(&ARMED),
-            FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&RECOVERY),
             FlightMode::Landed => Some(&LANDED),
             _ => None
         };
+
         self.current_index = 0;
         self.time_note_change = time;
         self.repeat = mode == FlightMode::Landed;
@@ -173,6 +198,7 @@ impl Buzzer {
 #[derive(Clone)]
 struct Note {
     pitch: Option<Pitch>,
+    frequency: Option<f32>,
     duration: u32,
 }
 
@@ -180,16 +206,25 @@ impl Note {
     const fn note(semitone: Semitone, octave: u8, duration: u32) -> Self {
         Self {
             pitch: Some(Pitch { semitone, octave }),
+            frequency: None,
+            duration,
+        }
+    }
+
+    const fn frequency(frequency: f32, duration: u32) -> Self {
+        Self {
+            pitch: None,
+            frequency: Some(frequency),
             duration,
         }
     }
 
     const fn pause(duration: u32) -> Self {
-        Self { pitch: None, duration }
+        Self { pitch: None, frequency: None, duration }
     }
 
     fn freq(&self) -> Option<f32> {
-        self.pitch.as_ref().map(|p| p.freq())
+        self.frequency.or(self.pitch.as_ref().map(|p| p.freq()))
     }
 }
 

@@ -111,6 +111,8 @@ pub struct Settings {
     pub min_time_to_main: u32,
     /// Mounting orientation of the flight computer
     pub orientation: Orientation,
+    /// Warning sound frequency
+    pub outputs_warning_frequency: f32,
 }
 
 impl Default for Settings {
@@ -142,6 +144,7 @@ impl Default for Settings {
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZUp,
+            outputs_warning_frequency: 500.0,
         }
     }
 }
