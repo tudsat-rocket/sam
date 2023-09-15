@@ -5,7 +5,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-sting_fc_firmware = { git = "ssh://git@gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git", default-features = false }
+sting_fc_firmware = { git = "https://gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git", default-features = false }
 #sting_fc_firmware = { path = "../sting_fc_firmware", default-features = false }
 clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
