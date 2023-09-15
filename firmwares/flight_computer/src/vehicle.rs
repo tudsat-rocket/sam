@@ -57,6 +57,31 @@ type Flash = crate::flash::Flash<Spi2, Pin<'B', 12, Output>>;
 #[cfg(feature = "rev2")]
 type Flash = crate::flash::Flash<Spi3, Pin<'D', 2, Output>>;
 
+#[derive(Default, Clone)]
+struct RecoveryState {
+    pressure_cartridge: u16,
+    pressure_chamber: u16,
+    temperature: f32
+}
+
+impl From<[u8; 8]> for RecoveryState {
+    fn from(msg: [u8; 8]) -> Self {
+        Self {
+            pressure_cartridge: u16::from_le_bytes([msg[0], msg[1]]),
+            pressure_chamber: u16::from_le_bytes([msg[2], msg[3]]),
+            temperature: u16::from_le_bytes([msg[4], msg[5]]) as f32,
+        }
+    }
+}
+
+impl Into<[u8; 2]> for RecoveryState {
+    fn into(self) -> [u8; 2] {
+        let pressure_cartridge = self.pressure_cartridge as u8;
+        let pressure_chamber = self.pressure_chamber as u8;
+        [pressure_cartridge, pressure_chamber]
+    }
+}
+
 #[cfg_attr(feature = "gcs", allow(dead_code))]
 pub struct Vehicle {
     clocks: Clocks,
@@ -85,6 +110,8 @@ pub struct Vehicle {
     loop_runtime_history: VecDeque<u16>,
     settings: Settings,
     data_rate: TelemetryDataRate,
+    recovery_drogue: Option<RecoveryState>,
+    recovery_main: Option<RecoveryState>,
 }
 
 impl Vehicle {
@@ -159,6 +186,9 @@ impl Vehicle {
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
             settings,
             data_rate,
+
+            recovery_drogue: None,
+            recovery_main: None,
         }
     }
 
@@ -194,7 +224,7 @@ impl Vehicle {
         let cycles_before = hal::pac::DWT::cycle_count();
 
         // Read sensors
-        self.power.tick();
+        self.power.tick(self.time);
         self.barometer.tick();
         self.imu.tick();
         self.acc.tick();
@@ -213,13 +243,25 @@ impl Vehicle {
         );
 
         // Switch to new mode if necessary
-        if let Some(fm) = self.state_estimator.new_mode(self.power.arm_voltage().unwrap_or(0)) {
+        if let Some(fm) = self.state_estimator.new_mode(
+            self.power.arm_voltage().unwrap_or(0),
+            self.power.breakwire_open()
+        ) {
             self.switch_mode(fm);
         }
 
         // Handle incoming messages
         #[cfg(feature = "rev2")]
-        self.can.tick();
+        if let Some((id, msg)) = self.can.tick() {
+            match id {
+                0x100 => self.power.handle_battery_can_msg(msg),
+                0x110 => self.recovery_drogue = Some(msg.into()),
+                0x111 => self.recovery_main = Some(msg.into()),
+                _id => {
+                    //log!(Debug, "Message from unknown CAN id (0x{:03x}): {:02x?}", id, msg)
+                }
+            }
+        }
 
         if let Some(cmd) = self.radio.tick(self.time) {
             self.handle_command(cmd);

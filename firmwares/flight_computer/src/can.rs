@@ -159,7 +159,7 @@ impl<SPI: SpiBus, CS: OutputPin> MCP2517FD<SPI, CS> {
         })
     }
 
-    pub fn receive_message(&mut self) -> Result<(), SPI::Error> {
+    pub fn receive_message(&mut self) -> Result<Option<(u16, [u8; 8])>, SPI::Error> {
         // Check Status register to find out whether there is a new message
         let fifo_status = self.sfr_read(MCP2517FDRegister::C1FiFoSta1)?;
         let fifo_index = (fifo_status >> 8) & 0x1f;
@@ -171,9 +171,8 @@ impl<SPI: SpiBus, CS: OutputPin> MCP2517FD<SPI, CS> {
             // Read our 8 message bytes plus 8 bytes header
             let frame: [u8; 16] = self.memory_read(address)?;
             let identifier = u16::from_le_bytes([frame[0], frame[1]]);
-            let msg = &frame[8..];
-
-            log!(Info, "Received CAN msg ({:03x}): {:02x?}", identifier, msg);
+            let mut msg = [0; 8];
+            msg.copy_from_slice(&frame[8..]);
 
             // Tell CAN controller to increment FIFO index
             let mut fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon1)?;
@@ -181,14 +180,20 @@ impl<SPI: SpiBus, CS: OutputPin> MCP2517FD<SPI, CS> {
             self.sfr_write(MCP2517FDRegister::C1FiFoCon1, fifo_config)?;
 
             self.fifo_index = fifo_index;
-        }
 
-        Ok(())
+            Ok(Some((identifier, msg)))
+        } else {
+            Ok(None)
+        }
     }
 
-    pub fn tick(&mut self) {
-        if let Err(e) = self.receive_message() {
-            log!(Error, "Failed to read from CAN controller: {:?}", e);
+    pub fn tick(&mut self) -> Option<(u16, [u8; 8])> {
+        match self.receive_message() {
+            Ok(res) => res,
+            Err(e) => {
+                log!(Error, "Failed to read from CAN controller: {:?}", e);
+                None
+            }
         }
     }
 }
