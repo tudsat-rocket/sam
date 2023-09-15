@@ -11,8 +11,6 @@ use crate::logging::*;
 
 #[no_mangle]
 pub fn jump_to_bootloader() {
-    //const BOOTLOADER_ADDRESS: usize = 0x1fff77de;
-
     unsafe {
         core::arch::asm!("ldr r0, =0x40023844"); // RCC_APB2ENR
         core::arch::asm!("ldr r1, =0x00004000"); // ENABLE SYSCFG CLOCK

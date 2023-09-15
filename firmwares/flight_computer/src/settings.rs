@@ -54,6 +54,12 @@ impl Default for LoRaSettings {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum Orientation {
+    ZUp,
+    ZDown,
+}
+
 /// Main Settings struct. Stored in flash using postcard (non-COBS) encoding.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Settings {
@@ -101,6 +107,10 @@ pub struct Settings {
     pub lora: LoRaSettings,
     /// Telemetry data rate
     pub default_data_rate: TelemetryDataRate,
+    /// Time after drogue deployment in which main deployment will not be triggered
+    pub min_time_to_main: u32,
+    /// Mounting orientation of the flight computer
+    pub orientation: Orientation,
 }
 
 impl Default for Settings {
@@ -114,14 +124,14 @@ impl Default for Settings {
             mahony_kp: 0.5,
             mahony_ki: 0.0,
             std_dev_accelerometer: 0.5,
-            std_dev_barometer: 0.5,
-            std_dev_process: 0.005,
+            std_dev_barometer: 0.8,
+            std_dev_process: 0.5,
             // TODO: unused
             takeoff_detection_mode: TakeoffDetectionMode::default(),
             min_takeoff_acc: 30.0,
             min_takeoff_acc_time: 50,
-            min_time_to_apogee: 5000,
-            max_time_to_apogee: 12000,
+            min_time_to_apogee: 20000,
+            max_time_to_apogee: 40000,
             apogee_min_falling_time: 1000,
             main_output_mode: MainOutputMode::default(),
             main_output_deployment_altitude: 450.0,
@@ -130,6 +140,8 @@ impl Default for Settings {
             outputs_high_time: 2000,
             lora: LoRaSettings::default(),
             default_data_rate: TelemetryDataRate::default(),
+            min_time_to_main: 1000,
+            orientation: Orientation::ZUp,
         }
     }
 }

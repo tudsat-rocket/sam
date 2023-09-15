@@ -82,8 +82,6 @@ pub struct Vehicle {
     pub time: u32,
     state_estimator: StateEstimator,
     mode: FlightMode,
-    mode_time: u32,
-    condition_true_since: Option<u32>,
     loop_runtime_history: VecDeque<u16>,
     settings: Settings,
     data_rate: TelemetryDataRate,
@@ -158,8 +156,6 @@ impl Vehicle {
             time: 0,
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQ_HERTZ as f32, settings.clone()),
             mode: FlightMode::Idle,
-            mode_time: 0,
-            condition_true_since: None,
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
             settings,
             data_rate,
@@ -252,7 +248,7 @@ impl Vehicle {
         }
 
         // Set outputs
-        let elapsed = self.time.wrapping_sub(self.mode_time);
+        let elapsed = self.state_estimator.time_in_mode();
         let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
         let recovery_high = elapsed > self.settings.outputs_warning_time && elapsed < recovery_duration;
         self.recovery.0.set_state(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
