@@ -147,10 +147,8 @@ impl Sam {
             .line("True Vertical Accel [m/s²]", g, |vs| vs.true_vertical_accel)
             .line("True Vario [m/s]", b1, |vs| vs.true_vertical_speed);
 
-        // TODO: ylimits
-        let altitude_plot = PlotState::new("Altitude (ASL)", (None, Some(300.0)), shared_plot.clone())
+        let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
             .line("Altitude (Ground) [m]", br, |vs| vs.altitude_ground)
-            //.line("Altitude (Max) [m]", r, |vs| vs.altitude_max)
             .line("Altitude (Baro) [m]", b1, |vs| vs.altitude_baro)
             .line("Altitude [m]", b, |vs| vs.altitude)
             .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps);
@@ -173,8 +171,12 @@ impl Sam {
             .line("Mag (Y) [µT]", g, |vs| vs.magnetometer.map(|a| a.y))
             .line("Mag (Z) [µT]", b, |vs| vs.magnetometer.map(|a| a.z));
 
-        let barometer_plot = PlotState::new("Pressures", (Some(900.0), Some(1100.0)), shared_plot.clone())
-            .line("Baro Pressure [mbar]", c, |vs| vs.pressure_baro);
+        let barometer_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
+            .line("Barometer [bar]", c, |vs| vs.pressure_baro.map(|p| p / 1000.0))
+            .line("Drogue Cartridge [bar]", r1, |vs| vs.drogue_cartridge_pressure)
+            .line("Drogue Chamber [bar]", g1, |vs| vs.drogue_chamber_pressure)
+            .line("Main Cartridge [bar]", r, |vs| vs.main_cartridge_pressure)
+            .line("Main Chamber [bar]", g, |vs| vs.main_chamber_pressure);
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
             .line("Baro. Temp. [°C]", c, |vs| vs.temperature_baro)
@@ -184,7 +186,8 @@ impl Sam {
             .line("Arm Voltage [V]", o, |vs| vs.arm_voltage)
             .line("Battery Voltage [V]", g, |vs| vs.battery_voltage)
             .line("Current [A]", o1, |vs| vs.current)
-            .line("Charge Voltage [V]", b, |vs| vs.charge_voltage);
+            .line("Charge Voltage [V]", b, |vs| vs.charge_voltage)
+            .line("Breakwire Open?", r, |vs| vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0)));
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
             .line("CPU Util. [%]", o, |vs| vs.cpu_utilization.map(|u| u as f32))
@@ -201,7 +204,7 @@ impl Sam {
 
         let bytes = include_bytes!("../assets/logo_inverted.png");
         let logo_inverted = RetainedImage::from_image_bytes("logo_inverted.png", bytes).unwrap();
-        let map = MapState::new(settings.mapbox_access_token.clone()); // TODO
+        let map = MapState::new(settings.mapbox_access_token.clone());
 
         Self {
             settings,
@@ -655,7 +658,7 @@ impl Sam {
                         .cell("Gyroscope",           |ui| ui.plot_telemetry(&self.gyroscope_plot))
                         .cell("Accelerometers",      |ui| ui.plot_telemetry(&self.accelerometer_plot))
                         .cell("Magnetometer",        |ui| ui.plot_telemetry(&self.magnetometer_plot))
-                        .cell("Barometer",           |ui| ui.plot_telemetry(&self.barometer_plot))
+                        .cell("Pressures",           |ui| ui.plot_telemetry(&self.barometer_plot))
                         .cell("Temperature",         |ui| ui.plot_telemetry(&self.temperature_plot))
                         .cell("Power",               |ui| ui.plot_telemetry(&self.power_plot))
                         .cell("Runtime",             |ui| ui.plot_telemetry(&self.runtime_plot))

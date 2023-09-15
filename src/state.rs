@@ -37,7 +37,7 @@ pub struct VehicleState {
     pub battery_voltage: Option<f32>,
     pub charge_voltage: Option<f32>,
     pub arm_voltage: Option<f32>,
-    pub breakwire: Option<bool>,
+    pub breakwire_open: Option<bool>,
     pub current: Option<f32>,
     pub flash_pointer: Option<u32>,
 
@@ -47,6 +47,11 @@ pub struct VehicleState {
     pub gcs_lora_snr: Option<i8>,
     pub telemetry_data_rate: Option<TelemetryDataRate>,
     pub transmit_power: Option<TransmitPower>,
+
+    pub main_cartridge_pressure: Option<f32>,
+    pub main_chamber_pressure: Option<f32>,
+    pub drogue_cartridge_pressure: Option<f32>,
+    pub drogue_chamber_pressure: Option<f32>,
 
     pub true_orientation: Option<UnitQuaternion<f32>>,
     pub true_vertical_accel: Option<f32>,
@@ -97,9 +102,9 @@ impl From<DownlinkMessage> for VehicleState {
                     };
                     Some(UnitQuaternion::from_quaternion(quat_raw))
                 },
-                altitude: Some((tm.altitude as f32) / 10.0),
-                altitude_baro: Some((tm.altitude_baro as f32) / 10.0),
-                altitude_max: Some((tm.altitude_max as f32) / 10.0),
+                altitude: Some((tm.altitude as f32 - 1000.0) / 10.0),
+                altitude_baro: Some((tm.altitude_baro as f32 - 1000.0) / 10.0),
+                altitude_max: Some((tm.altitude_max as f32 - 1000.0) / 10.0),
                 vertical_speed: Some(Into::<f32>::into(tm.vertical_speed) / 10.0),
                 vertical_accel: Some(Into::<f32>::into(tm.vertical_accel) / 10.0),
                 vertical_accel_filtered: Some(Into::<f32>::into(tm.vertical_accel_filtered) / 10.0),
@@ -112,7 +117,6 @@ impl From<DownlinkMessage> for VehicleState {
                 accelerometer2: Some(tm.accelerometer2),
                 magnetometer: Some(tm.magnetometer),
                 pressure_baro: Some(tm.pressure_baro),
-                temperature_baro: Some(tm.temperature_baro),
                 ..Default::default()
             },
             DownlinkMessage::TelemetryRawSensorsCompressed(tm) => Self {
@@ -122,23 +126,24 @@ impl From<DownlinkMessage> for VehicleState {
                 accelerometer2: Some(<_ as Into<Vector3<f32>>>::into(tm.accelerometer2) / 10.0),
                 magnetometer: Some(<_ as Into<Vector3<f32>>>::into(tm.magnetometer) / 10.0),
                 pressure_baro: Some((tm.pressure_baro as f32) / 10.0),
-                temperature_baro: Some((tm.temperature_baro as f32) / 2.0),
                 ..Default::default()
             },
             DownlinkMessage::TelemetryDiagnostics(tm) => Self {
                 time: tm.time,
-                altitude_ground: Some((tm.altitude_ground as f32) / 10.0),
-                temperature_core: Some((tm.temperature_core as f32) / 2.0),
+                altitude_ground: Some((tm.altitude_ground as f32 - 1000.0) / 10.0),
                 battery_voltage: Some(((tm.battery_voltage >> 2) as f32) / 1000.0),
                 charge_voltage: Some((tm.charge_voltage as f32) / 1000.0),
-                arm_voltage: Some((tm.arm_voltage as f32) / 1000.0),
                 current: Some((tm.current as f32) / 1000.0),
-                breakwire: ((tm.battery_voltage & 0x2) > 0).then(|| (tm.battery_voltage & 0x01) > 0),
+                breakwire_open: ((tm.battery_voltage & 0b10) == 0).then(|| (tm.battery_voltage & 0b01) > 0),
                 cpu_utilization: Some(tm.cpu_utilization),
-                heap_utilization: Some(tm.heap_utilization),
                 vehicle_lora_rssi: Some(tm.lora_rssi),
                 transmit_power: Some((tm.transmit_power_and_data_rate & 0x7f).into()),
                 telemetry_data_rate: Some((tm.transmit_power_and_data_rate >> 7).into()),
+                temperature_baro: Some((tm.temperature_baro as f32) / 2.0),
+                drogue_cartridge_pressure: (tm.recovery_drogue[0] != 0x00).then(|| (tm.recovery_drogue[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
+                main_cartridge_pressure: (tm.recovery_main[0] != 0x00).then(|| (tm.recovery_main[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
+                drogue_chamber_pressure: (tm.recovery_drogue[1] != 0x00).then(|| (tm.recovery_drogue[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
+                main_chamber_pressure: (tm.recovery_main[1] != 0x00).then(|| (tm.recovery_main[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
                 ..Default::default()
             },
             DownlinkMessage::TelemetryGPS(tm) => Self {
@@ -158,7 +163,7 @@ impl From<DownlinkMessage> for VehicleState {
                         .then(|| lng)
                         .map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0)
                 },
-                altitude_gps: (tm.altitude_asl != u16::MAX).then(|| (tm.altitude_asl as f32) / 10.0),
+                altitude_gps: (tm.altitude_asl != u16::MAX).then(|| (tm.altitude_asl as f32 - 1000.0) / 10.0),
                 flash_pointer: Some((tm.flash_pointer as u32) * 1024),
                 ..Default::default()
             },
