@@ -136,7 +136,7 @@ impl From<u8> for GPSFixType {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum TransmitPower {
     #[default]
     P14dBm = 0x00,
@@ -157,7 +157,7 @@ impl From<u8> for TransmitPower {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum TelemetryDataRate {
     #[default]
     Low = 0x0,
@@ -207,7 +207,6 @@ pub struct TelemetryRawSensors {
     pub accelerometer1: Vector3<f32>,
     pub accelerometer2: Vector3<f32>,
     pub magnetometer: Vector3<f32>,
-    pub temperature_baro: f32,
     pub pressure_baro: f32,
 }
 
@@ -218,7 +217,6 @@ pub struct TelemetryRawSensorsCompressed {
     pub accelerometer1: CompressedVector3,
     pub accelerometer2: CompressedVector3,
     pub magnetometer: CompressedVector3,
-    pub temperature_baro: i8,
     pub pressure_baro: u16, // TODO: compress this further
 }
 
@@ -226,20 +224,15 @@ pub struct TelemetryRawSensorsCompressed {
 pub struct TelemetryDiagnostics {
     pub time: u32,
     pub cpu_utilization: u8,
-    pub heap_utilization: u8,
-    pub temperature_core: i8,
-    pub cpu_voltage: u16,
-    /// Battery voltage in mV
+    pub charge_voltage: u16,
     pub battery_voltage: u16,
-    /// Voltage behind arm switch in mV
-    pub arm_voltage: u16,
-    /// Current current draw (hah!) in mA
-    pub current: u16,
-    ///// Battery capacity consumed in mAh
-    //pub consumed: u16,
+    pub current: i16,
     pub lora_rssi: u8,
     pub altitude_ground: u16,
     pub transmit_power_and_data_rate: u8,
+    pub temperature_baro: i8,
+    pub recovery_drogue: [u8; 2],
+    pub recovery_main: [u8; 2],
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

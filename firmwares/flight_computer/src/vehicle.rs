@@ -455,9 +455,9 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             vertical_speed: (self.state_estimator.vertical_speed() * 10.0).into(),
             vertical_accel: self.state_estimator.acceleration_world().map(|a| a.z * 10.0).unwrap_or(0.0).into(),
             vertical_accel_filtered: (self.state_estimator.vertical_accel() * 10.0).into(),
-            altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0) as u16, // TODO: this limits us to 6km AMSL
-            altitude: (self.state_estimator.altitude() * 10.0) as u16,
-            altitude_max: (self.state_estimator.altitude_max * 10.0) as u16,
+            altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0 + 1000.0) as u16, // TODO: this limits us to 6km AMSL
+            altitude: (self.state_estimator.altitude() * 10.0 + 1000.0) as u16,
+            altitude_max: (self.state_estimator.altitude_max * 10.0 + 1000.0) as u16,
         }
     }
 }
@@ -470,7 +470,6 @@ impl Into<TelemetryRawSensors> for &Vehicle {
             accelerometer1: self.imu.accelerometer().unwrap_or_default(),
             accelerometer2: self.acc.accelerometer().unwrap_or_default(),
             magnetometer: self.compass.magnetometer().unwrap_or_default(),
-            temperature_baro: self.barometer.temperature().unwrap_or_default(),
             pressure_baro: self.barometer.pressure().unwrap_or_default(),
         }
     }
@@ -488,7 +487,6 @@ impl Into<TelemetryRawSensorsCompressed> for &Vehicle {
             accelerometer1: (acc1 * 100.0).into(),
             accelerometer2: (acc2 * 10.0).into(),
             magnetometer: (mag * 10.0).into(),
-            temperature_baro: (self.barometer.temperature().unwrap_or(0.0) * 2.0) as i8,
             pressure_baro: (self.barometer.pressure().unwrap_or(0.0) * 10.0) as u16,
         }
     }
@@ -499,21 +497,25 @@ impl Into<TelemetryDiagnostics> for &Vehicle {
         let loop_runtime = self.loop_runtime_history.iter()
             .fold(0, |a, b| u16::max(a, *b));
         let cpu_util = 100.0 * (loop_runtime as f32) / (1_000_000.0 / MAIN_LOOP_FREQ_HERTZ as f32);
-        let heap_util = 100.0 * (crate::ALLOCATOR.used() as f32) / (crate::HEAP_SIZE as f32);
         let power_and_dr = ((self.data_rate as u8) << 7) | (self.radio.transmit_power as u8);
+
+        let breakwire = match self.power.breakwire_open() {
+            None => 0b10,
+            Some(b) => b as u8,
+        };
 
         TelemetryDiagnostics {
             time: self.time,
             cpu_utilization: cpu_util as u8,
-            heap_utilization: heap_util as u8,
-            temperature_core: (self.power.temperature().unwrap_or(0.0) * 2.0) as i8,
-            cpu_voltage: self.power.cpu_voltage().unwrap_or(0),
-            battery_voltage: self.power.battery_voltage().unwrap_or(0),
-            arm_voltage: self.power.arm_voltage().unwrap_or(0),
+            charge_voltage: self.power.charge_voltage().unwrap_or(0),
+            battery_voltage: self.power.battery_voltage().unwrap_or(0) << 2 | breakwire as u16,
             current: self.power.battery_current().unwrap_or(0),
             lora_rssi: self.radio.rssi,
-            altitude_ground: (self.state_estimator.altitude_ground * 10.0) as u16,
+            altitude_ground: (self.state_estimator.altitude_ground * 10.0 + 1000.0) as u16,
             transmit_power_and_data_rate: power_and_dr,
+            temperature_baro: (self.barometer.temperature().unwrap_or(0.0) * 2.0) as i8,
+            recovery_drogue: self.recovery_drogue.clone().map(|r| r.into()).unwrap_or([0, 0]),
+            recovery_main: self.recovery_main.clone().map(|r| r.into()).unwrap_or([0, 0]),
         }
     }
 }
@@ -536,7 +538,7 @@ impl Into<TelemetryGPS> for &Vehicle {
             hdop: self.gps.hdop,
             latitude,
             longitude,
-            altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0) as u16).unwrap_or(u16::MAX),
+            altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
             flash_pointer: (self.flash.pointer / 1024) as u16,
         }
     }

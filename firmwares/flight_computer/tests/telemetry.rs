@@ -51,13 +51,13 @@ mod tests {
         assert_eq!(msg.serialize().unwrap().len(), 15);
 
         let msg = DownlinkMessage::TelemetryRawSensors(TelemetryRawSensors::default());
-        assert_eq!(msg.serialize().unwrap().len(), 64);
+        assert_eq!(msg.serialize().unwrap().len(), 60);
 
         let msg = DownlinkMessage::TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed::default());
-        assert_eq!(msg.serialize().unwrap().len(), 18);
+        assert_eq!(msg.serialize().unwrap().len(), 17);
 
         let msg = DownlinkMessage::TelemetryDiagnostics(TelemetryDiagnostics::default());
-        assert_eq!(msg.serialize().unwrap().len(), 13);
+        assert_eq!(msg.serialize().unwrap().len(), 16);
 
         let msg = DownlinkMessage::TelemetryGPS(TelemetryGPS::default());
         assert_eq!(msg.serialize().unwrap().len(), 14);
@@ -97,10 +97,9 @@ mod tests {
             accelerometer1: Vector3::new(1.512, 0.512, 10.241),
             accelerometer2: Vector3::new(1.759, 0.062, 52.5112),
             magnetometer: Vector3::new(43.123, 51.512, 24.213),
-            temperature_baro: 36.12,
             pressure_baro: 1002.3,
         });
-        assert_eq!(msg.serialize().unwrap().len(), 68);
+        assert_eq!(msg.serialize().unwrap().len(), 64);
 
         let msg = DownlinkMessage::TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed {
             time: 0x12345678,
@@ -108,24 +107,24 @@ mod tests {
             accelerometer1: Vector3::new(1.512, 0.512, 10.241).into(),
             accelerometer2: Vector3::new(1.759, 0.062, 52.5112).into(),
             magnetometer: Vector3::new(43.123, 51.512, 24.213).into(),
-            temperature_baro: 36,
             pressure_baro: 10023,
         });
-        assert_eq!(msg.serialize().unwrap().len(), 23);
+        assert_eq!(msg.serialize().unwrap().len(), 22);
 
         let msg = DownlinkMessage::TelemetryDiagnostics(TelemetryDiagnostics {
             time: 0x12345678,
             cpu_utilization: 213,
-            heap_utilization: 123,
-            temperature_core: 25,
-            cpu_voltage: 3100,
+            charge_voltage: 3100,
             battery_voltage: 7412,
-            arm_voltage: 7411,
             current: 2021,
             lora_rssi: 127,
             altitude_ground: 215,
+            transmit_power_and_data_rate: 0x12,
+            temperature_baro: 36,
+            recovery_drogue: [0xf1, 0x28],
+            recovery_main: [0x1f, 0x91],
         });
-        assert_eq!(msg.serialize().unwrap().len(), 22);
+        assert_eq!(msg.serialize().unwrap().len(), 24);
 
         let msg = DownlinkMessage::TelemetryGPS(TelemetryGPS {
             time: 0x12345678,
@@ -156,26 +155,17 @@ mod tests {
         let msg = UplinkMessage::Command(Command::Reboot);
         assert_eq!(msg.serialize().unwrap().len(), 4);
 
-        let msg = UplinkMessage::CommandAuth(Command::Reboot, 0x1234123412341234);
-        assert_eq!(msg.serialize().unwrap().len(), 13);
-
         let msg = UplinkMessage::Command(Command::RebootToBootloader);
         assert_eq!(msg.serialize().unwrap().len(), 4);
 
         let msg = UplinkMessage::Command(Command::SetFlightMode(FlightMode::Idle));
         assert_eq!(msg.serialize().unwrap().len(), 5);
 
-        let msg = UplinkMessage::CommandAuth(Command::SetFlightMode(FlightMode::Armed), 0x1234567812345678);
-        assert_eq!(msg.serialize().unwrap().len(), 14);
-
         let msg = UplinkMessage::ReadFlash(0x0100, 0x1000);
         assert_eq!(msg.serialize().unwrap().len(), 7);
 
         let msg = UplinkMessage::Command(Command::EraseFlash);
         assert_eq!(msg.serialize().unwrap().len(), 4);
-
-        let msg = UplinkMessage::CommandAuth(Command::EraseFlash, 0x1234123412341234);
-        assert_eq!(msg.serialize().unwrap().len(), 13);
     }
 
     #[test]
