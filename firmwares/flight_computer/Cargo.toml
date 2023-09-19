@@ -32,7 +32,7 @@ crc = "3"
 ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
 nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
-ublox = { version = "0.4", default-features = false }
+ublox = { version = "0.4.2", default-features = false }
 siphasher = { version = "0.3", default-features = false }
 defmt = "0.3"
 defmt-rtt = "0.4"
