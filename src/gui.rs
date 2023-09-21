@@ -499,7 +499,7 @@ impl Sam {
 
         // Top panel containing text indicators and flight mode buttons
         egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_centered(|ui| {
                 if ui.style().visuals.dark_mode {
                     self.logo.show_max_size(ui, Vec2::new(ui.available_width(), 90.0));
                 } else {
@@ -513,51 +513,45 @@ impl Sam {
 
                     let time = self.data_source.vehicle_states().last().map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
                     let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
-                    let battery_voltage = self.current(|vs| vs.battery_voltage).map(|v| format!("{:.2}", v));
-                    let vertical_speed = self.current(|vs| vs.vertical_speed).map(|v| format!("{:.2}", v));
-
                     let alt_ground = self.current(|vs| vs.altitude_ground).unwrap_or(0.0);
-                    let alt = self.current(|vs| vs.altitude).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_max = self.current(|vs| vs.altitude_max).map(|a| format!("{:.1} ({:.1})", a - alt_ground, a));
-                    let alt_baro = self.current(|vs| vs.altitude_baro).map(|a| format!("{:.1}", a));
-                    let alt_gps = self.current(|vs| vs.altitude_gps).map(|a| format!("{:.1}", a));
-
                     let last_gps = self.data_source
                         .vehicle_states()
                         .rev()
                         .find_map(|(_t, vs)| vs.gps_fix.is_some().then(|| vs))
                         .cloned();
-                    let gps_status = last_gps.as_ref().map(|vs| format!("{:?} ({})", vs.gps_fix.unwrap(), vs.num_satellites.unwrap_or(0)));
-                    let hdop = last_gps.as_ref().map(|vs| format!("{:.2}", vs.hdop.unwrap_or(9999) as f32 / 100.0));
-                    let latitude = last_gps.as_ref().and_then(|vs| vs.latitude).map(|l| format!("{:.6}", l));
-                    let longitude = last_gps.as_ref().and_then(|vs| vs.longitude).map(|l| format!("{:.6}", l));
+                    let gps_status = last_gps.as_ref().map(|vs| format!("{:?}", vs.gps_fix.unwrap()));
+                    let latitude = last_gps.as_ref().and_then(|vs| vs.latitude);
+                    let longitude = last_gps.as_ref().and_then(|vs| vs.longitude);
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 4.0);
                         ui.add_space(spacing);
                         ui.telemetry_value("🕐", "Time [s]", time);
                         ui.telemetry_value("🏷", "Mode", mode);
-                        ui.telemetry_value("🔋", "Bat. Voltage [V]", battery_voltage);
-                        ui.telemetry_value("⏱", "Vertical Speed [m/s]", vertical_speed);
+                        ui.telemetry_value_nominal("🔥", "Baro Temp. [°C]", self.current(|vs| vs.temperature_baro), 1, 0.0, 60.0);
+                        ui.telemetry_value_nominal("📡", "RSSI [dBm]", self.current(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / - 2.0)), 1, -50.0, 0.0);
+                        ui.telemetry_value_nominal("📶", "Link Quality [%]", self.data_source.link_quality(), 1, 90.0, 101.0);
                         ui.add_space(spacing);
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 2.0);
                         ui.add_space(spacing);
-                        ui.telemetry_value("⬆", "Alt. (AGL/ASL) [m]", alt);
-                        ui.telemetry_value("📈", "Max Alt. (AGL/ASL) [m]", alt_max);
-                        ui.telemetry_value("☁", "Alt. (Baro, ASL) [m]", alt_baro);
-                        ui.telemetry_value("📡", "Alt. (GPS, ASL) [m]", alt_gps);
+                        ui.telemetry_value_nominal("📈", "Altitude (AGL) [m]", self.current(|vs| vs.altitude.map(|a| a - alt_ground)), 1, -1.0, 10000.0);
+                        ui.telemetry_value_nominal("📈", "Max Alt. (AGL) [m]", self.current(|vs| vs.altitude_max.map(|a| a - alt_ground)), 1, -1.0, 10000.0);
+                        ui.telemetry_value_nominal("☁", "Baro. Alt. (ASL) [m]", self.current(|vs| vs.altitude_baro), 1, -100.0, 10000.0);
+                        ui.telemetry_value_nominal("⏱", "Vertical Speed [m/s]", self.current(|vs| vs.vertical_speed), 2, -1.0, 1.0);
+                        ui.telemetry_value_nominal("⬆", "Vertical Accel. [m/s²]", self.current(|vs| vs.vertical_accel_filtered), 1, -1.0, 1.0);
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width());
                         ui.add_space(spacing);
-                        ui.telemetry_value("📶", "GPS Status (#Sats)", gps_status);
-                        ui.telemetry_value("🎯", "HDOP", hdop);
-                        ui.telemetry_value("↕", "Latitude", latitude);
-                        ui.telemetry_value("↔", "Longitude", longitude);
+                        ui.telemetry_value("🌍", "GPS Status", gps_status);
+                        ui.telemetry_value_nominal("📶", "# Sats", self.current(|vs| vs.num_satellites.map(|n| n as f32)), 0, 5.0, 99.0);
+                        ui.telemetry_value_nominal("🎯", "HDOP", last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0), 2, 0.0, 5.0);
+                        ui.telemetry_value_nominal("📡", "GPS Alt. (ASL) [m]", self.current(|vs| vs.altitude_gps), 1, -100.0, 10000.0);
+                        ui.telemetry_value("🌐", "Coords", latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng))));
                     });
                 });
 
@@ -606,10 +600,7 @@ impl Sam {
                         let text = format!("🖴  Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size);
                         ui.flash_bar(ui.available_width() * 0.6, f, text);
 
-                        let voltage = self.current(|vs| vs.battery_voltage).unwrap_or_default();
-                        let f = (voltage - 6.0) / (8.4 - 6.0);
-                        let text = format!("🔋 Battery: {:.2}V", voltage);
-                        ui.battery_bar(ui.available_width(), f, text);
+                        ui.battery_bar(ui.available_width(), self.current(|vs| vs.battery_voltage));
                     });
 
                     ui.horizontal_centered(|ui| {
@@ -648,7 +639,8 @@ impl Sam {
             ui.set_height(ui.available_height());
 
             match self.tab {
-                GuiTab::Launch => {}, // TODO
+                GuiTab::Launch => {
+                },
                 GuiTab::Plot => {
                     MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
                         .cell("Orientation",         |ui| ui.plot_telemetry(&self.orientation_plot))

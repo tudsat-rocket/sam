@@ -112,7 +112,7 @@ impl SimulationSettingsUiExt for SimulationSettings {
                            .speed(0.1)
                            .clamp_range(-10000.0..=20000.0));
 
-                    ui.weak("with a probability of");
+                    ui.weak("with p=");
                     ui.add(DragValue::new(&mut self.barometer_anomaly_probability)
                            .suffix("")
                            .speed(0.0001)

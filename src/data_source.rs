@@ -202,6 +202,10 @@ pub trait DataSource {
     fn minimum_fps(&self) -> Option<u64>;
     fn end(&self) -> Option<Instant>;
 
+    fn link_quality(&self) -> Option<f32> {
+        None
+    }
+
     fn is_log_file(&self) -> bool {
         false
     }
@@ -342,6 +346,19 @@ impl DataSource for SerialDataSource {
     fn apply_settings(&mut self, settings: &AppSettings) {
         self.lora_settings = settings.lora.clone();
         self.uplink_tx.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
+    }
+
+    fn link_quality(&self) -> Option<f32> {
+        let telemetry_data_rate = self.vehicle_states.iter()
+            .rev()
+            .find_map(|(_t, msg)| msg.telemetry_data_rate)
+            .unwrap_or(TelemetryDataRate::Low);
+        let expected = match telemetry_data_rate { // TODO: don't hardcode these?
+            TelemetryDataRate::Low => 15,
+            TelemetryDataRate::High => 35,
+        };
+        let percentage = ((self.message_receipt_times.len() as f32) / (expected as f32)) * 100.0;
+        Some(f32::min(percentage, 100.0))
     }
 }
 
