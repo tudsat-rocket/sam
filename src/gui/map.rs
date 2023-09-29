@@ -10,7 +10,7 @@ use std::f64::consts::TAU;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
-use instant::Instant;
+use web_time::Instant;
 
 use slippy_map_tiles::{BBox, Tile};
 
@@ -174,7 +174,8 @@ impl MapCache {
                     puffin::profile_scope!("map_line_creation");
 
                     let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
-                    let color = self.gradient_lookup[((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize];
+                    let index = usize::min(((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize, 100);
+                    let color = self.gradient_lookup[index];
                     (points, color)
                     })
                 .collect();
@@ -259,8 +260,9 @@ impl MapState {
     #[cfg(target_arch = "wasm32")]
     fn load_tile(&self, tile: Tile) {
         let cache = self.tile_cache.clone();
+        let access_token = self.access_token.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            match load_tile_image(&tile, &self.access_token).await {
+            match load_tile_image(&tile, &access_token).await {
                 Ok(image) => cache.lock().insert(tile, image),
                 Err(e) => log::error!("{:?}", e),
             }

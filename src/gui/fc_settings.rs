@@ -64,6 +64,7 @@ impl FcSettingsUiExt for Settings {
                         }
                     }
 
+                    #[cfg(not(target_arch="wasm32"))]
                     if ui.button("🔃Rekey").clicked() {
                         self.lora.authentication_key = rand::random();
                     }

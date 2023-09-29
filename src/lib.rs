@@ -23,23 +23,66 @@ mod settings;
 pub use crate::gui::*;
 pub use crate::data_source::*;
 
+#[cfg(target_arch = "wasm32")]
+use eframe::WebRunner;
+
+#[cfg(target_arch = "wasm32")]
+use settings::AppSettings;
+
 // Entry point for wasm
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(start)]
-pub async fn start() -> Result<(), JsValue> {
-    wasm_logger::init(wasm_logger::Config::default());
+#[derive(Clone)]
+#[wasm_bindgen]
+pub struct WebHandle {
+    runner: WebRunner,
+}
 
-    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl WebHandle {
+    /// Installs a panic hook, then returns.
+    #[allow(clippy::new_without_default)]
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        // Redirect [`log`] message to `console.log` and friends:
+        eframe::WebLogger::init(log::LevelFilter::Debug).ok();
 
-    let data_source = Box::new(SerialDataSource::new());
+        Self {
+            runner: WebRunner::new(),
+        }
+    }
 
-    eframe::start_web(
-        "sam_gcs", // needs to match the canvas id in index.html
-        eframe::WebOptions::default(),
-        Box::new(|cc| Box::new(Sam::init(cc, data_source))),
-    ).await?;
-    Ok(())
+
+    /// Call this once from JavaScript to start your app.
+    #[wasm_bindgen]
+    pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
+        let data_source = Box::new(SerialDataSource::new(sting_fc_firmware::settings::LoRaSettings::default()));
+
+        self.runner
+            .start(
+                canvas_id,
+                eframe::WebOptions::default(),
+                Box::new(|cc| Box::new(Sam::init(cc, AppSettings::default(), data_source))),
+            )
+            .await
+    }
+
+    /// The JavaScript can check whether or not your app has crashed:
+    #[wasm_bindgen]
+    pub fn has_panicked(&self) -> bool {
+        self.runner.has_panicked()
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_message(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.message())
+    }
+
+    #[wasm_bindgen]
+    pub fn panic_callstack(&self) -> Option<String> {
+        self.runner.panic_summary().map(|s| s.callstack())
+    }
 }

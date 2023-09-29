@@ -148,9 +148,9 @@ name = "ahrs"
 version = "0.5.0"
 source = "git+https://github.com/KoffeinFlummi/ahrs-rs#fefedda6fc761eca27b76ace5bc48f5fd35be692"
 dependencies = [
- "nalgebra 0.31.4",
+ "nalgebra",
  "num-traits",
- "simba 0.7.3",
+ "simba",
 ]
 
 [[package]]
@@ -458,12 +458,6 @@ checksum = "5deb64efa5bd81e31fcd1938615a6d98c82eafcbcd787162b6f63b91d6bac5b3"
 dependencies = [
  "rustc_version 0.2.3",
 ]
-
-[[package]]
-name = "base-x"
-version = "0.2.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cbbc9d0964165b47557570cce6c952866c2678457aca742aafc9fb771d30270"
 
 [[package]]
 name = "base64"
@@ -1095,12 +1089,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "discard"
-version = "1.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "212d0f5754cb6769937f4501cc0e67f4f4483c8d2c3e1e922ee9edbe4ab4c7c0"
-
-[[package]]
 name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1433,7 +1421,7 @@ name = "filter"
 version = "0.2.1-dev"
 source = "git+https://github.com/KoffeinFlummi/filter-rs#5945c79426c9a16767929eb15a33efa4e51a4a39"
 dependencies = [
- "nalgebra 0.31.4",
+ "nalgebra",
  "num-traits",
 ]
 
@@ -2049,7 +2037,6 @@ checksum = "7a5bbe824c507c5da5956355e86a746d82e0e1464f65d862cc5e71da70e94b2c"
 dependencies = [
  "cfg-if",
  "js-sys",
- "stdweb",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -2350,24 +2337,6 @@ dependencies = [
 
 [[package]]
 name = "nalgebra"
-version = "0.29.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d506eb7e08d6329505faa8a3a00a5dcc6de9f76e0c77e4b75763ae3c770831ff"
-dependencies = [
- "approx",
- "matrixmultiply",
- "nalgebra-macros",
- "num-complex",
- "num-rational",
- "num-traits",
- "rand",
- "rand_distr",
- "simba 0.6.0",
- "typenum",
-]
-
-[[package]]
-name = "nalgebra"
 version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20bd243ab3dbb395b39ee730402d2e5405e448c75133ec49cc977762c4cba3d1"
@@ -2379,7 +2348,7 @@ dependencies = [
  "num-rational",
  "num-traits",
  "serde",
- "simba 0.7.3",
+ "simba",
  "typenum",
 ]
 
@@ -3305,13 +3274,13 @@ dependencies = [
  "home",
  "image",
  "indicatif",
- "instant",
  "log",
- "nalgebra 0.31.4",
+ "nalgebra",
  "postcard",
  "puffin",
  "puffin_egui",
  "rand",
+ "rand_distr",
  "reqwest",
  "rfd",
  "serde",
@@ -3319,11 +3288,11 @@ dependencies = [
  "serialport",
  "siphasher",
  "slippy-map-tiles",
- "statrs",
  "sting_fc_firmware",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",
+ "web-time",
 ]
 
 [[package]]
@@ -3474,15 +3443,6 @@ dependencies = [
 
 [[package]]
 name = "sha1"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1da05c97445caa12d05e848c4a4fcbbea29e748ac28f7e80e9b010392063770"
-dependencies = [
- "sha1_smol",
-]
-
-[[package]]
-name = "sha1"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f04293dc80c3993519f2d7f6f511707ee7094fe0c6d3406feb330cdb3540eba3"
@@ -3491,12 +3451,6 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
-
-[[package]]
-name = "sha1_smol"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae1a47186c03a32177042e55dbc5fd5aee900b8e0069a8d70fba96a9375cd012"
 
 [[package]]
 name = "signal-hook"
@@ -3515,19 +3469,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8229b473baa5980ac72ef434c4415e70c4b5e71b423043adb4ba059f89c99a1"
 dependencies = [
  "libc",
-]
-
-[[package]]
-name = "simba"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0b7840f121a46d63066ee7a99fc81dcabbc6105e437cae43528cea199b5a05f"
-dependencies = [
- "approx",
- "num-complex",
- "num-traits",
- "paste",
- "wide",
 ]
 
 [[package]]
@@ -3667,72 +3608,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
-name = "statrs"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d08e5e1748192713cc281da8b16924fb46be7b0c2431854eadc785823e5696e"
-dependencies = [
- "approx",
- "lazy_static",
- "nalgebra 0.29.0",
- "num-traits",
- "rand",
-]
-
-[[package]]
-name = "stdweb"
-version = "0.4.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d022496b16281348b52d0e30ae99e01a73d737b2f45d38fed4edf79f9325a1d5"
-dependencies = [
- "discard",
- "rustc_version 0.2.3",
- "serde",
- "serde_json",
- "stdweb-derive",
- "stdweb-internal-macros",
- "stdweb-internal-runtime",
- "wasm-bindgen",
-]
-
-[[package]]
-name = "stdweb-derive"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c87a60a40fccc84bef0652345bbbbbe20a605bf5d0ce81719fc476f5c03b50ef"
-dependencies = [
- "proc-macro2",
- "quote",
- "serde",
- "serde_derive",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "stdweb-internal-macros"
-version = "0.2.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58fa5ff6ad0d98d1ffa8cb115892b6e69d67799f6763e162a1c9db421dc22e11"
-dependencies = [
- "base-x",
- "proc-macro2",
- "quote",
- "serde",
- "serde_derive",
- "serde_json",
- "sha1 0.6.1",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "stdweb-internal-runtime"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213701ba3370744dcd1a12960caa4843b3d68b4d1c0a5d575e0d65b2ee9d16c0"
-
-[[package]]
 name = "sting_fc_firmware"
 version = "0.1.0"
+source = "git+https://gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git#270d5373cfc49a1d4afcb6b8c1084ce18cf52fac"
 dependencies = [
  "ahrs",
  "crc 3.0.1",
@@ -3741,7 +3619,7 @@ dependencies = [
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.8",
  "filter",
- "nalgebra 0.31.4",
+ "nalgebra",
  "nb 1.1.0",
  "num-traits",
  "panic-probe",
@@ -4424,6 +4302,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "web-time"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19353897b48e2c4d849a2d73cb0aeb16dc2be4e00c565abfc11eb65a806e47de"
+dependencies = [
+ "js-sys",
+ "once_cell",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "webbrowser"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4852,7 +4741,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_repr",
- "sha1 0.10.5",
+ "sha1",
  "static_assertions",
  "tracing",
  "uds_windows",

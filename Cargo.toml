@@ -10,7 +10,6 @@ sting_fc_firmware = { git = "https://gitlab.com/tudsat-rocket1/firmware/sting_fc
 clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
-indicatif = "0.17"
 colored = "2"
 image = { version = "0.24", features = ["png"] }
 egui = "0.22"
@@ -27,8 +26,7 @@ crc = "2"
 directories = "4.0"
 slippy-map-tiles = "0.16"
 colorgrad = "0.6"
-rand = "0.8"
-statrs = "0.16.0"
+rand_distr = { version = "0.4", default-features = false }
 
 # Used for profiling
 puffin = { version = "0.14", optional = true }
@@ -42,18 +40,23 @@ egui_extras = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
+indicatif = "0.17"
+rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 home = "0.5" # No home directories in web assembly
+indicatif = "0.17"
+rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
-instant = { version = "0.1", features = ["stdweb", "wasm-bindgen"] }
+rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+web-time = "0.2"
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
-wasm-bindgen = "0.2"
+wasm-bindgen = "0.2.87"
 wasm-logger = "0.2.0"
 
 [features]

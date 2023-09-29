@@ -31,7 +31,7 @@ cargo install wasm-pack --features curl/static-curl
 ## Building
 
 ```
-wasm-pack build --target web
+wasm-pack build --target no-modules
 ```
 
 This will store the compiled application in `pkg/`.

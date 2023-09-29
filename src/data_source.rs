@@ -12,7 +12,7 @@ use std::slice::Iter;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
-use instant::Instant;
+use web_time::Instant;
 
 use eframe::epaint::Color32;
 use log::*;

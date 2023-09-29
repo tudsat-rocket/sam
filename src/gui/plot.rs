@@ -8,7 +8,7 @@ use std::time::Instant;
 use eframe::egui::plot::PlotBounds;
 use egui::plot::AxisBools;
 #[cfg(target_arch = "wasm32")]
-use instant::Instant;
+use web_time::Instant;
 
 use eframe::egui;
 use eframe::egui::PointerButton;

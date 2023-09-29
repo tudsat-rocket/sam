@@ -7,7 +7,7 @@ use std::rc::Rc;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
-use instant::Instant;
+use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
@@ -47,16 +47,27 @@ use crate::gui::simulation_settings::*;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
-const ARCHIVE: [(&str, &[u8], &[u8]); 2] = [
+// TODO: migrate old launches
+const ARCHIVE: [(&str, Option<&[u8]>, Option<&[u8]>); 4] = [
     (
         "Zülpich #1",
-        include_bytes!("../archive/zuelpich_launch1_telem_filtered.json"),
-        include_bytes!("../archive/zuelpich_launch1_flash_filtered.json")
+        None,
+        None
     ),
     (
         "Zülpich #2",
-        include_bytes!("../archive/zuelpich_launch2_telem_filtered.json"),
-        include_bytes!("../archive/zuelpich_launch2_flash_filtered.json")
+        None,
+        None
+    ),
+    (
+        "DARE (FC A)",
+        Some(include_bytes!("../archive/dare_launch_a_telem_filtered.json")),
+        Some(include_bytes!("../archive/dare_launch_a_flash_filtered.json")),
+    ),
+    (
+        "DARE (FC B)",
+        Some(include_bytes!("../archive/dare_launch_b_telem_filtered.json")),
+        Some(include_bytes!("../archive/dare_launch_b_flash_filtered.json")),
     ),
 ];
 
@@ -197,7 +208,9 @@ impl Sam {
             .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
             .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
             .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0));
+            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("HDOP", r, |vs| vs.hdop.map(|x| x as f32 / 100.0))
+            .line("# Satellites", g, |vs| vs.num_satellites.map(|x| x as f32));
 
         let bytes = include_bytes!("../assets/logo.png");
         let logo = RetainedImage::from_image_bytes("logo.png", bytes).unwrap();
@@ -438,19 +451,19 @@ impl Sam {
                     ui.horizontal(|ui| {
                         ui.label(*title);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button("🖴  Flash").clicked() {
+                            if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
                                     Some(format!("{} (Flash)", title)),
-                                    flash.to_vec(),
+                                    flash.map(|b| b.to_vec()).unwrap_or_default(),
                                     self.replay_logs
                                 ));
                                 self.archive_panel_open = false;
                             }
 
-                            if ui.button("📡 Telemetry").clicked() {
+                            if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
                                 self.open_log_file(LogFileDataSource::from_bytes(
                                     Some(format!("{} (Telemetry)", title)),
-                                    telem.to_vec(),
+                                    telem.map(|b| b.to_vec()).unwrap_or_default(),
                                     self.replay_logs
                                 ));
                                 self.archive_panel_open = false;
@@ -725,6 +738,7 @@ impl Sam {
                                                 .unwrap_or(self.settings.lora.authentication_key.clone());
                                         }
 
+                                        #[cfg(not(target_arch="wasm32"))]
                                         if ui.button("🔃Rekey").clicked() {
                                             self.settings.lora.authentication_key = rand::random();
                                         }
@@ -777,10 +791,12 @@ impl Sam {
                                     self.data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
                                 }
 
+                                #[cfg(not(target_arch = "wasm32"))]
                                 if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
                                     save_fc_settings_file(&self.data_source.fc_settings().unwrap());
                                 }
 
+                                #[cfg(not(target_arch = "wasm32"))]
                                 if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked() {
                                     if let Some(settings) = open_fc_settings_file() {
                                         info!("Loaded settings: {:?}", settings);

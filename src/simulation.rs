@@ -1,11 +1,17 @@
-use std::time::{Duration, Instant};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+use rand::SeedableRng;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
+
+use std::time::Duration;
 use std::sync::mpsc::SendError;
 use std::slice::Iter;
 
 use egui::Color32;
 use nalgebra::{Vector3, UnitQuaternion};
 use rand::RngCore;
-use rand::rngs::ThreadRng;
+use rand::rngs::SmallRng;
 use rand::distributions::Distribution;
 
 use sting_fc_firmware::settings::*;
@@ -85,7 +91,7 @@ impl Default for SimulationSettings {
 
 #[derive(Debug)]
 pub struct SimulationState {
-    rng: ThreadRng,
+    rng: SmallRng,
     settings: SimulationSettings,
     state_estimator: StateEstimator,
 
@@ -115,7 +121,10 @@ impl SimulationState {
         let direction = Vector3::new(f32::sin(a) * f32::sin(b), f32::cos(a) * f32::sin(b), f32::cos(b));
 
         Self {
-            rng: rand::thread_rng(),
+            #[cfg(not(target_arch = "wasm32"))]
+            rng: rand::rngs::SmallRng::from_entropy(),
+            #[cfg(target_arch = "wasm32")]
+            rng: rand::rngs::SmallRng::from_seed([0x42; 16]),
             settings: settings.clone(),
             state_estimator: StateEstimator::new(1000.0 / (SIMULATION_TICK_MS as f32), settings.fc_settings.clone()),
 
@@ -140,16 +149,14 @@ impl SimulationState {
     }
 
     fn sample_noise(&mut self, std_dev: f32) -> f32 {
-        let dist = statrs::distribution::Normal::new(0.0, std_dev as f64).unwrap();
-        dist.sample(&mut self.rng) as f32
+        rand_distr::Normal::new(0.0, std_dev).unwrap().sample(&mut self.rng)
     }
 
     fn sample_noise_vector(&mut self, std_dev: f32) -> Vector3<f32> {
-        let dist = statrs::distribution::Normal::new(0.0, std_dev as f64).unwrap();
         Vector3::new(
-            dist.sample(&mut self.rng) as f32,
-            dist.sample(&mut self.rng) as f32,
-            dist.sample(&mut self.rng) as f32
+            rand_distr::Normal::new(0.0, std_dev).unwrap().sample(&mut self.rng),
+            rand_distr::Normal::new(0.0, std_dev).unwrap().sample(&mut self.rng),
+            rand_distr::Normal::new(0.0, std_dev).unwrap().sample(&mut self.rng),
         )
     }
 
