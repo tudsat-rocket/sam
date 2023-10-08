@@ -277,7 +277,7 @@ impl From<&SimulationState> for VehicleState {
             time: ss.time,
             mode: Some(ss.mode),
             orientation: ss.state_estimator.orientation,
-            altitude: Some(ss.state_estimator.altitude()), // TODO
+            altitude: Some(ss.state_estimator.altitude_asl()), // TODO
             altitude_baro: ss.altitude_baro,
             altitude_ground: Some(ss.altitude_ground),
             altitude_max: Some(ss.state_estimator.altitude_max),
