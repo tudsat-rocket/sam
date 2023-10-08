@@ -226,7 +226,7 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
 
     pub fn altitude(&self) -> Option<f32> {
         self.pressure()
-            .map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)))
+            .map(|p| 44330.769 * (1.0 - (p / 1012.5).powf(0.190223)))
     }
 }
 
