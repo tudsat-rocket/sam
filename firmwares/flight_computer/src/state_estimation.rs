@@ -138,7 +138,7 @@ impl StateEstimator {
             (Some(accel_z), None) => {
                 // Use predicted altitude values, basically attempting to do inertial navigation.
                 self.kalman.predict(None, None, None, None);
-                let z = Vector2::new(self.altitude(), accel_z);
+                let z = Vector2::new(self.altitude_asl(), accel_z);
                 self.kalman.update(&z, None, None);
             }
             (None, Some(altitude_baro)) => {
@@ -155,13 +155,13 @@ impl StateEstimator {
 
         // Continuously reset ground altitude before arming.
         if mode < Armed {
-            self.altitude_ground = self.altitude();
+            self.altitude_ground = self.altitude_asl();
         }
 
         // Only track maximum height during flight
         self.altitude_max = match mode {
-            Idle | HardwareArmed | Armed => self.altitude(),
-            Flight | RecoveryDrogue | RecoveryMain => f32::max(self.altitude_max, self.altitude()),
+            Idle | HardwareArmed | Armed => self.altitude_asl(),
+            Flight | RecoveryDrogue | RecoveryMain => f32::max(self.altitude_max, self.altitude_asl()),
             Landed => self.altitude_max,
         }
     }
@@ -170,8 +170,12 @@ impl StateEstimator {
         self.acceleration_world.as_ref()
     }
 
-    pub fn altitude(&self) -> f32 {
+    pub fn altitude_asl(&self) -> f32 {
         self.kalman.x.x
+    }
+
+    pub fn altitude_agl(&self) -> f32 {
+        self.altitude_asl() - self.altitude_ground
     }
 
     pub fn vertical_speed(&self) -> f32 {
@@ -231,7 +235,7 @@ impl StateEstimator {
                 match self.settings.main_output_mode {
                     MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
                     MainOutputMode::BelowAltitude => {
-                        let condition = self.altitude() < self.settings.main_output_deployment_altitude;
+                        let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
                         let below_alt = self.true_since(condition, 100);
                         let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
                         (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)

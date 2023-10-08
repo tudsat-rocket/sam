@@ -433,7 +433,7 @@ impl Into<TelemetryMain> for &Vehicle {
             vertical_accel: self.state_estimator.acceleration_world().map(|a| a.z).unwrap_or(0.0),
             vertical_accel_filtered: self.state_estimator.vertical_accel(),
             altitude_baro: self.barometer.altitude().unwrap_or(0.0),
-            altitude: self.state_estimator.altitude(),
+            altitude: self.state_estimator.altitude_asl(),
             altitude_max: self.state_estimator.altitude_max,
         }
     }
@@ -457,7 +457,7 @@ impl Into<TelemetryMainCompressed> for &Vehicle {
             vertical_accel: self.state_estimator.acceleration_world().map(|a| a.z * 10.0).unwrap_or(0.0).into(),
             vertical_accel_filtered: (self.state_estimator.vertical_accel() * 10.0).into(),
             altitude_baro: (self.barometer.altitude().unwrap_or(0.0) * 10.0 + 1000.0) as u16, // TODO: this limits us to 6km AMSL
-            altitude: (self.state_estimator.altitude() * 10.0 + 1000.0) as u16,
+            altitude: (self.state_estimator.altitude_asl() * 10.0 + 1000.0) as u16,
             altitude_max: (self.state_estimator.altitude_max * 10.0 + 1000.0) as u16,
         }
     }
