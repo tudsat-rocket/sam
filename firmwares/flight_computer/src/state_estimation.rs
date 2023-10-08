@@ -1,3 +1,5 @@
+use core::num::Wrapping;
+
 use nalgebra::*;
 use num_traits::Pow;
 use ahrs::Ahrs;
@@ -10,10 +12,10 @@ const GRAVITY: f32 = 9.80665;
 
 #[derive(Debug)]
 pub struct StateEstimator {
-    time: u32,
+    time: Wrapping<u32>,
     mode: FlightMode,
-    mode_time: u32,
-    condition_true_since: Option<u32>,
+    mode_time: Wrapping<u32>,
+    condition_true_since: Option<Wrapping<u32>>,
     settings: Settings,
     ahrs: ahrs::Mahony<f32>,
     kalman: KalmanFilter<f32, U3, U2, U0>,
@@ -60,9 +62,9 @@ impl StateEstimator {
         );
 
         Self {
-            time: 0,
+            time: Wrapping(0),
             mode: Idle,
-            mode_time: 0,
+            mode_time: Wrapping(0),
             condition_true_since: None,
             settings,
             ahrs,
@@ -77,7 +79,7 @@ impl StateEstimator {
 
     pub fn update(
         &mut self,
-        time: u32,
+        time: Wrapping<u32>,
         mode: FlightMode,
         gyroscope: Option<Vector3<f32>>,
         accelerometer1: Option<Vector3<f32>>,
@@ -187,7 +189,7 @@ impl StateEstimator {
     }
 
     pub fn time_in_mode(&self) -> u32 {
-        self.time.wrapping_sub(self.mode_time)
+        (self.time - self.mode_time).0
     }
 
     /// Main flight logic. This function is responsible for deciding whether to switch to a new
@@ -231,20 +233,18 @@ impl StateEstimator {
                 ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
             }
             // Main parachute deployment, if required
-            FlightMode::RecoveryDrogue => {
-                match self.settings.main_output_mode {
-                    MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
-                    MainOutputMode::BelowAltitude => {
-                        let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
-                        let below_alt = self.true_since(condition, 100);
-                        let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
-                        (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)
-                    },
-                    MainOutputMode::Never => {
-                        let landed = self.true_since(condition_landed, 1000);
-                        (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
-                    },
-                }
+            FlightMode::RecoveryDrogue => match self.settings.main_output_mode {
+                MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
+                MainOutputMode::BelowAltitude => {
+                    let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
+                    let below_alt = self.true_since(condition, 100);
+                    let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
+                    (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)
+                },
+                MainOutputMode::Never => {
+                    let landed = self.true_since(condition_landed, 1000);
+                    (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
+                },
             },
             // Landing detection
             FlightMode::RecoveryMain => {
@@ -264,7 +264,7 @@ impl StateEstimator {
         };
 
         self.condition_true_since
-            .map(|t| self.time.wrapping_sub(t) > duration)
+            .map(|t| (self.time - t).0 > duration)
             .unwrap_or(false)
     }
 

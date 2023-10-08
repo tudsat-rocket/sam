@@ -15,17 +15,9 @@ harness = false
 harness = false
 
 [dependencies]
-embedded-hal = "0.2"
+static_cell = { version = "1.1", features = ["nightly"]}
 num-traits = { version = "0.2.15", default-features = false }
 nb = "1"
-cortex-m = { version = "0.7", features = ["critical-section-single-core"], optional = true }
-cortex-m-rt = { version = "0.7", optional = true }
-# Only load this for no_std, since it forces us to use nightly
-alloc-cortex-m = { version = "0.4", optional = true }
-# Same here, but this is because it can cause issues when the library is loaded in wasm or x86
-stm32f4xx-hal = {git = "https://github.com/stm32-rs/stm32f4xx-hal", features = ["rt", "stm32f401", "usb_fs"], rev="a7584100b548c45dbf47f5bc562791acbbc70662", optional = true }
-usbd-serial = "0.1.1"
-usb-device ="0.2.9"
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 postcard = "1.0"
 crc = "3"
@@ -34,24 +26,38 @@ nalgebra = { version = "0.31", default-features = false, features = ["alloc", "s
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
 ublox = { version = "=0.4.2", default-features = false }
 siphasher = { version = "0.3", default-features = false }
-defmt = "0.3"
-defmt-rtt = "0.4"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 
-[dependencies.embedded-hal-one]
-version = "=1.0.0-alpha.8"
-package = "embedded-hal"
+# Only load dependencies for embedded for the STM32 target, to avoid loading them when
+# importing this crate from the groundstation on x86
+[target.'cfg(target_arch = "arm")'.dependencies]
+embedded-hal = { version = "=1.0.0-rc.1" }
+embedded-hal-async = { version = "=1.0.0-rc.1" }
+
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+alloc-cortex-m = "0.4"
+
+# TODO: move USB fix to here, create issue
+# TODO: pin embassy version
+embassy-stm32        = { path = "../embassy/embassy-stm32", features = ["nightly", "unstable-traits", "defmt", "stm32f401rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
+embassy-executor     = { path = "../embassy/embassy-executor", features = ["nightly", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
+embassy-time         = { path = "../embassy/embassy-time", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-512_000"] }
+embassy-embedded-hal = { path = "../embassy/embassy-embedded-hal" }
+embassy-sync         = { path = "../embassy/embassy-sync", features = ["defmt"] }
+embassy-usb          = { path = "../embassy/embassy-usb", features = ["defmt"] }
+
+defmt = "0.3"
+defmt-rtt = "0.4"
+panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 [dev-dependencies]
 defmt-test = "0.3"
 
 [features]
-default = ["no_std", "rev2"]
-rev1 = []
+default = ["rev2"]
 rev2 = []
-no_std = ["alloc-cortex-m", "stm32f4xx-hal", "cortex-m", "cortex-m-rt"]
 gcs = []
 
 # cargo build/run

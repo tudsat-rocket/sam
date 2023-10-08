@@ -174,6 +174,45 @@ impl From<u8> for TelemetryDataRate {
     }
 }
 
+// contains everything that might be sent via telemetry or stored
+#[derive(Clone, Default)]
+pub struct VehicleState {
+    pub time: u32,
+
+    pub mode: Option<FlightMode>,
+    pub orientation: Option<UnitQuaternion<f32>>,
+    pub vertical_speed: Option<f32>,
+    pub vertical_accel: Option<f32>,
+    pub vertical_accel_filtered: Option<f32>,
+    pub altitude_max: Option<f32>,
+    pub altitude: Option<f32>,
+
+    pub gyroscope: Option<Vector3<f32>>,
+    pub accelerometer1: Option<Vector3<f32>>,
+    pub accelerometer2: Option<Vector3<f32>>,
+    pub magnetometer: Option<Vector3<f32>>,
+    pub pressure_baro: Option<f32>,
+    pub altitude_baro: Option<f32>,
+
+    pub cpu_utilization: Option<f32>,
+    pub charge_voltage: Option<u16>,
+    pub battery_voltage: Option<u16>,
+    pub current: Option<i16>,
+    //pub lora_rssi: u8,
+    pub altitude_ground: Option<f32>,
+    //pub transmit_power_and_data_rate: u8,
+    pub temperature_baro: Option<f32>,
+    //pub recovery_drogue: [u8; 2],
+    //pub recovery_main: [u8; 2],
+
+    //pub fix_and_sats: u8,
+    //pub hdop: u16,
+    //pub latitude: [u8; 3],
+    //pub longitude: [u8; 3],
+    //pub altitude_asl: u16,
+    //pub flash_pointer: u16,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryMain {
     pub time: u32,
@@ -185,6 +224,22 @@ pub struct TelemetryMain {
     pub altitude_baro: f32,
     pub altitude_max: f32,
     pub altitude: f32,
+}
+
+impl From<VehicleState> for TelemetryMain {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            mode: vs.mode.unwrap_or_default(),
+            orientation: vs.orientation,
+            vertical_speed: vs.vertical_speed.unwrap_or_default(),
+            vertical_accel: vs.vertical_accel.unwrap_or_default(),
+            vertical_accel_filtered: vs.vertical_accel_filtered.unwrap_or_default(),
+            altitude_baro: vs.altitude_baro.unwrap_or_default(),
+            altitude_max: vs.altitude_max.unwrap_or_default(),
+            altitude: vs.altitude.unwrap_or_default()
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -210,6 +265,19 @@ pub struct TelemetryRawSensors {
     pub pressure_baro: f32,
 }
 
+impl From<VehicleState> for TelemetryRawSensors {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            gyro: vs.gyroscope.unwrap_or_default(),
+            accelerometer1: vs.accelerometer1.unwrap_or_default(),
+            accelerometer2: vs.accelerometer2.unwrap_or_default(),
+            magnetometer: vs.magnetometer.unwrap_or_default(),
+            pressure_baro: vs.pressure_baro.unwrap_or_default(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryRawSensorsCompressed {
     pub time: u32,
@@ -233,6 +301,24 @@ pub struct TelemetryDiagnostics {
     pub temperature_baro: i8,
     pub recovery_drogue: [u8; 2],
     pub recovery_main: [u8; 2],
+}
+
+impl From<VehicleState> for TelemetryDiagnostics {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            cpu_utilization: (100.0 * vs.cpu_utilization.unwrap_or_default()) as u8,
+            charge_voltage: vs.charge_voltage.unwrap_or_default(),
+            battery_voltage: vs.battery_voltage.unwrap_or_default() << 2, // TODO: breakwire
+            current: vs.current.unwrap_or_default(),
+            // TODO: lora_rssi
+            altitude_ground: (vs.altitude_ground.unwrap_or_default() * 10.0 + 1000.0) as u16,
+            // TODO: transmit power and data rate
+            temperature_baro: (vs.temperature_baro.unwrap_or_default() * 2.0) as i8,
+            // TODO: remove recovery
+            ..Default::default() // TODO
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

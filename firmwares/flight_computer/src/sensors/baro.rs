@@ -1,18 +1,12 @@
-use core::cell::RefCell;
-use core::ops::DerefMut;
-
-use alloc::sync::Arc;
-use alloc::vec::Vec;
 use alloc::collections::VecDeque;
+use alloc::vec::Vec;
 
-use embedded_hal_one::spi::blocking::SpiBus;
-use embedded_hal_one::digital::blocking::OutputPin;
-
-use cortex_m::interrupt::{free, Mutex};
+use embassy_time::{Timer, Duration};
+use embedded_hal_async::spi::{SpiBus, SpiDevice};
 
 use num_traits::float::Float;
 
-use crate::prelude::*;
+use defmt::*;
 
 const TEMP_FILTER_LEN: usize = 64;
 
@@ -44,9 +38,8 @@ impl MS5611CalibrationData {
     }
 }
 
-pub struct Barometer<SPI, CS> {
-    spi: Arc<Mutex<RefCell<SPI>>>,
-    cs: CS,
+pub struct MS5611<SPI: SpiDevice<u8>> {
+    spi: SPI,
     calibration_data: Option<MS5611CalibrationData>,
     read_temp: bool,
     dt_filter: VecDeque<i32>,
@@ -56,11 +49,10 @@ pub struct Barometer<SPI, CS> {
     pressure: Option<i32>,
 }
 
-impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
-    pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
+impl<SPI: SpiDevice<u8>> MS5611<SPI> {
+    pub async fn init(spi: SPI) -> Result<Self, SPI::Error> {
         let mut baro = Self {
             spi,
-            cs,
             calibration_data: None,
             read_temp: true,
             dt_filter: VecDeque::with_capacity(TEMP_FILTER_LEN),
@@ -71,14 +63,12 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
         };
 
         'outer: for _i in 0..3 { // did you know that rust has loop labels?
-            baro.reset()?;
+            baro.reset().await?;
 
             for _j in 0..50 {
-                for _ik in 0..10000 {
-                    core::hint::spin_loop();
-                }
+                Timer::after(Duration::from_micros(10)).await;
 
-                baro.read_calibration_values()?;
+                baro.read_calibration_values().await?;
                 if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
                     break 'outer;
                 }
@@ -86,42 +76,32 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
         }
 
         if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
-            log!(Info, "MS5611 successfully initialized.");
+            info!("MS5611 successfully initialized.");
         } else {
-            log!(Error, "Failed to initialize MS5611");
+            info!("Failed to initialize MS5611");
         }
 
         Ok(baro)
     }
 
-    fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8>, SPI::Error> {
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
-
-            let mut payload = [alloc::vec![command.into()], [0x00].repeat(response_len)].concat();
-
-            self.cs.set_low().unwrap();
-            let res = spi.transfer_in_place(&mut payload);
-            self.cs.set_high().unwrap();
-            res?;
-
-            Ok(payload[1..].to_vec())
-        })
+    async fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8>, SPI::Error> {
+        let mut payload = [alloc::vec![command.into()], [0x00].repeat(response_len)].concat();
+        self.spi.transfer_in_place(&mut payload).await?;
+        Ok(payload[1..].to_vec())
     }
 
-    fn reset(&mut self) -> Result<(), SPI::Error> {
-        self.command(MS5611Command::Reset, 0)?;
+    async fn reset(&mut self) -> Result<(), SPI::Error> {
+        self.command(MS5611Command::Reset, 0).await?;
         Ok(())
     }
 
-    fn read_calibration_values(&mut self) -> Result<(), SPI::Error> {
-        let c1 = self.command(MS5611Command::ReadProm(1), 2)?;
-        let c2 = self.command(MS5611Command::ReadProm(2), 2)?;
-        let c3 = self.command(MS5611Command::ReadProm(3), 2)?;
-        let c4 = self.command(MS5611Command::ReadProm(4), 2)?;
-        let c5 = self.command(MS5611Command::ReadProm(5), 2)?;
-        let c6 = self.command(MS5611Command::ReadProm(6), 2)?;
+    async fn read_calibration_values(&mut self) -> Result<(), SPI::Error> {
+        let c1 = self.command(MS5611Command::ReadProm(1), 2).await?;
+        let c2 = self.command(MS5611Command::ReadProm(2), 2).await?;
+        let c3 = self.command(MS5611Command::ReadProm(3), 2).await?;
+        let c4 = self.command(MS5611Command::ReadProm(4), 2).await?;
+        let c5 = self.command(MS5611Command::ReadProm(5), 2).await?;
+        let c6 = self.command(MS5611Command::ReadProm(6), 2).await?;
 
         self.calibration_data = Some(MS5611CalibrationData {
             pressure_sensitivity: ((c1[0] as u16) << 8) + (c1[1] as u16),
@@ -135,8 +115,8 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
         Ok(())
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
-        let response = self.command(MS5611Command::ReadAdc, 3)?;
+    async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
+        let response = self.command(MS5611Command::ReadAdc, 3).await?;
         let value = ((response[0] as i32) << 16) + ((response[1] as i32) << 8) + (response[2] as i32);
 
         let cal = self.calibration_data.as_ref().unwrap();
@@ -186,18 +166,18 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
         Ok(())
     }
 
-    fn start_next_conversion(&mut self) -> Result<(), SPI::Error> {
+    async fn start_next_conversion(&mut self) -> Result<(), SPI::Error> {
         let osr = MS5611OSR::OSR256;
         if self.read_temp {
-            self.command(MS5611Command::StartTempConversion(osr), 0)?;
+            self.command(MS5611Command::StartTempConversion(osr), 0).await?;
         } else {
-            self.command(MS5611Command::StartPressureConversion(osr), 0)?;
+            self.command(MS5611Command::StartPressureConversion(osr), 0).await?;
         }
         Ok(())
     }
 
-    pub fn tick(&mut self) {
-        if let Err(_) = self.read_sensor_data() {
+    pub async fn tick(&mut self) {
+        if let Err(_) = self.read_sensor_data().await {
             self.dt = None;
             self.temp = None;
             self.raw_pressure = None;
@@ -207,7 +187,7 @@ impl<SPI: SpiBus, CS: OutputPin> Barometer<SPI, CS> {
             self.read_temp = !self.read_temp;
         }
 
-        if let Err(_) = self.start_next_conversion() {
+        if let Err(_) = self.start_next_conversion().await {
             self.dt = None;
             self.temp = None;
             self.raw_pressure = None;

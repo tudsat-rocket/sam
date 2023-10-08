@@ -1,112 +1,65 @@
-use core::cell::RefCell;
-use core::ops::DerefMut;
-
-use alloc::sync::Arc;
-
-use embedded_hal_one::spi::blocking::SpiBus;
-use embedded_hal_one::digital::blocking::OutputPin;
-
-use cortex_m::interrupt::{free, Mutex};
+use embedded_hal_async::spi::{SpiBus, SpiDevice};
 
 use nalgebra::Vector3;
 
-use crate::prelude::*;
+use defmt::*;
 
-pub struct LIS3MDL<SPI, CS> {
-    spi: Arc<Mutex<RefCell<SPI>>>,
-    cs: CS,
+pub struct LIS3MDL<SPI: SpiDevice<u8>> {
+    spi: SPI,
     scale: LIS3MDLFullScale,
     mag: Option<Vector3<f32>>,
     offset: Vector3<f32>
 }
 
-impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
-    pub fn init(
-        spi: Arc<Mutex<RefCell<SPI>>>,
-        cs: CS
-    ) -> Result<Self, SPI::Error> {
+impl<SPI: SpiDevice<u8>> LIS3MDL<SPI> {
+    pub async fn init(spi: SPI) -> Result<Self, SPI::Error> {
         let mut lis3 = Self {
             spi,
-            cs,
             scale: LIS3MDLFullScale::Max16Gauss,
             mag: None,
             offset: Vector3::default()
         };
 
-        let whoami = lis3.read_u8(LIS3MDLRegister::WhoAmI)?;
+        let whoami = lis3.read_u8(LIS3MDLRegister::WhoAmI).await?;
 
         // Enable temperature sensor and fast output data rate
-        lis3.write_u8(LIS3MDLRegister::CtrlReg1, 0b1000_0010)?;
+        lis3.write_u8(LIS3MDLRegister::CtrlReg1, 0b1000_0010).await?;
         // Set full scale
-        lis3.write_u8(LIS3MDLRegister::CtrlReg2, (lis3.scale as u8) << 5)?;
+        lis3.write_u8(LIS3MDLRegister::CtrlReg2, (lis3.scale as u8) << 5).await?;
         // Enable continuous-conversion mode
-        lis3.write_u8(LIS3MDLRegister::CtrlReg3, 0b0000_0000)?;
+        lis3.write_u8(LIS3MDLRegister::CtrlReg3, 0b0000_0000).await?;
 
         if whoami != 0x3d {
-            log!(Error, "Failed to connect to LIS3MDL (0x{:02x} != 0x3d).", whoami);
+            error!("Failed to connect to LIS3MDL (0x{:02x} != 0x3d).", whoami);
         } else {
-            log!(Info, "LIS3MDL initialized.");
+            info!("LIS3MDL initialized.");
         }
 
         Ok(lis3)
     }
 
-    fn read_u8(&mut self, address: LIS3MDLRegister) -> Result<u8, SPI::Error> {
+    async fn read_u8(&mut self, address: LIS3MDLRegister) -> Result<u8, SPI::Error> {
         let mut buffer = [address as u8 | 0x80, 0];
-
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
-
-            self.cs.set_low().ok();
-            let res = spi.transfer_in_place(&mut buffer);
-            self.cs.set_high().ok();
-            res?;
-
-            Ok(buffer[1])
-        })
+        self.spi.transfer_in_place(&mut buffer).await?;
+        Ok(buffer[1])
     }
 
-    fn write_u8(&mut self, address: LIS3MDLRegister, value: u8) -> Result<(), SPI::Error> {
+    async fn write_u8(&mut self, address: LIS3MDLRegister, value: u8) -> Result<(), SPI::Error> {
         let mut buffer = [address as u8, value];
-
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
-
-            self.cs.set_low().ok();
-            let res = spi.transfer_in_place(&mut buffer);
-            self.cs.set_high().ok();
-            res?;
-
-            Ok(())
-        })
+        self.spi.transfer_in_place(&mut buffer).await?;
+        Ok(())
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
+    async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
         let mut buffer: [u8; 9] = [0; 9];
         buffer[0] = (LIS3MDLRegister::OutXL as u8) | 0xc0;
 
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
-
-            self.cs.set_low().ok();
-            let res = spi.transfer_in_place(&mut buffer);
-            self.cs.set_high().ok();
-            res
-        })?;
+        self.spi.transfer_in_place(&mut buffer).await?;
 
         let mag_x = i16::from_le_bytes([buffer[1], buffer[2]]);
         let mag_y = i16::from_le_bytes([buffer[3], buffer[4]]);
         let mag_z = i16::from_le_bytes([buffer[5], buffer[6]]);
         let _temp = i16::from_le_bytes([buffer[7], buffer[8]]);
-
-        //debug!("{:#04x}, {:#04x}, {:#04x}", mag_x, mag_y, mag_z);
-        //debug!("{}, {}, {}", mag_x, mag_y, mag_z);
-
-        //let mag_x = mag_x.saturating_sub(i16::MIN / 2);
-        let mag_z = mag_z.saturating_sub(i16::MIN / 2);
 
         // convert to gauss using LSB/gauss values from datasheet, then to uT
         let lsb_to_gauss = match self.scale {
@@ -125,10 +78,10 @@ impl<SPI: SpiBus, CS: OutputPin> LIS3MDL<SPI, CS> {
         Ok(())
     }
 
-    pub fn tick(&mut self) {
-        if let Err(_e) = self.read_sensor_data() {
+    pub async fn tick(&mut self) {
+        if let Err(e) = self.read_sensor_data().await {
             self.mag = None;
-            log!(Error, "Failed to read compass data");
+            error!("Failed to read compass data: {:?}", Debug2Format(&e));
         }
     }
 
