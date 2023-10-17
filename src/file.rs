@@ -2,7 +2,7 @@
 
 use std::fs::File;
 
-use sting_fc_firmware::settings::Settings;
+use mithril::settings::Settings;
 
 use crate::data_source::*;
 

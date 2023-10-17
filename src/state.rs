@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use sting_fc_firmware::telemetry::*;
+use mithril::telemetry::*;
 use nalgebra::{vector, Vector3};
 use nalgebra::{Quaternion, UnitQuaternion};
 

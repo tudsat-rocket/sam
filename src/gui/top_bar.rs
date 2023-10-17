@@ -5,7 +5,7 @@ use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
 use egui::{Color32, RichText, Stroke, Label};
 
-use sting_fc_firmware::telemetry::*;
+use mithril::telemetry::*;
 
 use crate::telemetry_ext::*;
 use crate::data_source::*;

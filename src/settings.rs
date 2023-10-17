@@ -2,7 +2,7 @@ use std::fs::File;
 
 use serde::{Deserialize, Serialize};
 
-use sting_fc_firmware::settings::LoRaSettings;
+use mithril::settings::LoRaSettings;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AppSettings {

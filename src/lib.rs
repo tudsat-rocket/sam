@@ -59,7 +59,7 @@ impl WebHandle {
     /// Call this once from JavaScript to start your app.
     #[wasm_bindgen]
     pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
-        let data_source = Box::new(SerialDataSource::new(sting_fc_firmware::settings::LoRaSettings::default()));
+        let data_source = Box::new(SerialDataSource::new(mithril::settings::LoRaSettings::default()));
 
         self.runner
             .start(

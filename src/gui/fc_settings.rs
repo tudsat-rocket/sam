@@ -1,6 +1,6 @@
 use egui::{RichText, Layout, Align, TextEdit, DragValue, Ui, InnerResponse};
-use sting_fc_firmware::settings::*;
-use sting_fc_firmware::telemetry::TelemetryDataRate;
+use mithril::settings::*;
+use mithril::telemetry::TelemetryDataRate;
 
 use crate::settings::AppSettings;
 

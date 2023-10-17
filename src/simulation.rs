@@ -14,9 +14,9 @@ use rand::RngCore;
 use rand::rngs::SmallRng;
 use rand::distributions::Distribution;
 
-use sting_fc_firmware::settings::*;
-use sting_fc_firmware::telemetry::*;
-use sting_fc_firmware::state_estimation::*;
+use mithril::settings::*;
+use mithril::telemetry::*;
+use mithril::state_estimation::*;
 
 use crate::state::VehicleState;
 use crate::data_source::DataSource;

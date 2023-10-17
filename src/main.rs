@@ -12,7 +12,7 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
 use state::VehicleState;
-use sting_fc_firmware::telemetry::*;
+use mithril::telemetry::*;
 
 mod data_source;
 mod file;

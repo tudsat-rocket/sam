@@ -2336,6 +2336,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "mithril"
+version = "0.1.0"
+source = "git+https://github.com/tudsat-rocket/mithril.git#5816627ca5e3ef89a90f0094e761f750175b457b"
+dependencies = [
+ "ahrs",
+ "crc 3.0.1",
+ "defmt",
+ "defmt-rtt",
+ "embedded-hal 0.2.7",
+ "embedded-hal 1.0.0-alpha.8",
+ "filter",
+ "nalgebra",
+ "nb 1.1.0",
+ "num-traits",
+ "panic-probe",
+ "postcard",
+ "rand",
+ "rand_chacha",
+ "serde",
+ "siphasher",
+ "ublox",
+ "usb-device",
+ "usbd-serial",
+]
+
+[[package]]
 name = "nalgebra"
 version = "0.31.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3275,6 +3301,7 @@ dependencies = [
  "image",
  "indicatif",
  "log",
+ "mithril",
  "nalgebra",
  "postcard",
  "puffin",
@@ -3288,7 +3315,6 @@ dependencies = [
  "serialport",
  "siphasher",
  "slippy-map-tiles",
- "sting_fc_firmware",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-logger",
@@ -3606,32 +3632,6 @@ name = "static_assertions"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
-
-[[package]]
-name = "sting_fc_firmware"
-version = "0.1.0"
-source = "git+https://gitlab.com/tudsat-rocket1/firmware/sting_fc_firmware.git#270d5373cfc49a1d4afcb6b8c1084ce18cf52fac"
-dependencies = [
- "ahrs",
- "crc 3.0.1",
- "defmt",
- "defmt-rtt",
- "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-alpha.8",
- "filter",
- "nalgebra",
- "nb 1.1.0",
- "num-traits",
- "panic-probe",
- "postcard",
- "rand",
- "rand_chacha",
- "serde",
- "siphasher",
- "ublox",
- "usb-device",
- "usbd-serial",
-]
 
 [[package]]
 name = "str-buf"

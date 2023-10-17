@@ -1,7 +1,7 @@
 use eframe::egui;
 use egui::{Color32, Layout, RichText, Vec2};
 
-use sting_fc_firmware::telemetry::*;
+use mithril::telemetry::*;
 
 use crate::telemetry_ext::*;
 

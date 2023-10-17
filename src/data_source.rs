@@ -17,8 +17,8 @@ use web_time::Instant;
 use eframe::epaint::Color32;
 use log::*;
 
-use sting_fc_firmware::settings::*;
-use sting_fc_firmware::telemetry::*;
+use mithril::settings::*;
+use mithril::telemetry::*;
 
 use crate::serial::*;
 use crate::settings::AppSettings;
