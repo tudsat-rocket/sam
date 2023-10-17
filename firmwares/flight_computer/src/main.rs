@@ -45,7 +45,7 @@ mod settings;
 mod state_estimation;
 mod runcam;
 
-use sting_fc_firmware as _;
+use mithril as _;
 
 use bootloader::*;
 use buzzer::*;

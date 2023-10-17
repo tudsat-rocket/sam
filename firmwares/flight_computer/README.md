@@ -1,5 +1,5 @@
-Sting FC Firmware
-=================
+mithril
+=======
 
 Firmware for the Sting flight computer.
 
@@ -54,7 +54,7 @@ Run the following commands (you can skip ones needed for flashing methods you're
 
 ## Sam Ground Station
 
-Once Rust is installed, install [Sam](https://gitlab.com/tudsat-rocket1/software-tools/sam).
+Once Rust is installed, install [Sam](https://github.com/tudsat-rocket/sam).
 
 # Compiling & Flashing
 
