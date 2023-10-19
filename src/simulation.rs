@@ -171,9 +171,9 @@ impl SimulationState {
     fn sample_accelerometer1(&mut self) -> Option<Vector3<f32>> {
         let noisy = self.local_acceleration() + self.sample_noise_vector(self.settings.std_dev_accelerometer1);
         let clipped = Vector3::new(
-            noisy.x.clamp(-160.0, 160.0),
-            noisy.y.clamp(-160.0, 160.0),
-            noisy.z.clamp(-160.0, 160.0)
+            noisy.x.clamp(-155.0, 155.0),
+            noisy.y.clamp(-155.0, 155.0),
+            noisy.z.clamp(-155.0, 155.0)
         );
         Some(clipped)
     }
