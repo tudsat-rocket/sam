@@ -95,10 +95,10 @@ impl StateEstimator {
         // Determine accelerometer to use. We prefer the primary because it is less noisy,
         // but have to switch to the secondary if we exceed +-16G (or get close enough) on any axis.
         let acc = match (accelerometer1, accelerometer2) {
-            (Some(acc1), Some(acc2)) if acc1.max() > 14.0 * GRAVITY && acc2.max() > 14.0 * GRAVITY => Some(acc2),
-            (Some(acc1), _)                                                                        => Some(acc1),
-            (None, Some(acc2))                                                                     => Some(acc2),
-            (None, None)                                                                           => None
+            (Some(acc1), Some(acc2)) if acc1.amax() > 14.0 * GRAVITY && acc2.amax() > 14.0 * GRAVITY => Some(acc2),
+            (Some(acc1), _)                                                                          => Some(acc1),
+            (None, Some(acc2))                                                                       => Some(acc2),
+            (None, None)                                                                             => None
         };
         self.acceleration = acc.map(|a| self.correct_orientation(&a));
 
