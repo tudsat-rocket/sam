@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::mpsc::Receiver;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -48,7 +49,7 @@ use crate::gui::simulation_settings::*;
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
 // TODO: migrate old launches
-const ARCHIVE: [(&str, Option<&[u8]>, Option<&[u8]>); 4] = [
+const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
     (
         "Zülpich #1",
         None,
@@ -61,13 +62,18 @@ const ARCHIVE: [(&str, Option<&[u8]>, Option<&[u8]>); 4] = [
     ),
     (
         "DARE (FC A)",
-        Some(include_bytes!("../archive/dare_launch_a_telem_filtered.json")),
-        Some(include_bytes!("../archive/dare_launch_a_flash_filtered.json")),
+        Some("https://sam.koffeinflummi.de/archive/dare_launch_a_telem_filtered.json"),
+        Some("https://sam.koffeinflummi.de/archive/dare_launch_a_flash_filtered.json"),
     ),
     (
         "DARE (FC B)",
-        Some(include_bytes!("../archive/dare_launch_b_telem_filtered.json")),
-        Some(include_bytes!("../archive/dare_launch_b_flash_filtered.json")),
+        Some("https://sam.koffeinflummi.de/archive/dare_launch_b_telem_filtered.json"),
+        Some("https://sam.koffeinflummi.de/archive/dare_launch_b_flash_filtered.json"),
+    ),
+    (
+        "EuRoC 2023 (AESIR)",
+        Some("https://sam.koffeinflummi.de/archive/euroc_2023_telem_filtered.json"),
+        Some("https://sam.koffeinflummi.de/archive/euroc_2023_flash_filtered.json"),
     ),
 ];
 
@@ -76,6 +82,12 @@ enum GuiTab {
     Launch,
     Plot,
     Configure
+}
+
+enum ArchiveLoadProgress {
+    Partial(f32),
+    Complete(Vec<u8>),
+    Error(reqwest::Error)
 }
 
 // The main state object of our GUI application
@@ -106,6 +118,8 @@ pub struct Sam {
     signal_plot: PlotState,
 
     map: MapState,
+
+    archive_progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
 }
 
 impl Sam {
@@ -242,6 +256,7 @@ impl Sam {
             runtime_plot,
             signal_plot,
             map,
+            archive_progress_receiver: None
         }
     }
 
@@ -289,6 +304,44 @@ impl Sam {
         self.data_source = Box::new(ds);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_archive_log(url: &str) -> Result<Vec<u8>, reqwest::Error> {
+        let response = reqwest::blocking::get(url)?
+            .error_for_status()?;
+        Ok(response.bytes()?.to_vec())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn open_archive_log(&mut self, url: &'static str) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.archive_progress_receiver = Some(receiver);
+        std::thread::spawn(move || {
+            sender.send(match Self::load_archive_log(url) {
+                Ok(bytes) => ArchiveLoadProgress::Complete(bytes),
+                Err(e) => ArchiveLoadProgress::Error(e),
+            });
+        });
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    async fn load_archive_log(url: &str) -> Result<Vec<u8>, reqwest::Error> {
+        let response = reqwest::get(url).await?.error_for_status()?;
+        let bytes = response.bytes().await?.to_vec();
+        Ok(bytes)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn open_archive_log(&mut self, url: &'static str) {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        self.archive_progress_receiver = Some(receiver);
+        wasm_bindgen_futures::spawn_local(async move {
+            sender.send(match Self::load_archive_log(url).await {
+                Ok(bytes) => ArchiveLoadProgress::Complete(bytes),
+                Err(e) => ArchiveLoadProgress::Error(e),
+            });
+        });
+    }
+
     /// Closes the currently opened data source
     fn close_data_source(&mut self) {
         self.reset(false);
@@ -313,6 +366,25 @@ impl Sam {
         // TODO: only send this if we know it's not a ground station?
         if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
             self.data_source.send(UplinkMessage::ReadSettings).unwrap();
+        }
+
+        if let Some(receiver) = self.archive_progress_receiver.as_ref() {
+            match receiver.try_recv() {
+                Ok(ArchiveLoadProgress::Complete(bytes)) => {
+                    self.open_log_file(LogFileDataSource::from_bytes(
+                        Some("".to_string()), // TODO: show title
+                        bytes,
+                        self.replay_logs
+                    ));
+                    self.archive_panel_open = false;
+                    self.archive_progress_receiver = None;
+                },
+                Ok(ArchiveLoadProgress::Error(e)) => {
+                    error!("{:?}", e); // TODO: show this visually
+                    self.archive_progress_receiver = None;
+                }
+                _ => {}
+            }
         }
 
         self.shared_plot.borrow_mut().set_end(self.data_source.end());
@@ -452,21 +524,11 @@ impl Sam {
                         ui.label(*title);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_log_file(LogFileDataSource::from_bytes(
-                                    Some(format!("{} (Flash)", title)),
-                                    flash.map(|b| b.to_vec()).unwrap_or_default(),
-                                    self.replay_logs
-                                ));
-                                self.archive_panel_open = false;
+                                self.open_archive_log(flash.unwrap());
                             }
 
                             if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
-                                self.open_log_file(LogFileDataSource::from_bytes(
-                                    Some(format!("{} (Telemetry)", title)),
-                                    telem.map(|b| b.to_vec()).unwrap_or_default(),
-                                    self.replay_logs
-                                ));
-                                self.archive_panel_open = false;
+                                self.open_archive_log(telem.unwrap());
                             }
                         });
                     });
