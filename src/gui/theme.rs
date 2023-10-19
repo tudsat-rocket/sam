@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{Context, Color32, Style};
+use egui::{Color32, Context, Style};
 
 #[derive(Debug)]
 pub struct ThemeColors {

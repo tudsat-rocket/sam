@@ -33,9 +33,7 @@ pub fn downlink_port(
     send_heartbeats: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Open the serial port
-    let mut port = serialport::new(port, BAUD_RATE)
-        .timeout(std::time::Duration::from_millis(1))
-        .open_native()?;
+    let mut port = serialport::new(port, BAUD_RATE).timeout(std::time::Duration::from_millis(1)).open_native()?;
 
     // Non-exclusive access only works on Unix
     #[cfg(target_family = "unix")]
@@ -64,7 +62,7 @@ pub fn downlink_port(
         if let Err(e) = port.read_to_end(&mut downlink_buffer) {
             match e.kind() {
                 std::io::ErrorKind::TimedOut => (),
-                _ => return Err(e.into())
+                _ => return Err(e.into()),
             }
         }
 
@@ -72,7 +70,7 @@ pub fn downlink_port(
         // is a complete COBS-encoded message in there
         while let Some(index) = downlink_buffer.iter().position(|b| *b == 0) {
             // Split of the first message, including the zero delimiter
-            let (serialized, rest) = downlink_buffer.split_at_mut(index+1);
+            let (serialized, rest) = downlink_buffer.split_at_mut(index + 1);
             let mut serialized = serialized.to_vec();
 
             // Store the rest in the downlink_buffer, after having removed
@@ -82,7 +80,7 @@ pub fn downlink_port(
             // Attempt to parse the message, discarding it if unsuccessful
             let msg = match postcard::from_bytes_cobs(serialized.as_mut_slice()) {
                 Ok(msg) => msg,
-                Err(_e) => continue
+                Err(_e) => continue,
             };
 
             // If successful, send msg through channel.
@@ -100,14 +98,15 @@ pub fn downlink_port(
 pub fn find_serial_port() -> Option<String> {
     serialport::available_ports()
         .ok()
-        .map(|ports| ports.iter()
-            .find_map(|p| {
+        .map(|ports| {
+            ports.iter().find_map(|p| {
                 if let serialport::SerialPortType::UsbPort(_) = p.port_type {
                     Some(p.port_name.clone())
                 } else {
                     None
                 }
-            }))
+            })
+        })
         .flatten()
 }
 

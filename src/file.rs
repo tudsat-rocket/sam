@@ -10,14 +10,13 @@ use crate::data_source::*;
 
 #[cfg(target_arch = "x86_64")]
 pub fn open_log_file() -> Option<LogFileDataSource> {
-    rfd::FileDialog::new().pick_file()
-        .map(|p| LogFileDataSource::new(p).ok())
-        .flatten()
+    rfd::FileDialog::new().pick_file().map(|p| LogFileDataSource::new(p).ok()).flatten()
 }
 
 #[cfg(target_arch = "x86_64")]
 pub fn open_fc_settings_file() -> Option<Settings> {
-    rfd::FileDialog::new().pick_file()
+    rfd::FileDialog::new()
+        .pick_file()
         .map(|p| File::open(p).ok())
         .flatten()
         .map(|f| serde_json::from_reader(f).ok())

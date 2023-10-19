@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use eframe::egui;
-use egui::{Ui, Layout, Align, Rect, Vec2};
+use egui::{Align, Layout, Rect, Ui, Vec2};
 
 /// State object held by the application, storing the currently maximized cell.
 #[derive(Default, Clone)]
@@ -54,8 +54,8 @@ impl<'a> MaxiGrid<'a> {
 
         let cell_top_left = top_left + (cell_size * Vec2::new(self.current_cell.0 as f32, self.current_cell.1 as f32));
         let cell_bottom_right = cell_top_left + cell_size;
-        let rect = Rect::from_min_max(cell_top_left, cell_bottom_right)
-            .shrink2(self.ui.style().spacing.item_spacing / 2.0);
+        let rect =
+            Rect::from_min_max(cell_top_left, cell_bottom_right).shrink2(self.ui.style().spacing.item_spacing / 2.0);
 
         self.ui.put(rect, |ui: &mut Ui| {
             ui.vertical(|ui| {
@@ -70,7 +70,8 @@ impl<'a> MaxiGrid<'a> {
                 });
 
                 (cb)(ui);
-            }).response
+            })
+            .response
         });
     }
 

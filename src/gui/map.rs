@@ -1,11 +1,11 @@
 //! Contains code for a map widget. TODO: replace with a proper map.
 
-use std::collections::{HashMap, HashSet};
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::f64::consts::TAU;
+use std::io::{Read, Write};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::io::{Read, Write};
-use std::f64::consts::TAU;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -15,14 +15,15 @@ use web_time::Instant;
 use slippy_map_tiles::{BBox, Tile};
 
 use eframe::egui;
-use egui::widgets::plot::{Line, PlotBounds, PlotImage, PlotPoint};
-use egui::{Context, Color32, ColorImage, TextureHandle, Vec2};
 use egui::mutex::Mutex;
+use egui::widgets::plot::{Line, PlotBounds, PlotImage, PlotPoint};
+use egui::{Color32, ColorImage, Context, TextureHandle, Vec2};
 
 use crate::state::*;
 
 fn tile_mapbox_url(tile: &Tile, access_token: &String) -> String {
-    format!("https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/512/{}/{}/{}@2x?access_token={}",
+    format!(
+        "https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/512/{}/{}/{}@2x?access_token={}",
         tile.zoom(),
         tile.x(),
         tile.y(),
@@ -51,8 +52,7 @@ fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dy
         return Ok(buffer);
     }
 
-    let response = reqwest::blocking::get(tile_mapbox_url(&tile, access_token))?
-        .error_for_status()?;
+    let response = reqwest::blocking::get(tile_mapbox_url(&tile, access_token))?.error_for_status()?;
     let bytes = response.bytes()?.to_vec();
 
     let mut f = std::fs::File::create(path)?;
@@ -71,8 +71,7 @@ fn load_tile_image(tile: &Tile, access_token: &String) -> Result<ColorImage, Box
 #[cfg(target_arch = "wasm32")]
 async fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     let url = tile_mapbox_url(&tile, access_token);
-    let response = reqwest::get(url).await?
-        .error_for_status()?;
+    let response = reqwest::get(url).await?.error_for_status()?;
     let bytes = response.bytes().await?.to_vec();
 
     Ok(bytes)
@@ -153,7 +152,7 @@ impl MapCache {
             max_alt: 300.0,
             center: (49.861445, 8.68519),
             hdop_circle_points: None,
-            gradient_lookup
+            gradient_lookup,
         }
     }
 
@@ -168,7 +167,9 @@ impl MapCache {
             self.max_alt = f64::max(self.max_alt, alt);
             self.center = (lat, lng);
 
-            self.plot_points = self.points.windows(2)
+            self.plot_points = self
+                .points
+                .windows(2)
                 .map(|pair| {
                     #[cfg(feature = "profiling")]
                     puffin::profile_scope!("map_line_creation");
@@ -177,7 +178,7 @@ impl MapCache {
                     let index = usize::min(((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize, 100);
                     let color = self.gradient_lookup[index];
                     (points, color)
-                    })
+                })
                 .collect();
 
             let cep_m = 2.5 * (hdop as f64) / 100.0;
@@ -206,10 +207,9 @@ impl MapCache {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        self.plot_points.iter()
-            .map(|(pp, color)| {
-                Line::new(pp.clone()).width(2.0).color(color.clone())
-            })
+        self.plot_points
+            .iter()
+            .map(|(pp, color)| Line::new(pp.clone()).width(2.0).color(color.clone()))
             .collect()
     }
 
@@ -217,7 +217,8 @@ impl MapCache {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        self.hdop_circle_points.as_ref()
+        self.hdop_circle_points
+            .as_ref()
             .map(|points| Line::new(points.clone()).width(1.5).color(Color32::RED))
     }
 }
@@ -235,7 +236,7 @@ impl MapState {
         Self {
             tile_cache: Arc::new(Mutex::new(TileCache::new())),
             cache: Rc::new(RefCell::new(MapCache::new())),
-            access_token
+            access_token,
         }
     }
 
@@ -287,17 +288,17 @@ impl MapState {
             bounds.max()[1] as f32,
             bounds.min()[0] as f32,
             bounds.min()[1] as f32,
-            bounds.max()[0] as f32
-        ).unwrap_or(BBox::new(89.0, -179.0, -89.0, 179.0).unwrap());
+            bounds.max()[0] as f32,
+        )
+        .unwrap_or(BBox::new(89.0, -179.0, -89.0, 179.0).unwrap());
 
-        let iter = bbox.tiles_for_zoom(zoom as u8)
-            .filter_map(|tile| {
-                let result = self.tile_cache.lock().cached_image(ctx, &tile);
-                if result.is_none() && self.tile_cache.lock().loading.insert(tile_id(&tile)) {
-                    self.load_tile(tile);
-                }
-                result
-            });
+        let iter = bbox.tiles_for_zoom(zoom as u8).filter_map(|tile| {
+            let result = self.tile_cache.lock().cached_image(ctx, &tile);
+            if result.is_none() && self.tile_cache.lock().loading.insert(tile_id(&tile)) {
+                self.load_tile(tile);
+            }
+            result
+        });
         Box::new(iter)
     }
 
@@ -311,17 +312,11 @@ impl MapState {
 }
 
 pub trait MapUiExt {
-    fn map(
-        &mut self,
-        state: &MapState
-    );
+    fn map(&mut self, state: &MapState);
 }
 
 impl MapUiExt for egui::Ui {
-    fn map(
-        &mut self,
-        state: &MapState
-    ) {
+    fn map(&mut self, state: &MapState) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 

@@ -1,25 +1,25 @@
+use rand::SeedableRng;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use rand::SeedableRng;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
-use std::time::Duration;
-use std::sync::mpsc::SendError;
 use std::slice::Iter;
+use std::sync::mpsc::SendError;
+use std::time::Duration;
 
 use egui::Color32;
-use nalgebra::{Vector3, UnitQuaternion};
-use rand::RngCore;
-use rand::rngs::SmallRng;
+use nalgebra::{UnitQuaternion, Vector3};
 use rand::distributions::Distribution;
+use rand::rngs::SmallRng;
+use rand::RngCore;
 
 use mithril::settings::*;
-use mithril::telemetry::*;
 use mithril::state_estimation::*;
+use mithril::telemetry::*;
 
-use crate::state::VehicleState;
 use crate::data_source::DataSource;
+use crate::state::VehicleState;
 
 const GRAVITY: f32 = 9.80665;
 
@@ -72,7 +72,7 @@ impl Default for SimulationSettings {
 
             drag_flight: 0.01,
             drag_drogue: 1.0,
-            drag_main:   5.0,
+            drag_main: 5.0,
 
             std_dev_gyroscope: 0.07,
             std_dev_accelerometer1: 0.05,
@@ -111,7 +111,7 @@ pub struct SimulationState {
     accelerometer1: Option<Vector3<f32>>,
     accelerometer2: Option<Vector3<f32>>,
     magnetometer: Option<Vector3<f32>>,
-    altitude_baro: Option<f32>
+    altitude_baro: Option<f32>,
 }
 
 impl SimulationState {
@@ -144,7 +144,7 @@ impl SimulationState {
             accelerometer1: None,
             accelerometer2: None,
             magnetometer: None,
-            altitude_baro: None
+            altitude_baro: None,
         }
     }
 
@@ -173,7 +173,7 @@ impl SimulationState {
         let clipped = Vector3::new(
             noisy.x.clamp(-155.0, 155.0),
             noisy.y.clamp(-155.0, 155.0),
-            noisy.z.clamp(-155.0, 155.0)
+            noisy.z.clamp(-155.0, 155.0),
         );
         Some(clipped)
     }
@@ -201,7 +201,9 @@ impl SimulationState {
         }
 
         // advance true state of the vehicle
-        self.acceleration = if self.time >= self.settings.sim_start_delay && self.time < self.settings.sim_start_delay + self.settings.thrust_duration {
+        self.acceleration = if self.time >= self.settings.sim_start_delay
+            && self.time < self.settings.sim_start_delay + self.settings.thrust_duration
+        {
             self.orientation.transform_vector(&Vector3::new(0.0, 0.0, self.settings.thrust))
         } else {
             Vector3::new(0.0, 0.0, -GRAVITY)
@@ -215,7 +217,8 @@ impl SimulationState {
                 RecoveryDrogue => self.settings.drag_drogue,
                 RecoveryMain | Landed => self.settings.drag_main,
             };
-            self.acceleration += velocity_dir * -drag * self.velocity.magnitude().powi(2) * (SIMULATION_TICK_MS as f32) / 1000.0;
+            self.acceleration +=
+                velocity_dir * -drag * self.velocity.magnitude().powi(2) * (SIMULATION_TICK_MS as f32) / 1000.0;
         }
 
         // TODO: roll
@@ -247,8 +250,8 @@ impl SimulationState {
         self.magnetometer = self.sample_magnetometer();
         self.altitude_baro = self.sample_barometer();
 
-        if self.time > self.settings.barometer_anomaly_delay &&
-            self.rng.next_u32() < (self.settings.barometer_anomaly_probability * u32::MAX as f32) as u32
+        if self.time > self.settings.barometer_anomaly_delay
+            && self.rng.next_u32() < (self.settings.barometer_anomaly_probability * u32::MAX as f32) as u32
         {
             self.altitude_baro = Some(self.settings.barometer_anomaly_value);
         }
@@ -261,10 +264,14 @@ impl SimulationState {
             self.accelerometer1,
             self.accelerometer2,
             self.magnetometer,
-            self.altitude_baro
+            self.altitude_baro,
         );
 
-        let arm_voltage = if self.time >= (self.settings.sim_start_delay - 5000) { 8400 } else { 0 };
+        let arm_voltage = if self.time >= (self.settings.sim_start_delay - 5000) {
+            8400
+        } else {
+            0
+        };
         if let Some(mode) = self.state_estimator.new_mode(arm_voltage, None) {
             self.mode = mode;
         }
@@ -295,7 +302,11 @@ impl From<&SimulationState> for VehicleState {
             accelerometer2: ss.accelerometer2,
             magnetometer: ss.magnetometer,
             battery_voltage: Some(8.4),
-            arm_voltage: Some(if ss.time >= (ss.settings.sim_start_delay - 5000) { 8.4 } else { 0.0 }),
+            arm_voltage: Some(if ss.time >= (ss.settings.sim_start_delay - 5000) {
+                8.4
+            } else {
+                0.0
+            }),
             true_orientation: Some(ss.orientation),
             true_vertical_accel: Some(ss.acceleration.z),
             true_vertical_speed: Some(ss.velocity.z),
@@ -327,7 +338,8 @@ impl DataSource for SimulationDataSource {
             }
 
             let vehicle_state = sim_state.into();
-            let time = self.vehicle_states
+            let time = self
+                .vehicle_states
                 .last()
                 .map(|(t, _)| *t + Duration::from_millis(PLOT_STEP_MS as u64))
                 .unwrap_or(Instant::now());

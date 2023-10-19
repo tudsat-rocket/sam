@@ -4,24 +4,24 @@
 // allow dead code here to avoid having to place lots of conditions throughout
 // the application to silence warnings.
 #[allow(dead_code)]
-#[allow(unused_imports)]
-mod gui;
-mod state;
-#[allow(dead_code)]
 #[allow(unused_variables)]
 mod data_source;
 #[allow(unused_imports)]
 mod file;
-mod telemetry_ext;
+#[allow(dead_code)]
+#[allow(unused_imports)]
+mod gui;
 #[allow(dead_code)]
 #[allow(unused_variables)]
 #[allow(unused_imports)]
 mod serial;
-mod simulation;
 mod settings;
+mod simulation;
+mod state;
+mod telemetry_ext;
 
-pub use crate::gui::*;
 pub use crate::data_source::*;
+pub use crate::gui::*;
 
 #[cfg(target_arch = "wasm32")]
 use eframe::WebRunner;
@@ -54,7 +54,6 @@ impl WebHandle {
             runner: WebRunner::new(),
         }
     }
-
 
     /// Call this once from JavaScript to start your app.
     #[wasm_bindgen]

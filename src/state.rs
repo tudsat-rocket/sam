@@ -60,15 +60,11 @@ pub struct VehicleState {
 
 impl VehicleState {
     pub fn euler_angles(&self) -> Option<Vector3<f32>> {
-        self.orientation
-            .map(|q| q.euler_angles())
-            .map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
+        self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
     }
 
     pub fn true_euler_angles(&self) -> Option<Vector3<f32>> {
-        self.true_orientation
-            .map(|q| q.euler_angles())
-            .map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
+        self.true_orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
     }
 }
 
@@ -140,10 +136,14 @@ impl From<DownlinkMessage> for VehicleState {
                 transmit_power: Some((tm.transmit_power_and_data_rate & 0x7f).into()),
                 telemetry_data_rate: Some((tm.transmit_power_and_data_rate >> 7).into()),
                 temperature_baro: Some((tm.temperature_baro as f32) / 2.0),
-                drogue_cartridge_pressure: (tm.recovery_drogue[0] != 0x00).then(|| (tm.recovery_drogue[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
-                main_cartridge_pressure: (tm.recovery_main[0] != 0x00).then(|| (tm.recovery_main[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
-                drogue_chamber_pressure: (tm.recovery_drogue[1] != 0x00).then(|| (tm.recovery_drogue[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
-                main_chamber_pressure: (tm.recovery_main[1] != 0x00).then(|| (tm.recovery_main[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
+                drogue_cartridge_pressure: (tm.recovery_drogue[0] != 0x00)
+                    .then(|| (tm.recovery_drogue[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
+                main_cartridge_pressure: (tm.recovery_main[0] != 0x00)
+                    .then(|| (tm.recovery_main[0] as f32 / 400.0 / 3.3 - 0.001) * 160.0 / 0.8),
+                drogue_chamber_pressure: (tm.recovery_drogue[1] != 0x00)
+                    .then(|| (tm.recovery_drogue[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
+                main_chamber_pressure: (tm.recovery_main[1] != 0x00)
+                    .then(|| (tm.recovery_main[1] as f32 / 20.0 / 3.3 + 2.0) * 6.0 / 14.85),
                 ..Default::default()
             },
             DownlinkMessage::TelemetryGPS(tm) => Self {
@@ -152,16 +152,14 @@ impl From<DownlinkMessage> for VehicleState {
                 num_satellites: Some(tm.fix_and_sats & 0x1f),
                 hdop: Some(tm.hdop),
                 latitude: {
-                    let lat = ((tm.latitude[0] as u32) << 16) + ((tm.latitude[1] as u32) << 8) + (tm.latitude[2] as u32);
-                    (lat > 0)
-                        .then(|| lat)
-                        .map(|lat| (lat as f32) * 180.0 / 16777215.0 - 90.0)
+                    let lat =
+                        ((tm.latitude[0] as u32) << 16) + ((tm.latitude[1] as u32) << 8) + (tm.latitude[2] as u32);
+                    (lat > 0).then(|| lat).map(|lat| (lat as f32) * 180.0 / 16777215.0 - 90.0)
                 },
                 longitude: {
-                    let lng = ((tm.longitude[0] as u32) << 16) + ((tm.longitude[1] as u32) << 8) + (tm.longitude[2] as u32);
-                    (lng > 0)
-                        .then(|| lng)
-                        .map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0)
+                    let lng =
+                        ((tm.longitude[0] as u32) << 16) + ((tm.longitude[1] as u32) << 8) + (tm.longitude[2] as u32);
+                    (lng > 0).then(|| lng).map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0)
                 },
                 altitude_gps: (tm.altitude_asl != u16::MAX).then(|| (tm.altitude_asl as f32 - 1000.0) / 10.0),
                 flash_pointer: Some((tm.flash_pointer as u32) * 1024),
@@ -178,7 +176,7 @@ impl From<DownlinkMessage> for VehicleState {
                 time: t,
                 ..Default::default()
             },
-            DownlinkMessage::FlashContent(..) | DownlinkMessage::Settings(..) => Default::default()
+            DownlinkMessage::FlashContent(..) | DownlinkMessage::Settings(..) => Default::default(),
         }
     }
 }

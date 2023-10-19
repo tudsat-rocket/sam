@@ -1,7 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::fs::File;
-use std::io::{Error, ErrorKind, Read, Write, Seek, SeekFrom};
+use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
@@ -11,16 +11,16 @@ use colored::Colorize;
 use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
-use state::VehicleState;
 use mithril::telemetry::*;
+use state::VehicleState;
 
 mod data_source;
 mod file;
 mod gui;
 mod serial;
-mod state;
 mod settings;
 mod simulation;
+mod state;
 mod telemetry_ext;
 
 use serial::*;
@@ -35,7 +35,9 @@ struct Cli {
 #[derive(Debug, Clone, Subcommand)]
 enum CliCommand {
     /// Launch the main gui [default]
-    Gui { log_path: Option<PathBuf> },
+    Gui {
+        log_path: Option<PathBuf>,
+    },
     /// Attach to FC and tail logs
     Logcat {
         #[clap(short = 'v')]
@@ -48,17 +50,20 @@ enum CliCommand {
         force: bool,
         #[clap(short = 'r', help = "Dump entire, raw flash, not just telemetry")]
         raw: bool,
-        #[clap(short = 's', help = "Start address. Default 0x00 (raw mode), 0x1000 (start of log section) otherwise")]
+        #[clap(
+            short = 's',
+            help = "Start address. Default 0x00 (raw mode), 0x1000 (start of log section) otherwise"
+        )]
         start: Option<u32>,
     },
     ExtractFlashLogs {
-        path: PathBuf
+        path: PathBuf,
     },
     /// Convert a binary flash/telem log to a JSON file
     #[clap(name = "bin2json")]
     Bin2Json {
         input: Option<PathBuf>,
-        output: Option<PathBuf>
+        output: Option<PathBuf>,
     },
     #[clap(name = "bin2kml")]
     Bin2Kml {
@@ -71,7 +76,7 @@ enum CliCommand {
     #[clap(name = "json2bin")]
     Json2Bin {
         input: Option<PathBuf>,
-        output: Option<PathBuf>
+        output: Option<PathBuf>,
     },
     /// Reboot the FC
     Reboot,
@@ -82,14 +87,14 @@ enum CliCommand {
 fn open_file_or_stdin(path: Option<PathBuf>) -> Result<Box<dyn Read>, std::io::Error> {
     Ok(match path {
         Some(path) => Box::new(File::open(path)?),
-        None => Box::new(std::io::stdin().lock())
+        None => Box::new(std::io::stdin().lock()),
     })
 }
 
 fn create_file_or_stdout(path: Option<PathBuf>) -> Result<Box<dyn Write>, std::io::Error> {
     Ok(match path {
         Some(path) => Box::new(File::create(path)?),
-        None => Box::new(std::io::stdout().lock())
+        None => Box::new(std::io::stdout().lock()),
     })
 }
 
@@ -172,12 +177,7 @@ fn read_flash_chunk(
     }
 }
 
-fn dump_flash(
-    path: PathBuf,
-    force: bool,
-    raw: bool,
-    start: Option<u32>
-) -> Result<(), Box<dyn std::error::Error>> {
+fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
     const NUM_ATTEMPTS: u32 = 10;
     const CHUNK_SIZE: u32 = 256;
     const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
@@ -275,7 +275,7 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         if let Err(e) = f.read_exact(&mut chunk_buffer) {
             if e.kind() == ErrorKind::BrokenPipe || e.kind() == ErrorKind::UnexpectedEof {
-                break
+                break;
             } else {
                 return Err(Box::new(e));
             }
@@ -296,7 +296,10 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         if contents.map(|(data, crc)| X25.checksum(&data) == crc).unwrap_or(false) {
             std::io::stdout().write(contents.unwrap().0)?;
         } else {
-            warn!("No valid data found for page {:02x?}, skipping page: {:02x?}", address, chunk_buffer);
+            warn!(
+                "No valid data found for page {:02x?}, skipping page: {:02x?}",
+                address, chunk_buffer
+            );
         }
 
         address += 256;
@@ -330,7 +333,8 @@ fn bin2json(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
     let mut buffer = Vec::new();
     input.read_to_end(&mut buffer)?;
 
-    let serialized: Vec<_> = buffer.split_mut(|b| *b == 0x00)
+    let serialized: Vec<_> = buffer
+        .split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
         .map(|msg| serde_json::to_string(&msg).unwrap())
         .collect();
@@ -342,24 +346,30 @@ fn bin2json(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
     Ok(())
 }
 
-fn bin2kml(input: Option<PathBuf>, output: Option<PathBuf>, name: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
+fn bin2kml(
+    input: Option<PathBuf>,
+    output: Option<PathBuf>,
+    name: Option<String>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut input = open_file_or_stdin(input)?;
     let mut output = create_file_or_stdout(output)?;
 
     let mut buffer = Vec::new();
     input.read_to_end(&mut buffer)?;
 
-    let coordinates: Vec<String> = buffer.split_mut(|b| *b == 0x00)
+    let coordinates: Vec<String> = buffer
+        .split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
         .map(|msg| msg.into())
         .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_gps.is_some())
         .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_gps.unwrap()))
-        .map(|(ln,lt,alt)| format!("     {},{},{}", ln,lt,alt + 100.0))
+        .map(|(ln, lt, alt)| format!("     {},{},{}", ln, lt, alt + 100.0))
         .collect();
 
     let name = name.unwrap_or("Sting FC Track".into());
 
-    let xml = format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+    let xml = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <kml xmlns=\"http://www.opengis.net/kml/2.2\">
  <Document>
   <name>{name}</name>
@@ -393,7 +403,11 @@ fn bin2kml(input: Option<PathBuf>, output: Option<PathBuf>, name: Option<String>
   </Placemark>
 
  </Document>
-</kml>", name=name, len=coordinates.len(), coords=coordinates.join("\n"));
+</kml>",
+        name = name,
+        len = coordinates.len(),
+        coords = coordinates.join("\n")
+    );
 
     output.write(xml.as_bytes())?;
 
@@ -413,16 +427,18 @@ fn json2bin(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::new()
-        .filter_level(LevelFilter::Info)
-        .parse_default_env()
-        .init();
+    env_logger::Builder::new().filter_level(LevelFilter::Info).parse_default_env().init();
 
     let args = Cli::parse();
     match args.command.unwrap_or(CliCommand::Gui { log_path: None }) {
         CliCommand::Gui { log_path } => gui::main(log_path),
         CliCommand::Logcat { verbose } => logcat(verbose),
-        CliCommand::DumpFlash { path, force, raw, start } => dump_flash(path, force, raw, start),
+        CliCommand::DumpFlash {
+            path,
+            force,
+            raw,
+            start,
+        } => dump_flash(path, force, raw, start),
         CliCommand::ExtractFlashLogs { path } => extract_flash_logs(path),
         CliCommand::Bin2Json { input, output } => bin2json(input, output),
         CliCommand::Bin2Kml { input, output, name } => bin2kml(input, output, name),

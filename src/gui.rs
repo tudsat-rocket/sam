@@ -1,7 +1,7 @@
 //! Main GUI code
 
-use std::path::PathBuf;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::mpsc::Receiver;
 
@@ -12,54 +12,46 @@ use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
-use egui::{Align, TextStyle::*, Button, TextEdit, RichText, CollapsingHeader};
-use egui::{FontId, Key, Layout, Vec2, Color32, FontFamily, SelectableLabel, Modifiers};
+use egui::{Align, Button, CollapsingHeader, RichText, TextEdit, TextStyle::*};
+use egui::{Color32, FontFamily, FontId, Key, Layout, Modifiers, SelectableLabel, Vec2};
 use egui_extras::RetainedImage;
 
 use log::*;
 
 use mithril::telemetry::*;
 
-mod top_bar;
-mod plot;
-mod map;
-mod log_scroller;
-mod maxi_grid;
-mod theme;
-mod misc;
 mod fc_settings;
+mod log_scroller;
+mod map;
+mod maxi_grid;
+mod misc;
+mod plot;
 mod simulation_settings;
+mod theme;
+mod top_bar;
 
-use crate::state::*;
 use crate::data_source::*;
-use crate::simulation::*;
 use crate::file::*;
 use crate::settings::AppSettings;
+use crate::simulation::*;
+use crate::state::*;
 
-use crate::gui::top_bar::*;
-use crate::gui::plot::*;
-use crate::gui::map::*;
-use crate::gui::log_scroller::*;
-use crate::gui::maxi_grid::*;
-use crate::gui::theme::*;
-use crate::gui::misc::*;
 use crate::gui::fc_settings::*;
+use crate::gui::log_scroller::*;
+use crate::gui::map::*;
+use crate::gui::maxi_grid::*;
+use crate::gui::misc::*;
+use crate::gui::plot::*;
 use crate::gui::simulation_settings::*;
+use crate::gui::theme::*;
+use crate::gui::top_bar::*;
 
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
 // TODO: migrate old launches
 const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
-    (
-        "Zülpich #1",
-        None,
-        None
-    ),
-    (
-        "Zülpich #2",
-        None,
-        None
-    ),
+    ("Zülpich #1", None, None),
+    ("Zülpich #2", None, None),
     (
         "DARE (FC A)",
         Some("https://sam.koffeinflummi.de/archive/dare_launch_a_telem_filtered.json"),
@@ -81,13 +73,13 @@ const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
 enum GuiTab {
     Launch,
     Plot,
-    Configure
+    Configure,
 }
 
 enum ArchiveLoadProgress {
     Partial(f32),
     Complete(Vec<u8>),
-    Error(reqwest::Error)
+    Error(reqwest::Error),
 }
 
 // The main state object of our GUI application
@@ -132,14 +124,8 @@ impl Sam {
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
         fonts.font_data.insert("RobotoMono".to_owned(), roboto);
         fonts.font_data.insert("Overpass".to_owned(), lato);
-        fonts.families
-            .entry(FontFamily::Monospace)
-            .or_default()
-            .insert(0, "RobotoMono".to_owned());
-        fonts.families
-            .entry(FontFamily::Proportional)
-            .or_default()
-            .insert(0, "Overpass".to_owned());
+        fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "RobotoMono".to_owned());
+        fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Overpass".to_owned());
 
         ctx.set_fonts(fonts);
 
@@ -212,7 +198,9 @@ impl Sam {
             .line("Battery Voltage [V]", g, |vs| vs.battery_voltage)
             .line("Current [A]", o1, |vs| vs.current)
             .line("Charge Voltage [V]", b, |vs| vs.charge_voltage)
-            .line("Breakwire Open?", r, |vs| vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0)));
+            .line("Breakwire Open?", r, |vs| {
+                vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0))
+            });
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
             .line("CPU Util. [%]", o, |vs| vs.cpu_utilization.map(|u| u as f32))
@@ -220,9 +208,13 @@ impl Sam {
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
             .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
-            .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
+            .line("GCS Signal RSSI [dBm]", b1, |vs| {
+                vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0)
+            })
             .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("Vehicle RSSI [dBm]", p, |vs| {
+                vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0)
+            })
             .line("HDOP", r, |vs| vs.hdop.map(|x| x as f32 / 100.0))
             .line("# Satellites", g, |vs| vs.num_satellites.map(|x| x as f32));
 
@@ -256,7 +248,7 @@ impl Sam {
             runtime_plot,
             signal_plot,
             map,
-            archive_progress_receiver: None
+            archive_progress_receiver: None,
         }
     }
 
@@ -306,8 +298,7 @@ impl Sam {
 
     #[cfg(not(target_arch = "wasm32"))]
     fn load_archive_log(url: &str) -> Result<Vec<u8>, reqwest::Error> {
-        let response = reqwest::blocking::get(url)?
-            .error_for_status()?;
+        let response = reqwest::blocking::get(url)?.error_for_status()?;
         Ok(response.bytes()?.to_vec())
     }
 
@@ -374,11 +365,11 @@ impl Sam {
                     self.open_log_file(LogFileDataSource::from_bytes(
                         Some("".to_string()), // TODO: show title
                         bytes,
-                        self.replay_logs
+                        self.replay_logs,
                     ));
                     self.archive_panel_open = false;
                     self.archive_progress_receiver = None;
-                },
+                }
                 Ok(ArchiveLoadProgress::Error(e)) => {
                     error!("{:?}", e); // TODO: show this visually
                     self.archive_progress_receiver = None;
@@ -417,9 +408,7 @@ impl Sam {
         };
 
         if let Some(fm) = shortcut_mode {
-            self.data_source
-                .send_command(Command::SetFlightMode(fm))
-                .unwrap();
+            self.data_source.send_command(Command::SetFlightMode(fm)).unwrap();
         }
 
         // Redefine text_styles
@@ -430,7 +419,7 @@ impl Sam {
         ctx.set_style(style.clone());
 
         // Prevent unnecessarily large UI on non-high-DPI displays
-        #[cfg(not(target_arch="wasm32"))]
+        #[cfg(not(target_arch = "wasm32"))]
         if ctx.pixels_per_point() > 1.0 && ctx.pixels_per_point() <= 1.5 {
             ctx.set_pixels_per_point(1.0);
         }
@@ -457,7 +446,11 @@ impl Sam {
                 }
 
                 // Toggle archive panel
-                let text = if self.archive_panel_open { "🗄 Close Archive" } else { "🗄 Open Archive" };
+                let text = if self.archive_panel_open {
+                    "🗄 Close Archive"
+                } else {
+                    "🗄 Open Archive"
+                };
                 ui.toggle_value(&mut self.archive_panel_open, text);
 
                 // Toggle archive panel
@@ -504,7 +497,11 @@ impl Sam {
                     ui.separator();
 
                     ui.toggle_button(&mut self.log_scroller_open, "🗊  Show Logs", "🗊  Close Logs");
-                    ui.toggle_button(&mut self.shared_plot.borrow_mut().show_stats, "📈 Show Stats", "📉 Hide Stats");
+                    ui.toggle_button(
+                        &mut self.shared_plot.borrow_mut().show_stats,
+                        "📈 Show Stats",
+                        "📉 Hide Stats",
+                    );
                 });
             });
         });
@@ -586,10 +583,15 @@ impl Sam {
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() * 0.50);
 
-                    let time = self.data_source.vehicle_states().last().map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
+                    let time = self
+                        .data_source
+                        .vehicle_states()
+                        .last()
+                        .map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
                     let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
                     let alt_ground = self.current(|vs| vs.altitude_ground).unwrap_or(0.0);
-                    let last_gps = self.data_source
+                    let last_gps = self
+                        .data_source
                         .vehicle_states()
                         .rev()
                         .find_map(|(_t, vs)| vs.gps_fix.is_some().then(|| vs))
@@ -603,30 +605,111 @@ impl Sam {
                         ui.add_space(spacing);
                         ui.telemetry_value("🕐", "Time [s]", time);
                         ui.telemetry_value("🏷", "Mode", mode);
-                        ui.telemetry_value_nominal("🔥", "Baro Temp. [°C]", self.current(|vs| vs.temperature_baro), 1, 0.0, 60.0);
-                        ui.telemetry_value_nominal("📡", "RSSI [dBm]", self.current(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / - 2.0)), 1, -50.0, 0.0);
-                        ui.telemetry_value_nominal("📶", "Link Quality [%]", self.data_source.link_quality(), 1, 90.0, 101.0);
+                        ui.telemetry_value_nominal(
+                            "🔥",
+                            "Baro Temp. [°C]",
+                            self.current(|vs| vs.temperature_baro),
+                            1,
+                            0.0,
+                            60.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "📡",
+                            "RSSI [dBm]",
+                            self.current(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0)),
+                            1,
+                            -50.0,
+                            0.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "📶",
+                            "Link Quality [%]",
+                            self.data_source.link_quality(),
+                            1,
+                            90.0,
+                            101.0,
+                        );
                         ui.add_space(spacing);
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width() / 2.0);
                         ui.add_space(spacing);
-                        ui.telemetry_value_nominal("📈", "Altitude (AGL) [m]", self.current(|vs| vs.altitude.map(|a| a - alt_ground)), 1, -1.0, 10000.0);
-                        ui.telemetry_value_nominal("📈", "Max Alt. (AGL) [m]", self.current(|vs| vs.altitude_max.map(|a| a - alt_ground)), 1, -1.0, 10000.0);
-                        ui.telemetry_value_nominal("☁", "Baro. Alt. (ASL) [m]", self.current(|vs| vs.altitude_baro), 1, -100.0, 10000.0);
-                        ui.telemetry_value_nominal("⏱", "Vertical Speed [m/s]", self.current(|vs| vs.vertical_speed), 2, -1.0, 1.0);
-                        ui.telemetry_value_nominal("⬆", "Vertical Accel. [m/s²]", self.current(|vs| vs.vertical_accel_filtered), 1, -1.0, 1.0);
+                        ui.telemetry_value_nominal(
+                            "📈",
+                            "Altitude (AGL) [m]",
+                            self.current(|vs| vs.altitude.map(|a| a - alt_ground)),
+                            1,
+                            -1.0,
+                            10000.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "📈",
+                            "Max Alt. (AGL) [m]",
+                            self.current(|vs| vs.altitude_max.map(|a| a - alt_ground)),
+                            1,
+                            -1.0,
+                            10000.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "☁",
+                            "Baro. Alt. (ASL) [m]",
+                            self.current(|vs| vs.altitude_baro),
+                            1,
+                            -100.0,
+                            10000.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "⏱",
+                            "Vertical Speed [m/s]",
+                            self.current(|vs| vs.vertical_speed),
+                            2,
+                            -1.0,
+                            1.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "⬆",
+                            "Vertical Accel. [m/s²]",
+                            self.current(|vs| vs.vertical_accel_filtered),
+                            1,
+                            -1.0,
+                            1.0,
+                        );
                     });
 
                     ui.vertical(|ui| {
                         ui.set_width(ui.available_width());
                         ui.add_space(spacing);
                         ui.telemetry_value("🌍", "GPS Status", gps_status);
-                        ui.telemetry_value_nominal("📶", "# Sats", self.current(|vs| vs.num_satellites.map(|n| n as f32)), 0, 5.0, 99.0);
-                        ui.telemetry_value_nominal("🎯", "HDOP", last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0), 2, 0.0, 5.0);
-                        ui.telemetry_value_nominal("📡", "GPS Alt. (ASL) [m]", self.current(|vs| vs.altitude_gps), 1, -100.0, 10000.0);
-                        ui.telemetry_value("🌐", "Coords", latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng))));
+                        ui.telemetry_value_nominal(
+                            "📶",
+                            "# Sats",
+                            self.current(|vs| vs.num_satellites.map(|n| n as f32)),
+                            0,
+                            5.0,
+                            99.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "🎯",
+                            "HDOP",
+                            last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0),
+                            2,
+                            0.0,
+                            5.0,
+                        );
+                        ui.telemetry_value_nominal(
+                            "📡",
+                            "GPS Alt. (ASL) [m]",
+                            self.current(|vs| vs.altitude_gps),
+                            1,
+                            -100.0,
+                            10000.0,
+                        );
+                        ui.telemetry_value(
+                            "🌐",
+                            "Coords",
+                            latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng))),
+                        );
                     });
                 });
 
@@ -634,10 +717,22 @@ impl Sam {
                     ui.label("Data Rate [Hz]");
                     ui.horizontal(|ui| {
                         let current = self.current(|vs| vs.telemetry_data_rate).unwrap_or_default();
-                        if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == TelemetryDataRate::Low, "20")).clicked() {
+                        if ui
+                            .add_sized(
+                                [50.0, 20.0],
+                                SelectableLabel::new(current == TelemetryDataRate::Low, "20"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetDataRate(TelemetryDataRate::Low)).unwrap();
                         }
-                        if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == TelemetryDataRate::High, "40")).clicked() {
+                        if ui
+                            .add_sized(
+                                [50.0, 20.0],
+                                SelectableLabel::new(current == TelemetryDataRate::High, "40"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetDataRate(TelemetryDataRate::High)).unwrap();
                         }
                     });
@@ -645,16 +740,40 @@ impl Sam {
                     ui.label("Transmit Power [dBm]");
                     ui.horizontal(|ui| {
                         let current = self.current(|vs| vs.transmit_power).unwrap_or_default();
-                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P14dBm, "14")).clicked() {
+                        if ui
+                            .add_sized(
+                                [25.0, 20.0],
+                                SelectableLabel::new(current == TransmitPower::P14dBm, "14"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
                         }
-                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P17dBm, "17")).clicked() {
+                        if ui
+                            .add_sized(
+                                [25.0, 20.0],
+                                SelectableLabel::new(current == TransmitPower::P17dBm, "17"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P17dBm)).unwrap();
                         }
-                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P20dBm, "20")).clicked() {
+                        if ui
+                            .add_sized(
+                                [25.0, 20.0],
+                                SelectableLabel::new(current == TransmitPower::P20dBm, "20"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P20dBm)).unwrap();
                         }
-                        if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == TransmitPower::P22dBm, "22")).clicked() {
+                        if ui
+                            .add_sized(
+                                [25.0, 20.0],
+                                SelectableLabel::new(current == TransmitPower::P22dBm, "22"),
+                            )
+                            .clicked()
+                        {
                             self.data_source.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
                         }
                     });
@@ -714,30 +833,29 @@ impl Sam {
             ui.set_height(ui.available_height());
 
             match self.tab {
-                GuiTab::Launch => {
-                },
+                GuiTab::Launch => {}
                 GuiTab::Plot => {
                     MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
-                        .cell("Orientation",         |ui| ui.plot_telemetry(&self.orientation_plot))
+                        .cell("Orientation", |ui| ui.plot_telemetry(&self.orientation_plot))
                         .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
-                        .cell("Altitude (ASL)",      |ui| ui.plot_telemetry(&self.altitude_plot))
-                        .cell("Position",            |ui| ui.map(&self.map))
-                        .cell("Gyroscope",           |ui| ui.plot_telemetry(&self.gyroscope_plot))
-                        .cell("Accelerometers",      |ui| ui.plot_telemetry(&self.accelerometer_plot))
-                        .cell("Magnetometer",        |ui| ui.plot_telemetry(&self.magnetometer_plot))
-                        .cell("Pressures",           |ui| ui.plot_telemetry(&self.barometer_plot))
-                        .cell("Temperature",         |ui| ui.plot_telemetry(&self.temperature_plot))
-                        .cell("Power",               |ui| ui.plot_telemetry(&self.power_plot))
-                        .cell("Runtime",             |ui| ui.plot_telemetry(&self.runtime_plot))
-                        .cell("Signal",              |ui| ui.plot_telemetry(&self.signal_plot));
-                },
+                        .cell("Altitude (ASL)", |ui| ui.plot_telemetry(&self.altitude_plot))
+                        .cell("Position", |ui| ui.map(&self.map))
+                        .cell("Gyroscope", |ui| ui.plot_telemetry(&self.gyroscope_plot))
+                        .cell("Accelerometers", |ui| ui.plot_telemetry(&self.accelerometer_plot))
+                        .cell("Magnetometer", |ui| ui.plot_telemetry(&self.magnetometer_plot))
+                        .cell("Pressures", |ui| ui.plot_telemetry(&self.barometer_plot))
+                        .cell("Temperature", |ui| ui.plot_telemetry(&self.temperature_plot))
+                        .cell("Power", |ui| ui.plot_telemetry(&self.power_plot))
+                        .cell("Runtime", |ui| ui.plot_telemetry(&self.runtime_plot))
+                        .cell("Signal", |ui| ui.plot_telemetry(&self.signal_plot));
+                }
                 GuiTab::Configure => {
                     ui.horizontal(|ui| {
                         ui.set_width(ui.available_width());
                         ui.set_height(ui.available_height());
 
                         ui.vertical(|ui| {
-                            ui.set_width(ui.available_width()/2.0);
+                            ui.set_width(ui.available_width() / 2.0);
                             ui.set_height(ui.available_height());
 
                             ui.add_space(10.0);
@@ -750,29 +868,74 @@ impl Sam {
                                 .striped(true)
                                 .show(ui, |ui| {
                                     ui.label("MapBox Access Token");
-                                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.settings.mapbox_access_token));
+                                    ui.add_sized(
+                                        ui.available_size(),
+                                        TextEdit::singleline(&mut self.settings.mapbox_access_token),
+                                    );
                                     ui.end_row();
 
                                     ui.label("LoRa channel selection (500kHz BW)");
                                     ui.vertical(|ui| {
                                         ui.horizontal(|ui| {
-                                            ui.toggle_value(&mut self.settings.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[0],
+                                                RichText::new("863.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[1],
+                                                RichText::new("863.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[2],
+                                                RichText::new("864.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[3],
+                                                RichText::new("864.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[4],
+                                                RichText::new("865.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[5],
+                                                RichText::new("865.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[6],
+                                                RichText::new("866.25").monospace().size(10.0),
+                                            );
                                             ui.label(RichText::new("MHz").weak().size(10.0));
                                         });
                                         ui.horizontal(|ui| {
-                                            ui.toggle_value(&mut self.settings.lora.channels[7],  RichText::new("866.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[8],  RichText::new("867.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[9],  RichText::new("867.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[10], RichText::new("868.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[11], RichText::new("868.75").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[12], RichText::new("869.25").monospace().size(10.0));
-                                            ui.toggle_value(&mut self.settings.lora.channels[13], RichText::new("869.75").monospace().size(10.0));
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[7],
+                                                RichText::new("866.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[8],
+                                                RichText::new("867.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[9],
+                                                RichText::new("867.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[10],
+                                                RichText::new("868.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[11],
+                                                RichText::new("868.75").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[12],
+                                                RichText::new("869.25").monospace().size(10.0),
+                                            );
+                                            ui.toggle_value(
+                                                &mut self.settings.lora.channels[13],
+                                                RichText::new("869.75").monospace().size(10.0),
+                                            );
                                             ui.label(RichText::new("MHz").weak().size(10.0));
                                         });
                                     });
@@ -781,26 +944,31 @@ impl Sam {
                                     ui.label("LoRa binding phrase");
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if ui.button("⬅ Copy from FC").clicked() {
-                                            self.settings.lora.binding_phrase = self.data_source
+                                            self.settings.lora.binding_phrase = self
+                                                .data_source
                                                 .fc_settings()
                                                 .map(|s| s.lora.binding_phrase.clone())
                                                 .unwrap_or(self.settings.lora.binding_phrase.clone());
                                         }
 
-                                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.settings.lora.binding_phrase));
+                                        ui.add_sized(
+                                            ui.available_size(),
+                                            TextEdit::singleline(&mut self.settings.lora.binding_phrase),
+                                        );
                                     });
                                     ui.end_row();
 
                                     ui.label("LoRa uplink key");
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         if ui.button("⬅ Copy from FC").clicked() {
-                                            self.settings.lora.authentication_key = self.data_source
+                                            self.settings.lora.authentication_key = self
+                                                .data_source
                                                 .fc_settings()
                                                 .map(|s| s.lora.authentication_key.clone())
                                                 .unwrap_or(self.settings.lora.authentication_key.clone());
                                         }
 
-                                        #[cfg(not(target_arch="wasm32"))]
+                                        #[cfg(not(target_arch = "wasm32"))]
                                         if ui.button("🔃Rekey").clicked() {
                                             self.settings.lora.authentication_key = rand::random();
                                         }
@@ -818,8 +986,7 @@ impl Sam {
                                 ui.set_width(ui.available_width());
 
                                 if ui.button("🔃Reload").clicked() {
-                                    self.settings = AppSettings::load()
-                                        .unwrap_or(AppSettings::default());
+                                    self.settings = AppSettings::load().unwrap_or(AppSettings::default());
                                 }
 
                                 if ui.button("💾 Save Settings").clicked() {
@@ -848,18 +1015,36 @@ impl Sam {
                             ui.add_space(20.0);
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
+                                if ui
+                                    .add_enabled(
+                                        self.data_source.fc_settings().is_some(),
+                                        Button::new("💾 Write Settings & Reboot"),
+                                    )
+                                    .clicked()
+                                {
                                     let settings = self.data_source.fc_settings().cloned().unwrap();
                                     self.data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
                                 }
 
                                 #[cfg(not(target_arch = "wasm32"))]
-                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
+                                if ui
+                                    .add_enabled(
+                                        self.data_source.fc_settings().is_some(),
+                                        Button::new("🖹 Save to File"),
+                                    )
+                                    .clicked()
+                                {
                                     save_fc_settings_file(&self.data_source.fc_settings().unwrap());
                                 }
 
                                 #[cfg(not(target_arch = "wasm32"))]
-                                if ui.add_enabled(self.data_source.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked() {
+                                if ui
+                                    .add_enabled(
+                                        self.data_source.fc_settings().is_some(),
+                                        Button::new("🖹 Load from File"),
+                                    )
+                                    .clicked()
+                                {
                                     if let Some(settings) = open_fc_settings_file() {
                                         info!("Loaded settings: {:?}", settings);
                                         *self.data_source.fc_settings_mut().unwrap() = settings;

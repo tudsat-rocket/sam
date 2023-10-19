@@ -3,24 +3,24 @@
 
 use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
-use egui::{Color32, RichText, Stroke, Label};
+use egui::{Color32, Label, RichText, Stroke};
 
 use mithril::telemetry::*;
 
-use crate::telemetry_ext::*;
 use crate::data_source::*;
+use crate::telemetry_ext::*;
 
 // TODO: move to telemetry_ext?
 fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
     let fg = Color32::from_rgb(0x28, 0x28, 0x28);
     match fm {
-        FlightMode::Idle           => ("IDLE",    "F5",  fg, fm.color()),
-        FlightMode::HardwareArmed  => ("HWARMED", "F6",  fg, fm.color()),
-        FlightMode::Armed          => ("ARMED",   "F7",  fg, fm.color()),
-        FlightMode::Flight         => ("FLIGHT",  "F8",  fg, fm.color()),
-        FlightMode::RecoveryDrogue => ("DROGUE",  "F9",  fg, fm.color()),
-        FlightMode::RecoveryMain   => ("MAIN",    "F10", fg, fm.color()),
-        FlightMode::Landed         => ("LANDED",  "F11", fg, fm.color()),
+        FlightMode::Idle => ("IDLE", "F5", fg, fm.color()),
+        FlightMode::HardwareArmed => ("HWARMED", "F6", fg, fm.color()),
+        FlightMode::Armed => ("ARMED", "F7", fg, fm.color()),
+        FlightMode::Flight => ("FLIGHT", "F8", fg, fm.color()),
+        FlightMode::RecoveryDrogue => ("DROGUE", "F9", fg, fm.color()),
+        FlightMode::RecoveryMain => ("MAIN", "F10", fg, fm.color()),
+        FlightMode::Landed => ("LANDED", "F11", fg, fm.color()),
     }
 }
 
@@ -33,16 +33,11 @@ pub trait TopBarUiExt {
         value: Option<f32>,
         decimals: usize,
         nominal_min: f32,
-        nominal_max: f32
+        nominal_max: f32,
     );
     fn battery_bar(&mut self, w: f32, voltage: Option<f32>);
     fn flash_bar(&mut self, w: f32, f: f32, text: String);
-    fn command_button(
-        &mut self,
-        label: &'static str,
-        cmd: Command,
-        data_source: &mut Box<dyn DataSource>,
-    );
+    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut Box<dyn DataSource>);
     fn flight_mode_button(
         &mut self,
         w: f32,
@@ -79,7 +74,7 @@ impl TopBarUiExt for egui::Ui {
         value: Option<f32>,
         decimals: usize,
         nominal_min: f32,
-        nominal_max: f32
+        nominal_max: f32,
     ) {
         let value_string = value.map(|v| format!("{0:.1$}", v, decimals)).unwrap_or("N/A".to_string());
         let value_text = RichText::new(value_string).strong().monospace();
@@ -105,8 +100,8 @@ impl TopBarUiExt for egui::Ui {
         let text = voltage.map(|v| format!("🔋 Battery: {:.2}V", v)).unwrap_or("🔋 Battery: N/A".to_string());
         let color = match voltage {
             Some(v) if v > 8.0 && v < 8.45 => Color32::from_rgb(0x98, 0x97, 0x1a),
-            Some(v) if v > 7.0             => Color32::from_rgb(0xd6, 0x5d, 0x0e),
-            _                              => Color32::from_rgb(0xcc, 0x24, 0x1d)
+            Some(v) if v > 7.0 => Color32::from_rgb(0xd6, 0x5d, 0x0e),
+            _ => Color32::from_rgb(0xcc, 0x24, 0x1d),
         };
 
         self.horizontal(|ui| {
@@ -118,21 +113,16 @@ impl TopBarUiExt for egui::Ui {
     fn flash_bar(&mut self, w: f32, f: f32, text: String) {
         self.horizontal(|ui| {
             ui.style_mut().visuals.selection.bg_fill = match f {
-                _f if f > 0.9  => Color32::from_rgb(0xcc, 0x24, 0x1d),
+                _f if f > 0.9 => Color32::from_rgb(0xcc, 0x24, 0x1d),
                 _f if f > 0.75 => Color32::from_rgb(0xd6, 0x5d, 0x0e),
-                _              => Color32::from_rgb(0x45, 0x85, 0x88)
+                _ => Color32::from_rgb(0x45, 0x85, 0x88),
             };
 
             ui.add(ProgressBar::new(f).desired_width(w).text(text));
         });
     }
 
-    fn command_button(
-        &mut self,
-        label: &'static str,
-        cmd: Command,
-        data_source: &mut Box<dyn DataSource>,
-    ) {
+    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut Box<dyn DataSource>) {
         if self.button(label).clicked() {
             data_source.send_command(cmd).unwrap();
         }
@@ -150,9 +140,7 @@ impl TopBarUiExt for egui::Ui {
         let shortcut_text = RichText::new(format!("\nSh+{}", shortcut)).monospace();
 
         let button = if current.map(|c| c == fm).unwrap_or(false) {
-            Button::new(main_text.color(fg))
-                .shortcut_text(shortcut_text.color(fg))
-                .fill(bg)
+            Button::new(main_text.color(fg)).shortcut_text(shortcut_text.color(fg)).fill(bg)
         } else {
             Button::new(main_text)
                 .shortcut_text(shortcut_text)
@@ -161,9 +149,7 @@ impl TopBarUiExt for egui::Ui {
         };
 
         if self.add_sized([w, self.available_height() - 10.0], button).clicked() {
-            data_source
-                .send_command(Command::SetFlightMode(fm))
-                .unwrap();
+            data_source.send_command(Command::SetFlightMode(fm)).unwrap();
         }
     }
 }

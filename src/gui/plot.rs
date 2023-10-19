@@ -3,16 +3,16 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
 use eframe::egui::plot::PlotBounds;
 use egui::plot::AxisBools;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
 use eframe::egui;
 use eframe::egui::PointerButton;
-use egui::widgets::plot::{Corner, Legend, Line, VLine, LineStyle};
+use egui::widgets::plot::{Corner, Legend, Line, LineStyle, VLine};
 
 use crate::gui::*;
 use crate::state::*;
@@ -159,12 +159,16 @@ impl PlotCache {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        self.lines.iter_mut()
+        self.lines
+            .iter_mut()
             .map(|pcl| {
                 let data = pcl.data_for_bounds(bounds);
                 let stats = show_stats.then(|| pcl.stats()).flatten();
                 let legend = if let Some((mean, std_dev, min, max)) = stats {
-                    format!("{} (mean: {:.2}, std dev.: {:.2}, min: {:.2}, max: {:.2})", pcl.name, mean, std_dev, min, max)
+                    format!(
+                        "{} (mean: {:.2}, std dev.: {:.2}, min: {:.2}, max: {:.2})",
+                        pcl.name, mean, std_dev, min, max
+                    )
                 } else {
                     pcl.name.clone()
                 };
@@ -175,8 +179,7 @@ impl PlotCache {
 
     /// Vertical mode transition lines to be plotted
     pub fn mode_lines(&self) -> Box<dyn Iterator<Item = VLine> + '_> {
-        let iter = self.mode_transitions.iter()
-            .map(|(x, mode)| VLine::new(*x).color(mode.color()));
+        let iter = self.mode_transitions.iter().map(|(x, mode)| VLine::new(*x).color(mode.color()));
         Box::new(iter)
     }
 }
@@ -322,10 +325,8 @@ impl PlotUiExt for egui::Ui {
         let mut shared = state.shared.borrow_mut();
         let mut cache = state.cache.borrow_mut();
 
-        let legend = Legend::default()
-            .text_style(egui::TextStyle::Small)
-            .background_alpha(0.5)
-            .position(Corner::LeftTop);
+        let legend =
+            Legend::default().text_style(egui::TextStyle::Small).background_alpha(0.5).position(Corner::LeftTop);
 
         let mut plot = egui::widgets::plot::Plot::new(&state.title)
             .link_axis("plot_axis_group", true, false)
@@ -364,7 +365,7 @@ impl PlotUiExt for egui::Ui {
             }
 
             for vl in mode_lines.into_iter() {
-                plot_ui.vline(vl.style(LineStyle::Dashed{length: 4.0}));
+                plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));
             }
         });
 

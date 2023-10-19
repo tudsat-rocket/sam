@@ -6,17 +6,11 @@ use mithril::telemetry::*;
 use crate::telemetry_ext::*;
 
 pub trait LogUiExt {
-    fn log_scroller<'a>(
-        &mut self,
-        log_messages: impl Iterator<Item=&'a (u32, String, LogLevel, String)>
-    );
+    fn log_scroller<'a>(&mut self, log_messages: impl Iterator<Item = &'a (u32, String, LogLevel, String)>);
 }
 
 impl LogUiExt for egui::Ui {
-    fn log_scroller<'a>(
-        &mut self,
-        log_messages: impl Iterator<Item=&'a (u32, String, LogLevel, String)>
-    ) {
+    fn log_scroller<'a>(&mut self, log_messages: impl Iterator<Item = &'a (u32, String, LogLevel, String)>) {
         let h = self.available_height();
         egui::ScrollArea::vertical()
             .max_height(self.available_height())
@@ -33,9 +27,7 @@ impl LogUiExt for egui::Ui {
                             Vec2::new(60.0, 10.0),
                             Layout::top_down(eframe::emath::Align::RIGHT),
                             |ui| {
-                                ui.monospace(
-                                    RichText::new(format!("{:>8.3}", *t as f32 / 1000.0)).color(gray),
-                                );
+                                ui.monospace(RichText::new(format!("{:>8.3}", *t as f32 / 1000.0)).color(gray));
                             },
                         );
 

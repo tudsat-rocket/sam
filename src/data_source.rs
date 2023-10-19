@@ -5,9 +5,9 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender, SendError};
-use std::time::Duration;
 use std::slice::Iter;
+use std::sync::mpsc::{Receiver, SendError, Sender};
+use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -113,7 +113,6 @@ impl SerialDataSource {
                 error!("Error saving msg: {:?}", e);
             }
         }
-
     }
 }
 
@@ -214,14 +213,12 @@ pub trait DataSource {
         None
     }
 
-    fn apply_settings(&mut self, _settings: &AppSettings) {
-    }
+    fn apply_settings(&mut self, _settings: &AppSettings) {}
 }
 
 impl DataSource for SerialDataSource {
     fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
-        self.message_receipt_times
-            .retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
+        self.message_receipt_times.retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
         for (status, port) in self.serial_status_rx.try_iter() {
             self.serial_status = status;
@@ -247,7 +244,7 @@ impl DataSource for SerialDataSource {
             match msg {
                 DownlinkMessage::Log(t, loc, ll, txt) => {
                     self.log_messages.push((t, loc, ll, txt));
-                },
+                }
                 DownlinkMessage::Settings(settings) => {
                     self.fc_settings = Some(settings);
                 }
@@ -349,11 +346,14 @@ impl DataSource for SerialDataSource {
     }
 
     fn link_quality(&self) -> Option<f32> {
-        let telemetry_data_rate = self.vehicle_states.iter()
+        let telemetry_data_rate = self
+            .vehicle_states
+            .iter()
             .rev()
             .find_map(|(_t, msg)| msg.telemetry_data_rate)
             .unwrap_or(TelemetryDataRate::Low);
-        let expected = match telemetry_data_rate { // TODO: don't hardcode these?
+        let expected = match telemetry_data_rate {
+            // TODO: don't hardcode these?
             TelemetryDataRate::Low => 15,
             TelemetryDataRate::High => 35,
         };
@@ -377,9 +377,7 @@ impl DataSource for LogFileDataSource {
                 vec![]
             }
         } else {
-            self.buffer.split_mut(|b| *b == 0x00)
-                .filter_map(|b| postcard::from_bytes_cobs(b).ok())
-                .collect()
+            self.buffer.split_mut(|b| *b == 0x00).filter_map(|b| postcard::from_bytes_cobs(b).ok()).collect()
         };
 
         self.buffer.truncate(0);
@@ -459,7 +457,8 @@ impl DataSource for LogFileDataSource {
     }
 
     fn info_text(&self) -> String {
-        self.path.as_ref()
+        self.path
+            .as_ref()
             .map(|p| p.as_os_str().to_string_lossy().into())
             .or(self.name.clone())
             .unwrap_or_default()
