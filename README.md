@@ -3,6 +3,8 @@ Sam
 
 Ground station software for the Sting FC, includes both command line tools and GUI.
 
+![](https://raw.githubusercontent.com/tudsat-rocket/sam/main/assets/screenshot.png)
+
 # Running
 
 To run for debugging purposes:
