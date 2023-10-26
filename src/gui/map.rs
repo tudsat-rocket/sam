@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+use egui::plot::PlotPoints;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -52,8 +53,11 @@ fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dy
         return Ok(buffer);
     }
 
-    let response = reqwest::blocking::get(tile_mapbox_url(&tile, access_token))?.error_for_status()?;
-    let bytes = response.bytes()?.to_vec();
+    // TODO: do this nicer
+    let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let result = rt.block_on(reqwest::get(tile_mapbox_url(&tile, access_token)));
+    let response = result?.error_for_status()?;
+    let bytes = rt.block_on(response.bytes())?.to_vec();
 
     let mut f = std::fs::File::create(path)?;
     f.write_all(&bytes)?;
@@ -132,7 +136,7 @@ impl TileCache {
 
 pub struct MapCache {
     points: Vec<(f64, f64, f64)>,
-    plot_points: Vec<(Vec<[f64; 2]>, Color32)>,
+    plot_points: Vec<([[f64; 2]; 2], Color32)>,
     max_alt: f64,
     pub center: (f64, f64),
     pub hdop_circle_points: Option<Vec<[f64; 2]>>,
@@ -174,7 +178,7 @@ impl MapCache {
                     #[cfg(feature = "profiling")]
                     puffin::profile_scope!("map_line_creation");
 
-                    let points = vec![[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
+                    let points = [[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
                     let index = usize::min(((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize, 100);
                     let color = self.gradient_lookup[index];
                     (points, color)
@@ -208,8 +212,9 @@ impl MapCache {
         puffin::profile_function!();
 
         self.plot_points
-            .iter()
-            .map(|(pp, color)| Line::new(pp.clone()).width(2.0).color(color.clone()))
+            .clone()
+            .into_iter()
+            .map(|(pp, color)| Line::new(PlotPoints::from_iter(pp.into_iter())).width(2.0).color(color.clone()))
             .collect()
     }
 
@@ -284,13 +289,9 @@ impl MapState {
         let zoom = f64::round(f64::log2(world_prop / NUM_TILES)).abs();
         let zoom = f64::max(4.0, f64::min(19.0, zoom));
 
-        let bbox = BBox::new(
-            bounds.max()[1] as f32,
-            bounds.min()[0] as f32,
-            bounds.min()[1] as f32,
-            bounds.max()[0] as f32,
-        )
-        .unwrap_or(BBox::new(89.0, -179.0, -89.0, 179.0).unwrap());
+        let bbox =
+            BBox::new(bounds.max()[1] as f32, bounds.min()[0] as f32, bounds.min()[1] as f32, bounds.max()[0] as f32)
+                .unwrap_or(BBox::new(89.0, -179.0, -89.0, 179.0).unwrap());
 
         let iter = bbox.tiles_for_zoom(zoom as u8).filter_map(|tile| {
             let result = self.tile_cache.lock().cached_image(ctx, &tile);

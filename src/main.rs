@@ -39,11 +39,13 @@ enum CliCommand {
         log_path: Option<PathBuf>,
     },
     /// Attach to FC and tail logs
+    /// TODO: embassy rewrite will remove USB logging, so this can be removed
     Logcat {
         #[clap(short = 'v')]
         verbose: bool,
     },
     /// Dump the contents of the FC's flash to a file
+    /// TODO: rewrite flash dumping stuff after embassy rewrite
     DumpFlash {
         path: PathBuf,
         #[clap(short = 'f', help = "Always overwrite existing file")]
@@ -129,13 +131,7 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
                         LogLevel::Critical => "bright purple",
                     };
 
-                    println!(
-                        "[{:>8.3}] [{}] [{}] {}",
-                        t,
-                        ll.to_string().color(color).bold(),
-                        loc.white(),
-                        msg
-                    )
+                    println!("[{:>8.3}] [{}] [{}] {}", t, ll.to_string().color(color).bold(), loc.white(), msg)
                 }
                 msg => {
                     if verbose {
@@ -169,10 +165,7 @@ fn read_flash_chunk(
         }
 
         if start.elapsed() > TIMEOUT {
-            return Err(Box::new(Error::new(
-                ErrorKind::ConnectionAborted,
-                "Connection timed out.",
-            )));
+            return Err(Box::new(Error::new(ErrorKind::ConnectionAborted, "Connection timed out.")));
         }
     }
 }
@@ -183,10 +176,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
     const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
     if path.exists() && !force {
-        return Err(Box::new(Error::new(
-            ErrorKind::Other,
-            "File already exists. Use -f to overwrite.",
-        )));
+        return Err(Box::new(Error::new(ErrorKind::Other, "File already exists. Use -f to overwrite.")));
     }
 
     let mut f = File::create(path)?;
@@ -296,10 +286,7 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         if contents.map(|(data, crc)| X25.checksum(&data) == crc).unwrap_or(false) {
             std::io::stdout().write(contents.unwrap().0)?;
         } else {
-            warn!(
-                "No valid data found for page {:02x?}, skipping page: {:02x?}",
-                address, chunk_buffer
-            );
+            warn!("No valid data found for page {:02x?}, skipping page: {:02x?}", address, chunk_buffer);
         }
 
         address += 256;

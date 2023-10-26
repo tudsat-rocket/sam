@@ -338,6 +338,7 @@ impl PlotUiExt for egui::Ui {
             .include_x(shared.view_start())
             .include_x(shared.view_end())
             .auto_bounds_y()
+            .sharp_grid_lines(true)
             .legend(legend.clone());
 
         if let Some(min) = state.ymin {

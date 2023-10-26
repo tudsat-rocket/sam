@@ -285,8 +285,14 @@ impl DataSource for SerialDataSource {
         self.message_receipt_times.truncate(0);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         self.uplink_tx.send(msg)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+        Ok(())
     }
 
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
@@ -403,7 +409,7 @@ impl DataSource for LogFileDataSource {
             self.last_time = self.last_time.map(|t| t + Duration::from_millis(since_previous as u64));
             last_vehicle_times.push_front(u32::max(*last.unwrap_or(&0), msg.time()));
             last_vehicle_times.truncate(5); // TODO: use these for better filtering?
-                                            //
+
             self.messages.push((self.last_time.unwrap(), msg));
         }
 

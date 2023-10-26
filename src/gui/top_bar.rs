@@ -3,7 +3,7 @@
 
 use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
-use egui::{Color32, Label, RichText, Stroke};
+use egui::{Color32, Label, RichText, SelectableLabel, Stroke, Rect, Vec2};
 
 use mithril::telemetry::*;
 
@@ -26,7 +26,7 @@ fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Co
 
 pub trait TopBarUiExt {
     fn telemetry_value(&mut self, icon: &str, label: &str, value: Option<String>);
-    fn telemetry_value_nominal(
+    fn nominal_value(
         &mut self,
         icon: &str,
         label: &str,
@@ -35,16 +35,20 @@ pub trait TopBarUiExt {
         nominal_min: f32,
         nominal_max: f32,
     );
+
+    fn data_rate_controls(&mut self, current: TelemetryDataRate, data_source: &mut dyn DataSource);
+    fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource);
+
     fn battery_bar(&mut self, w: f32, voltage: Option<f32>);
-    fn flash_bar(&mut self, w: f32, f: f32, text: String);
-    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut Box<dyn DataSource>);
+    fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>);
+    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut dyn DataSource);
     fn flight_mode_button(
         &mut self,
-        w: f32,
         fm: FlightMode,
         current: Option<FlightMode>,
-        data_source: &mut Box<dyn DataSource>,
+        data_source: &mut dyn DataSource,
     );
+    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, data_source: &mut dyn DataSource);
 }
 
 impl TopBarUiExt for egui::Ui {
@@ -67,7 +71,7 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn telemetry_value_nominal(
+    fn nominal_value(
         &mut self,
         icon: &str,
         label: &str,
@@ -95,6 +99,38 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
+    fn data_rate_controls(&mut self, current: TelemetryDataRate, data_source: &mut dyn DataSource) {
+        use TelemetryDataRate::*;
+
+        self.horizontal(|ui| {
+            if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == Low, "20")).clicked() {
+                data_source.send_command(Command::SetDataRate(TelemetryDataRate::Low)).unwrap();
+            }
+            if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == High, "40")).clicked() {
+                data_source.send_command(Command::SetDataRate(TelemetryDataRate::High)).unwrap();
+            }
+        });
+    }
+
+    fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource) {
+        use TransmitPower::*;
+
+        self.horizontal(|ui| {
+            if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P14dBm, "14")).clicked() {
+                data_source.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
+            }
+            if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P17dBm, "17")).clicked() {
+                data_source.send_command(Command::SetTransmitPower(TransmitPower::P17dBm)).unwrap();
+            }
+            if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P20dBm, "20")).clicked() {
+                data_source.send_command(Command::SetTransmitPower(TransmitPower::P20dBm)).unwrap();
+            }
+            if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P22dBm, "22")).clicked() {
+                data_source.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
+            }
+        });
+    }
+
     fn battery_bar(&mut self, w: f32, voltage: Option<f32>) {
         let f = voltage.map(|v| (v - 6.0) / (8.4 - 6.0)).unwrap_or(0.0);
         let text = voltage.map(|v| format!("🔋 Battery: {:.2}V", v)).unwrap_or("🔋 Battery: N/A".to_string());
@@ -110,7 +146,12 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn flash_bar(&mut self, w: f32, f: f32, text: String) {
+    fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>) {
+        let flash_pointer = flash_pointer.map(|fp| (fp as f32) / 1024.0 / 1024.0).unwrap_or_default();
+        let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
+        let f = flash_pointer / flash_size;
+        let text = format!("🖴  Flash: {:.2}MiB / {:.2}MiB", flash_pointer, flash_size);
+
         self.horizontal(|ui| {
             ui.style_mut().visuals.selection.bg_fill = match f {
                 _f if f > 0.9 => Color32::from_rgb(0xcc, 0x24, 0x1d),
@@ -122,7 +163,7 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut Box<dyn DataSource>) {
+    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut dyn DataSource) {
         if self.button(label).clicked() {
             data_source.send_command(cmd).unwrap();
         }
@@ -130,26 +171,47 @@ impl TopBarUiExt for egui::Ui {
 
     fn flight_mode_button(
         &mut self,
-        w: f32,
         fm: FlightMode,
         current: Option<FlightMode>,
-        data_source: &mut Box<dyn DataSource>,
+        data_source: &mut dyn DataSource,
     ) {
         let (label, shortcut, fg, bg) = flight_mode_style(fm);
-        let main_text = RichText::new(format!("{}\n", label)).monospace();
-        let shortcut_text = RichText::new(format!("\nSh+{}", shortcut)).monospace();
+        let is_current = current.map(|c| c == fm).unwrap_or(false);
 
-        let button = if current.map(|c| c == fm).unwrap_or(false) {
-            Button::new(main_text.color(fg)).shortcut_text(shortcut_text.color(fg)).fill(bg)
+        let main_text = RichText::new(label).monospace();
+        let button = if is_current {
+            Button::new(main_text.color(fg)).wrap(true).fill(bg)
         } else {
             Button::new(main_text)
-                .shortcut_text(shortcut_text)
+                .wrap(true)
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::new(2.0, bg))
         };
 
-        if self.add_sized([w, self.available_height() - 10.0], button).clicked() {
+        self.add_space(5.0);
+        let pos = self.next_widget_position();
+        let size = Vec2::new(self.available_width(), 50.0);
+        if self.add_sized(size, button).clicked() {
             data_source.send_command(Command::SetFlightMode(fm)).unwrap();
         }
+
+        let shortcut = if is_current {
+            Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).color(fg))
+        } else {
+            Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).weak())
+        };
+        self.put(Rect::from_two_pos(pos + size * Vec2::new(0.0, 0.6), pos + size), shortcut);
+    }
+
+    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, data_source: &mut dyn DataSource) {
+        self.columns(7, |columns| {
+            columns[0].flight_mode_button(FlightMode::Idle, current, data_source);
+            columns[1].flight_mode_button(FlightMode::HardwareArmed, current, data_source);
+            columns[2].flight_mode_button(FlightMode::Armed, current, data_source);
+            columns[3].flight_mode_button(FlightMode::Flight, current, data_source);
+            columns[4].flight_mode_button(FlightMode::RecoveryDrogue, current, data_source);
+            columns[5].flight_mode_button(FlightMode::RecoveryMain, current, data_source);
+            columns[6].flight_mode_button(FlightMode::Landed, current, data_source);
+        });
     }
 }

@@ -27,6 +27,9 @@ directories = "4.0"
 slippy-map-tiles = "0.16"
 colorgrad = "0.6"
 rand_distr = { version = "0.4", default-features = false }
+tokio = "1.33"
+futures = "0.3.28"
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
 
 # Used for profiling
 puffin = { version = "0.14", optional = true }
@@ -42,16 +45,13 @@ rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
 rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
 rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "blocking"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"] }
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 web-time = "0.2"
 wasm-bindgen-futures = "0.4"
