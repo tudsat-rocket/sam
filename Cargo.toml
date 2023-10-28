@@ -40,17 +40,25 @@ egui = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27
 eframe = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
 egui_extras = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
 
+# X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
+
+[target.'cfg(all(target_arch = "x86_64", not(target_os = "windows")))'.dependencies]
 rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+
+# Android dependencies
 [target.'cfg(target_arch = "aarch64")'.dependencies]
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
 rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
 
+# Web Assembly dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }
 web-time = "0.2"

@@ -3,7 +3,6 @@ use std::collections::VecDeque;
 use rand::SeedableRng;
 use nalgebra::{UnitQuaternion, Vector3};
 use rand::distributions::Distribution;
-use rand::rngs::SmallRng;
 use rand::RngCore;
 
 use mithril::settings::*;
@@ -13,6 +12,11 @@ use mithril::telemetry::*;
 use crate::state::VehicleState;
 
 use crate::gui::ARCHIVE;
+
+#[cfg(target_os="windows")]
+type Rng = rand::rngs::StdRng;
+#[cfg(not(target_os="windows"))]
+type Rng = rand::rngs::SmallRng;
 
 const GRAVITY: f32 = 9.80665;
 
@@ -88,7 +92,7 @@ impl Default for SimulationSettings {
 
 #[derive(Debug)]
 pub struct SimulationState {
-    pub(crate) rng: SmallRng,
+    pub(crate) rng: Rng,
     pub(crate) settings: SimulationSettings,
     remaining_replication_states: VecDeque<VehicleState>,
 
@@ -189,9 +193,9 @@ impl SimulationState {
 
         Self {
             #[cfg(not(target_arch = "wasm32"))]
-            rng: rand::rngs::SmallRng::from_entropy(),
+            rng: Rng::from_entropy(),
             #[cfg(target_arch = "wasm32")]
-            rng: rand::rngs::SmallRng::from_seed([0x42; 16]),
+            rng: Rng::from_seed([0x42; 16]),
             settings,
             state_estimator,
 
