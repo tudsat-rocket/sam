@@ -2,6 +2,8 @@ use egui::{DragValue, InnerResponse, Ui};
 
 use crate::simulation::SimulationSettings;
 
+use super::ARCHIVE;
+
 pub trait SimulationSettingsUiExt {
     fn ui(&mut self, ui: &mut Ui) -> InnerResponse<()>;
 }
@@ -13,6 +15,26 @@ impl SimulationSettingsUiExt for SimulationSettings {
             .spacing([40.0, 4.0])
             .striped(true)
             .show(ui, |ui| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    ui.label("Replication Log");
+                    egui::ComboBox::from_id_source("replication_log")
+                        .selected_text(self.replication_log_index.map(|i| ARCHIVE[i].0).unwrap_or("None"))
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut self.replication_log_index, None, "None");
+                            for (i, (name, _, f)) in ARCHIVE.iter().enumerate() {
+                                if f.is_none() {
+                                    continue;
+                                }
+                                ui.selectable_value(&mut self.replication_log_index, Some(i), *name);
+                            }
+                        });
+                    ui.end_row();
+                }
+
+                // Disable other settings if we are using a source log
+                ui.set_enabled(self.replication_log_index.is_none());
+
                 ui.label("Launch Parameters");
                 ui.horizontal(|ui| {
                     ui.weak("Altitude");

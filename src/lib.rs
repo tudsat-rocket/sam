@@ -11,16 +11,11 @@ mod file;
 #[allow(dead_code)]
 #[allow(unused_imports)]
 mod gui;
-#[allow(dead_code)]
-#[allow(unused_variables)]
-#[allow(unused_imports)]
-mod serial;
 mod settings;
 mod simulation;
 mod state;
 mod telemetry_ext;
 
-pub use crate::data_source::*;
 pub use crate::gui::*;
 
 #[cfg(target_arch = "wasm32")]
@@ -58,6 +53,7 @@ impl WebHandle {
     /// Call this once from JavaScript to start your app.
     #[wasm_bindgen]
     pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
+        use crate::data_source::SerialDataSource;
         let data_source = Box::new(SerialDataSource::new(mithril::settings::LoRaSettings::default()));
 
         self.runner

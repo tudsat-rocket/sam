@@ -2366,7 +2366,7 @@ dependencies = [
 [[package]]
 name = "mithril"
 version = "0.1.0"
-source = "git+https://github.com/tudsat-rocket/mithril.git#5816627ca5e3ef89a90f0094e761f750175b457b"
+source = "git+https://github.com/tudsat-rocket/mithril.git#8036e78eee9f9513a780e2c24377d32bf775852f"
 dependencies = [
  "ahrs",
  "crc 3.0.1",

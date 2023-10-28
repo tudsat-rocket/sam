@@ -1,14 +1,6 @@
+use std::collections::VecDeque;
+
 use rand::SeedableRng;
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
-
-use std::slice::Iter;
-use std::sync::mpsc::SendError;
-use std::time::Duration;
-
-use egui::Color32;
 use nalgebra::{UnitQuaternion, Vector3};
 use rand::distributions::Distribution;
 use rand::rngs::SmallRng;
@@ -18,16 +10,19 @@ use mithril::settings::*;
 use mithril::state_estimation::*;
 use mithril::telemetry::*;
 
-use crate::data_source::DataSource;
 use crate::state::VehicleState;
+
+use crate::gui::ARCHIVE;
 
 const GRAVITY: f32 = 9.80665;
 
-const SIMULATION_TICK_MS: u32 = 10;
-const PLOT_STEP_MS: u32 = 100;
+pub const SIMULATION_TICK_MS: u32 = 1;
+pub const PLOT_STEP_MS: u32 = 100;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
+    pub replication_log_index: Option<usize>, // TODO: represent this better than a simple index
+
     pub altitude_ground: f32,
     pub launch_angle: f32,
     pub launch_azimuth: f32,
@@ -59,6 +54,8 @@ pub struct SimulationSettings {
 impl Default for SimulationSettings {
     fn default() -> Self {
         Self {
+            replication_log_index: None,
+
             altitude_ground: 150.0,
             launch_angle: 5.0,
             launch_azimuth: 60.0,
@@ -91,60 +88,132 @@ impl Default for SimulationSettings {
 
 #[derive(Debug)]
 pub struct SimulationState {
-    rng: SmallRng,
-    settings: SimulationSettings,
-    state_estimator: StateEstimator,
+    pub(crate) rng: SmallRng,
+    pub(crate) settings: SimulationSettings,
+    remaining_replication_states: VecDeque<VehicleState>,
 
-    time: u32,
-    mode: FlightMode,
+    pub(crate) time: u32,
 
-    latitude: f64,
-    longitude: f64,
-    altitude: f32,
-    altitude_ground: f32,
-    orientation: UnitQuaternion<f32>,
-    angular_velocity: Vector3<f32>,
-    acceleration: Vector3<f32>,
-    velocity: Vector3<f32>,
+    pub(crate) latitude: f64,
+    pub(crate) longitude: f64,
+    pub(crate) altitude: f32,
+    pub(crate) altitude_ground: f32,
+    pub(crate) orientation: UnitQuaternion<f32>,
+    pub(crate) angular_velocity: Vector3<f32>,
+    pub(crate) acceleration: Vector3<f32>,
+    pub(crate) velocity: Vector3<f32>,
 
-    gyroscope: Option<Vector3<f32>>,
-    accelerometer1: Option<Vector3<f32>>,
-    accelerometer2: Option<Vector3<f32>>,
-    magnetometer: Option<Vector3<f32>>,
-    altitude_baro: Option<f32>,
+    pub(crate) gyroscope: Option<Vector3<f32>>,
+    pub(crate) accelerometer1: Option<Vector3<f32>>,
+    pub(crate) accelerometer2: Option<Vector3<f32>>,
+    pub(crate) magnetometer: Option<Vector3<f32>>,
+    pub(crate) altitude_baro: Option<f32>,
+
+    pub(crate) state_estimator: StateEstimator,
+    pub(crate) mode: FlightMode,
 }
 
 impl SimulationState {
+    async fn load_archive_log(url: &str) -> Result<Vec<u8>, reqwest::Error> {
+        let res = reqwest::Client::new().get(url).send().await?;
+        Ok(res.bytes().await?.to_vec())
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn load_log_states(url: &str) -> Result<VecDeque<VehicleState>, reqwest::Error> {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
+        let bytes = rt.block_on(Self::load_archive_log(url))?;
+        let msgs = serde_json::from_slice::<Vec<DownlinkMessage>>(&bytes).unwrap();
+        Ok(msgs.into_iter().map(|x| x.into()).collect())
+    }
+
     pub fn initialize(settings: &SimulationSettings) -> Self {
+        log::info!("Initializing");
         let a = settings.launch_azimuth.to_radians();
         let b = settings.launch_angle.to_radians();
         let direction = Vector3::new(f32::sin(a) * f32::sin(b), f32::cos(a) * f32::sin(b), f32::cos(b));
+
+        let mut settings = settings.clone();
+
+        // Fix FC orientation for EuRoC flight (TODO: do this better)
+        if let Some(4) = settings.replication_log_index {
+            settings.fc_settings.orientation = Orientation::ZDown;
+        }
+
+        // TODO: do this nicer (separate thread/task, progress, caching, support WASM)
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut remaining_replication_states = settings.replication_log_index
+            .map(|i| ARCHIVE.get(i))
+            .flatten()
+            .map(|(_, _, flash)| *flash)
+            .flatten()
+            .map(|url| Self::load_log_states(url).unwrap())
+            .unwrap_or_default();
+
+        #[cfg(target_arch = "wasm32")]
+        let mut remaining_replication_states: VecDeque<VehicleState> = VecDeque::new();
+
+        // Skip the first known states without GPS data
+        while remaining_replication_states.get(0).map(|vs| vs.latitude.is_none()).unwrap_or(false) {
+            remaining_replication_states.pop_front();
+        }
+
+        let (altitude, latitude, longitude) = remaining_replication_states.front()
+            .map(|vs| (vs.altitude_gps.unwrap(), vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64))
+            .unwrap_or((settings.altitude_ground, settings.launch_latitude, settings.launch_longitude));
+
+        // Skip the first known states without raw sensor data
+        while remaining_replication_states.get(0).map(|vs| vs.gyroscope.is_none()).unwrap_or(false) {
+            remaining_replication_states.pop_front();
+        }
+
+        let mut state_estimator = StateEstimator::new(1000.0 / (SIMULATION_TICK_MS as f32), settings.fc_settings.clone());
+
+        let mut time = 0;
+        let mut mode = FlightMode::Idle;
+        let mut gyroscope = None;
+        let mut accelerometer1 = None;
+        let mut accelerometer2 = None;
+        let mut magnetometer = None;
+        let mut altitude_baro = None;
+        if let Some(first) = remaining_replication_states.pop_front() {
+            time = first.time;
+            mode = FlightMode::Armed;
+            gyroscope = first.gyroscope;
+            accelerometer1 = first.accelerometer1;
+            accelerometer2 = first.accelerometer2;
+            magnetometer = first.magnetometer;
+            altitude_baro = first.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
+            state_estimator.altitude_ground = altitude_baro.unwrap();
+        }
 
         Self {
             #[cfg(not(target_arch = "wasm32"))]
             rng: rand::rngs::SmallRng::from_entropy(),
             #[cfg(target_arch = "wasm32")]
             rng: rand::rngs::SmallRng::from_seed([0x42; 16]),
-            settings: settings.clone(),
-            state_estimator: StateEstimator::new(1000.0 / (SIMULATION_TICK_MS as f32), settings.fc_settings.clone()),
+            settings,
+            state_estimator,
 
-            time: 0,
-            mode: FlightMode::Idle,
+            time,
+            mode,
 
-            latitude: settings.launch_latitude,
-            longitude: settings.launch_longitude,
-            altitude: settings.altitude_ground,
-            altitude_ground: settings.altitude_ground,
+            latitude,
+            longitude,
+            altitude,
+            altitude_ground: altitude,
             orientation: UnitQuaternion::rotation_between(&Vector3::new(0.0, 0.0, 1.0), &direction).unwrap(),
             angular_velocity: Vector3::new(0.0, 0.0, 0.0),
             acceleration: Vector3::new(0.0, 0.0, 0.0),
             velocity: Vector3::new(0.0, 0.0, 0.0),
 
-            gyroscope: None,
-            accelerometer1: None,
-            accelerometer2: None,
-            magnetometer: None,
-            altitude_baro: None,
+            gyroscope,
+            accelerometer1,
+            accelerometer2,
+            magnetometer,
+            altitude_baro,
+
+            remaining_replication_states
         }
     }
 
@@ -191,7 +260,76 @@ impl SimulationState {
         // noisy and rounded pressure and temp readings and run temp-comp?
     }
 
-    pub fn tick(&mut self) {
+    pub fn plottable(&self) -> bool {
+        if self.settings.replication_log_index.is_some() {
+            (self.time + 3) % 10 == 5 // match flash log raw sensor timing
+        } else {
+            self.time % PLOT_STEP_MS == 0
+        }
+    }
+
+    fn advance_replication(&mut self) -> bool {
+        loop {
+            if self.remaining_replication_states.is_empty() || self.mode == FlightMode::Landed {
+                return true;
+            }
+
+            let next = self.remaining_replication_states.front().unwrap();
+            if next.time > self.time {
+                break;
+            }
+
+            self.remaining_replication_states.pop_front();
+        }
+
+        loop {
+            let next = self.remaining_replication_states.front().unwrap();
+            if next.gyroscope.is_some() {
+                break;
+            }
+
+            if next.altitude_gps.is_some() && next.latitude.is_some() && next.longitude.is_some() {
+                self.altitude = next.altitude_gps.unwrap();
+                self.latitude = next.latitude.unwrap() as f64;
+                self.longitude = next.longitude.unwrap() as f64;
+            }
+
+            if self.remaining_replication_states.is_empty() {
+                return true;
+            }
+            self.remaining_replication_states.pop_front();
+        }
+
+        let next = self.remaining_replication_states.front().unwrap();
+        self.time += SIMULATION_TICK_MS;
+        if self.time == next.time {
+            self.gyroscope = next.gyroscope;
+            self.accelerometer1 = next.accelerometer1;
+            self.accelerometer2 = next.accelerometer2;
+            self.magnetometer = next.magnetometer;
+            // TODO: reuse this somehow
+            self.altitude_baro = next.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
+            self.remaining_replication_states.pop_front();
+        } else {
+            // TODO: linear interpolation is probably not the best choice here.
+            // On the other hand, simplying applying more noise here isn't great either
+            let delta_time = next.time - self.time;
+            self.gyroscope = Some(self.gyroscope.unwrap() + (next.gyroscope.unwrap() - self.gyroscope.unwrap()) / delta_time as f32);
+            self.accelerometer1 = Some(self.accelerometer1.unwrap() + (next.accelerometer1.unwrap() - self.accelerometer1.unwrap()) / delta_time as f32);
+            self.accelerometer2 = Some(self.accelerometer2.unwrap() + (next.accelerometer2.unwrap() - self.accelerometer2.unwrap()) / delta_time as f32);
+            self.magnetometer = Some(self.magnetometer.unwrap() + (next.magnetometer.unwrap() - self.magnetometer.unwrap()) / delta_time as f32);
+            let altitude_baro = next.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
+            self.altitude_baro = Some(self.altitude_baro.unwrap() + (altitude_baro.unwrap() - self.altitude_baro.unwrap()) / delta_time as f32);
+        }
+
+        false
+    }
+
+    fn advance_simulation(&mut self) -> bool {
+        if self.time > self.settings.sim_duration {
+            return true;
+        }
+
         self.time += SIMULATION_TICK_MS;
         if self.time >= self.settings.sim_start_delay - 3000 && self.time < self.settings.sim_start_delay - 2000 {
             self.mode = FlightMode::Armed;
@@ -253,6 +391,26 @@ impl SimulationState {
             self.altitude_baro = Some(self.settings.barometer_anomaly_value);
         }
 
+        false
+    }
+
+    pub fn tick(&mut self) -> bool {
+        let (done, arm_voltage) = if self.settings.replication_log_index.is_some() {
+            (self.advance_replication(), 8400)
+        } else {
+            let done = self.advance_simulation();
+            let arm_v = if self.time >= (self.settings.sim_start_delay - 5000) {
+                8400
+            } else {
+                0
+            };
+            (done, arm_v)
+        };
+
+        if done {
+            return true;
+        }
+
         // update state estimation with sampled sensor values
         self.state_estimator.update(
             self.time,
@@ -264,134 +422,73 @@ impl SimulationState {
             self.altitude_baro,
         );
 
-        let arm_voltage = if self.time >= (self.settings.sim_start_delay - 5000) {
-            8400
-        } else {
-            0
-        };
         if let Some(mode) = self.state_estimator.new_mode(arm_voltage, None) {
             self.mode = mode;
         }
+
+        false
     }
 }
 
 impl From<&SimulationState> for VehicleState {
     fn from(ss: &SimulationState) -> VehicleState {
-        VehicleState {
-            time: ss.time,
-            mode: Some(ss.mode),
-            orientation: ss.state_estimator.orientation,
-            altitude: Some(ss.state_estimator.altitude_asl()), // TODO
-            altitude_baro: ss.altitude_baro,
-            altitude_ground: Some(ss.altitude_ground),
-            altitude_max: Some(ss.state_estimator.altitude_max),
-            altitude_gps: Some(ss.altitude), // TODO
-            latitude: Some(ss.latitude as f32),
-            longitude: Some(ss.longitude as f32),
-            vertical_speed: Some(ss.state_estimator.vertical_speed()),
-            vertical_accel: ss.state_estimator.acceleration_world().map(|acc| acc.z),
-            vertical_accel_filtered: Some(ss.state_estimator.vertical_accel()),
-            gps_fix: Some(GPSFixType::AutonomousFix),
-            num_satellites: Some(6),
-            hdop: Some(150),
-            gyroscope: ss.gyroscope,
-            accelerometer1: ss.accelerometer1,
-            accelerometer2: ss.accelerometer2,
-            magnetometer: ss.magnetometer,
-            battery_voltage: Some(8.4),
-            arm_voltage: Some(if ss.time >= (ss.settings.sim_start_delay - 5000) {
-                8.4
-            } else {
-                0.0
-            }),
-            true_orientation: Some(ss.orientation),
-            true_vertical_accel: Some(ss.acceleration.z),
-            true_vertical_speed: Some(ss.velocity.z),
-            ..Default::default()
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct SimulationDataSource {
-    settings: SimulationSettings,
-    state: Option<SimulationState>,
-    vehicle_states: Vec<(Instant, VehicleState)>,
-}
-
-impl DataSource for SimulationDataSource {
-    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
-        if self.state.is_none() {
-            self.state = Some(SimulationState::initialize(&self.settings));
-        }
-
-        let start_i = self.vehicle_states.len();
-        while self.vehicle_states.last().map(|(_t, vs)| vs.time < self.settings.sim_duration).unwrap_or(true) {
-            self.state.as_mut().unwrap().tick();
-            let sim_state = self.state.as_ref().unwrap();
-
-            if sim_state.time % PLOT_STEP_MS != 0 {
-                continue;
+        if ss.settings.replication_log_index.is_some() {
+            VehicleState {
+                time: ss.time,
+                mode: Some(ss.mode),
+                orientation: ss.state_estimator.orientation,
+                altitude: Some(ss.state_estimator.altitude_asl()),
+                altitude_baro: ss.altitude_baro,
+                altitude_ground: Some(ss.state_estimator.altitude_ground),
+                altitude_max: Some(ss.state_estimator.altitude_max),
+                altitude_gps: Some(ss.altitude), // TODO
+                latitude: Some(ss.latitude as f32),
+                longitude: Some(ss.longitude as f32),
+                vertical_speed: Some(ss.state_estimator.vertical_speed()),
+                vertical_accel: ss.state_estimator.acceleration_world().map(|acc| acc.z),
+                vertical_accel_filtered: Some(ss.state_estimator.vertical_accel()),
+                gps_fix: Some(GPSFixType::AutonomousFix), // TODO
+                num_satellites: Some(6),
+                hdop: Some(0),
+                gyroscope: ss.gyroscope,
+                accelerometer1: ss.accelerometer1,
+                accelerometer2: ss.accelerometer2,
+                magnetometer: ss.magnetometer,
+                ..Default::default()
             }
-
-            let vehicle_state = sim_state.into();
-            let time = self
-                .vehicle_states
-                .last()
-                .map(|(t, _)| *t + Duration::from_millis(PLOT_STEP_MS as u64))
-                .unwrap_or(Instant::now());
-            self.vehicle_states.push((time, vehicle_state));
+        } else {
+            VehicleState {
+                time: ss.time,
+                mode: Some(ss.mode),
+                orientation: ss.state_estimator.orientation,
+                altitude: Some(ss.state_estimator.altitude_asl()), // TODO
+                altitude_baro: ss.altitude_baro,
+                altitude_ground: Some(ss.altitude_ground),
+                altitude_max: Some(ss.state_estimator.altitude_max),
+                altitude_gps: Some(ss.altitude), // TODO
+                latitude: Some(ss.latitude as f32),
+                longitude: Some(ss.longitude as f32),
+                vertical_speed: Some(ss.state_estimator.vertical_speed()),
+                vertical_accel: ss.state_estimator.acceleration_world().map(|acc| acc.z),
+                vertical_accel_filtered: Some(ss.state_estimator.vertical_accel()),
+                gps_fix: Some(GPSFixType::AutonomousFix),
+                num_satellites: Some(6),
+                hdop: Some(150),
+                gyroscope: ss.gyroscope,
+                accelerometer1: ss.accelerometer1,
+                accelerometer2: ss.accelerometer2,
+                magnetometer: ss.magnetometer,
+                battery_voltage: Some(8.4),
+                arm_voltage: Some(if ss.time >= (ss.settings.sim_start_delay - 5000) {
+                    8.4
+                } else {
+                    0.0
+                }),
+                true_orientation: Some(ss.orientation),
+                true_vertical_accel: Some(ss.acceleration.z),
+                true_vertical_speed: Some(ss.velocity.z),
+                ..Default::default()
+            }
         }
-
-        self.vehicle_states[start_i..].iter()
-    }
-
-    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
-        self.vehicle_states.iter()
-    }
-
-    fn log_messages<'a>(&'a mut self) -> Iter<'_, (u32, String, LogLevel, String)> {
-        Default::default()
-    }
-
-    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
-        None
-    }
-
-    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
-        None
-    }
-
-    fn reset(&mut self) {
-        self.state = None;
-        self.vehicle_states.truncate(0);
-    }
-
-    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
-    }
-
-    fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
-    }
-
-    fn status(&self) -> (Color32, String) {
-        (Color32::DARK_BLUE, "simulation".into())
-    }
-
-    fn info_text(&self) -> String {
-        "".into()
-    }
-
-    fn minimum_fps(&self) -> Option<u64> {
-        None
-    }
-
-    fn simulation_settings(&mut self) -> Option<&mut SimulationSettings> {
-        Some(&mut self.settings)
-    }
-
-    fn end(&self) -> Option<Instant> {
-        self.vehicle_states.last().map(|(t, _vs)| *t)
     }
 }

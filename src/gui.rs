@@ -45,7 +45,7 @@ use crate::gui::top_bar::*;
 // Log files included with the application. These should probably be fetched
 // if necessary to reduce application size.
 // TODO: migrate old launches
-const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
+pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
     ("Zülpich #1", None, None),
     ("Zülpich #2", None, None),
     (
@@ -481,17 +481,13 @@ impl Sam {
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
             ui.set_enabled(!self.archive_window_open);
             ui.horizontal_centered(|ui| {
-                // Status text for data source, such as log file path or
-                // serial connection status
+                // Give the data source some space on the left ...
                 ui.horizontal_centered(|ui| {
                     ui.set_width(ui.available_width() / 2.0);
-                    let (status_color, status_text) = self.data_source.status();
-                    ui.colored_label(status_color, status_text);
-                    ui.label(self.data_source.fc_settings().map(|s| s.identifier.clone()).unwrap_or_default());
-                    ui.colored_label(Color32::GRAY, self.data_source.info_text());
+                    self.data_source.status_bar_ui(ui);
                 });
 
-                // Some buttons
+                // ... and the current tab some space on the right.
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
                     #[cfg(not(target_arch = "wasm32"))]
                     ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {

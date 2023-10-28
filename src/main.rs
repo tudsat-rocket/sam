@@ -17,13 +17,12 @@ use state::VehicleState;
 mod data_source;
 mod file;
 mod gui;
-mod serial;
 mod settings;
 mod simulation;
 mod state;
 mod telemetry_ext;
 
-use serial::*;
+use crate::data_source::serial::{self, *};
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
