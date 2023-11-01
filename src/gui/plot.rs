@@ -3,8 +3,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use eframe::egui::plot::PlotBounds;
-use egui::plot::AxisBools;
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
@@ -12,7 +10,7 @@ use web_time::Instant;
 
 use eframe::egui;
 use eframe::egui::PointerButton;
-use egui::widgets::plot::{Corner, Legend, Line, LineStyle, VLine};
+use egui_plot::{AxisBools, Corner, Legend, Line, LineStyle, PlotBounds, VLine};
 
 use crate::gui::*;
 use crate::state::*;
@@ -328,13 +326,19 @@ impl PlotUiExt for egui::Ui {
         let legend =
             Legend::default().text_style(egui::TextStyle::Small).background_alpha(0.5).position(Corner::LeftTop);
 
-        let mut plot = egui::widgets::plot::Plot::new(&state.title)
+        let mut plot = egui_plot::Plot::new(&state.title)
             .link_axis("plot_axis_group", true, false)
             .link_cursor("plot_cursor_gropu", true, false)
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
             .allow_scroll(false) // TODO: x only
             .allow_drag(AxisBools::new(true, false))
             .allow_zoom(AxisBools::new(true, false))
+            .show_axes([false, false]) // egui 0.23 changed axis ticks to be outside of the plot
+                                       // boundary. this uses an unacceptable amount of space, so
+                                       // for now we simply have no axis ticks.
+                                       // TODO: maybe upstream an option to move ticks inside?
+            .x_axis_position(egui_plot::VPlacement::Top)
+            .y_axis_position(egui_plot::HPlacement::Right)
             .include_x(shared.view_start())
             .include_x(shared.view_end())
             .auto_bounds_y()

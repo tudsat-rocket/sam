@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use egui::plot::PlotPoints;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -17,7 +16,7 @@ use slippy_map_tiles::{BBox, Tile};
 
 use eframe::egui;
 use egui::mutex::Mutex;
-use egui::widgets::plot::{Line, PlotBounds, PlotImage, PlotPoint};
+use egui_plot::{Line, PlotBounds, PlotImage, PlotPoint, PlotPoints};
 use egui::{Color32, ColorImage, Context, TextureHandle, Vec2};
 
 use crate::state::*;
@@ -54,7 +53,7 @@ fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dy
     }
 
     // TODO: do this nicer
-    let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    let rt = tokio::runtime::Builder::new_current_thread().enable_io().build().unwrap();
     let result = rt.block_on(reqwest::get(tile_mapbox_url(&tile, access_token)));
     let response = result?.error_for_status()?;
     let bytes = rt.block_on(response.bytes())?.to_vec();
@@ -324,11 +323,12 @@ impl MapUiExt for egui::Ui {
         let cache = state.cache.borrow_mut();
 
         self.vertical_centered(|ui| {
-            let plot = egui::widgets::plot::Plot::new("map")
+            let plot = egui_plot::Plot::new("map")
                 .allow_scroll(false)
                 .data_aspect(cache.aspect() as f32)
                 .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
                 .show_axes([false, false])
+                .show_grid([false, false])
                 .include_x(cache.center.1 - 0.005)
                 .include_x(cache.center.1 + 0.005)
                 .include_y(cache.center.0 - 0.005)

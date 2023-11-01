@@ -44,6 +44,10 @@ name = "accesskit"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76eb1adf08c5bcaa8490b9851fd53cca27fa9880076f178ea9d29f05196728a8"
+dependencies = [
+ "enumn",
+ "serde",
+]
 
 [[package]]
 name = "accesskit_consumer"
@@ -131,6 +135,7 @@ checksum = "2c99f64d1e06488f620f932677e24bc6e2897582980441ae90a671415bd7ec2f"
 dependencies = [
  "cfg-if",
  "once_cell",
+ "serde",
  "version_check",
 ]
 
@@ -1117,20 +1122,23 @@ checksum = "b601108bca3af7650440ace4ca55b2daf52c36f2635be3587d77b16efd8d0691"
 
 [[package]]
 name = "ecolor"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfdf4e52dbbb615cfd30cf5a5265335c217b5fd8d669593cea74a517d9c605af"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
 name = "eframe"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26d9efede6c8905d3fc51a5ec9a506d4da4011bbcae0253d0304580fe40af3f5"
 dependencies = [
  "bytemuck",
  "cocoa",
- "egui 0.22.0",
+ "egui 0.23.0",
  "egui-winit",
  "egui_glow",
  "glow",
@@ -1140,6 +1148,7 @@ dependencies = [
  "js-sys",
  "log",
  "objc",
+ "parking_lot",
  "percent-encoding",
  "raw-window-handle",
  "static_assertions",
@@ -1164,54 +1173,71 @@ dependencies = [
 
 [[package]]
 name = "egui"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bd69fed5fcf4fbb8225b24e80ea6193b61e17a625db105ef0c4d71dde6eb8b7"
 dependencies = [
  "accesskit",
  "ahash",
- "epaint 0.22.0",
+ "epaint 0.23.0",
  "log",
  "nohash-hasher",
+ "serde",
 ]
 
 [[package]]
 name = "egui-winit"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c15479a96d9fadccf5dac690bdc6373b97b8e1c0dd28367058f25a5298da0195"
 dependencies = [
  "accesskit_winit",
  "arboard",
- "egui 0.22.0",
- "instant",
+ "egui 0.23.0",
  "log",
  "raw-window-handle",
  "smithay-clipboard",
+ "web-time",
  "webbrowser",
  "winit",
 ]
 
 [[package]]
 name = "egui_extras"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68ffe3fe5c00295f91c2a61a74ee271c32f74049c94ba0b1cea8f26eb478bc07"
 dependencies = [
- "egui 0.22.0",
+ "egui 0.23.0",
+ "enum-map",
  "image",
+ "log",
+ "mime_guess",
  "serde",
 ]
 
 [[package]]
 name = "egui_glow"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce6726c08798822280038bbad2e32f4fc3cbed800cd51c6e34e99cd2d60cc1bc"
 dependencies = [
  "bytemuck",
- "egui 0.22.0",
+ "egui 0.23.0",
  "glow",
  "log",
  "memoffset 0.6.5",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "egui_plot"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f33a00fe8eb1ba56535b3dbacdecc7a1365a328908a97c5f3c81bb466be72b"
+dependencies = [
+ "egui 0.23.0",
 ]
 
 [[package]]
@@ -1228,10 +1254,12 @@ checksum = "5277249c8c3430e7127e4f2c40a77485e7baf11ae132ce9b3253a8ed710df0a0"
 
 [[package]]
 name = "emath"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ef2b29de53074e575c18b694167ccbe6e5191f7b25fe65175a0d905a32eeec0"
 dependencies = [
  "bytemuck",
+ "serde",
 ]
 
 [[package]]
@@ -1269,6 +1297,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "enum-map"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53337c2dbf26a3c31eccc73a37b10c1614e8d4ae99b6a50d553e8936423c1f16"
+dependencies = [
+ "enum-map-derive",
+ "serde",
+]
+
+[[package]]
+name = "enum-map-derive"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04d0b288e3bb1d861c4403c1774a6f7a798781dfc519b3647df2a3dd4ae95f25"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.37",
+]
+
+[[package]]
 name = "enumflags2"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1283,6 +1332,17 @@ name = "enumflags2_derive"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f95e2801cd355d4a1a3e3953ce6ee5ae9603a5c833455343a8bfe3f44d418246"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.37",
+]
+
+[[package]]
+name = "enumn"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2ad8cef1d801a4686bfd8919f0b30eac4c8e48968c437a6405ded4fb5272d2b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1319,18 +1379,19 @@ dependencies = [
 
 [[package]]
 name = "epaint"
-version = "0.22.0"
-source = "git+https://github.com/emilk/egui?rev=d483ac47ba05311cbb2098e27f31a89450b3560f#d483ac47ba05311cbb2098e27f31a89450b3560f"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58067b840d009143934d91d8dcb8ded054d8301d7c11a517ace0a99bb1e1595e"
 dependencies = [
  "ab_glyph",
  "ahash",
- "atomic_refcell",
  "bytemuck",
- "ecolor 0.22.0",
- "emath 0.22.0",
+ "ecolor 0.23.0",
+ "emath 0.23.0",
  "log",
  "nohash-hasher",
  "parking_lot",
+ "serde",
 ]
 
 [[package]]
@@ -2336,6 +2397,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
+name = "mime_guess"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4192263c238a5f0d0c6bfd21f336a313a4ce1c450542449ca191bb657b4642ef"
+dependencies = [
+ "mime",
+ "unicase",
+]
+
+[[package]]
 name = "minimal-lexical"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3323,8 +3394,9 @@ dependencies = [
  "crc 2.1.0",
  "directories",
  "eframe",
- "egui 0.22.0",
+ "egui 0.23.0",
  "egui_extras",
+ "egui_plot",
  "env_logger",
  "futures",
  "home",
@@ -4014,6 +4086,15 @@ checksum = "ce65604324d3cce9b966701489fbd0cf318cb1f7bd9dd07ac9a4ee6fb791930d"
 dependencies = [
  "tempfile",
  "winapi",
+]
+
+[[package]]
+name = "unicase"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7d2d4dafb69621809a81864c9c1b864479e1235c0dd4e199924b9742439ed89"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]

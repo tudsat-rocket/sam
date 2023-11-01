@@ -11,9 +11,8 @@ use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
-use egui::{TextStyle::*, Align2, ProgressBar};
+use egui::{TextStyle::*, Align2, ProgressBar, Image};
 use egui::{Align, Button, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
-use egui_extras::RetainedImage;
 
 use futures::StreamExt;
 use log::*;
@@ -80,9 +79,6 @@ pub struct Sam {
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
 
-    logo_light: RetainedImage,
-    logo_dark: RetainedImage,
-
     archive_window_open: bool,
     replay_logs: bool,
     archive_progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
@@ -107,10 +103,7 @@ impl Sam {
         let plot_tab = PlotTab::init(&settings);
         let configure_tab = ConfigureTab::init();
 
-        let logo_light_bytes = include_bytes!("../assets/logo_light_mode.png");
-        let logo_light = RetainedImage::from_image_bytes("logo_light_mode.png", logo_light_bytes).unwrap();
-        let logo_dark_bytes = include_bytes!("../assets/logo_dark_mode.png");
-        let logo_dark = RetainedImage::from_image_bytes("logo_dark_mode.png", logo_dark_bytes).unwrap();
+        egui_extras::install_image_loaders(ctx);
 
         Self {
             settings,
@@ -119,9 +112,6 @@ impl Sam {
             tab: GuiTab::Plot,
             plot_tab,
             configure_tab,
-
-            logo_light,
-            logo_dark,
 
             archive_window_open: cfg!(target_arch = "wasm32"),
             replay_logs: false,
@@ -340,11 +330,12 @@ impl Sam {
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
             ui.set_enabled(!self.archive_window_open);
             ui.horizontal_centered(|ui| {
-                if ui.style().visuals.dark_mode {
-                    self.logo_dark.show_max_size(ui, Vec2::new(ui.available_width(), 20.0));
+                let image = if ui.style().visuals.dark_mode {
+                    Image::new(egui::include_image!("../assets/logo_dark_mode.png"))
                 } else {
-                    self.logo_light.show_max_size(ui, Vec2::new(ui.available_width(), 20.0));
-                }
+                    Image::new(egui::include_image!("../assets/logo_light_mode.png"))
+                };
+                ui.add(image.max_size(Vec2::new(ui.available_width(), 20.0)));
 
                 ui.separator();
                 egui::widgets::global_dark_light_mode_switch(ui);

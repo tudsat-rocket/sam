@@ -5,24 +5,30 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# FC firmware. Contains shared types (e.g. telemetry) and code (state estimation)
 mithril = { git = "https://github.com/tudsat-rocket/mithril.git", default-features = false }
 #mithril = { path = "../mithril", default-features = false }
+# CLI & logging
+colored = "2"
 clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
-colored = "2"
+# egui & friends
+egui = "0.23"
+eframe = "0.23"
+egui_plot = "0.23"
+egui_extras = { version = "0.23", features = ["image"] }
 image = { version = "0.24", features = ["png"] }
-egui = "0.22"
-eframe = "0.22"
-egui_extras = { version = "0.22", features = ["image"] }
+# serialization & communication
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"
 postcard = "1.0"
 serialport = "4"
-nalgebra = "0.31"
 siphasher = "0.3"
-chrono = "0.4"
 crc = "2"
+# misc
+nalgebra = "0.31"
+chrono = "0.4"
 directories = "4.0"
 slippy-map-tiles = "0.16"
 colorgrad = "0.6"
@@ -34,11 +40,6 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 # Used for profiling
 puffin = { version = "0.14", optional = true }
 puffin_egui = { version = "0.19", optional = true }
-
-[patch.crates-io]
-egui = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
-eframe = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
-egui_extras = { git = "https://github.com/emilk/egui", rev = "d483ac47ba05311cbb2098e27f31a89450b3560f" }
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
