@@ -1163,6 +1163,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui-gizmo"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f732ad247afe275d6cf901e0f134025ad735007c8f4d82e667a6871f1b4a5441"
+dependencies = [
+ "egui",
+ "glam",
+]
+
+[[package]]
 name = "egui-winit"
 version = "0.23.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1695,6 +1705,12 @@ dependencies = [
  "log",
  "xml-rs",
 ]
+
+[[package]]
+name = "glam"
+version = "0.24.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b5418c17512bdf42730f9032c74e1ae39afc408745ebb2acf72fbc4691c17945"
 
 [[package]]
 name = "glib-sys"
@@ -3345,6 +3361,7 @@ dependencies = [
  "directories",
  "eframe",
  "egui",
+ "egui-gizmo",
  "egui_extras",
  "egui_plot",
  "env_logger",

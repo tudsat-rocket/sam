@@ -7,6 +7,13 @@ use std::time::Instant;
 use web_time::Instant;
 
 use egui::Color32;
+use egui::Rect;
+use egui::Vec2;
+use egui_gizmo::Gizmo;
+use egui_gizmo::GizmoMode;
+use egui_gizmo::GizmoVisuals;
+use nalgebra::UnitQuaternion;
+use nalgebra::Vector3;
 
 use crate::data_source::DataSource;
 use crate::settings::AppSettings;
@@ -16,6 +23,18 @@ use crate::gui::map::*;
 use crate::gui::maxi_grid::*;
 use crate::gui::misc::*;
 use crate::gui::plot::*;
+
+const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
+const G: Color32 = Color32::from_rgb(0xb8, 0xbb, 0x26);
+const B: Color32 = Color32::from_rgb(0x83, 0xa5, 0x98);
+const R1: Color32 = Color32::from_rgb(0xcc, 0x24, 0x1d);
+const G1: Color32 = Color32::from_rgb(0x98, 0x97, 0x1a);
+const B1: Color32 = Color32::from_rgb(0x45, 0x85, 0x88);
+const O: Color32 = Color32::from_rgb(0xfa, 0xbd, 0x2f);
+const O1: Color32 = Color32::from_rgb(0xd6, 0x5d, 0x0e);
+const BR: Color32 = Color32::from_rgb(0x61, 0x48, 0x1c);
+const P: Color32 = Color32::from_rgb(0xb1, 0x62, 0x86);
+const C: Color32 = Color32::from_rgb(0x68, 0x9d, 0x6a);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum SelectedPlot {
@@ -76,86 +95,74 @@ impl PlotTab {
     pub fn init(settings: &AppSettings) -> Self {
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
-        let r = Color32::from_rgb(0xfb, 0x49, 0x34);
-        let g = Color32::from_rgb(0xb8, 0xbb, 0x26);
-        let b = Color32::from_rgb(0x83, 0xa5, 0x98);
-        let r1 = Color32::from_rgb(0xcc, 0x24, 0x1d);
-        let g1 = Color32::from_rgb(0x98, 0x97, 0x1a);
-        let b1 = Color32::from_rgb(0x45, 0x85, 0x88);
-        let o = Color32::from_rgb(0xfa, 0xbd, 0x2f);
-        let o1 = Color32::from_rgb(0xd6, 0x5d, 0x0e);
-        let br = Color32::from_rgb(0x61, 0x48, 0x1c);
-        let p = Color32::from_rgb(0xb1, 0x62, 0x86);
-        let c = Color32::from_rgb(0x68, 0x9d, 0x6a);
-
-        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(180.0)), shared_plot.clone())
-            .line("Roll (Z) [°]", b, |vs| vs.euler_angles().map(|a| a.z))
-            .line("Pitch (X) [°]", r, |vs| vs.euler_angles().map(|a| a.x))
-            .line("Yaw (Y) [°]", g, |vs| vs.euler_angles().map(|a| a.y))
-            .line("True Roll (Z) [°]", b1, |vs| vs.true_euler_angles().map(|a| a.z))
-            .line("True Pitch (X) [°]", r1, |vs| vs.true_euler_angles().map(|a| a.x))
-            .line("True Yaw (Y) [°]", g1, |vs| vs.true_euler_angles().map(|a| a.y));
+        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(540.0)), shared_plot.clone())
+            .line("Roll (Z) [°]", B, |vs| vs.euler_angles().map(|a| a.z))
+            .line("Pitch (X) [°]", R, |vs| vs.euler_angles().map(|a| a.x))
+            .line("Yaw (Y) [°]", G, |vs| vs.euler_angles().map(|a| a.y))
+            .line("Roll (True) (Z) [°]", B1, |vs| vs.true_euler_angles().map(|a| a.z))
+            .line("Pitch (True) (X) [°]", R1, |vs| vs.true_euler_angles().map(|a| a.x))
+            .line("Yaw (True) (Y) [°]", G1, |vs| vs.true_euler_angles().map(|a| a.y));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
-            .line("Vertical Accel [m/s²]", o1, |vs| vs.vertical_accel)
-            .line("Vertical Accel (Filt.) [m/s²]", o, |vs| vs.vertical_accel_filtered)
-            .line("Vario [m/s]", b, |vs| vs.vertical_speed)
-            .line("True Vertical Accel [m/s²]", g, |vs| vs.true_vertical_accel)
-            .line("True Vario [m/s]", b1, |vs| vs.true_vertical_speed);
+            .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
+            .line("Vertical Accel (Filt.) [m/s²]", O, |vs| vs.vertical_accel_filtered)
+            .line("Vario [m/s]", B, |vs| vs.vertical_speed)
+            .line("True Vertical Accel [m/s²]", G, |vs| vs.true_vertical_accel)
+            .line("True Vario [m/s]", B1, |vs| vs.true_vertical_speed);
 
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
-            .line("Altitude (Ground) [m]", br, |vs| vs.altitude_ground)
-            .line("Altitude (Baro) [m]", b1, |vs| vs.altitude_baro)
-            .line("Altitude [m]", b, |vs| vs.altitude)
-            .line("Altitude (GPS) [m]", g, |vs| vs.altitude_gps);
+            .line("Altitude (Ground) [m]", BR, |vs| vs.altitude_ground)
+            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
+            .line("Altitude [m]", B, |vs| vs.altitude)
+            .line("Altitude (GPS) [m]", G, |vs| vs.altitude_gps);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Gyro (X) [°/s]", r, |vs| vs.gyroscope.map(|a| a.x))
-            .line("Gyro (Y) [°/s]", g, |vs| vs.gyroscope.map(|a| a.y))
-            .line("Gyro (Z) [°/s]", b, |vs| vs.gyroscope.map(|a| a.z));
+            .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
+            .line("Gyro (Y) [°/s]", G, |vs| vs.gyroscope.map(|a| a.y))
+            .line("Gyro (Z) [°/s]", B, |vs| vs.gyroscope.map(|a| a.z));
 
         let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", r1, |vs| vs.accelerometer2.map(|a| a.x))
-            .line("Accel 2 (Y) [m/s²]", g1, |vs| vs.accelerometer2.map(|a| a.y))
-            .line("Accel 2 (Z) [m/s²]", b1, |vs| vs.accelerometer2.map(|a| a.z))
-            .line("Accel 1 (X) [m/s²]", r, |vs| vs.accelerometer1.map(|a| a.x))
-            .line("Accel 1 (Y) [m/s²]", g, |vs| vs.accelerometer1.map(|a| a.y))
-            .line("Accel 1 (Z) [m/s²]", b, |vs| vs.accelerometer1.map(|a| a.z));
+            .line("Accel 2 (X) [m/s²]", R1, |vs| vs.accelerometer2.map(|a| a.x))
+            .line("Accel 2 (Y) [m/s²]", G1, |vs| vs.accelerometer2.map(|a| a.y))
+            .line("Accel 2 (Z) [m/s²]", B1, |vs| vs.accelerometer2.map(|a| a.z))
+            .line("Accel 1 (X) [m/s²]", R, |vs| vs.accelerometer1.map(|a| a.x))
+            .line("Accel 1 (Y) [m/s²]", G, |vs| vs.accelerometer1.map(|a| a.y))
+            .line("Accel 1 (Z) [m/s²]", B, |vs| vs.accelerometer1.map(|a| a.z));
 
         let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
-            .line("Mag (X) [µT]", r, |vs| vs.magnetometer.map(|a| a.x))
-            .line("Mag (Y) [µT]", g, |vs| vs.magnetometer.map(|a| a.y))
-            .line("Mag (Z) [µT]", b, |vs| vs.magnetometer.map(|a| a.z));
+            .line("Mag (X) [µT]", R, |vs| vs.magnetometer.map(|a| a.x))
+            .line("Mag (Y) [µT]", G, |vs| vs.magnetometer.map(|a| a.y))
+            .line("Mag (Z) [µT]", B, |vs| vs.magnetometer.map(|a| a.z));
 
         let barometer_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
-            .line("Barometer [bar]", c, |vs| vs.pressure_baro.map(|p| p / 1000.0))
-            .line("Drogue Cartridge [bar]", r1, |vs| vs.drogue_cartridge_pressure)
-            .line("Drogue Chamber [bar]", g1, |vs| vs.drogue_chamber_pressure)
-            .line("Main Cartridge [bar]", r, |vs| vs.main_cartridge_pressure)
-            .line("Main Chamber [bar]", g, |vs| vs.main_chamber_pressure);
+            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0))
+            .line("Drogue Cartridge [bar]", R1, |vs| vs.drogue_cartridge_pressure)
+            .line("Drogue Chamber [bar]", G1, |vs| vs.drogue_chamber_pressure)
+            .line("Main Cartridge [bar]", R, |vs| vs.main_cartridge_pressure)
+            .line("Main Chamber [bar]", G, |vs| vs.main_chamber_pressure);
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Baro. Temp. [°C]", c, |vs| vs.temperature_baro)
-            .line("Core Temp. [°C]", b, |vs| vs.temperature_core);
+            .line("Baro. Temp. [°C]", C, |vs| vs.temperature_baro)
+            .line("Core Temp. [°C]", B, |vs| vs.temperature_core);
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Arm Voltage [V]", o, |vs| vs.arm_voltage)
-            .line("Battery Voltage [V]", g, |vs| vs.battery_voltage)
-            .line("Current [A]", o1, |vs| vs.current)
-            .line("Charge Voltage [V]", b, |vs| vs.charge_voltage)
-            .line("Breakwire Open?", r, |vs| vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0)));
+            .line("Arm Voltage [V]", O, |vs| vs.arm_voltage)
+            .line("Battery Voltage [V]", G, |vs| vs.battery_voltage)
+            .line("Current [A]", O1, |vs| vs.current)
+            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage)
+            .line("Breakwire Open?", R, |vs| vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0)));
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", o, |vs| vs.cpu_utilization.map(|u| u as f32))
-            .line("Heap Util. [%]", g, |vs| vs.heap_utilization.map(|u| u as f32));
+            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization.map(|u| u as f32))
+            .line("Heap Util. [%]", G, |vs| vs.heap_utilization.map(|u| u as f32));
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
-            .line("GCS RSSI [dBm]", b, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
-            .line("GCS Signal RSSI [dBm]", b1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
-            .line("GCS SNR [dB]", c, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", p, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))
-            .line("HDOP", r, |vs| vs.hdop.map(|x| x as f32 / 100.0))
-            .line("# Satellites", g, |vs| vs.num_satellites.map(|x| x as f32));
+            .line("GCS RSSI [dBm]", B, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("GCS Signal RSSI [dBm]", B1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
+            .line("GCS SNR [dB]", C, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
+            .line("Vehicle RSSI [dBm]", P, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("HDOP", R, |vs| vs.hdop.map(|x| x as f32 / 100.0))
+            .line("# Satellites", G, |vs| vs.num_satellites.map(|x| x as f32));
 
         let map = MapState::new(settings.mapbox_access_token.clone());
 
@@ -211,12 +218,81 @@ impl PlotTab {
         self.map.push(*time, vs);
     }
 
+    fn plot_gizmo(
+        &mut self,
+        ui: &mut egui::Ui,
+        viewport: Rect,
+        orientation: UnitQuaternion<f32>,
+        colors: (Color32, Color32, Color32)
+    ) {
+        // We can't disable interaction with the gizmo, so we disable the entire UI
+        // when the user gets too close. TODO: upstream way to disable interaction?
+        let enabled = !ui.rect_contains_pointer(viewport);
+
+        // use top right of plot for indicator, space below for plot
+        let viewport = Rect::from_two_pos(viewport.lerp_inside(Vec2::new(0.4, 0.55)), viewport.right_top());
+
+        let fade_to_color = Color32::BLACK;
+        ui.visuals_mut().widgets.noninteractive.weak_bg_fill = fade_to_color;
+
+        // square viewport
+        let viewport_square_side = f32::min(viewport.width(), viewport.height());
+        let viewport = viewport.shrink2((viewport.size() - Vec2::splat(viewport_square_side))*0.5);
+
+        let view = UnitQuaternion::from_euler_angles(-90.0f32.to_radians(), 180f32.to_radians(), 0.0f32.to_radians());
+
+        let visuals = GizmoVisuals {
+            x_color: colors.0,
+            y_color: colors.1,
+            z_color: colors.2,
+            inactive_alpha: 1.0,
+            highlight_alpha: 1.0,
+            stroke_width: 3.0,
+            gizmo_size: viewport_square_side * 0.4,
+            ..Default::default()
+        };
+
+        let gizmo = Gizmo::new("My gizmo")
+            .mode(GizmoMode::Translate)
+            .viewport(viewport)
+            .orientation(egui_gizmo::GizmoOrientation::Local)
+            .model_matrix(orientation.to_homogeneous())
+            .view_matrix(view.to_homogeneous())
+            .visuals(visuals);
+
+        ui.add_enabled_ui(enabled, |ui| {
+            gizmo.interact(ui);
+        });
+    }
+
+    fn plot_orientation(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource) {
+        let mut viewport = ui.cursor();
+        viewport.set_width(ui.available_width());
+        viewport.set_height(ui.available_height());
+
+        let orientation = data_source.vehicle_states()
+            .rev()
+            .find_map(|(_, vs)| vs.orientation)
+            .unwrap_or(UnitQuaternion::new(Vector3::new(0.0, 0.0, 0.0)));
+        let true_orientation = data_source.vehicle_states()
+            .rev()
+            .find_map(|(_, vs)| vs.true_orientation);
+
+        ui.plot_telemetry(&self.orientation_plot);
+
+        if let Some(orientation) = true_orientation {
+            self.plot_gizmo(ui, viewport, orientation, (R1, G1, B1));
+        }
+
+        self.plot_gizmo(ui, viewport, orientation, (R, G, B));
+    }
+
     pub fn main_ui(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource) {
         self.shared_plot.borrow_mut().set_end(data_source.end());
 
         if ui.available_width() > 1000.0 {
             MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
-                .cell("Orientation", |ui| ui.plot_telemetry(&self.orientation_plot))
+                .cell("Orientation", |ui| self.plot_orientation(ui, data_source))
                 .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
                 .cell("Altitude (ASL)", |ui| ui.plot_telemetry(&self.altitude_plot))
                 .cell("Position", |ui| ui.map(&self.map))
@@ -256,7 +332,7 @@ impl PlotTab {
                 });
 
                 match self.dropdown_selected_plot {
-                    SelectedPlot::Orientation    => ui.plot_telemetry(&self.orientation_plot),
+                    SelectedPlot::Orientation    => self.plot_orientation(ui, data_source),
                     SelectedPlot::VerticalSpeed  => ui.plot_telemetry(&self.vertical_speed_plot),
                     SelectedPlot::Altitude       => ui.plot_telemetry(&self.altitude_plot),
                     SelectedPlot::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot),

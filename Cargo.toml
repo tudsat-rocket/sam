@@ -19,6 +19,7 @@ eframe = "0.23"
 egui_plot = "0.23"
 egui_extras = { version = "0.23", features = ["image"] }
 image = { version = "0.24", features = ["png"] }
+egui-gizmo = "0.12"
 # serialization & communication
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"
