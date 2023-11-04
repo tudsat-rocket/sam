@@ -38,8 +38,8 @@ futures = "0.3.28"
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
 
 # Used for profiling
-puffin = { version = "0.14", optional = true }
-puffin_egui = { version = "0.19", optional = true }
+puffin = { version = "0.17", optional = true }
+puffin_egui = { version = "0.23", optional = true }
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
