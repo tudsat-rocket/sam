@@ -252,7 +252,7 @@ impl SerialDataSource {
 }
 
 impl DataSource for SerialDataSource {
-    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn update(&mut self, _ctx: &egui::Context) {
         self.message_receipt_times.retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
         for (status, port) in self.serial_status_rx.try_iter() {
@@ -265,8 +265,6 @@ impl DataSource for SerialDataSource {
         }
 
         let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
-
-        let start_i = self.vehicle_states.len();
         for msg in msgs.into_iter() {
             self.write_to_telemetry_log(&msg);
 
@@ -289,11 +287,9 @@ impl DataSource for SerialDataSource {
                 }
             }
         }
-
-        self.vehicle_states[start_i..].iter()
     }
 
-    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
         self.vehicle_states.iter()
     }
 

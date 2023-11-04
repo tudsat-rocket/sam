@@ -1,11 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
-
 use egui::Color32;
 use egui::Rect;
 use egui::Vec2;
@@ -17,7 +12,6 @@ use nalgebra::Vector3;
 
 use crate::data_source::DataSource;
 use crate::settings::AppSettings;
-use crate::state::VehicleState;
 
 use crate::gui::map::*;
 use crate::gui::maxi_grid::*;
@@ -185,39 +179,6 @@ impl PlotTab {
         }
     }
 
-    fn all_plots(&mut self, f: impl FnOnce(&mut PlotState) + Copy) {
-        for plot in [
-            &mut self.orientation_plot,
-            &mut self.vertical_speed_plot,
-            &mut self.altitude_plot,
-            &mut self.gyroscope_plot,
-            &mut self.accelerometer_plot,
-            &mut self.magnetometer_plot,
-            &mut self.barometer_plot,
-            &mut self.temperature_plot,
-            &mut self.power_plot,
-            &mut self.runtime_plot,
-            &mut self.signal_plot,
-        ] {
-            (f)(plot);
-        }
-    }
-
-    pub fn reset(&mut self, keep_position: bool) {
-        let now = Instant::now();
-        self.all_plots(|plot| plot.reset(now, keep_position));
-        self.map.reset();
-    }
-
-    pub fn show_all(&mut self) {
-        self.all_plots(|plot| plot.show_all());
-    }
-
-    pub fn push_vehicle_state(&mut self, time: &Instant, vs: &VehicleState) {
-        self.all_plots(|plot| plot.push(*time, vs));
-        self.map.push(*time, vs);
-    }
-
     fn plot_gizmo(
         &mut self,
         ui: &mut egui::Ui,
@@ -278,7 +239,7 @@ impl PlotTab {
             .rev()
             .find_map(|(_, vs)| vs.true_orientation);
 
-        ui.plot_telemetry(&self.orientation_plot);
+        ui.plot_telemetry(&self.orientation_plot, data_source);
 
         if let Some(orientation) = true_orientation {
             self.plot_gizmo(ui, viewport, orientation, (R1, G1, B1));
@@ -293,17 +254,17 @@ impl PlotTab {
         if ui.available_width() > 1000.0 {
             MaxiGrid::new((4, 3), ui, self.maxi_grid_state.clone())
                 .cell("Orientation", |ui| self.plot_orientation(ui, data_source))
-                .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot))
-                .cell("Altitude (ASL)", |ui| ui.plot_telemetry(&self.altitude_plot))
-                .cell("Position", |ui| ui.map(&self.map))
-                .cell("Gyroscope", |ui| ui.plot_telemetry(&self.gyroscope_plot))
-                .cell("Accelerometers", |ui| ui.plot_telemetry(&self.accelerometer_plot))
-                .cell("Magnetometer", |ui| ui.plot_telemetry(&self.magnetometer_plot))
-                .cell("Pressures", |ui| ui.plot_telemetry(&self.barometer_plot))
-                .cell("Temperature", |ui| ui.plot_telemetry(&self.temperature_plot))
-                .cell("Power", |ui| ui.plot_telemetry(&self.power_plot))
-                .cell("Runtime", |ui| ui.plot_telemetry(&self.runtime_plot))
-                .cell("Signal", |ui| ui.plot_telemetry(&self.signal_plot));
+                .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot, data_source))
+                .cell("Altitude (ASL)", |ui| ui.plot_telemetry(&self.altitude_plot, data_source))
+                .cell("Position", |ui| ui.map(&self.map, data_source))
+                .cell("Gyroscope", |ui| ui.plot_telemetry(&self.gyroscope_plot, data_source))
+                .cell("Accelerometers", |ui| ui.plot_telemetry(&self.accelerometer_plot, data_source))
+                .cell("Magnetometer", |ui| ui.plot_telemetry(&self.magnetometer_plot, data_source))
+                .cell("Pressures", |ui| ui.plot_telemetry(&self.barometer_plot, data_source))
+                .cell("Temperature", |ui| ui.plot_telemetry(&self.temperature_plot, data_source))
+                .cell("Power", |ui| ui.plot_telemetry(&self.power_plot, data_source))
+                .cell("Runtime", |ui| ui.plot_telemetry(&self.runtime_plot, data_source))
+                .cell("Signal", |ui| ui.plot_telemetry(&self.signal_plot, data_source));
         } else {
             ui.vertical(|ui| {
                 ui.horizontal(|ui| {
@@ -333,17 +294,17 @@ impl PlotTab {
 
                 match self.dropdown_selected_plot {
                     SelectedPlot::Orientation    => self.plot_orientation(ui, data_source),
-                    SelectedPlot::VerticalSpeed  => ui.plot_telemetry(&self.vertical_speed_plot),
-                    SelectedPlot::Altitude       => ui.plot_telemetry(&self.altitude_plot),
-                    SelectedPlot::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot),
-                    SelectedPlot::Accelerometers => ui.plot_telemetry(&self.accelerometer_plot),
-                    SelectedPlot::Magnetometer   => ui.plot_telemetry(&self.magnetometer_plot),
-                    SelectedPlot::Pressures      => ui.plot_telemetry(&self.barometer_plot),
-                    SelectedPlot::Temperatures   => ui.plot_telemetry(&self.temperature_plot),
-                    SelectedPlot::Power          => ui.plot_telemetry(&self.power_plot),
-                    SelectedPlot::Runtime        => ui.plot_telemetry(&self.runtime_plot),
-                    SelectedPlot::Signal         => ui.plot_telemetry(&self.signal_plot),
-                    SelectedPlot::Map            => ui.map(&self.map),
+                    SelectedPlot::VerticalSpeed  => ui.plot_telemetry(&self.vertical_speed_plot, data_source),
+                    SelectedPlot::Altitude       => ui.plot_telemetry(&self.altitude_plot, data_source),
+                    SelectedPlot::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot, data_source),
+                    SelectedPlot::Accelerometers => ui.plot_telemetry(&self.accelerometer_plot, data_source),
+                    SelectedPlot::Magnetometer   => ui.plot_telemetry(&self.magnetometer_plot, data_source),
+                    SelectedPlot::Pressures      => ui.plot_telemetry(&self.barometer_plot, data_source),
+                    SelectedPlot::Temperatures   => ui.plot_telemetry(&self.temperature_plot, data_source),
+                    SelectedPlot::Power          => ui.plot_telemetry(&self.power_plot, data_source),
+                    SelectedPlot::Runtime        => ui.plot_telemetry(&self.runtime_plot, data_source),
+                    SelectedPlot::Signal         => ui.plot_telemetry(&self.signal_plot, data_source),
+                    SelectedPlot::Map            => ui.map(&self.map, data_source),
                 }
             });
         }

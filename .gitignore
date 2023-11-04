@@ -8,3 +8,5 @@
 !archive/*.kml
 *.exe
 *.bin
+perf.data
+flamegraph.svg

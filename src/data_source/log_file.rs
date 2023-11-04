@@ -75,7 +75,7 @@ impl LogFileDataSource {
 }
 
 impl DataSource for LogFileDataSource {
-    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn update(&mut self, _ctx: &egui::Context) {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -119,7 +119,6 @@ impl DataSource for LogFileDataSource {
             self.messages.push((self.last_time.unwrap(), msg));
         }
 
-        let start_i = self.vehicle_states.len();
         let pointer = if self.replay {
             let now = Instant::now();
             self.messages.partition_point(|(t, _)| t <= &now)
@@ -130,11 +129,9 @@ impl DataSource for LogFileDataSource {
         for (t, msg) in self.messages.drain(..pointer) {
             self.vehicle_states.push((t, msg.into()));
         }
-
-        self.vehicle_states[start_i..].iter()
     }
 
-    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
         self.vehicle_states.iter()
     }
 

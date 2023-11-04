@@ -127,16 +127,8 @@ impl Sam {
         self.data_source.vehicle_states().rev().find_map(|(_t, msg)| callback(msg))
     }
 
-    /// Resets the GUI
-    fn reset(&mut self, keep_position: bool) {
-        info!("Resetting.");
-        self.data_source.reset();
-        self.plot_tab.reset(keep_position);
-    }
-
     /// Opens a log file data source
     fn open_log_file(&mut self, ds: LogFileDataSource) {
-        self.reset(false);
         self.data_source = Box::new(ds);
     }
 
@@ -198,7 +190,6 @@ impl Sam {
 
     /// Closes the currently opened data source
     fn close_data_source(&mut self) {
-        self.reset(false);
         self.data_source = Box::new(SerialDataSource::new(self.settings.lora.clone()));
     }
 
@@ -367,8 +358,6 @@ impl Sam {
                 // Toggle archive panel
                 if ui.selectable_label(self.data_source.simulation_settings().is_some(), "💻 Simulate").clicked() {
                     self.data_source = Box::new(SimulationDataSource::default());
-                    self.reset(false);
-                    self.plot_tab.show_all();
                 }
 
                 // Show a button to the right to close the current log/simulation and go back to
@@ -450,7 +439,7 @@ impl Sam {
                     }
 
                     if ui.button("↻  Rerun").clicked() || (changed && released) {
-                        self.reset(true);
+                        self.data_source.reset();
                     }
                 });
             });
@@ -489,7 +478,7 @@ impl Sam {
                     #[cfg(not(target_arch = "wasm32"))]
                     ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
                         if ui.button("⏮  Reset").clicked() {
-                            self.reset(false);
+                            self.data_source.reset();
                         }
                     });
 
@@ -544,11 +533,7 @@ impl eframe::App for Sam {
         #[cfg(feature = "profiling")]
         puffin_egui::profiler_window(ctx);
 
-        // Process new messages
-        let new: Vec<(Instant, VehicleState)> = self.data_source.new_vehicle_states().cloned().collect();
-        for (time, vs) in &new {
-            self.plot_tab.push_vehicle_state(time, vs);
-        }
+        self.data_source.update(ctx);
 
         // TODO: only send this if we know it's not a ground station?
         if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {

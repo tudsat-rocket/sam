@@ -25,10 +25,10 @@ pub use simulation::SimulationDataSource;
 
 /// Trait shared by all data sources.
 pub trait DataSource {
-    /// Return an iterator over only the states that have arrived since last time.
-    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)>;
+    /// Called every frame.
+    fn update(&mut self, ctx: &egui::Context);
     /// Return an iterator over all known states of the vehicle.
-    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)>;
+    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)>;
 
     /// Return the current flight computer settings, if known.
     fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings>;

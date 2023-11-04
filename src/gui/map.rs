@@ -19,7 +19,9 @@ use egui::mutex::Mutex;
 use egui_plot::{Line, PlotBounds, PlotImage, PlotPoint, PlotPoints};
 use egui::{Color32, ColorImage, Context, TextureHandle, Vec2};
 
-use crate::state::*;
+use crate::data_source::DataSource;
+
+const GRADIENT_MAX_ALT: f64 = 10000.0;
 
 fn tile_mapbox_url(tile: &Tile, access_token: &String) -> String {
     format!(
@@ -139,13 +141,14 @@ pub struct MapCache {
     max_alt: f64,
     pub center: (f64, f64),
     pub hdop_circle_points: Option<Vec<[f64; 2]>>,
+    cached_state: Option<(Instant, usize)>,
     gradient_lookup: Vec<Color32>,
 }
 
 impl MapCache {
     pub fn new() -> Self {
-        let gradient_lookup = (0..=100)
-            .map(|i| colorgrad::yl_or_rd().at((i as f64) / 100.0).to_rgba8())
+        let gradient_lookup = (0..=1000)
+            .map(|i| colorgrad::sinebow().at((i as f64) / 1000.0).to_rgba8())
             .map(|color| Color32::from_rgb(color[0], color[1], color[2]))
             .collect();
 
@@ -155,34 +158,45 @@ impl MapCache {
             max_alt: 300.0,
             center: (49.861445, 8.68519),
             hdop_circle_points: None,
+            cached_state: None,
             gradient_lookup,
         }
     }
 
-    pub fn push(&mut self, _x: Instant, vs: &VehicleState) {
-        if let (Some(lat), Some(lng)) = (vs.latitude, vs.longitude) {
-            let (lat, lng) = (lat as f64, lng as f64);
-            let altitude_ground = vs.altitude_ground.unwrap_or(0.0);
-            let alt = vs.altitude_gps.map(|alt| alt - altitude_ground).unwrap_or(0.0) as f64;
+    pub fn aspect(&self) -> f64 {
+        1.0 / f64::cos(self.center.0.to_radians() as f64)
+    }
+
+    fn update_position_cache(&mut self, data_source: &dyn DataSource, keep_first: usize) {
+        let new_data = data_source.vehicle_states()
+            .skip(keep_first)
+            .filter(|(_t, vs)| vs.latitude.is_some() && vs.longitude.is_some())
+            .map(|(_t, vs)| (vs.latitude.unwrap(), vs.longitude.unwrap(), vs.altitude_gps.unwrap_or(0.0)))
+            .map(|(lat, lng, alt)| (lat as f64, lng as f64, alt as f64));
+
+        if keep_first > 0 {
+            self.points.extend(new_data);
+        } else {
+            self.points = new_data.collect();
+        }
+
+        self.plot_points = self
+            .points
+            .windows(2)
+            .map(|pair| {
+                let points = [[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
+                let index = usize::min(((pair[0].2 / GRADIENT_MAX_ALT) * self.gradient_lookup.len() as f64).floor() as usize, self.gradient_lookup.len() - 1);
+                let color = self.gradient_lookup[index];
+                (points, color)
+            })
+            .collect();
+    }
+
+    fn update_hdop_cache(&mut self, data_source: &dyn DataSource) {
+        let last = data_source.vehicle_states().rev().find(|(_, vs)| vs.latitude.is_some() && vs.longitude.is_some());
+        if let Some((_, vs)) = last {
+            let (lat, lng) = (vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64);
             let hdop = vs.hdop.unwrap_or(9999);
-
-            self.points.push((lat, lng, alt));
-            self.max_alt = f64::max(self.max_alt, alt);
-            self.center = (lat, lng);
-
-            self.plot_points = self
-                .points
-                .windows(2)
-                .map(|pair| {
-                    #[cfg(feature = "profiling")]
-                    puffin::profile_scope!("map_line_creation");
-
-                    let points = [[pair[0].1, pair[0].0], [pair[1].1, pair[1].0]];
-                    let index = usize::min(((1.0 - pair[0].2 / self.max_alt) * 100.0).floor() as usize, 100);
-                    let color = self.gradient_lookup[index];
-                    (points, color)
-                })
-                .collect();
 
             let cep_m = 2.5 * (hdop as f64) / 100.0;
             let r = 360.0 * cep_m / 40_075_017.0; // meters to decimal degrees
@@ -190,26 +204,60 @@ impl MapCache {
                 .map(|i| (i as f64) * TAU / 64.0)
                 .map(|i| [r * i.cos() * self.aspect() + lng, r * i.sin() + lat])
                 .collect();
+            self.center = (lat, lng);
             self.hdop_circle_points = Some(points);
+        } else {
+            self.hdop_circle_points = None;
         }
     }
 
-    pub fn reset(&mut self) {
-        self.points.truncate(0);
-        self.plot_points.truncate(0);
-        self.max_alt = 300.0;
-        self.center = (49.861445, 8.68519);
-        self.hdop_circle_points = None;
+    fn update_cache_if_necessary(&mut self, data_source: &dyn DataSource) {
+        let new_len = data_source.vehicle_states().len();
+        if new_len == 0 {
+            self.points.truncate(0);
+            self.plot_points.truncate(0);
+            self.hdop_circle_points = None;
+            self.cached_state = None;
+            self.max_alt = 300.0;
+            return;
+        }
+
+        let (last_t, _) = data_source.vehicle_states().rev().next().unwrap().clone();
+        let cached_state = Some((last_t, new_len));
+
+        // We have already cached this exact set of vehicle states, do nothing.
+        if cached_state == self.cached_state {
+            return;
+        }
+
+        // Try to determine if the new data is simply a few more points appended to the previously
+        // plotted data, which we have cached. If so, we keep the old and simply append the new
+        // points. If not, we recalculate the cache completely.
+        let old_len = self.cached_state.map(|(_, l)| l).unwrap_or(0);
+        let mut keep_first = (new_len > old_len).then_some(old_len).unwrap_or(0);
+        if keep_first > 0 {
+            // double-check that it is actually the same set of states by looking for our previous
+            // last state in the new data
+            let (previous_last, _) = data_source.vehicle_states()
+                .rev()
+                .skip(new_len - keep_first)
+                .next()
+                .unwrap();
+            if self.cached_state.map(|(t, _)| t != *previous_last).unwrap_or(true) {
+                keep_first = 0;
+            }
+        }
+
+        self.update_position_cache(data_source, keep_first);
+        self.update_hdop_cache(data_source);
+        self.cached_state = cached_state;
     }
 
-    pub fn aspect(&self) -> f64 {
-        1.0 / f64::cos(self.center.0.to_radians() as f64)
-    }
-
-    fn lines<'a>(&'a self) -> Vec<Line> {
+    fn lines<'a>(&'a mut self, data_source: &dyn DataSource) -> Vec<Line> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
+        self.update_cache_if_necessary(data_source);
         self.plot_points
             .clone()
             .into_iter()
@@ -217,10 +265,11 @@ impl MapCache {
             .collect()
     }
 
-    pub fn hdop_circle_line(&self) -> Option<Line> {
+    pub fn hdop_circle_line(&mut self, data_source: &dyn DataSource) -> Option<Line> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
+        self.update_cache_if_necessary(data_source);
         self.hdop_circle_points
             .as_ref()
             .map(|points| Line::new(points.clone()).width(1.5).color(Color32::RED))
@@ -301,26 +350,18 @@ impl MapState {
         });
         Box::new(iter)
     }
-
-    pub fn push(&self, x: Instant, vs: &VehicleState) {
-        self.cache.borrow_mut().push(x, vs);
-    }
-
-    pub fn reset(&self) {
-        self.cache.borrow_mut().reset();
-    }
 }
 
 pub trait MapUiExt {
-    fn map(&mut self, state: &MapState);
+    fn map(&mut self, state: &MapState, data_source: &dyn DataSource);
 }
 
 impl MapUiExt for egui::Ui {
-    fn map(&mut self, state: &MapState) {
+    fn map(&mut self, state: &MapState, data_source: &dyn DataSource) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        let cache = state.cache.borrow_mut();
+        let mut cache = state.cache.borrow_mut();
 
         self.vertical_centered(|ui| {
             let plot = egui_plot::Plot::new("map")
@@ -343,14 +384,14 @@ impl MapUiExt for egui::Ui {
                     plot_ui.image(pi);
                 }
 
-                if let Some(line) = cache.hdop_circle_line() {
+                if let Some(line) = cache.hdop_circle_line(data_source) {
                     #[cfg(feature = "profiling")]
                     puffin::profile_scope!("hdop_circle");
 
                     plot_ui.line(line);
                 }
 
-                for line in cache.lines() {
+                for line in cache.lines(data_source) {
                     #[cfg(feature = "profiling")]
                     puffin::profile_scope!("map_line");
 

@@ -16,15 +16,23 @@ use crate::gui::*;
 use crate::state::*;
 use crate::telemetry_ext::*;
 
+fn plot_time(x: &Instant, data_source: &dyn DataSource) -> f64 {
+    if let Some((first_t, _first_vs)) = data_source.vehicle_states().next() {
+        x.duration_since(*first_t).as_secs_f64()
+    } else {
+        0.0
+    }
+}
+
 /// Cache for a single line.
 struct PlotCacheLine {
     name: String,
     color: Color32,
     pub callback: Box<dyn FnMut(&VehicleState) -> Option<f32>>,
     data: Vec<[f64; 2]>,
+    stats: Option<(f64, f64, f64, f64)>,
     last_bounds: Option<PlotBounds>,
     last_view: Vec<[f64; 2]>,
-    stats: Option<(f64, f64, f64, f64)>,
 }
 
 impl PlotCacheLine {
@@ -34,33 +42,37 @@ impl PlotCacheLine {
             color,
             callback: Box::new(cb),
             data: Vec::new(),
+            stats: None,
             last_bounds: None,
             last_view: vec![],
-            stats: None,
         }
     }
 
-    pub fn push(&mut self, x: f64, vs: &VehicleState) {
-        if let Some(value) = (self.callback)(vs) {
-            self.data.push([x, value.into()]);
-        }
+    fn update_cache(&mut self, data_source: &dyn DataSource, keep_first: usize) {
+        let new_data = data_source.vehicle_states()
+                .skip(keep_first)
+                .map(|(t, vs)| (plot_time(t, data_source), vs))
+                .filter_map(|(x, vs)| (self.callback)(vs).map(|y| [x, y as f64]));
 
-        self.last_bounds = None; // TODO
-        self.stats = None;
+        if keep_first > 0 {
+            self.data.extend(new_data)
+        } else {
+            self.data = new_data.collect();
+        }
     }
 
-    pub fn reset(&mut self) {
+    fn clear_cache(&mut self) {
         self.data.truncate(0);
-        self.last_bounds = None;
-        self.last_view.truncate(0);
-        self.stats = None;
     }
 
-    pub fn data_for_bounds(&mut self, bounds: PlotBounds) -> Vec<[f64; 2]> {
+    pub fn data_for_bounds(&mut self, bounds: PlotBounds, data_source: &dyn DataSource) -> Vec<[f64; 2]> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        if self.data.is_empty() {
+        let len = data_source.vehicle_states().len();
+        if len == 0 || self.data.is_empty() {
+            self.last_bounds = None;
+            self.stats = None;
             return vec![];
         }
 
@@ -99,20 +111,22 @@ impl PlotCacheLine {
 /// Larger data structures cached for each plot, to avoid being recalculated
 /// on each draw.
 struct PlotCache {
-    start: Instant,
     lines: Vec<PlotCacheLine>,
     mode_transitions: Vec<(f64, FlightMode)>,
     reset_on_next_draw: bool,
+    /// Identifies the origin of the current data using the last time cached and the number of
+    /// states included
+    cached_state: Option<(Instant, usize)> // TODO: maybe add some sort of flight identifier?
 }
 
 impl PlotCache {
     /// Create a new plot cache.
-    fn new(start: Instant) -> Self {
+    fn new() -> Self {
         Self {
             lines: Vec::new(),
             mode_transitions: Vec::new(),
             reset_on_next_draw: false,
-            start,
+            cached_state: None,
         }
     }
 
@@ -120,47 +134,78 @@ impl PlotCache {
         self.lines.push(PlotCacheLine::new(name, color, cb));
     }
 
-    /// Incorporate some new data into the cache.
-    pub fn push(&mut self, x: Instant, vs: &VehicleState) {
-        let x = x.duration_since(self.start).as_secs_f64();
+    fn update_mode_transition_cache(&mut self, data_source: &dyn DataSource, keep_first: usize) {
+        let last_mode = (keep_first > 0).then_some(self.mode_transitions.last().map(|(_,m)| *m)).unwrap_or(None);
+        let new_data = data_source.vehicle_states()
+            .skip(keep_first)
+            .filter(|(_t, vs)| vs.mode.is_some())
+            .scan(last_mode, |state, (t, vs)| {
+                if &vs.mode != state {
+                    *state = vs.mode;
+                    Some(Some((plot_time(t, data_source), vs.mode.unwrap())))
+                } else {
+                    Some(None)
+                }
+            })
+            .filter_map(|x| x);
 
-        // Value to be plotted.
-        for l in self.lines.iter_mut() {
-            l.push(x, vs);
-        }
-
-        // Vertical lines for mode transitions
-        if let Some(mode) = vs.mode {
-            if self.mode_transitions.last().map(|l| l.1 != mode).unwrap_or(true) {
-                self.mode_transitions.push((x, mode));
-            }
+        if keep_first > 0 {
+            self.mode_transitions.extend(new_data);
+        } else {
+            self.mode_transitions = new_data.collect();
         }
     }
 
-    /// Reset the cache.
-    pub fn reset(&mut self, start: Instant, keep_position: bool) {
-        for l in self.lines.iter_mut() {
-            l.reset();
+    fn update_caches_if_necessary(&mut self, data_source: &dyn DataSource) {
+        let new_len = data_source.vehicle_states().len();
+        if new_len == 0 {
+            self.mode_transitions.truncate(0);
+            self.lines.iter_mut().for_each(|l| { l.clear_cache(); });
+            self.cached_state = None;
+            return;
         }
 
-        self.mode_transitions.truncate(0);
-        self.start = start;
+        let (last_t, _) = data_source.vehicle_states().rev().next().unwrap().clone();
+        let cached_state = Some((last_t, new_len));
 
-        // To reset some of the egui internals (state stored in the linked
-        // axes/cursor groups), we also need to call reset on the egui object
-        // during the next draw. Slightly hacky.
-        self.reset_on_next_draw = !keep_position;
+        // We have already cached this exact set of vehicle states, do nothing.
+        if cached_state == self.cached_state {
+            return;
+        }
+
+        // Try to determine if the new data is simply a few more points appended to the previously
+        // plotted data, which we have cached. If so, we keep the old and simply append the new
+        // points. If not, we recalculate the cache completely.
+        let old_len = self.cached_state.map(|(_, l)| l).unwrap_or(0);
+        let mut keep_first = (new_len > old_len).then_some(old_len).unwrap_or(0);
+        if keep_first > 0 {
+            // double-check that it is actually the same set of states by looking for our previous
+            // last state in the new data
+            let (previous_last, _) = data_source.vehicle_states()
+                .rev()
+                .skip(new_len - keep_first)
+                .next()
+                .unwrap();
+            if self.cached_state.map(|(t, _)| t != *previous_last).unwrap_or(true) {
+                keep_first = 0;
+            }
+        }
+
+        self.lines.iter_mut().for_each(|l| { l.update_cache(data_source, keep_first); });
+        self.update_mode_transition_cache(data_source, keep_first);
+        self.cached_state = cached_state;
     }
 
     /// Lines to be plotted
-    pub fn plot_lines(&mut self, bounds: PlotBounds, show_stats: bool) -> Vec<Line> {
+    pub fn plot_lines(&mut self, bounds: PlotBounds, show_stats: bool, data_source: &dyn DataSource) -> Vec<Line> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
+        self.update_caches_if_necessary(data_source);
         self.lines
             .iter_mut()
             .map(|pcl| {
-                let data = pcl.data_for_bounds(bounds);
+                let data = pcl.data_for_bounds(bounds, data_source);
                 let stats = show_stats.then(|| pcl.stats()).flatten();
                 let legend = if let Some((mean, std_dev, min, max)) = stats {
                     format!(
@@ -176,7 +221,11 @@ impl PlotCache {
     }
 
     /// Vertical mode transition lines to be plotted
-    pub fn mode_lines(&self) -> Box<dyn Iterator<Item = VLine> + '_> {
+    pub fn mode_lines(&mut self, data_source: &dyn DataSource) -> Box<dyn Iterator<Item = VLine> + '_> {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
+        self.update_caches_if_necessary(data_source);
         let iter = self.mode_transitions.iter().map(|(x, mode)| VLine::new(*x).color(mode.color()));
         Box::new(iter)
     }
@@ -214,19 +263,6 @@ impl SharedPlotState {
         self.end = end.unwrap_or(self.start);
     }
 
-    pub fn reset(&mut self, start: Instant) {
-        self.start = start;
-        self.end = start;
-        self.view_width = 10.0;
-        self.attached_to_edge = true;
-        self.box_dragging = false;
-    }
-
-    pub fn show_all(&mut self) {
-        self.view_width = (self.end - self.start).as_secs_f64();
-        self.reset_on_next_draw = true;
-    }
-
     pub fn process_zoom(&mut self, zoom_delta: Vec2) {
         self.view_width /= zoom_delta[0] as f64;
         // Zooming detaches the egui plot from the edge usually, so reattach
@@ -244,14 +280,6 @@ impl SharedPlotState {
             self.attached_to_edge = false;
             self.box_dragging = false;
         }
-    }
-
-    pub fn view_start(&self) -> f64 {
-        self.end.duration_since(self.start).as_secs_f64() - self.view_width
-    }
-
-    pub fn view_end(&self) -> f64 {
-        self.end.duration_since(self.start).as_secs_f64()
     }
 }
 
@@ -278,7 +306,7 @@ impl PlotState {
         ylimits: (Option<f32>, Option<f32>),
         shared: Rc<RefCell<SharedPlotState>>,
     ) -> Self {
-        let cache = PlotCache::new(shared.borrow().start);
+        let cache = PlotCache::new();
         let (ymin, ymax) = ylimits;
 
         Self {
@@ -294,29 +322,14 @@ impl PlotState {
         self.cache.borrow_mut().add_line(name, color, cb);
         self
     }
-
-    // Add some newly downlinked data to the cache.
-    pub fn push(&mut self, x: Instant, vs: &VehicleState) {
-        self.cache.borrow_mut().push(x, vs)
-    }
-
-    // Reset the plot, for instance when loading a different file.
-    pub fn reset(&mut self, start: Instant, keep_position: bool) {
-        self.cache.borrow_mut().reset(start, keep_position);
-        self.shared.borrow_mut().reset(start);
-    }
-
-    pub fn show_all(&mut self) {
-        self.shared.borrow_mut().show_all();
-    }
 }
 
 pub trait PlotUiExt {
-    fn plot_telemetry(&mut self, state: &PlotState);
+    fn plot_telemetry(&mut self, state: &PlotState, data_source: &dyn DataSource);
 }
 
 impl PlotUiExt for egui::Ui {
-    fn plot_telemetry(&mut self, state: &PlotState) {
+    fn plot_telemetry(&mut self, state: &PlotState, data_source: &dyn DataSource) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -326,9 +339,10 @@ impl PlotUiExt for egui::Ui {
         let legend =
             Legend::default().text_style(egui::TextStyle::Small).background_alpha(0.5).position(Corner::LeftTop);
 
+        let view_end = plot_time(&data_source.end().unwrap_or(Instant::now()), data_source);
         let mut plot = egui_plot::Plot::new(&state.title)
             .link_axis("plot_axis_group", true, false)
-            .link_cursor("plot_cursor_gropu", true, false)
+            .link_cursor("plot_cursor_group", true, false)
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
             .allow_scroll(false) // TODO: x only
             .allow_drag(AxisBools::new(true, false))
@@ -339,8 +353,8 @@ impl PlotUiExt for egui::Ui {
                                        // TODO: maybe upstream an option to move ticks inside?
             .x_axis_position(egui_plot::VPlacement::Top)
             .y_axis_position(egui_plot::HPlacement::Right)
-            .include_x(shared.view_start())
-            .include_x(shared.view_end())
+            .include_x(view_end - shared.view_width)
+            .include_x(view_end)
             .auto_bounds_y()
             .sharp_grid_lines(true)
             .legend(legend.clone());
@@ -362,14 +376,12 @@ impl PlotUiExt for egui::Ui {
 
         let show_stats = shared.show_stats;
         let ir = plot.show(self, move |plot_ui| {
-            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats);
-            let mode_lines = cache.mode_lines();
-
+            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats, data_source);
             for l in lines.into_iter() {
                 plot_ui.line(l.width(1.2));
             }
 
-            for vl in mode_lines.into_iter() {
+            for vl in cache.mode_lines(data_source).into_iter() {
                 plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));
             }
         });

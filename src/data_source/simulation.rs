@@ -26,12 +26,11 @@ pub struct SimulationDataSource {
 }
 
 impl DataSource for SimulationDataSource {
-    fn new_vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn update(&mut self, _ctx: &egui::Context) {
         if self.state.is_none() {
             self.state = Some(SimulationState::initialize(&self.settings));
         }
 
-        let start_i = self.vehicle_states.len();
         while !self.state.as_mut().unwrap().tick() {
             let sim_state = self.state.as_ref().unwrap();
             if !sim_state.plottable() {
@@ -46,11 +45,9 @@ impl DataSource for SimulationDataSource {
                 .unwrap_or(Instant::now());
             self.vehicle_states.push((time, vehicle_state));
         }
-
-        self.vehicle_states[start_i..].iter()
     }
 
-    fn vehicle_states<'a>(&'a mut self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
         self.vehicle_states.iter()
     }
 
