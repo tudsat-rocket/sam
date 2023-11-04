@@ -326,6 +326,12 @@ impl Sam {
         style.text_styles.insert(Heading, FontId::new(14.0, Proportional));
         ctx.set_style(style.clone());
 
+        // Prevent unnecessarily large UI on non-high-DPI displays
+        #[cfg(not(target_arch = "wasm32"))]
+        if ctx.pixels_per_point() > 1.0 && ctx.pixels_per_point() <= 1.5 {
+            ctx.set_pixels_per_point(1.0);
+        }
+
         // Top menu bar
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
             ui.set_enabled(!self.archive_window_open);
