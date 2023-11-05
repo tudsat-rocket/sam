@@ -5,13 +5,13 @@
 // the application to silence warnings.
 #[allow(dead_code)]
 #[allow(unused_variables)]
-mod data_source;
+pub mod data_source;
 #[allow(unused_imports)]
 mod file;
 #[allow(dead_code)]
 #[allow(unused_imports)]
 mod gui;
-mod settings;
+pub mod settings;
 mod simulation;
 mod state;
 mod telemetry_ext;
@@ -60,7 +60,7 @@ impl WebHandle {
             .start(
                 canvas_id,
                 eframe::WebOptions::default(),
-                Box::new(|cc| Box::new(Sam::init(cc, AppSettings::default(), data_source))),
+                Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, AppSettings::default(), data_source))),
             )
             .await
     }

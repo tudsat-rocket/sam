@@ -185,12 +185,12 @@ impl ConfigureTab {
                         data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(not(any(target_arch = "wasm32", target_arch="aarch64")))]
                     if ui.add_enabled(data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
                         save_fc_settings_file(&data_source.fc_settings().unwrap());
                     }
 
-                    #[cfg(not(target_arch = "wasm32"))]
+                    #[cfg(not(any(target_arch = "wasm32", target_arch="aarch64")))]
                     if ui.add_enabled(data_source.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked()
                     {
                         if let Some(settings) = open_fc_settings_file() {

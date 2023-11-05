@@ -64,6 +64,7 @@ pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
     ),
 ];
 
+#[derive(Debug)]
 enum ArchiveLoadProgress {
     Progress((u64, u64)),
     Complete(Vec<u8>),
@@ -88,8 +89,7 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(cc: &eframe::CreationContext<'_>, settings: AppSettings, data_source: Box<dyn DataSource>) -> Self {
-        let ctx = &cc.egui_ctx;
+    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Box<dyn DataSource>) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
@@ -137,13 +137,13 @@ impl Sam {
         let response = match reqwest::Client::new().get(url).send().await {
             Ok(res) => res,
             Err(e) => {
-                let _ = progress_sender.send(ArchiveLoadProgress::Error(e));
+                progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
                 return;
             }
         };
 
         let total_size = response.content_length().unwrap_or(0);
-        let _ = progress_sender.send(ArchiveLoadProgress::Progress((0, total_size)));
+        progress_sender.send(ArchiveLoadProgress::Progress((0, total_size))).unwrap();
 
         let mut cursor = std::io::Cursor::new(Vec::with_capacity(total_size as usize));
         let (mut progress, mut last_progress) = (0, 0);
@@ -159,13 +159,13 @@ impl Sam {
                     }
                 }
                 Err(e) => {
-                    let _ = progress_sender.send(ArchiveLoadProgress::Error(e));
+                    progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
                     return;
                 }
             }
         }
 
-        let _ = progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner()));
+        progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner())).unwrap();
         let duration = start.elapsed().as_secs_f32();
         let mib = (total_size as f32) / 1024.0 / 1024.0;
         info!("Downloaded {}MiB in {:.1}ms ({}MiB/s)", mib, duration * 1000.0, mib / duration);
@@ -310,6 +310,76 @@ impl Sam {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+        #[cfg(feature = "profiling")]
+        puffin::GlobalProfiler::lock().new_frame();
+        #[cfg(feature = "profiling")]
+        puffin_egui::profiler_window(ctx);
+
+        self.data_source.update(ctx);
+
+        // TODO: only send this if we know it's not a ground station?
+        if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
+            self.data_source.send(UplinkMessage::ReadSettings).unwrap();
+        }
+
+        if let Some(receiver) = self.archive_progress_receiver.as_ref() {
+            match receiver.try_recv() {
+                Ok(ArchiveLoadProgress::Progress(progress)) => {
+                    self.archive_progress = Some(progress);
+                }
+                Ok(ArchiveLoadProgress::Complete(bytes)) => {
+                    self.open_log_file(LogFileDataSource::from_bytes(
+                        Some("".to_string()), // TODO: show title
+                        bytes,
+                        self.replay_logs,
+                    ));
+                    self.archive_window_open = false;
+                    self.archive_progress_receiver = None;
+                    self.archive_progress = None;
+                }
+                Ok(ArchiveLoadProgress::Error(e)) => {
+                    error!("{:?}", e); // TODO: show this visually
+                    self.archive_progress_receiver = None;
+                    self.archive_progress = None;
+                }
+                _ => {}
+            }
+        }
+
+        // Check for keyboard inputs for tab and flight mode changes
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
+            self.tab = GuiTab::Launch;
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
+            self.tab = GuiTab::Plot;
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
+            self.tab = GuiTab::Configure;
+        }
+
+        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
+            Some(FlightMode::Idle)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
+            Some(FlightMode::HardwareArmed)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
+            Some(FlightMode::Armed)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
+            Some(FlightMode::Flight)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
+            Some(FlightMode::RecoveryDrogue)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {
+            Some(FlightMode::RecoveryMain)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F11)) {
+            Some(FlightMode::Landed)
+        } else {
+            None
+        };
+
+        // Set new flight mode if keyboard shortcut was used
+        if let Some(fm) = shortcut_mode {
+            self.data_source.send_command(Command::SetFlightMode(fm)).unwrap();
+        }
+
         // Redefine text_styles
         let colors = ThemeColors::new(ctx);
         let mut style = (*ctx.style()).clone();
@@ -526,76 +596,6 @@ impl Sam {
 impl eframe::App for Sam {
     /// Main draw method of the application
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        #[cfg(feature = "profiling")]
-        puffin::profile_function!();
-        #[cfg(feature = "profiling")]
-        puffin::GlobalProfiler::lock().new_frame();
-        #[cfg(feature = "profiling")]
-        puffin_egui::profiler_window(ctx);
-
-        self.data_source.update(ctx);
-
-        // TODO: only send this if we know it's not a ground station?
-        if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
-            self.data_source.send(UplinkMessage::ReadSettings).unwrap();
-        }
-
-        if let Some(receiver) = self.archive_progress_receiver.as_ref() {
-            match receiver.try_recv() {
-                Ok(ArchiveLoadProgress::Progress(progress)) => {
-                    self.archive_progress = Some(progress);
-                }
-                Ok(ArchiveLoadProgress::Complete(bytes)) => {
-                    self.open_log_file(LogFileDataSource::from_bytes(
-                        Some("".to_string()), // TODO: show title
-                        bytes,
-                        self.replay_logs,
-                    ));
-                    self.archive_window_open = false;
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                Ok(ArchiveLoadProgress::Error(e)) => {
-                    error!("{:?}", e); // TODO: show this visually
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                _ => {}
-            }
-        }
-
-        // Check for keyboard inputs for tab and flight mode changes
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
-            self.tab = GuiTab::Launch;
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
-            self.tab = GuiTab::Plot;
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
-            self.tab = GuiTab::Configure;
-        }
-
-        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
-            Some(FlightMode::Idle)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            Some(FlightMode::HardwareArmed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
-            Some(FlightMode::Armed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
-            Some(FlightMode::Flight)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
-            Some(FlightMode::RecoveryDrogue)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {
-            Some(FlightMode::RecoveryMain)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F11)) {
-            Some(FlightMode::Landed)
-        } else {
-            None
-        };
-
-        // Set new flight mode if keyboard shortcut was used
-        if let Some(fm) = shortcut_mode {
-            self.data_source.send_command(Command::SetFlightMode(fm)).unwrap();
-        }
-
         // Draw UI
         self.ui(ctx)
     }
@@ -620,7 +620,7 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
             initial_window_size: Some(egui::vec2(1000.0, 700.0)),
             ..Default::default()
         },
-        Box::new(|cc| Box::new(Sam::init(cc, app_settings, data_source))),
+        Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, app_settings, data_source))),
     )?;
 
     Ok(())

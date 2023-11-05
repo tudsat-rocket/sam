@@ -20,7 +20,7 @@ pub mod serial;
 pub mod simulation;
 
 pub use log_file::LogFileDataSource;
-pub use serial::SerialDataSource;
+pub use serial::*;
 pub use simulation::SimulationDataSource;
 
 /// Trait shared by all data sources.

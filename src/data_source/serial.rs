@@ -28,6 +28,15 @@ pub const BAUD_RATE: u32 = 115_200;
 pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(500);
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
 
+// For Android, the Java wrapper has to handle the actual serial port and
+// we use these questionable methods to pass the data in via JNI
+#[cfg(target_os="android")]
+pub static mut DOWNLINK_MESSAGE_RECEIVER: Option<Receiver<DownlinkMessage>> = None;
+#[cfg(target_os="android")]
+pub static mut UPLINK_MESSAGE_SENDER: Option<Sender<UplinkMessage>> = None;
+#[cfg(target_os="android")]
+pub static mut SERIAL_STATUS_RECEIVER: Option<Receiver<SerialStatus>> = None;
+
 /// The current state of our downlink monitoring thread
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerialStatus {
@@ -130,7 +139,7 @@ pub fn find_serial_port() -> Option<String> {
 /// Continuously monitors for connected USB serial devices and connects to them.
 /// Run in a separate thread using `spawn_downlink_monitor`.
 #[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
-fn downlink_monitor(
+pub fn downlink_monitor(
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     mut downlink_tx: Sender<DownlinkMessage>,
     mut uplink_rx: Receiver<UplinkMessage>,
@@ -255,16 +264,31 @@ impl DataSource for SerialDataSource {
     fn update(&mut self, _ctx: &egui::Context) {
         self.message_receipt_times.retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
-        for (status, port) in self.serial_status_rx.try_iter() {
+        #[cfg(target_os="android")]
+        for status in unsafe { SERIAL_STATUS_RECEIVER.as_mut().unwrap().try_iter() } {
+            self.serial_status = status;
+            self.serial_port = Some("".to_owned());
+
+            if self.serial_status == SerialStatus::Connected {
+                self.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
+            }
+        }
+
+        #[cfg(not(target_os="android"))]
+        for (status, port) in self.serial_status_rx.try_iter().collect::<Vec<_>>().into_iter() {
             self.serial_status = status;
             self.serial_port = port;
 
             if self.serial_status == SerialStatus::Connected {
-                self.uplink_tx.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
+                self.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
             }
         }
 
+        #[cfg(not(target_os = "android"))]
         let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
+        #[cfg(target_os = "android")]
+        let msgs: Vec<_> = unsafe { DOWNLINK_MESSAGE_RECEIVER.as_mut().unwrap().try_iter().collect() };
+
         for msg in msgs.into_iter() {
             self.write_to_telemetry_log(&msg);
 
@@ -309,9 +333,16 @@ impl DataSource for SerialDataSource {
         self.message_receipt_times.truncate(0);
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         self.uplink_tx.send(msg)
+    }
+
+    #[cfg(target_os="android")]
+    fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+        unsafe {
+            UPLINK_MESSAGE_SENDER.as_mut().unwrap().send(msg)
+        }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -345,7 +376,7 @@ impl DataSource for SerialDataSource {
 
     fn apply_settings(&mut self, settings: &AppSettings) {
         self.lora_settings = settings.lora.clone();
-        self.uplink_tx.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
+        self.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
     }
 
     fn link_quality(&self) -> Option<f32> {

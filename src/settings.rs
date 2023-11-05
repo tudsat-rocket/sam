@@ -12,8 +12,14 @@ pub struct AppSettings {
 
 impl AppSettings {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
+        #[cfg(not(target_os="android"))]
         let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
+        #[cfg(not(target_os="android"))]
         let config_dir = project_dirs.config_dir();
+
+        #[cfg(target_os="android")]
+        let config_dir = std::path::Path::new("/data/user/0/space.tudsat.sam/files");
+
         if !config_dir.exists() {
             std::fs::create_dir_all(config_dir)?;
         }
@@ -24,8 +30,14 @@ impl AppSettings {
     }
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
+        #[cfg(not(target_os="android"))]
         let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
+        #[cfg(not(target_os="android"))]
         let config_dir = project_dirs.config_dir();
+
+        #[cfg(target_os="android")]
+        let config_dir = std::path::Path::new("/data/user/0/space.tudsat.sam/files");
+
         if !config_dir.exists() {
             std::fs::create_dir_all(config_dir)?;
         }
