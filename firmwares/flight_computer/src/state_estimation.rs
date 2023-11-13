@@ -1,4 +1,7 @@
+#[cfg(not(feature="std"))]
 use core::num::Wrapping;
+#[cfg(feature="std")]
+use std::num::Wrapping;
 
 use nalgebra::*;
 use num_traits::Pow;

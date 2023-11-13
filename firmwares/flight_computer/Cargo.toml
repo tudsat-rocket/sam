@@ -59,6 +59,7 @@ defmt-test = "0.3"
 
 [features]
 default = ["rev2"]
+std = []
 rev2 = []
 gcs = []
 

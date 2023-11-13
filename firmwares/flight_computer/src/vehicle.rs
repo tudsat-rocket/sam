@@ -14,7 +14,7 @@ use embassy_time::{Ticker, Duration};
 
 use defmt::*;
 
-//use crate::buzzer::*;
+use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::can::*;
 use crate::drivers::sensors::*;
 use crate::lora::*;
@@ -34,6 +34,7 @@ type Power = PowerMonitor<ADC1, PB0, PC5, PC4>;
 type RadioHandle = Radio<SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PA1>>, Input<'static, PC0>,Input<'static, PC1>>;
 
 type LEDs = (Output<'static, PC13>, Output<'static, PC14>, Output<'static, PC15>);
+type Buzzer = BuzzerDriver<TIM3>;
 type Recovery = (Output<'static, PC8>, Output<'static, PC9>);
 
 const RUNTIME_HISTORY_LEN: usize = 200;
@@ -55,7 +56,7 @@ pub struct Vehicle {
     can: CanHandle,
     // outputs
     leds: LEDs,
-    //buzzer: Buzzer,
+    buzzer: Buzzer,
     recovery: Recovery,
     // vehicle state
     state_estimator: StateEstimator,
@@ -129,10 +130,11 @@ impl Vehicle {
         flash: FlashHandle,
         can: CanHandle,
         leds: LEDs,
+        mut buzzer: Buzzer,
         recovery: Recovery,
         settings: Settings,
     ) -> Self {
-        //buzzer.set_warning_tone(settings.outputs_warning_frequency, settings.outputs_warning_time);
+        buzzer.set_warning_tone(settings.outputs_warning_frequency, settings.outputs_warning_time);
         radio.apply_settings(&settings.lora);
         imu.set_offsets(settings.gyro_offset, settings.acc_offset);
         acc.set_offset(settings.acc2_offset);
@@ -153,6 +155,7 @@ impl Vehicle {
             can,
 
             leds,
+            buzzer,
             recovery,
 
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQUENCY.0 as f32, settings.clone()),
@@ -237,7 +240,7 @@ impl Vehicle {
         self.leds.0.set_level((!r).into());
         self.leds.1.set_level((!y).into());
         self.leds.2.set_level((!g).into());
-        //self.buzzer.tick(self.time);
+        self.buzzer.tick(self.time.0);
 
         // Send/store telemetry
         if let Some(msg) = self.next_usb_telem() {
@@ -289,7 +292,7 @@ impl Vehicle {
         }
 
         self.mode = new_mode;
-        //self.buzzer.switch_mode(self.time, new_mode);
+        self.buzzer.switch_mode(self.time.0, new_mode);
     }
 
     // TODO: replace these with a more elegant system

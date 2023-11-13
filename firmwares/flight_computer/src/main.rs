@@ -11,12 +11,15 @@ extern crate alloc;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::adc::Adc;
-use embassy_stm32::gpio::{Level, Speed, Output, Pull, Input};
+use embassy_stm32::gpio::{Level, Speed, Output, Pull, Input, OutputType};
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Pll, PllMul, PllPreDiv, PllPDiv, PllQDiv, PllSource, Sysclk};
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
+use embassy_stm32::timer::Channel;
+use embassy_stm32::gpio::low_level::Pin;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::{interrupt, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -28,7 +31,7 @@ use static_cell::StaticCell;
 use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
-//mod buzzer;
+mod buzzer;
 mod can;
 mod drivers;
 mod flash;
@@ -43,7 +46,7 @@ mod vehicle;
 #[cfg(feature="gcs")]
 mod gcs;
 
-//use buzzer::*;
+use buzzer::*;
 use can::*;
 use flash::*;
 use lora::*;
@@ -73,6 +76,7 @@ static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI3, DMA1_CH5
 #[embassy_executor::main]
 async fn main(_low_priority_spawner: Spawner) {
     // Basic setup, including clocks
+    // Divider values taken from STM32CubeMx
     let mut config = Config::default();
     config.rcc.hse = Some(embassy_stm32::rcc::Hse {
         mode: embassy_stm32::rcc::HseMode::Oscillator,
@@ -165,14 +169,12 @@ async fn main(_low_priority_spawner: Spawner) {
     let gpio_drogue = Output::new(p.PC8, Level::Low, Speed::Low);
     let gpio_main = Output::new(p.PC9, Level::Low, Speed::Low);
     let recovery = (gpio_drogue, gpio_main);
-//
-//    #[cfg(feature = "rev1")]
-//    let pwm = dp.TIM4.pwm_hz(Channel4::new(gpiob.pb9.into_alternate()), 440.Hz(), &clocks);
-//    #[cfg(feature = "rev2")]
-//    let pwm = dp.TIM3.pwm_hz(Channel2::new(gpioc.pc7.into_alternate()), 440.Hz(), &clocks);
-//
-//    let buzzer = Buzzer::init(pwm);
-//
+
+    let gpioc_block = p.PC7.block();
+    let pwm_pin = PwmPin::new_ch2(p.PC7, OutputType::PushPull);
+    let pwm = SimplePwm::new(p.TIM3, None, Some(pwm_pin), None, None, Hertz::hz(440), Default::default());
+    let buzzer = Buzzer::init(pwm, Channel::Ch2, gpioc_block, 7);
+
 //    // The MCO test point can either be used for Master Clock Out, e.g. for
 //    // diagnosing clock-speed issues, or as general purpose debugging IO.
 //    let mut mco = gpioa.pa8.into_push_pull_output_in_state(PinState::Low);
@@ -193,6 +195,7 @@ async fn main(_low_priority_spawner: Spawner) {
         flash_handle,
         can_handle,
         leds,
+        buzzer,
         recovery,
         settings,
     );

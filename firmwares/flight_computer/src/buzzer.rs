@@ -1,41 +1,18 @@
 //! Driver for the on-board buzzer, responsible for playing mode change beeps and
 //! warning tones using the STM32's timers for PWM generation.
+//! TODO: maybe run melodies in a separate embassy task
 
-use hal::pac::*;
-use hal::prelude::*;
-use hal::timer::pwm::PwmHz;
-use stm32f4xx_hal as hal;
+use embassy_stm32::timer::{simple_pwm::SimplePwm, Channel, CaptureCompare16bitInstance};
+use embassy_stm32::time::Hertz;
+use embassy_stm32::pac::gpio::Gpio;
+use embassy_stm32::pac::gpio::vals;
 
 use num_traits::Float;
 
 use crate::telemetry::FlightMode;
 use Semitone::*;
 
-// TODO: make this more generic, get rid of these feature flags.
-// To do this, some of the required traits need to be exposed by stm32f4xx_hal
-
-#[cfg(feature = "rev1")]
-type Timer = hal::pac::TIM4;
-#[cfg(feature = "rev2")]
-type Timer = hal::pac::TIM3;
-
-#[cfg(feature = "rev1")]
-type Pins = hal::timer::Channel4<Timer, false>;
-#[cfg(feature = "rev2")]
-type Pins = hal::timer::Channel2<Timer, false>;
-
-type Pwm = hal::timer::PwmHz<Timer, Pins>;
-
-#[cfg(feature = "rev1")]
-const CHANNEL: hal::timer::Channel = hal::timer::Channel::C4;
-#[cfg(feature = "rev2")]
-const CHANNEL: hal::timer::Channel = hal::timer::Channel::C2;
-
-#[cfg(feature = "rev1")]
-const GPIO_REG: *const hal::pac::gpiob::RegisterBlock = GPIOB::ptr();
-#[cfg(feature = "rev2")]
-const GPIO_REG: *const hal::pac::gpioh::RegisterBlock = GPIOC::ptr();
-
+#[allow(dead_code)]
 const STARTUP: [Note; 6] = [
     Note::note(C, 4, 150), Note::pause(10),
     Note::note(E, 4, 150), Note::pause(10),
@@ -54,6 +31,7 @@ const ARMED: [Note; 6] = [
     Note::note(G, 4, 150), Note::pause(10),
 ];
 
+#[allow(dead_code)]
 const LANDED: [Note; 57] = [
     Note::note(C, 4, 150 - 10), Note::pause(10),
     Note::note(D, 4, 150 - 10), Note::pause(10),
@@ -90,8 +68,115 @@ const LANDED: [Note; 57] = [
     Note::note(F, 4, 600 - 50), Note::pause(50),
 ];
 
-pub struct Buzzer {
-    pwm: PwmHz<Timer, Pins>,
+#[allow(dead_code)]
+const REMNANTS: [Note; 40] = [
+    Note::note(E, 3, 200), Note::pause(10),
+    Note::note(D, 3, 200), Note::pause(10),
+    Note::note(A, 4, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+
+    Note::note(A, 4, 400), Note::pause(10),
+    Note::note(D, 5, 200), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(F, 5, 800), Note::pause(10),
+
+    Note::note(E, 3, 200), Note::pause(10),
+    Note::note(D, 3, 200), Note::pause(10),
+    Note::note(F, 3, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+    Note::note(D, 5, 400), Note::pause(10),
+
+    Note::note(F, 3, 400), Note::pause(10),
+    Note::note(D, 5, 200), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10),
+    Note::note(As, 4, 800), Note::pause(10),
+];
+
+#[allow(dead_code)]
+const THUNDERSTRUCK: [Note; 64] = [
+    Note::note(B, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(A, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Fs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Gs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+
+    Note::note(Fs, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(E, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(Ds, 4, 100), Note::pause(10),
+    Note::note(B, 3, 100), Note::pause(10),
+];
+
+#[allow(dead_code)]
+const E1M1: [Note; 56] = [
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(D, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(C, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(Gs, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(A, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(D, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(C, 4, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(As, 3, 100), Note::pause(10),
+
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(E, 3, 100), Note::pause(10),
+    Note::note(Gs, 3, 500), Note::pause(10),
+];
+
+pub struct Buzzer<TIM: 'static> {
+    pwm: SimplePwm<'static, TIM>,
+    channel: Channel,
+    block: Gpio,
+    pin: usize,
     warning_note: Note,
     current_tone: Option<Note>,
     current_melody: Option<&'static [Note]>,
@@ -100,12 +185,15 @@ pub struct Buzzer {
     repeat: bool
 }
 
-impl Buzzer {
-    pub fn init(mut pwm: Pwm) -> Self {
-        pwm.set_duty(CHANNEL, pwm.get_max_duty() / 2);
+impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
+    pub fn init(mut pwm: SimplePwm<'static, TIM>, channel: Channel, block: Gpio, pin: usize) -> Self {
+        pwm.set_duty(Channel::Ch2, pwm.get_max_duty() / 2);
 
         let buzzer = Self {
             pwm,
+            channel,
+            block,
+            pin,
             warning_note: Note::note(C, 5, 500),
             current_tone: None,
             current_melody: Some(&STARTUP),
@@ -158,20 +246,15 @@ impl Buzzer {
         // We set the buzzer output pin into an open-drain state when not using it to
         // reduce leakage current. Since the HAL doesn't provide a straight-forward way
         // to do that, we do it manually.
-        let gpio_pin = if cfg!(feature = "rev2") { 7 } else { 9 };
         if let Some(freq) = self.current_frequency() {
-            unsafe {
-                (*GPIO_REG).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 2*gpio_pin) | (0b10 << 2*gpio_pin)));
-                (*GPIO_REG).otyper.modify(|r, w| w.bits(r.bits() & !(0b1 << gpio_pin)));
-            }
-            self.pwm.set_period((freq as u32).Hz());
-            self.pwm.enable(CHANNEL);
+            self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::ALTERNATE));
+            self.block.otyper().modify(|w| w.set_ot(self.pin, vals::Ot::PUSHPULL));
+            self.pwm.set_freq(Hertz::hz(freq as u32));
+            self.pwm.enable(self.channel);
         } else {
-            unsafe {
-                (*GPIO_REG).moder.modify(|r, w| w.bits(r.bits() & !(0b11 << 2*gpio_pin) | (0b01 << 2*gpio_pin)));
-                (*GPIO_REG).otyper.modify(|r, w| w.bits(r.bits() | (0b1 << gpio_pin)));
-            }
-            self.pwm.disable(CHANNEL);
+            self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::OUTPUT));
+            self.block.otyper().modify(|w| w.set_ot(self.pin, vals::Ot::OPENDRAIN));
+            self.pwm.disable(self.channel);
         }
     }
 
