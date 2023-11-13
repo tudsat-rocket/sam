@@ -1,6 +1,5 @@
-use embassy_stm32::adc::{Adc, Temperature, VrefInt, AdcPin, Instance, InternalChannel, SampleTime};
+use embassy_stm32::adc::{Adc, Temperature, VrefInt, AdcPin, Instance, SampleTime};
 use embassy_stm32::gpio::low_level::Pin;
-use embassy_stm32::peripherals::ADC1;
 use embassy_time::{Timer, Duration, Instant};
 
 use crc::{Crc, CRC_16_IBM_SDLC};
@@ -13,7 +12,6 @@ const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 pub struct PowerMonitor<ADC: Instance, H, L, A> {
     adc: Adc<'static, ADC>,
     vref_sample: u16,
-    internal_vref: VrefInt,
     internal_temperature: Temperature,
     pin_bat_high: H,
     pin_bat_low: L,
@@ -38,8 +36,8 @@ impl<
     A: Pin + AdcPin<ADC>,
 > PowerMonitor<ADC, H, L, A>
 where
-    Temperature: InternalChannel<ADC>,
-    VrefInt: InternalChannel<ADC>,
+    Temperature: AdcPin<ADC>,
+    VrefInt: AdcPin<ADC>,
 {
     pub async fn init(mut adc: Adc<'static, ADC>, pin_bat_high: H, pin_bat_low: L, pin_arm: A) -> Self {
         adc.set_sample_time(SampleTime::Cycles480);
@@ -49,11 +47,10 @@ where
         let start_time = Temperature::start_time_us().max(VrefInt::start_time_us());
         Timer::after(Duration::from_micros(start_time as u64)).await;
 
-        let vref_sample = adc.read_internal(&mut internal_vref);
+        let vref_sample = adc.read(&mut internal_vref);
 
         Self {
             adc,
-            internal_vref,
             internal_temperature,
             vref_sample,
             pin_bat_high,
@@ -91,7 +88,7 @@ where
     }
 
     pub fn tick(&mut self) {
-        let sample = self.adc.read_internal(&mut self.internal_temperature);
+        let sample = self.adc.read(&mut self.internal_temperature);
         self.temperature = Some(self.to_celcius(sample));
 
         let sample = self.adc.read(&mut self.pin_bat_high);

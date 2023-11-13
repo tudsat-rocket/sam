@@ -178,14 +178,16 @@ impl From<u8> for TelemetryDataRate {
 #[derive(Clone, Default)]
 pub struct VehicleState {
     pub time: u32,
-
     pub mode: Option<FlightMode>,
+
     pub orientation: Option<UnitQuaternion<f32>>,
+    pub acceleration_world: Option<Vector3<f32>>,
     pub vertical_speed: Option<f32>,
     pub vertical_accel: Option<f32>,
     pub vertical_accel_filtered: Option<f32>,
-    pub altitude_max: Option<f32>,
-    pub altitude: Option<f32>,
+    pub altitude_asl: Option<f32>,
+    pub altitude_ground_asl: Option<f32>,
+    pub apogee: Option<f32>,
 
     pub gyroscope: Option<Vector3<f32>>,
     pub accelerometer1: Option<Vector3<f32>>,
@@ -193,24 +195,26 @@ pub struct VehicleState {
     pub magnetometer: Option<Vector3<f32>>,
     pub pressure_baro: Option<f32>,
     pub altitude_baro: Option<f32>,
+    pub temperature_baro: Option<f32>,
 
-    pub cpu_utilization: Option<f32>,
     pub charge_voltage: Option<u16>,
     pub battery_voltage: Option<u16>,
     pub current: Option<i16>,
-    //pub lora_rssi: u8,
-    pub altitude_ground: Option<f32>,
-    //pub transmit_power_and_data_rate: u8,
-    pub temperature_baro: Option<f32>,
-    //pub recovery_drogue: [u8; 2],
-    //pub recovery_main: [u8; 2],
+
+    // TODO: rename?
+    pub lora_rssi: Option<u8>,
+    pub transmit_power: Option<TransmitPower>,
+    // TODO: data rate?
+
+    pub cpu_utilization: Option<f32>,
+    pub flash_pointer: Option<u32>,
 
     //pub fix_and_sats: u8,
     //pub hdop: u16,
     //pub latitude: [u8; 3],
     //pub longitude: [u8; 3],
-    //pub altitude_asl: u16,
-    //pub flash_pointer: u16,
+    //pub altitude_gps_asl: u16,
+
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -222,7 +226,7 @@ pub struct TelemetryMain {
     pub vertical_accel: f32,
     pub vertical_accel_filtered: f32,
     pub altitude_baro: f32,
-    pub altitude_max: f32,
+    pub altitude_max: f32, // TODO: rename apogee
     pub altitude: f32,
 }
 
@@ -236,8 +240,8 @@ impl From<VehicleState> for TelemetryMain {
             vertical_accel: vs.vertical_accel.unwrap_or_default(),
             vertical_accel_filtered: vs.vertical_accel_filtered.unwrap_or_default(),
             altitude_baro: vs.altitude_baro.unwrap_or_default(),
-            altitude_max: vs.altitude_max.unwrap_or_default(),
-            altitude: vs.altitude.unwrap_or_default()
+            altitude_max: vs.apogee.unwrap_or_default(),
+            altitude: vs.altitude_asl.unwrap_or_default()
         }
     }
 }
@@ -253,6 +257,34 @@ pub struct TelemetryMainCompressed {
     pub altitude_baro: u16,
     pub altitude_max: u16,
     pub altitude: u16,
+}
+
+impl From<VehicleState> for TelemetryMainCompressed {
+    fn from(vs: VehicleState) -> Self {
+        let quat = vs.orientation
+            .clone()
+            .map(|q| q.coords)
+            .map(|q| {
+                (
+                    (127.0 + q.x * 127.0) as u8,
+                    (127.0 + q.y * 127.0) as u8,
+                    (127.0 + q.z * 127.0) as u8,
+                    (127.0 + q.w * 127.0) as u8,
+                )
+            });
+
+        Self {
+            time: vs.time,
+            mode: vs.mode.unwrap_or_default(),
+            orientation: quat.unwrap_or((127, 127, 127, 127)),
+            vertical_speed: vs.vertical_speed.map(|x| x * 10.0).unwrap_or_default().into(),
+            vertical_accel: vs.vertical_accel.map(|x| x * 10.0).unwrap_or_default().into(),
+            vertical_accel_filtered: vs.vertical_accel_filtered.map(|x| x * 10.0).unwrap_or_default().into(),
+            altitude_baro: (vs.altitude_baro.unwrap_or_default() * 10.0 + 1000.0) as u16, // TODO: this limits us to 6km AMSL
+            altitude: (vs.altitude_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
+            altitude_max: (vs.apogee.unwrap_or_default() * 10.0 + 1000.0) as u16,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -311,9 +343,10 @@ impl From<VehicleState> for TelemetryDiagnostics {
             charge_voltage: vs.charge_voltage.unwrap_or_default(),
             battery_voltage: vs.battery_voltage.unwrap_or_default() << 2, // TODO: breakwire
             current: vs.current.unwrap_or_default(),
-            // TODO: lora_rssi
-            altitude_ground: (vs.altitude_ground.unwrap_or_default() * 10.0 + 1000.0) as u16,
-            // TODO: transmit power and data rate
+            lora_rssi: vs.lora_rssi.unwrap_or_default(),
+            altitude_ground: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
+            // TODO: data rate?
+            transmit_power_and_data_rate: vs.transmit_power.unwrap_or_default() as u8,
             temperature_baro: (vs.temperature_baro.unwrap_or_default() * 2.0) as i8,
             // TODO: remove recovery
             ..Default::default() // TODO
@@ -331,6 +364,33 @@ pub struct TelemetryGPS {
     pub longitude: [u8; 3],
     pub altitude_asl: u16,
     pub flash_pointer: u16,
+}
+
+impl From<VehicleState> for TelemetryGPS {
+    fn from(vs: VehicleState) -> Self {
+        //let latitude = self.gps.latitude
+        //    .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
+        //    .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
+        //    .unwrap_or([0, 0, 0]);
+        //let longitude = self.gps.longitude
+        //    .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
+        //    .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
+        //    .unwrap_or([0, 0, 0]);
+        //let fix_and_sats = ((self.gps.fix.clone() as u8) << 5) + ((self.gps.num_satellites as u8) & 0x1f);
+
+        // TODO
+        TelemetryGPS {
+            time: vs.time,
+            fix_and_sats: 0,
+            hdop: 0,
+//            hdop: self.gps.hdop,
+            latitude: [0, 0, 0],
+            longitude: [0, 0, 0],
+            altitude_asl: 0,
+//            altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
+            flash_pointer: (vs.flash_pointer.unwrap_or_default() / 1024) as u16,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

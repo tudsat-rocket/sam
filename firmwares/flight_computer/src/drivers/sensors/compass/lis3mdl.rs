@@ -1,4 +1,4 @@
-use embedded_hal_async::spi::{SpiBus, SpiDevice};
+use embedded_hal_async::spi::SpiDevice;
 
 use nalgebra::Vector3;
 

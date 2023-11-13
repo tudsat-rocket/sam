@@ -12,17 +12,29 @@ const GRAVITY: f32 = 9.80665;
 
 #[derive(Debug)]
 pub struct StateEstimator {
+    /// current time
     time: Wrapping<u32>,
+    /// current flight mode
     mode: FlightMode,
+    /// time current flight mode was entered
     mode_time: Wrapping<u32>,
+    /// time since which flight mode logic condition has been true TODO: refactor
     condition_true_since: Option<Wrapping<u32>>,
+    /// settings
     settings: Settings,
+    /// orientation
     ahrs: ahrs::Mahony<f32>,
+    /// main Kalman filter
     kalman: KalmanFilter<f32, U3, U2, U0>,
+    /// current orientation
     pub orientation: Option<Unit<Quaternion<f32>>>,
+    /// current vehicle-space acceleration, switched between low- and high-G accelerometer
     acceleration: Option<Vector3<f32>>,
+    /// world-space acceleration, rotated using estimated orientation
     acceleration_world: Option<Vector3<f32>>,
+    /// altitude (ASL) at ground level, to allow calculating AGL altitude. locked in when armed.
     pub altitude_ground: f32,
+    /// apogee (ASL)
     pub altitude_max: f32,
 }
 

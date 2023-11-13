@@ -289,6 +289,7 @@ dependencies = [
 [[package]]
 name = "embassy-embedded-hal"
 version = "0.1.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "defmt",
  "embassy-futures",
@@ -305,6 +306,7 @@ dependencies = [
 [[package]]
 name = "embassy-executor"
 version = "0.3.2"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "atomic-polyfill 1.0.3",
  "cortex-m",
@@ -317,10 +319,15 @@ dependencies = [
 [[package]]
 name = "embassy-futures"
 version = "0.1.1"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embassy-hal-internal"
 version = "0.1.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -331,6 +338,7 @@ dependencies = [
 [[package]]
 name = "embassy-macros"
 version = "0.2.1"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -341,6 +349,7 @@ dependencies = [
 [[package]]
 name = "embassy-net-driver"
 version = "0.2.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "defmt",
 ]
@@ -348,6 +357,7 @@ dependencies = [
 [[package]]
 name = "embassy-net-driver-channel"
 version = "0.2.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "embassy-futures",
  "embassy-net-driver",
@@ -357,6 +367,7 @@ dependencies = [
 [[package]]
 name = "embassy-stm32"
 version = "0.1.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "bit_field",
  "bxcan",
@@ -395,6 +406,7 @@ dependencies = [
 [[package]]
 name = "embassy-sync"
 version = "0.4.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -406,6 +418,7 @@ dependencies = [
 [[package]]
 name = "embassy-time"
 version = "0.1.5"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -419,6 +432,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb"
 version = "0.1.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "defmt",
  "embassy-futures",
@@ -433,6 +447,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb-driver"
 version = "0.1.0"
+source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
  "defmt",
 ]
@@ -690,6 +705,7 @@ dependencies = [
  "defmt-test",
  "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-futures",
  "embassy-stm32",
  "embassy-sync",
  "embassy-time",

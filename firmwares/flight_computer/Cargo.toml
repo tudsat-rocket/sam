@@ -31,6 +31,7 @@ rand_chacha = { version = "0.3", default-features = false }
 
 # Only load dependencies for embedded for the STM32 target, to avoid loading them when
 # importing this crate from the groundstation on x86
+# TODO: what about android?
 [target.'cfg(target_arch = "arm")'.dependencies]
 embedded-hal = { version = "=1.0.0-rc.1" }
 embedded-hal-async = { version = "=1.0.0-rc.1" }
@@ -41,12 +42,13 @@ alloc-cortex-m = "0.4"
 
 # TODO: move USB fix to here, create issue
 # TODO: pin embassy version
-embassy-stm32        = { path = "../embassy/embassy-stm32", features = ["nightly", "unstable-traits", "defmt", "stm32f401rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
-embassy-executor     = { path = "../embassy/embassy-executor", features = ["nightly", "arch-cortex-m", "executor-thread", "executor-interrupt", "defmt", "integrated-timers"] }
-embassy-time         = { path = "../embassy/embassy-time", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-512_000"] }
-embassy-embedded-hal = { path = "../embassy/embassy-embedded-hal" }
-embassy-sync         = { path = "../embassy/embassy-sync", features = ["defmt"] }
-embassy-usb          = { path = "../embassy/embassy-usb", features = ["defmt"] }
+embassy-stm32        = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt", "nightly", "unstable-traits", "stm32f401rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
+embassy-executor     = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt", "nightly", "arch-cortex-m", "executor-thread", "executor-interrupt", "integrated-timers"] }
+embassy-time         = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt", "defmt-timestamp-uptime", "unstable-traits", "tick-hz-1_000_000"] }
+embassy-embedded-hal = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix" }
+embassy-sync         = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt"] }
+embassy-usb          = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt"] }
+embassy-futures      = { git = "https://github.com/KoffeinFlummi/embassy", branch="usb_fix", features = ["defmt"] }
 
 defmt = "0.3"
 defmt-rtt = "0.4"
