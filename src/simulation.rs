@@ -13,9 +13,9 @@ use crate::state::VehicleState;
 
 use crate::gui::ARCHIVE;
 
-#[cfg(any(target_os="windows", target_arch="aarch64"))]
+#[cfg(any(target_os="windows", target_os="android"))]
 type Rng = rand::rngs::StdRng;
-#[cfg(not(any(target_os="windows", target_arch="aarch64")))]
+#[cfg(not(any(target_os="windows", target_os="android")))]
 type Rng = rand::rngs::SmallRng;
 
 const GRAVITY: f32 = 9.80665;

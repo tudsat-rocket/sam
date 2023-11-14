@@ -55,7 +55,7 @@ rand = { version = "0.8", default-features = false, features = ["small_rng", "ge
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 # Android dependencies
-[target.'cfg(target_arch = "aarch64")'.dependencies]
+[target.'cfg(target_os = "android")'.dependencies]
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
