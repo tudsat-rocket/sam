@@ -36,6 +36,7 @@ use crate::settings::AppSettings;
 use crate::simulation::*;
 use crate::state::*;
 
+use crate::gui::components::bottom_status_bar::create_bottom_status_bar;
 use crate::gui::components::top_menu_bar::create_top_menu_bar;
 use crate::gui::fc_settings::*;
 use crate::gui::simulation_settings::*;
@@ -435,35 +436,7 @@ impl Sam {
         }
 
         // Bottom status bar
-        egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
-            ui.horizontal_centered(|ui| {
-                // Give the data source some space on the left ...
-                ui.horizontal_centered(|ui| {
-                    ui.set_width(ui.available_width() / 2.0);
-                    self.data_source.status_bar_ui(ui);
-                });
-
-                // ... and the current tab some space on the right.
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
-                        if ui.button("⏮  Reset").clicked() {
-                            self.data_source.reset();
-                        }
-                    });
-
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ui.separator();
-
-                    match self.tab {
-                        GuiTab::Launch => {}
-                        GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
-                        GuiTab::Configure => {}
-                    }
-                });
-            });
-        });
+        create_bottom_status_bar(self, ctx);
 
         // Everything else. This has to be called after all the other panels
         // are created.
