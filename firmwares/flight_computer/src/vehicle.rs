@@ -76,7 +76,7 @@ impl Into<VehicleState> for &Vehicle {
             vertical_accel_filtered: Some(self.state_estimator.vertical_accel()),
             altitude_asl: Some(self.state_estimator.altitude_asl()),
             altitude_ground_asl: Some(self.state_estimator.altitude_ground),
-            apogee: Some(self.state_estimator.altitude_max),
+            apogee_asl: Some(self.state_estimator.altitude_max),
 
             gyroscope: self.imu.gyroscope(),
             accelerometer1: self.imu.accelerometer(),

@@ -1,6 +1,6 @@
-#[cfg(not(feature="std"))]
+#[cfg(target_os="none")]
 use core::num::Wrapping;
-#[cfg(feature="std")]
+#[cfg(not(target_os="none"))]
 use std::num::Wrapping;
 
 use nalgebra::*;
