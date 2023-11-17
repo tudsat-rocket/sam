@@ -11,8 +11,8 @@ use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
-use egui::{Align, Button, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
-use egui::{Align2, ProgressBar, TextStyle::*};
+use egui::TextStyle::*;
+use egui::{Align, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use futures::StreamExt;
 use log::*;
@@ -29,41 +29,20 @@ mod simulation_settings;
 mod tabs;
 mod theme;
 mod top_bar;
+pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::data_source::*;
 use crate::settings::AppSettings;
 use crate::simulation::*;
 use crate::state::*;
 
-use crate::gui::components::top_menu_bar::*;
+use crate::gui::components::top_menu_bar::create_top_menu_bar;
 use crate::gui::fc_settings::*;
 use crate::gui::simulation_settings::*;
 use crate::gui::tabs::*;
 use crate::gui::theme::*;
 use crate::gui::top_bar::*;
-
-// Log files included with the application. These should probably be fetched
-// if necessary to reduce application size.
-// TODO: migrate old launches
-pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
-    ("Zülpich #1", None, None),
-    ("Zülpich #2", None, None),
-    (
-        "DARE (FC A)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_flash_filtered.json"),
-    ),
-    (
-        "DARE (FC B)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_flash_filtered.json"),
-    ),
-    (
-        "EuRoC 2023 (ÆSIR Signý)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_flash_filtered.json"),
-    ),
-];
+use crate::gui::windows::archive::open_archive_window;
 
 #[derive(Debug)]
 enum ArchiveLoadProgress {
@@ -399,51 +378,8 @@ impl Sam {
 
         // A window to open archived logs directly in the application
         let mut archive_open = self.archive_window_open; // necessary to avoid mutably borrowing self
-        egui::Window::new("Flight Archive")
-            .open(&mut archive_open)
-            .min_width(300.0)
-            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
-            .resizable(false)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.add_space(10.0);
+        open_archive_window(ctx, &mut archive_open, self);
 
-                for (i, (title, telem, flash)) in ARCHIVE.iter().enumerate() {
-                    if i != 0 {
-                        ui.separator();
-                    }
-
-                    ui.horizontal(|ui| {
-                        ui.label(*title);
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_archive_log(flash.unwrap());
-                            }
-
-                            if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
-                                self.open_archive_log(telem.unwrap());
-                            }
-                        });
-                    });
-                }
-
-                ui.add_space(10.0);
-                ui.horizontal(|ui| {
-                    ui.add_visible_ui(self.archive_progress.is_some(), |ui| {
-                        let (done, total) = self.archive_progress.unwrap_or((0, 0));
-                        let f = (total > 0).then(|| done as f32 / total as f32).unwrap_or(0.0);
-                        let text = format!(
-                            "{:.2}MiB / {:.2}MiB",
-                            done as f32 / (1024.0 * 1024.0),
-                            total as f32 / (1024.0 * 1024.0)
-                        );
-                        ui.add_sized([ui.available_width(), 20.0], ProgressBar::new(f).text(text));
-                    });
-                });
-                ui.add_space(10.0);
-
-                ui.checkbox(&mut self.replay_logs, "Replay logs");
-            });
         self.archive_window_open = archive_open;
 
         if self.data_source.simulation_settings().is_some() {

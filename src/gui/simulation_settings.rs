@@ -1,9 +1,7 @@
 use egui::{DragValue, InnerResponse, Ui};
 
+use crate::gui::windows::archive::ARCHIVE;
 use crate::simulation::SimulationSettings;
-
-use super::ARCHIVE;
-
 pub trait SimulationSettingsUiExt {
     fn ui(&mut self, ui: &mut Ui) -> InnerResponse<()>;
 }
