@@ -1,8 +1,8 @@
 //! Main GUI code
 
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender};
-use std::io::Write;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
@@ -11,14 +11,15 @@ use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
-use egui::{TextStyle::*, Align2, ProgressBar, Image};
 use egui::{Align, Button, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
+use egui::{Align2, ProgressBar, TextStyle::*};
 
 use futures::StreamExt;
 use log::*;
 
 use mithril::telemetry::*;
 
+mod components;
 mod fc_settings;
 mod map;
 mod maxi_grid;
@@ -30,11 +31,11 @@ mod theme;
 mod top_bar;
 
 use crate::data_source::*;
-use crate::file::*;
 use crate::settings::AppSettings;
 use crate::simulation::*;
 use crate::state::*;
 
+use crate::gui::components::top_menu_bar::*;
 use crate::gui::fc_settings::*;
 use crate::gui::simulation_settings::*;
 use crate::gui::tabs::*;
@@ -153,7 +154,7 @@ impl Sam {
                 Ok(chunk) => {
                     cursor.write_all(&chunk).unwrap();
                     progress = u64::min(progress + chunk.len() as u64, total_size);
-                    if progress == total_size || progress > last_progress + 256*1024 {
+                    if progress == total_size || progress > last_progress + 256 * 1024 {
                         let _ = progress_sender.send(ArchiveLoadProgress::Progress((progress, total_size)));
                         last_progress = progress;
                     }
@@ -394,91 +395,55 @@ impl Sam {
         }
 
         // Top menu bar
-        egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
-            ui.horizontal_centered(|ui| {
-                let image = if ui.style().visuals.dark_mode {
-                    Image::new(egui::include_image!("../assets/logo_dark_mode.png"))
-                } else {
-                    Image::new(egui::include_image!("../assets/logo_light_mode.png"))
-                };
-                ui.add(image.max_size(Vec2::new(ui.available_width(), 20.0)));
-
-                ui.separator();
-                egui::widgets::global_dark_light_mode_switch(ui);
-                ui.separator();
-
-                ui.selectable_value(&mut self.tab, GuiTab::Launch, "🚀 Launch (F1)");
-                ui.selectable_value(&mut self.tab, GuiTab::Plot, "📈 Plot (F2)");
-                ui.selectable_value(&mut self.tab, GuiTab::Configure, "⚙  Configure (F3)");
-
-                ui.separator();
-
-                // Opening files manually is not available on web assembly
-                #[cfg(target_arch = "x86_64")]
-                if ui.selectable_label(false, "🗁  Open Log File").clicked() {
-                    if let Some(data_source) = open_log_file() {
-                        self.open_log_file(data_source);
-                    }
-                }
-
-                // Toggle archive panel
-                ui.toggle_value(&mut self.archive_window_open, "🗄 Flight Archive");
-
-                // Toggle archive panel
-                if ui.selectable_label(self.data_source.simulation_settings().is_some(), "💻 Simulate").clicked() {
-                    self.data_source = Box::new(SimulationDataSource::default());
-                }
-
-                // Show a button to the right to close the current log/simulation and go back to
-                // live view
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if self.data_source.is_log_file() || self.data_source.simulation_settings().is_some() {
-                        if ui.button("❌").clicked() {
-                            self.close_data_source();
-                        }
-                    }
-                });
-            });
-        });
+        create_top_menu_bar(self, ctx);
 
         // A window to open archived logs directly in the application
         let mut archive_open = self.archive_window_open; // necessary to avoid mutably borrowing self
-        egui::Window::new("Flight Archive").open(&mut archive_open).min_width(300.0).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).resizable(false).collapsible(false).show(ctx, |ui| {
-            ui.add_space(10.0);
+        egui::Window::new("Flight Archive")
+            .open(&mut archive_open)
+            .min_width(300.0)
+            .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+            .resizable(false)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                ui.add_space(10.0);
 
-            for (i, (title, telem, flash)) in ARCHIVE.iter().enumerate() {
-                if i != 0 {
-                    ui.separator();
+                for (i, (title, telem, flash)) in ARCHIVE.iter().enumerate() {
+                    if i != 0 {
+                        ui.separator();
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label(*title);
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
+                                self.open_archive_log(flash.unwrap());
+                            }
+
+                            if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
+                                self.open_archive_log(telem.unwrap());
+                            }
+                        });
+                    });
                 }
 
+                ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    ui.label(*title);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                            self.open_archive_log(flash.unwrap());
-                        }
-
-                        if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
-                            self.open_archive_log(telem.unwrap());
-                        }
+                    ui.add_visible_ui(self.archive_progress.is_some(), |ui| {
+                        let (done, total) = self.archive_progress.unwrap_or((0, 0));
+                        let f = (total > 0).then(|| done as f32 / total as f32).unwrap_or(0.0);
+                        let text = format!(
+                            "{:.2}MiB / {:.2}MiB",
+                            done as f32 / (1024.0 * 1024.0),
+                            total as f32 / (1024.0 * 1024.0)
+                        );
+                        ui.add_sized([ui.available_width(), 20.0], ProgressBar::new(f).text(text));
                     });
                 });
-            }
+                ui.add_space(10.0);
 
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                ui.add_visible_ui(self.archive_progress.is_some(), |ui| {
-                    let (done, total) = self.archive_progress.unwrap_or((0, 0));
-                    let f = (total > 0).then(|| done as f32 / total as f32).unwrap_or(0.0);
-                    let text = format!("{:.2}MiB / {:.2}MiB", done as f32 / (1024.0*1024.0), total as f32 / (1024.0*1024.0));
-                    ui.add_sized([ui.available_width(), 20.0], ProgressBar::new(f).text(text));
-                });
+                ui.checkbox(&mut self.replay_logs, "Replay logs");
             });
-            ui.add_space(10.0);
-
-            ui.checkbox(&mut self.replay_logs, "Replay logs");
-        });
         self.archive_window_open = archive_open;
 
         if self.data_source.simulation_settings().is_some() {
