@@ -32,6 +32,8 @@ mod top_bar;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::data_source::*;
+use crate::gui::components::body::create_body;
+use crate::gui::components::header::create_header;
 use crate::settings::AppSettings;
 use crate::simulation::*;
 use crate::state::*;
@@ -418,45 +420,13 @@ impl Sam {
         }
 
         // Top panel containing text indicators and flight mode buttons
-        if ctx.screen_rect().width() > 1000.0 {
-            egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                ui.horizontal_centered(|ui| {
-                    self.top_bar(ui, false);
-                });
-            });
-        } else {
-            egui::TopBottomPanel::top("topbar").min_height(20.0).max_height(300.0).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                CollapsingHeader::new("Status & Controls").default_open(false).show(ui, |ui| {
-                    self.top_bar(ui, true);
-                    ui.add_space(10.0);
-                });
-            });
-        }
+        create_header(self, ctx);
 
         // Bottom status bar
         create_bottom_status_bar(self, ctx);
 
-        // Everything else. This has to be called after all the other panels
-        // are created.
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_width(ui.available_width());
-            ui.set_height(ui.available_height());
-            ui.set_enabled(!self.archive_window_open);
-
-            match self.tab {
-                GuiTab::Launch => {}
-                GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
-                GuiTab::Configure => {
-                    let changed = self.configure_tab.main_ui(ui, self.data_source.as_mut(), &mut self.settings);
-                    if changed {
-                        self.data_source.apply_settings(&self.settings);
-                        self.plot_tab.apply_settings(&self.settings);
-                    }
-                }
-            }
-        });
+        // Everything else. This has to be called after all the other panels are created.
+        create_body(self, ctx);
 
         // If we have live data coming in, we need to tell egui to repaint.
         // If we don't, we shouldn't.
