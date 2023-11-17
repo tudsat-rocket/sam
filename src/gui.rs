@@ -12,7 +12,7 @@ use web_time::Instant;
 use eframe::egui;
 use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
-use egui::{Align, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
+use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use futures::StreamExt;
 use log::*;
@@ -34,14 +34,12 @@ pub mod windows; // TODO: make this private (it is public because it has ARCHIVE
 use crate::data_source::*;
 use crate::gui::components::body::create_body;
 use crate::gui::components::header::create_header;
+use crate::gui::components::simulation_panel::create_simulation_panel;
 use crate::settings::AppSettings;
-use crate::simulation::*;
 use crate::state::*;
 
 use crate::gui::components::bottom_status_bar::create_bottom_status_bar;
 use crate::gui::components::top_menu_bar::create_top_menu_bar;
-use crate::gui::fc_settings::*;
-use crate::gui::simulation_settings::*;
 use crate::gui::tabs::*;
 use crate::gui::theme::*;
 use crate::gui::top_bar::*;
@@ -386,37 +384,7 @@ impl Sam {
         self.archive_window_open = archive_open;
 
         if self.data_source.simulation_settings().is_some() {
-            let old_settings = self.data_source.simulation_settings().unwrap().clone();
-
-            egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                ui.heading("Simulation");
-                ui.add_space(20.0);
-
-                CollapsingHeader::new("Simulation Parameters").default_open(true).show(ui, |ui| {
-                    let settings = self.data_source.simulation_settings().unwrap();
-                    settings.ui(ui)
-                });
-
-                CollapsingHeader::new("(Simulated) FC Settings").default_open(false).show(ui, |ui| {
-                    let settings = self.data_source.simulation_settings().unwrap();
-                    settings.fc_settings.ui(ui, None)
-                });
-
-                ui.add_space(20.0);
-
-                let changed = *self.data_source.simulation_settings().unwrap() != old_settings;
-                let released = false;
-                ui.horizontal(|ui| {
-                    if ui.button("Reset").clicked() {
-                        *(self.data_source.simulation_settings().unwrap()) = SimulationSettings::default();
-                    }
-
-                    if ui.button("↻  Rerun").clicked() || (changed && released) {
-                        self.data_source.reset();
-                    }
-                });
-            });
+            create_simulation_panel(self, ctx);
         }
 
         // Top panel containing text indicators and flight mode buttons
