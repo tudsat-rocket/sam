@@ -253,11 +253,12 @@ impl Sam {
         // TODO: avoid passing in self here
         MenuBarPanel::show(ctx, self, !self.archive_window_open);
 
-        if self.data_source.simulation_settings().is_some() {
-            SimulationPanel::show(ctx, self.data_source.as_mut(), !self.archive_window_open);
+        // If our current data source is a simulation, show a config panel to the left
+        if let Some(sim) = self.data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
+            SimulationPanel::show(ctx, sim, !self.archive_window_open);
         }
 
-        // Top panel containing text indicators and flight mode buttons
+        // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window_open);
 
         // Bottom status bar

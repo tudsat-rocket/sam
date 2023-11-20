@@ -1,6 +1,7 @@
 //! A data source based on a logfile, either passed as a file path, or with
 //! some raw bytes.
 
+use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Read;
@@ -164,10 +165,6 @@ impl DataSource for LogFileDataSource {
         }
     }
 
-    fn is_log_file(&self) -> bool {
-        true
-    }
-
     fn end(&self) -> Option<Instant> {
         if self.replay {
             let last = self.last_time.unwrap_or(Instant::now());
@@ -185,5 +182,13 @@ impl DataSource for LogFileDataSource {
             .or(self.name.clone())
             .unwrap_or_default();
         ui.weak(name);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

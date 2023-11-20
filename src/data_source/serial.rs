@@ -1,5 +1,6 @@
 //! A serial port data source. The default.
 
+use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -420,5 +421,13 @@ impl DataSource for SerialDataSource {
         };
 
         ui.weak(format!("{} {}", serial_port, telemetry_log_info));
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

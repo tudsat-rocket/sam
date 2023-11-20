@@ -1,5 +1,6 @@
 //! Data sources serve as an abstraction for the origin of the displayed data.
 
+use std::any::Any;
 use std::slice::Iter;
 use std::sync::mpsc::SendError;
 
@@ -12,7 +13,6 @@ use mithril::settings::*;
 use mithril::telemetry::*;
 
 use crate::settings::AppSettings;
-use crate::simulation::SimulationSettings;
 use crate::state::*;
 
 pub mod log_file;
@@ -55,13 +55,10 @@ pub trait DataSource {
         None
     }
 
-    fn is_log_file(&self) -> bool {
-        false
-    }
-
-    fn simulation_settings(&mut self) -> Option<&mut SimulationSettings> {
-        None
-    }
-
     fn apply_settings(&mut self, _settings: &AppSettings) {}
+
+    /// Helper methods to allow us to downcast from a boxed DataSource trait to a specific
+    /// implementation type.
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }

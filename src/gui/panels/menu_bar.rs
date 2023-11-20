@@ -1,4 +1,4 @@
-use crate::data_source::SimulationDataSource;
+use crate::data_source::{SimulationDataSource, LogFileDataSource};
 use crate::file::open_log_file;
 use crate::gui::tabs::GuiTab;
 use crate::gui::Sam;
@@ -10,6 +10,10 @@ pub struct MenuBarPanel {}
 
 impl MenuBarPanel {
     pub fn show(ctx: &egui::Context, sam: &mut Sam, enabled: bool) {
+        let any = sam.data_source.as_any();
+        let data_source_is_sim = any.is::<SimulationDataSource>();
+        let data_source_is_log = any.is::<LogFileDataSource>();
+
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
             ui.set_enabled(enabled);
             ui.horizontal_centered(|ui| {
@@ -42,14 +46,14 @@ impl MenuBarPanel {
                 ui.toggle_value(&mut sam.archive_window_open, "🗄 Flight Archive");
 
                 // Toggle archive panel
-                if ui.selectable_label(sam.data_source.simulation_settings().is_some(), "💻 Simulate").clicked() {
+                if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {
                     sam.data_source = Box::new(SimulationDataSource::default());
                 }
 
                 // Show a button to the right to close the current log/simulation and go back to
                 // live view
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if sam.data_source.is_log_file() || sam.data_source.simulation_settings().is_some() {
+                    if data_source_is_log || data_source_is_sim {
                         if ui.button("❌").clicked() {
                             sam.close_data_source();
                         }
