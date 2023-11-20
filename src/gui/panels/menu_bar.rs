@@ -1,5 +1,5 @@
 use crate::data_source::{SimulationDataSource, LogFileDataSource};
-use crate::file::open_log_file;
+use crate::file::*;
 use crate::gui::tabs::GuiTab;
 use crate::gui::Sam;
 
@@ -38,12 +38,12 @@ impl MenuBarPanel {
                 #[cfg(target_arch = "x86_64")]
                 if ui.selectable_label(false, "🗁  Open Log File").clicked() {
                     if let Some(data_source) = open_log_file() {
-                        sam.open_log_file(data_source);
+                        sam.data_source = Box::new(data_source);
                     }
                 }
 
                 // Toggle archive panel
-                ui.toggle_value(&mut sam.archive_window_open, "🗄 Flight Archive");
+                ui.toggle_value(&mut sam.archive_window.open, "🗄 Flight Archive");
 
                 // Toggle archive panel
                 if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {

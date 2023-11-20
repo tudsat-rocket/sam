@@ -1,21 +1,11 @@
 //! Main GUI code
 
-use std::io::Write;
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
 use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
-
-use futures::StreamExt;
-use log::*;
 
 use mithril::telemetry::*;
 
@@ -35,29 +25,17 @@ use crate::data_source::*;
 use crate::gui::panels::*;
 use crate::gui::tabs::*;
 use crate::gui::theme::*;
-use crate::gui::windows::archive::open_archive_window;
+use crate::gui::windows::*;
 use crate::settings::AppSettings;
-
-#[derive(Debug)]
-enum ArchiveLoadProgress {
-    Progress((u64, u64)),
-    Complete(Vec<u8>),
-    Error(reqwest::Error),
-}
 
 // The main state object of our GUI application
 pub struct Sam {
     settings: AppSettings,
     data_source: Box<dyn DataSource>,
     tab: GuiTab,
-
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
-
-    archive_window_open: bool,
-    replay_logs: bool,
-    archive_progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
-    archive_progress: Option<(u64, u64)>,
+    archive_window: ArchiveWindow,
 }
 
 impl Sam {
@@ -87,72 +65,8 @@ impl Sam {
             plot_tab,
             configure_tab,
 
-            archive_window_open: cfg!(target_arch = "wasm32"),
-            replay_logs: false,
-            archive_progress_receiver: None,
-            archive_progress: None,
+            archive_window: ArchiveWindow::default(),
         }
-    }
-
-    /// Opens a log file data source
-    fn open_log_file(&mut self, ds: LogFileDataSource) {
-        self.data_source = Box::new(ds);
-    }
-
-    async fn load_archive_log(url: &str, progress_sender: Sender<ArchiveLoadProgress>) {
-        let start = Instant::now();
-        let response = match reqwest::Client::new().get(url).send().await {
-            Ok(res) => res,
-            Err(e) => {
-                progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
-                return;
-            }
-        };
-
-        let total_size = response.content_length().unwrap_or(0);
-        progress_sender.send(ArchiveLoadProgress::Progress((0, total_size))).unwrap();
-
-        let mut cursor = std::io::Cursor::new(Vec::with_capacity(total_size as usize));
-        let (mut progress, mut last_progress) = (0, 0);
-        let mut stream = response.bytes_stream();
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(chunk) => {
-                    cursor.write_all(&chunk).unwrap();
-                    progress = u64::min(progress + chunk.len() as u64, total_size);
-                    if progress == total_size || progress > last_progress + 256 * 1024 {
-                        let _ = progress_sender.send(ArchiveLoadProgress::Progress((progress, total_size)));
-                        last_progress = progress;
-                    }
-                }
-                Err(e) => {
-                    progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
-                    return;
-                }
-            }
-        }
-
-        progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner())).unwrap();
-        let duration = start.elapsed().as_secs_f32();
-        let mib = (total_size as f32) / 1024.0 / 1024.0;
-        info!("Downloaded {}MiB in {:.1}ms ({}MiB/s)", mib, duration * 1000.0, mib / duration);
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn open_archive_log(&mut self, url: &'static str) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        self.archive_progress_receiver = Some(receiver);
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-            rt.block_on(Self::load_archive_log(url, sender));
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn open_archive_log(&mut self, url: &'static str) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        self.archive_progress_receiver = Some(receiver);
-        wasm_bindgen_futures::spawn_local(Self::load_archive_log(url, sender));
     }
 
     /// Closes the currently opened data source
@@ -173,30 +87,6 @@ impl Sam {
         // TODO: only send this if we know it's not a ground station?
         if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
             self.data_source.send(UplinkMessage::ReadSettings).unwrap();
-        }
-
-        if let Some(receiver) = self.archive_progress_receiver.as_ref() {
-            match receiver.try_recv() {
-                Ok(ArchiveLoadProgress::Progress(progress)) => {
-                    self.archive_progress = Some(progress);
-                }
-                Ok(ArchiveLoadProgress::Complete(bytes)) => {
-                    self.open_log_file(LogFileDataSource::from_bytes(
-                        Some("".to_string()), // TODO: show title
-                        bytes,
-                        self.replay_logs,
-                    ));
-                    self.archive_window_open = false;
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                Ok(ArchiveLoadProgress::Error(e)) => {
-                    error!("{:?}", e); // TODO: show this visually
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                _ => {}
-            }
         }
 
         // Check for keyboard inputs for tab and flight mode changes
@@ -245,25 +135,25 @@ impl Sam {
         }
 
         // A window to open archived logs directly in the application
-        let mut archive_open = self.archive_window_open; // necessary to avoid mutably borrowing self
-        open_archive_window(ctx, &mut archive_open, self);
-        self.archive_window_open = archive_open;
+        if let Some(log) = self.archive_window.show_if_open(ctx) {
+            self.data_source = Box::new(log);
+        }
 
         // Top menu bar
         // TODO: avoid passing in self here
-        MenuBarPanel::show(ctx, self, !self.archive_window_open);
+        MenuBarPanel::show(ctx, self, !self.archive_window.open);
 
         // If our current data source is a simulation, show a config panel to the left
         if let Some(sim) = self.data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
-            SimulationPanel::show(ctx, sim, !self.archive_window_open);
+            SimulationPanel::show(ctx, sim, !self.archive_window.open);
         }
 
         // Header containing text indicators and flight mode buttons
-        HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window_open);
+        HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window.open);
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
+            ui.set_enabled(!self.archive_window.open);
             ui.horizontal_centered(|ui| {
                 // Give the data source some space on the left ...
                 ui.horizontal_centered(|ui| {
@@ -284,7 +174,7 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
+            ui.set_enabled(!self.archive_window.open);
             match self.tab {
                 GuiTab::Launch => {}
                 GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
@@ -300,7 +190,7 @@ impl Sam {
 
         // If we have live data coming in, we need to tell egui to repaint.
         // If we don't, we shouldn't.
-        if let Some(fps) = self.data_source.minimum_fps().or(self.archive_window_open.then(|| 60)) {
+        if let Some(fps) = self.data_source.minimum_fps().or(self.archive_window.open.then(|| 60)) {
             let t = std::time::Duration::from_millis(1000 / fps);
             ctx.request_repaint_after(t);
         }
