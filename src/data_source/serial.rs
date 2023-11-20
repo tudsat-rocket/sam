@@ -396,6 +396,14 @@ impl DataSource for SerialDataSource {
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if ui.button("⏮  Reset").clicked() {
+            self.reset();
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        ui.separator();
+
         let (status_color, status_text) = match self.serial_status {
             SerialStatus::Init => (Color32::from_rgb(0x92, 0x83, 0x74), "Not connected".to_string()),
             SerialStatus::Connected => (Color32::from_rgb(0x98, 0x97, 0x1a), "Connected".to_string()),

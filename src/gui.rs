@@ -32,13 +32,11 @@ mod top_bar;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::data_source::*;
-use crate::gui::components::body::create_body;
 use crate::gui::components::header::create_header;
 use crate::gui::components::simulation_panel::create_simulation_panel;
 use crate::settings::AppSettings;
 use crate::state::*;
 
-use crate::gui::components::bottom_status_bar::create_bottom_status_bar;
 use crate::gui::components::top_menu_bar::create_top_menu_bar;
 use crate::gui::tabs::*;
 use crate::gui::theme::*;
@@ -391,10 +389,41 @@ impl Sam {
         create_header(self, ctx);
 
         // Bottom status bar
-        create_bottom_status_bar(self, ctx);
+        egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
+            ui.set_enabled(!self.archive_window_open);
+            ui.horizontal_centered(|ui| {
+                // Give the data source some space on the left ...
+                ui.horizontal_centered(|ui| {
+                    ui.set_width(ui.available_width() / 2.0);
+                    self.data_source.status_bar_ui(ui);
+                });
+
+                // ... and the current tab some space on the right.
+                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
+                    match self.tab {
+                        GuiTab::Launch => {}
+                        GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
+                        GuiTab::Configure => {}
+                    }
+                });
+            });
+        });
 
         // Everything else. This has to be called after all the other panels are created.
-        create_body(self, ctx);
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.set_enabled(!self.archive_window_open);
+            match self.tab {
+                GuiTab::Launch => {}
+                GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
+                GuiTab::Configure => {
+                    let changed = self.configure_tab.main_ui(ui, self.data_source.as_mut(), &mut self.settings);
+                    if changed {
+                        self.data_source.apply_settings(&self.settings);
+                        self.plot_tab.apply_settings(&self.settings);
+                    }
+                }
+            }
+        });
 
         // If we have live data coming in, we need to tell egui to repaint.
         // If we don't, we shouldn't.

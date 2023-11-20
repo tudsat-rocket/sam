@@ -2,8 +2,7 @@ use crate::gui::Sam;
 use eframe::egui;
 use egui::{Align, Align2, Button, Layout, ProgressBar};
 
-// Log files included with the application. These should probably be fetched
-// if necessary to reduce application size.
+// Log files included with the application.
 // TODO: migrate old launches
 pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
     ("Zülpich #1", None, None),
