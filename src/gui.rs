@@ -1,24 +1,15 @@
 //! Main GUI code
 
 use std::path::PathBuf;
-use std::sync::mpsc::{Receiver, Sender};
-use std::io::Write;
-
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
-use egui::{TextStyle::*, Align2, ProgressBar, Image};
-use egui::{Align, Button, CollapsingHeader, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
-
-use futures::StreamExt;
-use log::*;
+use egui::TextStyle::*;
+use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use mithril::telemetry::*;
 
+mod panels;
 mod fc_settings;
 mod map;
 mod maxi_grid;
@@ -28,68 +19,31 @@ mod simulation_settings;
 mod tabs;
 mod theme;
 mod top_bar;
+pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::data_source::*;
-use crate::file::*;
-use crate::settings::AppSettings;
-use crate::simulation::*;
-use crate::state::*;
-
-use crate::gui::fc_settings::*;
-use crate::gui::simulation_settings::*;
+use crate::gui::panels::*;
 use crate::gui::tabs::*;
 use crate::gui::theme::*;
-use crate::gui::top_bar::*;
-
-// Log files included with the application. These should probably be fetched
-// if necessary to reduce application size.
-// TODO: migrate old launches
-pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
-    ("Zülpich #1", None, None),
-    ("Zülpich #2", None, None),
-    (
-        "DARE (FC A)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_flash_filtered.json"),
-    ),
-    (
-        "DARE (FC B)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_flash_filtered.json"),
-    ),
-    (
-        "EuRoC 2023 (ÆSIR Signý)",
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_telem_filtered.json"),
-        Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_flash_filtered.json"),
-    ),
-];
-
-#[derive(Debug)]
-enum ArchiveLoadProgress {
-    Progress((u64, u64)),
-    Complete(Vec<u8>),
-    Error(reqwest::Error),
-}
+use crate::gui::windows::*;
+use crate::settings::AppSettings;
 
 // The main state object of our GUI application
 pub struct Sam {
     settings: AppSettings,
     data_source: Box<dyn DataSource>,
     tab: GuiTab,
-
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
-
-    archive_window_open: bool,
-    replay_logs: bool,
-    archive_progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
-    archive_progress: Option<(u64, u64)>,
+    archive_window: ArchiveWindow,
 }
 
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Box<dyn DataSource>) -> Self {
+    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Option<Box<dyn DataSource>>) -> Self {
+        let data_source = data_source.unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
+
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
@@ -113,200 +67,13 @@ impl Sam {
             plot_tab,
             configure_tab,
 
-            archive_window_open: cfg!(target_arch = "wasm32"),
-            replay_logs: false,
-            archive_progress_receiver: None,
-            archive_progress: None,
+            archive_window: ArchiveWindow::default(),
         }
-    }
-
-    /// Returns the "current" value for the given callback. This is the last
-    /// known of the value at the current time.
-    /// TODO: incorporate cursor position?
-    fn current<T>(&mut self, callback: impl Fn(&VehicleState) -> Option<T>) -> Option<T> {
-        self.data_source.vehicle_states().rev().find_map(|(_t, msg)| callback(msg))
-    }
-
-    /// Opens a log file data source
-    fn open_log_file(&mut self, ds: LogFileDataSource) {
-        self.data_source = Box::new(ds);
-    }
-
-    async fn load_archive_log(url: &str, progress_sender: Sender<ArchiveLoadProgress>) {
-        let start = Instant::now();
-        let response = match reqwest::Client::new().get(url).send().await {
-            Ok(res) => res,
-            Err(e) => {
-                progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
-                return;
-            }
-        };
-
-        let total_size = response.content_length().unwrap_or(0);
-        progress_sender.send(ArchiveLoadProgress::Progress((0, total_size))).unwrap();
-
-        let mut cursor = std::io::Cursor::new(Vec::with_capacity(total_size as usize));
-        let (mut progress, mut last_progress) = (0, 0);
-        let mut stream = response.bytes_stream();
-        while let Some(result) = stream.next().await {
-            match result {
-                Ok(chunk) => {
-                    cursor.write_all(&chunk).unwrap();
-                    progress = u64::min(progress + chunk.len() as u64, total_size);
-                    if progress == total_size || progress > last_progress + 256*1024 {
-                        let _ = progress_sender.send(ArchiveLoadProgress::Progress((progress, total_size)));
-                        last_progress = progress;
-                    }
-                }
-                Err(e) => {
-                    progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
-                    return;
-                }
-            }
-        }
-
-        progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner())).unwrap();
-        let duration = start.elapsed().as_secs_f32();
-        let mib = (total_size as f32) / 1024.0 / 1024.0;
-        info!("Downloaded {}MiB in {:.1}ms ({}MiB/s)", mib, duration * 1000.0, mib / duration);
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn open_archive_log(&mut self, url: &'static str) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        self.archive_progress_receiver = Some(receiver);
-        std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-            rt.block_on(Self::load_archive_log(url, sender));
-        });
-    }
-
-    #[cfg(target_arch = "wasm32")]
-    fn open_archive_log(&mut self, url: &'static str) {
-        let (sender, receiver) = std::sync::mpsc::channel();
-        self.archive_progress_receiver = Some(receiver);
-        wasm_bindgen_futures::spawn_local(Self::load_archive_log(url, sender));
     }
 
     /// Closes the currently opened data source
-    fn close_data_source(&mut self) {
-        self.data_source = Box::new(SerialDataSource::new(self.settings.lora.clone()));
-    }
-
-    fn text_telemetry(&mut self, ui: &mut egui::Ui) {
-        let spacing = 3.0; // TODO: this is ugly
-
-        let time = self
-            .data_source
-            .vehicle_states()
-            .last()
-            .map(|(_t, msg)| format!("{:10.3}", (msg.time as f32) / 1000.0));
-        let rssi = self.current(|vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0));
-        let mode = self.current(|vs| vs.mode).map(|s| format!("{:?}", s));
-
-        let alt_ground = self.current(|vs| vs.altitude_ground).unwrap_or(0.0);
-        let alt_agl = self.current(|vs| vs.altitude.map(|a| a - alt_ground));
-        let alt_max = self.current(|vs| vs.altitude_max.map(|a| a - alt_ground));
-        let vertical_accel = self.current(|vs| vs.vertical_accel_filtered);
-
-        let last_gps = self
-            .data_source
-            .vehicle_states()
-            .rev()
-            .find_map(|(_t, vs)| vs.gps_fix.is_some().then(|| vs))
-            .cloned();
-        let gps_status = last_gps.as_ref().map(|vs| format!("{:?}", vs.gps_fix.unwrap()));
-        let hdop = last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0);
-        let latitude = last_gps.as_ref().and_then(|vs| vs.latitude);
-        let longitude = last_gps.as_ref().and_then(|vs| vs.longitude);
-        let coords = latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng)));
-
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width() / 3.5);
-            ui.add_space(spacing);
-            ui.telemetry_value("🕐", "Time [s]", time);
-            ui.telemetry_value("🏷", "Mode", mode);
-            ui.nominal_value("🔥", "Baro Temp. [°C]", self.current(|vs| vs.temperature_baro), 1, 0.0, 60.0);
-            ui.nominal_value("📡", "RSSI [dBm]", rssi, 1, -50.0, 0.0);
-            ui.nominal_value("📶", "Link Quality [%]", self.data_source.link_quality(), 1, 90.0, 101.0);
-            ui.add_space(ui.spacing().item_spacing.y);
-        });
-
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width() / 2.0);
-            ui.add_space(spacing);
-            ui.nominal_value("📈", "Altitude (AGL) [m]", alt_agl, 1, -1.0, 10000.0);
-            ui.nominal_value("📈", "Max Alt. (AGL) [m]", alt_max, 1, -1.0, 10000.0);
-            ui.nominal_value("☁", "Baro. Alt. (ASL) [m]", self.current(|vs| vs.altitude_baro), 1, -100.0, 10000.0);
-            ui.nominal_value("⏱", "Vertical Speed [m/s]", self.current(|vs| vs.vertical_speed), 2, -1.0, 1.0);
-            ui.nominal_value("⬆", "Vertical Accel. [m/s²]", vertical_accel, 1, -1.0, 1.0);
-        });
-
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width());
-            ui.add_space(spacing);
-            ui.telemetry_value("🌍", "GPS Status", gps_status);
-            ui.nominal_value("📶", "# Sats", self.current(|vs| vs.num_satellites.map(|n| n as f32)), 0, 5.0, 99.0);
-            ui.nominal_value("🎯", "HDOP", hdop, 2, 0.0, 5.0);
-            ui.nominal_value("📡", "GPS Alt. (ASL) [m]", self.current(|vs| vs.altitude_gps), 1, -100.0, 10000.0);
-            ui.telemetry_value("🌐", "Coords", coords);
-        });
-    }
-
-    pub fn top_bar(&mut self, ui: &mut egui::Ui, vertical: bool) {
-        if vertical {
-            ui.horizontal(|ui| {
-                self.text_telemetry(ui);
-            });
-        } else {
-            ui.horizontal_centered(|ui| {
-                ui.set_width(ui.available_width() * 0.50);
-                self.text_telemetry(ui);
-            });
-        }
-
-        ui.separator();
-
-        let current_data_rate = self.current(|vs| vs.telemetry_data_rate).unwrap_or_default();
-        let current_transmit_power = self.current(|vs| vs.transmit_power).unwrap_or_default();
-
-        if vertical {
-            ui.columns(4, |uis| {
-                uis[0].add_space(3.0);
-                uis[0].label("Data Rate [Hz]");
-                uis[1].data_rate_controls(current_data_rate, self.data_source.as_mut());
-                uis[2].add_space(3.0);
-                uis[2].label("Transmit Power [dBm]");
-                uis[3].transmit_power_controls(current_transmit_power, self.data_source.as_mut());
-            });
-        } else {
-            ui.vertical(|ui| {
-                ui.add_space(3.0);
-                ui.label("Data Rate [Hz]");
-                ui.data_rate_controls(current_data_rate, self.data_source.as_mut());
-                ui.add_space(3.0);
-                ui.label("Transmit Power [dBm]");
-                ui.transmit_power_controls(current_transmit_power, self.data_source.as_mut());
-            });
-        }
-
-        ui.separator();
-
-        ui.vertical(|ui| {
-            let size = Vec2::new(ui.available_width(), 30.0);
-            ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
-                ui.command_button("⟲  Reboot", Command::Reboot, self.data_source.as_mut());
-                ui.command_button("🗑 Erase Flash", Command::EraseFlash, self.data_source.as_mut());
-                ui.flash_bar(ui.available_width() * 0.6, self.current(|vs| vs.flash_pointer));
-                ui.battery_bar(ui.available_width(), self.current(|vs| vs.battery_voltage));
-            });
-
-            ui.separator();
-
-            ui.allocate_ui(ui.available_size(), |ui| {
-                ui.flight_mode_buttons(self.current(|vs| vs.mode), self.data_source.as_mut());
-            });
-        });
+    fn close_data_source(&mut self, ctx: &egui::Context) {
+        self.data_source = Box::new(SerialDataSource::new(ctx, self.settings.lora.clone()));
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
@@ -322,30 +89,6 @@ impl Sam {
         // TODO: only send this if we know it's not a ground station?
         if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
             self.data_source.send(UplinkMessage::ReadSettings).unwrap();
-        }
-
-        if let Some(receiver) = self.archive_progress_receiver.as_ref() {
-            match receiver.try_recv() {
-                Ok(ArchiveLoadProgress::Progress(progress)) => {
-                    self.archive_progress = Some(progress);
-                }
-                Ok(ArchiveLoadProgress::Complete(bytes)) => {
-                    self.open_log_file(LogFileDataSource::from_bytes(
-                        Some("".to_string()), // TODO: show title
-                        bytes,
-                        self.replay_logs,
-                    ));
-                    self.archive_window_open = false;
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                Ok(ArchiveLoadProgress::Error(e)) => {
-                    error!("{:?}", e); // TODO: show this visually
-                    self.archive_progress_receiver = None;
-                    self.archive_progress = None;
-                }
-                _ => {}
-            }
         }
 
         // Check for keyboard inputs for tab and flight mode changes
@@ -393,149 +136,26 @@ impl Sam {
             ctx.set_pixels_per_point(1.0);
         }
 
-        // Top menu bar
-        egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
-            ui.horizontal_centered(|ui| {
-                let image = if ui.style().visuals.dark_mode {
-                    Image::new(egui::include_image!("../assets/logo_dark_mode.png"))
-                } else {
-                    Image::new(egui::include_image!("../assets/logo_light_mode.png"))
-                };
-                ui.add(image.max_size(Vec2::new(ui.available_width(), 20.0)));
-
-                ui.separator();
-                egui::widgets::global_dark_light_mode_switch(ui);
-                ui.separator();
-
-                ui.selectable_value(&mut self.tab, GuiTab::Launch, "🚀 Launch (F1)");
-                ui.selectable_value(&mut self.tab, GuiTab::Plot, "📈 Plot (F2)");
-                ui.selectable_value(&mut self.tab, GuiTab::Configure, "⚙  Configure (F3)");
-
-                ui.separator();
-
-                // Opening files manually is not available on web assembly
-                #[cfg(target_arch = "x86_64")]
-                if ui.selectable_label(false, "🗁  Open Log File").clicked() {
-                    if let Some(data_source) = open_log_file() {
-                        self.open_log_file(data_source);
-                    }
-                }
-
-                // Toggle archive panel
-                ui.toggle_value(&mut self.archive_window_open, "🗄 Flight Archive");
-
-                // Toggle archive panel
-                if ui.selectable_label(self.data_source.simulation_settings().is_some(), "💻 Simulate").clicked() {
-                    self.data_source = Box::new(SimulationDataSource::default());
-                }
-
-                // Show a button to the right to close the current log/simulation and go back to
-                // live view
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if self.data_source.is_log_file() || self.data_source.simulation_settings().is_some() {
-                        if ui.button("❌").clicked() {
-                            self.close_data_source();
-                        }
-                    }
-                });
-            });
-        });
-
         // A window to open archived logs directly in the application
-        let mut archive_open = self.archive_window_open; // necessary to avoid mutably borrowing self
-        egui::Window::new("Flight Archive").open(&mut archive_open).min_width(300.0).anchor(Align2::CENTER_CENTER, [0.0, 0.0]).resizable(false).collapsible(false).show(ctx, |ui| {
-            ui.add_space(10.0);
-
-            for (i, (title, telem, flash)) in ARCHIVE.iter().enumerate() {
-                if i != 0 {
-                    ui.separator();
-                }
-
-                ui.horizontal(|ui| {
-                    ui.label(*title);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                            self.open_archive_log(flash.unwrap());
-                        }
-
-                        if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
-                            self.open_archive_log(telem.unwrap());
-                        }
-                    });
-                });
-            }
-
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                ui.add_visible_ui(self.archive_progress.is_some(), |ui| {
-                    let (done, total) = self.archive_progress.unwrap_or((0, 0));
-                    let f = (total > 0).then(|| done as f32 / total as f32).unwrap_or(0.0);
-                    let text = format!("{:.2}MiB / {:.2}MiB", done as f32 / (1024.0*1024.0), total as f32 / (1024.0*1024.0));
-                    ui.add_sized([ui.available_width(), 20.0], ProgressBar::new(f).text(text));
-                });
-            });
-            ui.add_space(10.0);
-
-            ui.checkbox(&mut self.replay_logs, "Replay logs");
-        });
-        self.archive_window_open = archive_open;
-
-        if self.data_source.simulation_settings().is_some() {
-            let old_settings = self.data_source.simulation_settings().unwrap().clone();
-
-            egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                ui.heading("Simulation");
-                ui.add_space(20.0);
-
-                CollapsingHeader::new("Simulation Parameters").default_open(true).show(ui, |ui| {
-                    let settings = self.data_source.simulation_settings().unwrap();
-                    settings.ui(ui)
-                });
-
-                CollapsingHeader::new("(Simulated) FC Settings").default_open(false).show(ui, |ui| {
-                    let settings = self.data_source.simulation_settings().unwrap();
-                    settings.fc_settings.ui(ui, None)
-                });
-
-                ui.add_space(20.0);
-
-                let changed = *self.data_source.simulation_settings().unwrap() != old_settings;
-                let released = false;
-                ui.horizontal(|ui| {
-                    if ui.button("Reset").clicked() {
-                        *(self.data_source.simulation_settings().unwrap()) = SimulationSettings::default();
-                    }
-
-                    if ui.button("↻  Rerun").clicked() || (changed && released) {
-                        self.data_source.reset();
-                    }
-                });
-            });
+        if let Some(log) = self.archive_window.show_if_open(ctx) {
+            self.data_source = Box::new(log);
         }
 
-        // Top panel containing text indicators and flight mode buttons
-        if ctx.screen_rect().width() > 1000.0 {
-            egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                ui.horizontal_centered(|ui| {
-                    self.top_bar(ui, false);
-                });
-            });
-        } else {
-            egui::TopBottomPanel::top("topbar").min_height(20.0).max_height(300.0).show(ctx, |ui| {
-                ui.set_enabled(!self.archive_window_open);
-                CollapsingHeader::new("Status & Controls").default_open(false).show(ui, |ui| {
-                    self.top_bar(ui, true);
-                    ui.add_space(10.0);
-                });
-            });
+        // Top menu bar
+        // TODO: avoid passing in self here
+        MenuBarPanel::show(ctx, self, !self.archive_window.open);
+
+        // If our current data source is a simulation, show a config panel to the left
+        if let Some(sim) = self.data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
+            SimulationPanel::show(ctx, sim, !self.archive_window.open);
         }
+
+        // Header containing text indicators and flight mode buttons
+        HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window.open);
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window_open);
+            ui.set_enabled(!self.archive_window.open);
             ui.horizontal_centered(|ui| {
                 // Give the data source some space on the left ...
                 ui.horizontal_centered(|ui| {
@@ -545,16 +165,6 @@ impl Sam {
 
                 // ... and the current tab some space on the right.
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ui.add_enabled_ui(!self.data_source.is_log_file(), |ui| {
-                        if ui.button("⏮  Reset").clicked() {
-                            self.data_source.reset();
-                        }
-                    });
-
-                    #[cfg(not(target_arch = "wasm32"))]
-                    ui.separator();
-
                     match self.tab {
                         GuiTab::Launch => {}
                         GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
@@ -564,13 +174,9 @@ impl Sam {
             });
         });
 
-        // Everything else. This has to be called after all the other panels
-        // are created.
+        // Everything else. This has to be called after all the other panels are created.
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_width(ui.available_width());
-            ui.set_height(ui.available_height());
-            ui.set_enabled(!self.archive_window_open);
-
+            ui.set_enabled(!self.archive_window.open);
             match self.tab {
                 GuiTab::Launch => {}
                 GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
@@ -583,13 +189,6 @@ impl Sam {
                 }
             }
         });
-
-        // If we have live data coming in, we need to tell egui to repaint.
-        // If we don't, we shouldn't.
-        if let Some(fps) = self.data_source.minimum_fps().or(self.archive_window_open.then(|| 60)) {
-            let t = std::time::Duration::from_millis(1000 / fps);
-            ctx.request_repaint_after(t);
-        }
     }
 }
 
@@ -606,9 +205,10 @@ impl eframe::App for Sam {
 pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or(AppSettings::default());
 
-    let data_source: Box<dyn DataSource> = match log_file {
-        Some(path) => Box::new(LogFileDataSource::new(path)?),
-        None => Box::new(SerialDataSource::new(app_settings.lora.clone())),
+    let data_source: Option<Box<dyn DataSource>> = if let Some(path) = log_file {
+        Some(Box::new(LogFileDataSource::new(path)?))
+    } else {
+        None
     };
 
     #[cfg(feature = "profiling")]

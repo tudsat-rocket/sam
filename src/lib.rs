@@ -53,14 +53,11 @@ impl WebHandle {
     /// Call this once from JavaScript to start your app.
     #[wasm_bindgen]
     pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
-        use crate::data_source::SerialDataSource;
-        let data_source = Box::new(SerialDataSource::new(mithril::settings::LoRaSettings::default()));
-
         self.runner
             .start(
                 canvas_id,
                 eframe::WebOptions::default(),
-                Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, AppSettings::default(), data_source))),
+                Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, AppSettings::default(), None))),
             )
             .await
     }

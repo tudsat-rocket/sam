@@ -1,6 +1,7 @@
 //! A data source based on a logfile, either passed as a file path, or with
 //! some raw bytes.
 
+use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Read;
@@ -75,7 +76,7 @@ impl LogFileDataSource {
 }
 
 impl DataSource for LogFileDataSource {
-    fn update(&mut self, _ctx: &egui::Context) {
+    fn update(&mut self, ctx: &egui::Context) {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -129,6 +130,10 @@ impl DataSource for LogFileDataSource {
         for (t, msg) in self.messages.drain(..pointer) {
             self.vehicle_states.push((t, msg.into()));
         }
+
+        if self.replay {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
     }
 
     fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
@@ -156,18 +161,6 @@ impl DataSource for LogFileDataSource {
         Ok(())
     }
 
-    fn minimum_fps(&self) -> Option<u64> {
-        if self.replay && self.last_time.map(|t| t > Instant::now()).unwrap_or(true) {
-            Some(60)
-        } else {
-            None
-        }
-    }
-
-    fn is_log_file(&self) -> bool {
-        true
-    }
-
     fn end(&self) -> Option<Instant> {
         if self.replay {
             let last = self.last_time.unwrap_or(Instant::now());
@@ -185,5 +178,13 @@ impl DataSource for LogFileDataSource {
             .or(self.name.clone())
             .unwrap_or_default();
         ui.weak(name);
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

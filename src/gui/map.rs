@@ -74,9 +74,10 @@ fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, Box<dy
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn load_tile_image(tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
+fn load_tile_image(ctx: egui::Context, tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
     let bytes = load_tile_bytes(tile, access_token)?;
     let image = egui_extras::image::load_image_bytes(&bytes)?;
+    ctx.request_repaint();
     Ok(image)
 }
 
@@ -90,9 +91,10 @@ async fn load_tile_bytes(tile: &Tile, access_token: &String) -> Result<Vec<u8>, 
 }
 
 #[cfg(target_arch = "wasm32")]
-async fn load_tile_image(tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
+async fn load_tile_image(ctx: egui::Context, tile: &Tile, access_token: &String) -> Result<ColorImage, Box<dyn std::error::Error>> {
     let bytes = load_tile_bytes(tile, access_token).await?;
     let image = egui_extras::image::load_image_bytes(&bytes)?;
+    ctx.request_repaint();
     Ok(image)
 }
 
@@ -305,11 +307,12 @@ impl MapState {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn load_tile(&self, tile: Tile) {
+    fn load_tile(&self, ctx: &egui::Context, tile: Tile) {
+        let ctx = ctx.clone();
         let cache = self.tile_cache.clone();
         let at = self.access_token.clone();
         std::thread::spawn(move || {
-            match load_tile_image(&tile, &at) {
+            match load_tile_image(ctx, &tile, &at) {
                 Ok(image) => cache.lock().insert(tile, image),
                 Err(e) => log::error!("{:?}", e),
             }
@@ -319,11 +322,12 @@ impl MapState {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn load_tile(&self, tile: Tile) {
+    fn load_tile(&self, ctx: &egui::Context, tile: Tile) {
+        let ctx = ctx.clone();
         let cache = self.tile_cache.clone();
         let access_token = self.access_token.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            match load_tile_image(&tile, &access_token).await {
+            match load_tile_image(ctx, &tile, &access_token).await {
                 Ok(image) => cache.lock().insert(tile, image),
                 Err(e) => log::error!("{:?}", e),
             }
@@ -351,7 +355,7 @@ impl MapState {
         let iter = bbox.tiles_for_zoom(zoom as u8).filter_map(|tile| {
             let result = self.tile_cache.lock().cached_image(ctx, &tile);
             if result.is_none() && self.tile_cache.lock().loading.insert(tile_id(&tile)) {
-                self.load_tile(tile);
+                self.load_tile(ctx, tile);
             }
             result
         });

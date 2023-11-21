@@ -1,9 +1,9 @@
 use std::collections::VecDeque;
 
-use rand::SeedableRng;
 use nalgebra::{UnitQuaternion, Vector3};
 use rand::distributions::Distribution;
 use rand::RngCore;
+use rand::SeedableRng;
 
 use mithril::settings::*;
 use mithril::state_estimation::*;
@@ -11,11 +11,11 @@ use mithril::telemetry::*;
 
 use crate::state::VehicleState;
 
-use crate::gui::ARCHIVE;
+use crate::gui::windows::archive::ARCHIVE;
 
-#[cfg(any(target_os="windows", target_os="android"))]
+#[cfg(any(target_os = "windows", target_os = "android"))]
 type Rng = rand::rngs::StdRng;
-#[cfg(not(any(target_os="windows", target_os="android")))]
+#[cfg(not(any(target_os = "windows", target_os = "android")))]
 type Rng = rand::rngs::SmallRng;
 
 const GRAVITY: f32 = 9.80665;
@@ -146,7 +146,8 @@ impl SimulationState {
 
         // TODO: do this nicer (separate thread/task, progress, caching, support WASM)
         #[cfg(not(target_arch = "wasm32"))]
-        let mut remaining_replication_states = settings.replication_log_index
+        let mut remaining_replication_states = settings
+            .replication_log_index
             .map(|i| ARCHIVE.get(i))
             .flatten()
             .map(|(_, _, flash)| *flash)
@@ -162,7 +163,8 @@ impl SimulationState {
             remaining_replication_states.pop_front();
         }
 
-        let (altitude, latitude, longitude) = remaining_replication_states.front()
+        let (altitude, latitude, longitude) = remaining_replication_states
+            .front()
             .map(|vs| (vs.altitude_gps.unwrap(), vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64))
             .unwrap_or((settings.altitude_ground, settings.launch_latitude, settings.launch_longitude));
 
@@ -171,7 +173,8 @@ impl SimulationState {
             remaining_replication_states.pop_front();
         }
 
-        let mut state_estimator = StateEstimator::new(1000.0 / (SIMULATION_TICK_MS as f32), settings.fc_settings.clone());
+        let mut state_estimator =
+            StateEstimator::new(1000.0 / (SIMULATION_TICK_MS as f32), settings.fc_settings.clone());
 
         let mut time = 0;
         let mut mode = FlightMode::Idle;
@@ -217,7 +220,7 @@ impl SimulationState {
             magnetometer,
             altitude_baro,
 
-            remaining_replication_states
+            remaining_replication_states,
         }
     }
 
@@ -318,12 +321,25 @@ impl SimulationState {
             // TODO: linear interpolation is probably not the best choice here.
             // On the other hand, simplying applying more noise here isn't great either
             let delta_time = next.time - self.time;
-            self.gyroscope = Some(self.gyroscope.unwrap() + (next.gyroscope.unwrap() - self.gyroscope.unwrap()) / delta_time as f32);
-            self.accelerometer1 = Some(self.accelerometer1.unwrap() + (next.accelerometer1.unwrap() - self.accelerometer1.unwrap()) / delta_time as f32);
-            self.accelerometer2 = Some(self.accelerometer2.unwrap() + (next.accelerometer2.unwrap() - self.accelerometer2.unwrap()) / delta_time as f32);
-            self.magnetometer = Some(self.magnetometer.unwrap() + (next.magnetometer.unwrap() - self.magnetometer.unwrap()) / delta_time as f32);
+            self.gyroscope =
+                Some(self.gyroscope.unwrap() + (next.gyroscope.unwrap() - self.gyroscope.unwrap()) / delta_time as f32);
+            self.accelerometer1 = Some(
+                self.accelerometer1.unwrap()
+                    + (next.accelerometer1.unwrap() - self.accelerometer1.unwrap()) / delta_time as f32,
+            );
+            self.accelerometer2 = Some(
+                self.accelerometer2.unwrap()
+                    + (next.accelerometer2.unwrap() - self.accelerometer2.unwrap()) / delta_time as f32,
+            );
+            self.magnetometer = Some(
+                self.magnetometer.unwrap()
+                    + (next.magnetometer.unwrap() - self.magnetometer.unwrap()) / delta_time as f32,
+            );
             let altitude_baro = next.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
-            self.altitude_baro = Some(self.altitude_baro.unwrap() + (altitude_baro.unwrap() - self.altitude_baro.unwrap()) / delta_time as f32);
+            self.altitude_baro = Some(
+                self.altitude_baro.unwrap()
+                    + (altitude_baro.unwrap() - self.altitude_baro.unwrap()) / delta_time as f32,
+            );
         }
 
         false

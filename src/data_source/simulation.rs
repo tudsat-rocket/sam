@@ -1,5 +1,6 @@
 //! A simulation data source
 
+use std::any::Any;
 use std::sync::mpsc::SendError;
 use std::time::Duration;
 use std::slice::Iter;
@@ -20,7 +21,7 @@ use crate::state::VehicleState;
 
 #[derive(Default)]
 pub struct SimulationDataSource {
-    settings: SimulationSettings,
+    pub settings: SimulationSettings,
     state: Option<SimulationState>,
     vehicle_states: Vec<(Instant, VehicleState)>,
 }
@@ -72,14 +73,6 @@ impl DataSource for SimulationDataSource {
         Ok(())
     }
 
-    fn minimum_fps(&self) -> Option<u64> {
-        None
-    }
-
-    fn simulation_settings(&mut self) -> Option<&mut SimulationSettings> {
-        Some(&mut self.settings)
-    }
-
     fn end(&self) -> Option<Instant> {
         self.vehicle_states.last().map(|(t, _vs)| *t)
     }
@@ -87,5 +80,13 @@ impl DataSource for SimulationDataSource {
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
         ui.colored_label(Color32::KHAKI, "Simulation");
         // TODO: maybe computation times or something?
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
