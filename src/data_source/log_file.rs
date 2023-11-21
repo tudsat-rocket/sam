@@ -76,7 +76,7 @@ impl LogFileDataSource {
 }
 
 impl DataSource for LogFileDataSource {
-    fn update(&mut self, _ctx: &egui::Context) {
+    fn update(&mut self, ctx: &egui::Context) {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
                 error!("Failed to read log file: {:?}", e);
@@ -130,6 +130,10 @@ impl DataSource for LogFileDataSource {
         for (t, msg) in self.messages.drain(..pointer) {
             self.vehicle_states.push((t, msg.into()));
         }
+
+        if self.replay {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
     }
 
     fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
@@ -155,14 +159,6 @@ impl DataSource for LogFileDataSource {
 
     fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         Ok(())
-    }
-
-    fn minimum_fps(&self) -> Option<u64> {
-        if self.replay && self.last_time.map(|t| t > Instant::now()).unwrap_or(true) {
-            Some(60)
-        } else {
-            None
-        }
     }
 
     fn end(&self) -> Option<Instant> {

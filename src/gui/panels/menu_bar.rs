@@ -55,7 +55,7 @@ impl MenuBarPanel {
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
                     if data_source_is_log || data_source_is_sim {
                         if ui.button("❌").clicked() {
-                            sam.close_data_source();
+                            sam.close_data_source(ctx);
                         }
                     }
                 });

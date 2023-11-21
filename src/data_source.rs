@@ -43,9 +43,6 @@ pub trait DataSource {
     /// Send an authenticated uplink command
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>>;
 
-    /// The minimum fps required for the data source. Occasional redraws
-    /// are necessary if data source is live.
-    fn minimum_fps(&self) -> Option<u64>;
     fn end(&self) -> Option<Instant>;
 
     fn status_bar_ui(&mut self, _ui: &mut egui::Ui) {

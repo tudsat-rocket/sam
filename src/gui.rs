@@ -41,7 +41,9 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Box<dyn DataSource>) -> Self {
+    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Option<Box<dyn DataSource>>) -> Self {
+        let data_source = data_source.unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
+
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
@@ -70,8 +72,8 @@ impl Sam {
     }
 
     /// Closes the currently opened data source
-    fn close_data_source(&mut self) {
-        self.data_source = Box::new(SerialDataSource::new(self.settings.lora.clone()));
+    fn close_data_source(&mut self, ctx: &egui::Context) {
+        self.data_source = Box::new(SerialDataSource::new(ctx, self.settings.lora.clone()));
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
@@ -187,13 +189,6 @@ impl Sam {
                 }
             }
         });
-
-        // If we have live data coming in, we need to tell egui to repaint.
-        // If we don't, we shouldn't.
-        if let Some(fps) = self.data_source.minimum_fps().or(self.archive_window.open.then(|| 60)) {
-            let t = std::time::Duration::from_millis(1000 / fps);
-            ctx.request_repaint_after(t);
-        }
     }
 }
 
@@ -210,9 +205,10 @@ impl eframe::App for Sam {
 pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or(AppSettings::default());
 
-    let data_source: Box<dyn DataSource> = match log_file {
-        Some(path) => Box::new(LogFileDataSource::new(path)?),
-        None => Box::new(SerialDataSource::new(app_settings.lora.clone())),
+    let data_source: Option<Box<dyn DataSource>> = if let Some(path) = log_file {
+        Some(Box::new(LogFileDataSource::new(path)?))
+    } else {
+        None
     };
 
     #[cfg(feature = "profiling")]

@@ -54,6 +54,7 @@ pub enum SerialStatus {
 /// messages.
 #[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
 pub fn downlink_port(
+    ctx: Option<egui::Context>,
     downlink_tx: &mut Sender<DownlinkMessage>,
     uplink_rx: &mut Receiver<UplinkMessage>,
     port: String,
@@ -113,6 +114,9 @@ pub fn downlink_port(
             // If successful, send msg through channel.
             downlink_tx.send(msg)?;
             last_message = now;
+            if let Some(ctx) = &ctx {
+                ctx.request_repaint();
+            }
         }
 
         now = Instant::now();
@@ -141,6 +145,7 @@ pub fn find_serial_port() -> Option<String> {
 /// Run in a separate thread using `spawn_downlink_monitor`.
 #[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
 pub fn downlink_monitor(
+    ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     mut downlink_tx: Sender<DownlinkMessage>,
     mut uplink_rx: Receiver<UplinkMessage>,
@@ -150,9 +155,12 @@ pub fn downlink_monitor(
         // If a device was connected, start reading messages.
         if let Some(p) = find_serial_port() {
             serial_status_tx.send((SerialStatus::Connected, Some(p.clone())))?;
-            if let Err(e) = downlink_port(&mut downlink_tx, &mut uplink_rx, p.clone(), send_heartbeats) {
+            if let Err(e) = downlink_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, p.clone(), send_heartbeats) {
                 eprintln!("{:?}", e);
                 serial_status_tx.send((SerialStatus::Error, Some(p)))?;
+                if let Some(ctx) = &ctx {
+                    ctx.request_repaint();
+                }
             }
         }
 
@@ -163,13 +171,14 @@ pub fn downlink_monitor(
 /// Spawns `downlink_monitor` in a new thread.
 #[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
 pub fn spawn_downlink_monitor(
+    ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_tx: Sender<DownlinkMessage>,
     uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        downlink_monitor(serial_status_tx, downlink_tx, uplink_rx, send_heartbeats).unwrap_or_default()
+        downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, send_heartbeats).unwrap_or_default()
     })
 }
 
@@ -194,13 +203,15 @@ pub struct SerialDataSource {
 
 impl SerialDataSource {
     /// Create a new serial port data source.
-    pub fn new(lora_settings: LoRaSettings) -> Self {
+    pub fn new(ctx: &egui::Context, lora_settings: LoRaSettings) -> Self {
         let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
         let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
         let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
 
+        let ctx = ctx.clone();
+
         #[cfg(not(target_arch = "wasm32"))] // TODO: can't spawn threads on wasm
-        spawn_downlink_monitor(serial_status_tx, downlink_tx, uplink_rx, true);
+        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true);
 
         let telemetry_log_path = Self::new_telemetry_log_path();
         let telemetry_log_file = File::create(&telemetry_log_path);
@@ -353,14 +364,6 @@ impl DataSource for SerialDataSource {
 
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         self.send(UplinkMessage::Command(cmd))
-    }
-
-    fn minimum_fps(&self) -> Option<u64> {
-        if self.last_time.map(|t| t.elapsed() > Duration::from_secs_f64(10.0)).unwrap_or(false) {
-            Some(1)
-        } else {
-            Some(u64::max(30, u64::min(self.message_receipt_times.len() as u64, 60)))
-        }
     }
 
     fn end(&self) -> Option<Instant> {

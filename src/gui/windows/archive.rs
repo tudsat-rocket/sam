@@ -51,7 +51,7 @@ pub struct ArchiveWindow {
 }
 
 impl ArchiveWindow {
-    async fn load_log(url: &str, progress_sender: Sender<ArchiveLoadProgress>) {
+    async fn load_log(ctx: egui::Context, url: &str, progress_sender: Sender<ArchiveLoadProgress>) {
         let start = Instant::now();
         let response = match reqwest::Client::new().get(url).send().await {
             Ok(res) => res,
@@ -63,6 +63,7 @@ impl ArchiveWindow {
 
         let total_size = response.content_length().unwrap_or(0);
         progress_sender.send(ArchiveLoadProgress::Progress((0, total_size))).unwrap();
+        ctx.request_repaint();
 
         let mut cursor = std::io::Cursor::new(Vec::with_capacity(total_size as usize));
         let (mut progress, mut last_progress) = (0, 0);
@@ -75,10 +76,12 @@ impl ArchiveWindow {
                     if progress == total_size || progress > last_progress + 256 * 1024 {
                         let _ = progress_sender.send(ArchiveLoadProgress::Progress((progress, total_size)));
                         last_progress = progress;
+                        ctx.request_repaint();
                     }
                 }
                 Err(e) => {
                     progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
+                    ctx.request_repaint();
                     return;
                 }
             }
@@ -88,23 +91,26 @@ impl ArchiveWindow {
         let duration = start.elapsed().as_secs_f32();
         let mib = (total_size as f32) / 1024.0 / 1024.0;
         info!("Downloaded {}MiB in {:.1}ms ({}MiB/s)", mib, duration * 1000.0, mib / duration);
+        ctx.request_repaint();
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn open_log(&mut self, url: &'static str) {
+    fn open_log(&mut self, ctx: &egui::Context, url: &'static str) {
+        let ctx = ctx.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         self.progress_receiver = Some(receiver);
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-            rt.block_on(Self::load_log(url, sender));
+            rt.block_on(Self::load_log(ctx, url, sender));
         });
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn open_log(&mut self, url: &'static str) {
+    fn open_log(&mut self, ctx: &egui::Context, url: &'static str) {
+        let ctx = ctx.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         self.progress_receiver = Some(receiver);
-        wasm_bindgen_futures::spawn_local(Self::load_log(url, sender));
+        wasm_bindgen_futures::spawn_local(Self::load_log(ctx, url, sender));
     }
 
     pub fn show_if_open(&mut self, ctx: &egui::Context) -> Option<LogFileDataSource> {
@@ -114,7 +120,6 @@ impl ArchiveWindow {
                     self.progress = Some(progress);
                 }
                 Ok(ArchiveLoadProgress::Complete(bytes)) => {
-                    // TODO
                     self.open = false;
                     self.progress_receiver = None;
                     self.progress = None;
@@ -154,11 +159,11 @@ impl ArchiveWindow {
                         ui.label(*title);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_log(flash.unwrap());
+                                self.open_log(ctx, flash.unwrap());
                             }
 
                             if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {
-                                self.open_log(telem.unwrap());
+                                self.open_log(ctx, telem.unwrap());
                             }
                         });
                     });

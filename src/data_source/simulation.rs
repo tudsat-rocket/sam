@@ -73,10 +73,6 @@ impl DataSource for SimulationDataSource {
         Ok(())
     }
 
-    fn minimum_fps(&self) -> Option<u64> {
-        None
-    }
-
     fn end(&self) -> Option<Instant> {
         self.vehicle_states.last().map(|(t, _vs)| *t)
     }
