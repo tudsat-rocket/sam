@@ -488,26 +488,24 @@ pub struct TelemetryGPS {
 
 impl From<VehicleState> for TelemetryGPS {
     fn from(vs: VehicleState) -> Self {
-        //let latitude = self.gps.latitude
-        //    .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
-        //    .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
-        //    .unwrap_or([0, 0, 0]);
-        //let longitude = self.gps.longitude
-        //    .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
-        //    .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
-        //    .unwrap_or([0, 0, 0]);
-        //let fix_and_sats = ((self.gps.fix.clone() as u8) << 5) + ((self.gps.num_satellites as u8) & 0x1f);
+        let latitude = vs.latitude
+            .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
+            .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
+            .unwrap_or([0, 0, 0]);
+        let longitude = vs.longitude
+            .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
+            .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
+            .unwrap_or([0, 0, 0]);
+        let fix_and_sats = ((vs.gps_fix.clone().unwrap_or_default() as u8) << 5) + ((vs.num_satellites.unwrap_or(0) as u8) & 0x1f);
 
         // TODO
         TelemetryGPS {
             time: vs.time,
-            fix_and_sats: 0,
-            hdop: 0,
-            //hdop: self.gps.hdop,
-            latitude: [0, 0, 0],
-            longitude: [0, 0, 0],
-            altitude_asl: 0,
-            //altitude_asl: self.gps.altitude.map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
+            fix_and_sats,
+            hdop: vs.hdop.unwrap_or(u16::MAX),
+            latitude,
+            longitude,
+            altitude_asl: vs.altitude_gps_asl.map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
             flash_pointer: (vs.flash_pointer.unwrap_or_default() / 1024) as u16,
         }
     }
@@ -519,7 +517,7 @@ impl Into<VehicleState> for TelemetryGPS {
             time: self.time,
             gps_fix: Some((self.fix_and_sats >> 5).into()),
             num_satellites: Some(self.fix_and_sats & 0x1f),
-            hdop: Some(self.hdop),
+            hdop: (self.hdop != u16::MAX).then_some(self.hdop),
             latitude: {
                 let lat =
                     ((self.latitude[0] as u32) << 16) + ((self.latitude[1] as u32) << 8) + (self.latitude[2] as u32);

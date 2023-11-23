@@ -78,7 +78,7 @@ impl<E: Sized> From<E> for FlashError<E> {
 
 // Embassy tasks cannot be generic for some reason, so for now we have to have these ugly type
 // signatures and a task outside of the struct here.
-type SpiInst = Spi<'static, SPI3, DMA1_CH5, DMA1_CH0>;
+type SpiInst = Spi<'static, SPI3, DMA1_CH7, DMA1_CH0>;
 type FlashInst = Flash<SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst, Output<'static, PD2>>>;
 
 #[embassy_executor::task]

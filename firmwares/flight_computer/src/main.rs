@@ -69,7 +69,7 @@ static EXECUTOR_MEDIUM: InterruptExecutor = InterruptExecutor::new();
 
 static SPI1_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI1, DMA2_CH3, DMA2_CH2>>> = StaticCell::new();
 static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI2, DMA1_CH4, DMA1_CH3>>> = StaticCell::new();
-static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI3, DMA1_CH5, DMA1_CH0>>> = StaticCell::new();
+static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI3, DMA1_CH7, DMA1_CH0>>> = StaticCell::new();
 
 #[cfg_attr(feature="gcs", allow(dead_code))]
 #[cfg_attr(feature="gcs", allow(unused_variables))]
@@ -145,7 +145,7 @@ async fn main(_low_priority_spawner: Spawner) {
     // SPI 3
     let mut spi3_config = embassy_stm32::spi::Config::default();
     spi3_config.frequency = Hertz::mhz(20);
-    let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH5, p.DMA1_CH0, spi3_config);
+    let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
     let spi3 = Mutex::<CriticalSectionRawMutex, _>::new(spi3);
     let spi3 = SPI3_SHARED.init(spi3);
 
@@ -155,8 +155,8 @@ async fn main(_low_priority_spawner: Spawner) {
     #[cfg(not(feature="gcs"))]
     info!("Loaded Settings: {:#?}", Debug2Format(&settings));
 
-//    // Initialize GPS
-//    let gps = GPS::init(dp.USART2, gpioa.pa2, gpioa.pa3, &clocks);
+    // Initialize GPS
+    let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);
 
     let adc = Adc::new(p.ADC1, &mut Delay);
     let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
@@ -189,6 +189,7 @@ async fn main(_low_priority_spawner: Spawner) {
         acc,
         mag,
         baro,
+        gps_handle,
         power,
         usb,
         radio,
@@ -217,6 +218,7 @@ async fn main(_low_priority_spawner: Spawner) {
     {
         high_priority_spawner.spawn(crate::vehicle::run(vehicle, iwdg)).unwrap();
         medium_priority_spawner.spawn(crate::can::run(can)).unwrap();
+        medium_priority_spawner.spawn(crate::drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
         low_priority_spawner.spawn(crate::flash::run(flash)).unwrap();
     }
 

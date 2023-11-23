@@ -47,7 +47,7 @@ pub struct Vehicle {
     acc: Accelerometer,
     mag: Magnetometer,
     baro: Barometer,
-    //gps: GPS,
+    gps: GPSHandle,
     power: Power,
     // other peripherals
     usb: UsbHandle,
@@ -65,7 +65,7 @@ pub struct Vehicle {
     settings: Settings,
 }
 
-impl Into<VehicleState> for &Vehicle {
+impl Into<VehicleState> for &mut Vehicle {
     fn into(self) -> VehicleState {
         VehicleState {
             time: self.time.0,
@@ -96,11 +96,12 @@ impl Into<VehicleState> for &Vehicle {
             cpu_utilization: Some(self.loop_runtime_history.iter().sum::<f32>() / self.loop_runtime_history.len() as f32),
             flash_pointer: Some(self.flash.pointer),
 
-            //pub fix_and_sats: u8,
-            //pub hdop: u16,
-            //pub latitude: [u8; 3],
-            //pub longitude: [u8; 3],
-            //pub altitude_asl: u16,
+            gps_fix: self.gps.fix(),
+            hdop: self.gps.hdop(),
+            num_satellites: self.gps.num_satellites(),
+            latitude: self.gps.latitude(),
+            longitude: self.gps.longitude(),
+            altitude_gps_asl: self.gps.altitude(),
 
             ..Default::default()
 
@@ -124,6 +125,7 @@ impl Vehicle {
         mut acc: Accelerometer,
         mut mag: Magnetometer,
         baro: Barometer,
+        gps: GPSHandle,
         power: Power,
         usb: UsbHandle,
         mut radio: RadioHandle,
@@ -147,6 +149,7 @@ impl Vehicle {
             acc,
             mag,
             baro,
+            gps,
             power,
 
             usb,
@@ -297,7 +300,7 @@ impl Vehicle {
 
     // TODO: replace these with a more elegant system
     #[cfg(not(feature = "gcs"))]
-    fn next_usb_telem(&self) -> Option<DownlinkMessage> {
+    fn next_usb_telem(&mut self) -> Option<DownlinkMessage> {
         if self.time.0 % 100 == 0 {
             let vs: VehicleState = self.into();
             Some(DownlinkMessage::TelemetryGPS(vs.into()))
@@ -316,7 +319,7 @@ impl Vehicle {
     }
 
     #[cfg(not(feature = "gcs"))]
-    fn next_lora_telem(&self) -> Option<DownlinkMessage> {
+    fn next_lora_telem(&mut self) -> Option<DownlinkMessage> {
         // TODO
         if self.time.0 % 1000 == 0 {
             let vs: VehicleState = self.into();
@@ -338,7 +341,7 @@ impl Vehicle {
     }
 
     #[cfg(not(feature = "gcs"))]
-    fn next_flash_telem(&self) -> Option<DownlinkMessage> {
+    fn next_flash_telem(&mut self) -> Option<DownlinkMessage> {
         // Offset everything a little so that flash message writes don't coincide
         // with lora message writes.
         let t = self.time.0 + 3;
