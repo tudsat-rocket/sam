@@ -214,7 +214,7 @@ pub struct VehicleState {
     // TODO: rename?
     pub lora_rssi: Option<u8>,
     pub transmit_power: Option<TransmitPower>,
-    // TODO: data rate?
+    pub data_rate: Option<TelemetryDataRate>,
 
     pub cpu_utilization: Option<f32>,
     pub flash_pointer: Option<u32>,
@@ -409,6 +409,19 @@ pub struct TelemetryRawSensorsCompressed {
     pub pressure_baro: u16, // TODO: compress this further
 }
 
+impl From<VehicleState> for TelemetryRawSensorsCompressed {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            gyro: (vs.gyroscope.unwrap_or_default() * 10.0).into(),
+            accelerometer1: (vs.accelerometer1.unwrap_or_default() * 100.0).into(),
+            accelerometer2: (vs.accelerometer2.unwrap_or_default() * 10.0).into(),
+            magnetometer: (vs.magnetometer.unwrap_or_default() * 10.0).into(),
+            pressure_baro: (vs.pressure_baro.unwrap_or_default() * 10.0) as u16,
+        }
+    }
+}
+
 impl Into<VehicleState> for TelemetryRawSensorsCompressed {
     fn into(self) -> VehicleState {
         VehicleState {
@@ -448,8 +461,8 @@ impl From<VehicleState> for TelemetryDiagnostics {
             current: vs.current.unwrap_or_default(),
             lora_rssi: vs.lora_rssi.unwrap_or_default(),
             altitude_ground: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
-            // TODO: data rate?
-            transmit_power_and_data_rate: vs.transmit_power.unwrap_or_default() as u8,
+            transmit_power_and_data_rate: ((vs.data_rate.unwrap_or_default() as u8) << 7) |
+                vs.transmit_power.unwrap_or_default() as u8,
             temperature_baro: (vs.temperature_baro.unwrap_or_default() * 2.0) as i8,
             // TODO: remove recovery
             ..Default::default() // TODO
@@ -467,6 +480,7 @@ impl Into<VehicleState> for TelemetryDiagnostics {
             current: Some(self.current),
             cpu_utilization: Some(self.cpu_utilization as f32),
             lora_rssi: Some(self.lora_rssi),
+            data_rate: Some((self.transmit_power_and_data_rate >> 7).into()),
             transmit_power: Some((self.transmit_power_and_data_rate & 0x7f).into()),
             temperature_baro: Some((self.temperature_baro as f32) / 2.0),
             ..Default::default()

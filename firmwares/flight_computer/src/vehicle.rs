@@ -63,6 +63,7 @@ pub struct Vehicle {
     mode: FlightMode,
     loop_runtime_history: VecDeque<f32>,
     settings: Settings,
+    data_rate: TelemetryDataRate,
 }
 
 impl Into<VehicleState> for &mut Vehicle {
@@ -92,6 +93,7 @@ impl Into<VehicleState> for &mut Vehicle {
 
             lora_rssi: Some(self.radio.trx.rssi), // TODO
             transmit_power: Some(self.radio.transmit_power),
+            data_rate: Some(self.data_rate),
 
             cpu_utilization: Some(self.loop_runtime_history.iter().sum::<f32>() / self.loop_runtime_history.len() as f32),
             flash_pointer: Some(self.flash.pointer),
@@ -142,6 +144,8 @@ impl Vehicle {
         acc.set_offset(settings.acc2_offset);
         mag.set_offset(settings.mag_offset);
 
+        let data_rate = settings.default_data_rate;
+
         Self {
             time: core::num::Wrapping(0),
 
@@ -166,6 +170,7 @@ impl Vehicle {
 
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
             settings,
+            data_rate,
         }
     }
 
@@ -278,7 +283,7 @@ impl Vehicle {
             Command::Reboot => cortex_m::peripheral::SCB::sys_reset(),
             Command::SetFlightMode(fm) => self.switch_mode(fm),
             Command::SetTransmitPower(txp) => self.radio.set_transmit_power(txp),
-            Command::SetDataRate(_dr) => {}, // TODO: remove?
+            Command::SetDataRate(dr) => self.data_rate = dr,
             Command::EraseFlash => { let _ = self.flash.erase(); },
             _ => {},
         }
@@ -330,11 +335,9 @@ impl Vehicle {
         } else if self.time.0 % 100 == 50 {
             let vs: VehicleState = self.into();
             Some(DownlinkMessage::TelemetryMainCompressed(vs.into()))
-        // TODO: remove?
-        //} else if self.time.0 % 50 == 25 && self.data_rate == TelemetryDataRate::High {
-        //    let vs: VehicleState = self.into();
-        //    Some(DownlinkMessage::TelemetryRawSensorsCompressed(vs.into()))
-        //    None
+        } else if self.time.0 % 50 == 25 && self.data_rate == TelemetryDataRate::High {
+            let vs: VehicleState = self.into();
+            Some(DownlinkMessage::TelemetryRawSensorsCompressed(vs.into()))
         } else {
             None
         }
