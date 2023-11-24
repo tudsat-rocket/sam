@@ -1,92 +1,106 @@
+use embassy_stm32::adc::{Adc, Temperature, VrefInt, AdcPin, Instance, SampleTime};
+use embassy_stm32::gpio::low_level::Pin;
+use embassy_time::{Timer, Duration, Instant};
+
 use crc::{Crc, CRC_16_IBM_SDLC};
-use embedded_hal::adc::Channel;
-use hal::adc::config::SampleTime;
-use hal::adc::Adc;
-use hal::pac::ADC1;
-use stm32f4xx_hal as hal;
 
-use crate::prelude::*;
-
-const ST: SampleTime = SampleTime::Cycles_480;
 const VDIV: f32 = 2.8;
 const RES: f32 = 0.01;
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
-pub struct PowerMonitor<HIGH, LOW, ARM> {
-    adc: Adc<ADC1>,
-    pin_bat_high: HIGH,
-    pin_bat_low: LOW,
-    pin_arm: ARM,
+pub struct PowerMonitor<ADC: Instance, H, L, A> {
+    adc: Adc<'static, ADC>,
+    vref_sample: u16,
+    internal_temperature: Temperature,
+    pin_bat_high: H,
+    pin_bat_low: L,
+    pin_arm: A,
+
     battery_voltage: Option<u16>,
     battery_current: Option<i16>,
     arm_voltage: Option<u16>,
-    cpu_voltage: Option<u16>,
     temperature: Option<f32>,
+
     can_charge_voltage: Option<u16>,
     can_battery_voltage: Option<u16>,
     can_battery_current: Option<i16>,
     can_breakwire_open: Option<bool>,
-    time: u32,
-    time_last_battery_msg: u32,
+    time_last_can_msg: Option<Instant>,
 }
 
 impl<
-    HIGH: Channel<ADC1, ID = u8>,
-    LOW: Channel<ADC1, ID = u8>,
-    ARM: Channel<ADC1, ID = u8>
-> PowerMonitor<HIGH, LOW, ARM> {
-    pub fn new(
-        adc: Adc<ADC1>,
-        pin_bat_high: HIGH,
-        pin_bat_low: LOW,
-        pin_arm: ARM,
-    ) -> Self {
+    ADC: Instance,
+    H: Pin + AdcPin<ADC>,
+    L: Pin + AdcPin<ADC>,
+    A: Pin + AdcPin<ADC>,
+> PowerMonitor<ADC, H, L, A>
+where
+    Temperature: AdcPin<ADC>,
+    VrefInt: AdcPin<ADC>,
+{
+    pub async fn init(mut adc: Adc<'static, ADC>, pin_bat_high: H, pin_bat_low: L, pin_arm: A) -> Self {
+        adc.set_sample_time(SampleTime::Cycles480);
+
+        let mut internal_vref = adc.enable_vrefint();
+        let internal_temperature = adc.enable_temperature();
+        let start_time = Temperature::start_time_us().max(VrefInt::start_time_us());
+        Timer::after(Duration::from_micros(start_time as u64)).await;
+
+        let vref_sample = adc.read(&mut internal_vref);
+
         Self {
             adc,
+            internal_temperature,
+            vref_sample,
             pin_bat_high,
             pin_bat_low,
             pin_arm,
             battery_voltage: None,
             battery_current: None,
             arm_voltage: None,
-            cpu_voltage: None,
             temperature: None,
             can_charge_voltage: None,
             can_battery_voltage: None,
             can_battery_current: None,
             can_breakwire_open: None,
-            time: 0,
-            time_last_battery_msg: 0,
+            time_last_can_msg: None,
         }
     }
 
-    pub fn tick(&mut self, time: u32) {
-        self.time = time;
+    fn to_millivolts(&self, sample: u16) -> u16 {
+        // From http://www.st.com/resource/en/datasheet/DM00071990.pdf
+        // 6.3.24 Reference voltage
+        const VREFINT_MV: u32 = 1210; // mV
 
-        let sample = self.adc.convert(&hal::adc::Temperature, ST);
-        let mv = self.adc.sample_to_millivolts(sample);
-        let temp_cal_30 = hal::signature::VtempCal30::get().read();
-        let temp = 30.0 * (mv as f32) / (temp_cal_30 as f32);
+        (u32::from(sample) * VREFINT_MV / u32::from(self.vref_sample)) as u16
+    }
 
-        let voltage_core = self.adc.reference_voltage() as u16;
+    fn to_celcius(&self, sample: u16) -> f32 {
+        // From http://www.st.com/resource/en/datasheet/DM00071990.pdf
+        // 6.3.22 Temperature sensor characteristics
+        const V25: i32 = 760; // mV
+        const AVG_SLOPE: f32 = 2.5; // mV/C
 
-        let sample = self.adc.convert(&self.pin_bat_high, ST);
-        let voltage_high = (self.adc.sample_to_millivolts(sample) as f32) * VDIV;
+        let sample_mv = self.to_millivolts(sample) as i32;
 
-        let sample = self.adc.convert(&self.pin_bat_low, ST);
-        let voltage_low = (self.adc.sample_to_millivolts(sample) as f32) * VDIV;
+        (sample_mv - V25) as f32 / AVG_SLOPE + 25.0
+    }
 
-        let sample = self.adc.convert(&self.pin_arm, ST);
-        let voltage_arm = (self.adc.sample_to_millivolts(sample) as f32) * VDIV;
+    pub fn tick(&mut self) {
+        let sample = self.adc.read(&mut self.internal_temperature);
+        self.temperature = Some(self.to_celcius(sample));
 
-        let current = (voltage_high - voltage_low) / RES;
+        let sample = self.adc.read(&mut self.pin_bat_high);
+        let voltage_high = (self.to_millivolts(sample) as f32) * VDIV;
 
+        let sample = self.adc.read(&mut self.pin_bat_low);
+        let voltage_low = (self.to_millivolts(sample) as f32) * VDIV;
         self.battery_voltage = Some(voltage_high as u16);
-        self.battery_current = Some(current as i16);
-        self.arm_voltage = Some(voltage_arm as u16);
-        self.cpu_voltage = Some(voltage_core);
-        self.temperature = Some(temp);
+        self.battery_current = Some(((voltage_high - voltage_low) / RES) as i16);
+
+        let sample = self.adc.read(&mut self.pin_arm);
+        self.arm_voltage = Some(((self.to_millivolts(sample) as f32) * VDIV) as u16);
     }
 
     pub fn battery_voltage(&self) -> Option<u16> {
@@ -107,10 +121,6 @@ impl<
 
     pub fn armed(&self) -> bool {
         self.arm_voltage.map(|v| v > 50).unwrap_or(false)
-    }
-
-    pub fn cpu_voltage(&self) -> Option<u16> {
-        self.cpu_voltage
     }
 
     pub fn temperature(&self) -> Option<f32> {
@@ -148,10 +158,10 @@ impl<
             _ => None
         };
 
-        self.time_last_battery_msg = self.time;
+        self.time_last_can_msg = Some(Instant::now());
     }
 
     fn current_can_msg(&self) -> bool {
-        self.time.wrapping_sub(self.time_last_battery_msg) < 30
+        self.time_last_can_msg.map(|i| i.elapsed().as_millis() < 30).unwrap_or(false)
     }
 }

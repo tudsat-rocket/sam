@@ -1,5 +1,9 @@
+#[cfg(target_os="none")]
+use core::num::Wrapping;
+#[cfg(not(target_os="none"))]
+use std::num::Wrapping;
+
 use nalgebra::*;
-use num_traits::Pow;
 use ahrs::Ahrs;
 use filter::kalman::kalman_filter::KalmanFilter;
 
@@ -10,17 +14,29 @@ const GRAVITY: f32 = 9.80665;
 
 #[derive(Debug)]
 pub struct StateEstimator {
-    time: u32,
+    /// current time
+    time: Wrapping<u32>,
+    /// current flight mode
     mode: FlightMode,
-    mode_time: u32,
-    condition_true_since: Option<u32>,
+    /// time current flight mode was entered
+    mode_time: Wrapping<u32>,
+    /// time since which flight mode logic condition has been true TODO: refactor
+    condition_true_since: Option<Wrapping<u32>>,
+    /// settings
     settings: Settings,
+    /// orientation
     ahrs: ahrs::Mahony<f32>,
+    /// main Kalman filter
     kalman: KalmanFilter<f32, U3, U2, U0>,
+    /// current orientation
     pub orientation: Option<Unit<Quaternion<f32>>>,
+    /// current vehicle-space acceleration, switched between low- and high-G accelerometer
     acceleration: Option<Vector3<f32>>,
+    /// world-space acceleration, rotated using estimated orientation
     acceleration_world: Option<Vector3<f32>>,
+    /// altitude (ASL) at ground level, to allow calculating AGL altitude. locked in when armed.
     pub altitude_ground: f32,
+    /// apogee (ASL)
     pub altitude_max: f32,
 }
 
@@ -44,25 +60,25 @@ impl StateEstimator {
             0.0, 0.0, 1.0
         );
         kalman.P = Matrix3::new(
-            settings.std_dev_barometer.pow(2), 0.0, 0.0,
+            settings.std_dev_barometer.powi(2), 0.0, 0.0,
             0.0, 1.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.pow(2),
+            0.0, 0.0, settings.std_dev_accelerometer.powi(2),
         );
         kalman.Q = Matrix3::new(
-            0.25f32 * dt.pow(4), 0.5f32 * dt.pow(3), 0.5f32 * dt.pow(2),
-            0.5f32 * dt.pow(3), dt.pow(2), dt,
-            0.5f32 * dt.pow(2), dt, 1.0f32,
-        ) * settings.std_dev_process.pow(2);
+            0.25f32 * dt.powi(4), 0.5f32 * dt.powi(3), 0.5f32 * dt.powi(2),
+            0.5f32 * dt.powi(3), dt.powi(2), dt,
+            0.5f32 * dt.powi(2), dt, 1.0f32,
+        ) * settings.std_dev_process.powi(2);
 
         kalman.R *= Matrix2::new(
-            settings.std_dev_barometer.pow(2), 0.0,
-            0.0, settings.std_dev_accelerometer.pow(2)
+            settings.std_dev_barometer.powi(2), 0.0,
+            0.0, settings.std_dev_accelerometer.powi(2)
         );
 
         Self {
-            time: 0,
+            time: Wrapping(0),
             mode: Idle,
-            mode_time: 0,
+            mode_time: Wrapping(0),
             condition_true_since: None,
             settings,
             ahrs,
@@ -77,7 +93,7 @@ impl StateEstimator {
 
     pub fn update(
         &mut self,
-        time: u32,
+        time: Wrapping<u32>,
         mode: FlightMode,
         gyroscope: Option<Vector3<f32>>,
         accelerometer1: Option<Vector3<f32>>,
@@ -187,7 +203,7 @@ impl StateEstimator {
     }
 
     pub fn time_in_mode(&self) -> u32 {
-        self.time.wrapping_sub(self.mode_time)
+        (self.time - self.mode_time).0
     }
 
     /// Main flight logic. This function is responsible for deciding whether to switch to a new
@@ -231,20 +247,18 @@ impl StateEstimator {
                 ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
             }
             // Main parachute deployment, if required
-            FlightMode::RecoveryDrogue => {
-                match self.settings.main_output_mode {
-                    MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
-                    MainOutputMode::BelowAltitude => {
-                        let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
-                        let below_alt = self.true_since(condition, 100);
-                        let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
-                        (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)
-                    },
-                    MainOutputMode::Never => {
-                        let landed = self.true_since(condition_landed, 1000);
-                        (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
-                    },
-                }
+            FlightMode::RecoveryDrogue => match self.settings.main_output_mode {
+                MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
+                MainOutputMode::BelowAltitude => {
+                    let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
+                    let below_alt = self.true_since(condition, 100);
+                    let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
+                    (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)
+                },
+                MainOutputMode::Never => {
+                    let landed = self.true_since(condition_landed, 1000);
+                    (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
+                },
             },
             // Landing detection
             FlightMode::RecoveryMain => {
@@ -264,7 +278,7 @@ impl StateEstimator {
         };
 
         self.condition_true_since
-            .map(|t| self.time.wrapping_sub(t) > duration)
+            .map(|t| (self.time - t).0 > duration)
             .unwrap_or(false)
     }
 

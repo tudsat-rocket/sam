@@ -2,136 +2,179 @@
 //! and uplink commands.
 
 use alloc::vec::Vec;
+use embassy_executor::Spawner;
+use embassy_stm32::{peripherals::{PA12, PA11, USB_OTG_FS}, usb_otg::Driver};
+use embassy_stm32::bind_interrupts;
+use embassy_sync::channel::{self, Channel};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_time::{Timer, Duration, TimeoutError, with_timeout};
+use embassy_usb::{Builder, UsbDevice};
+use embassy_usb::class::cdc_acm::{CdcAcmClass, State, Sender, Receiver};
+use embassy_futures::select::{select, Either};
 
-use hal::otg_fs::{UsbBus, USB};
-use stm32f4xx_hal as hal;
+use static_cell::make_static;
 
-use usb_device::class_prelude::*;
-use usb_device::prelude::*;
-use usbd_serial::{SerialPort, USB_CLASS_CDC};
+use crate::telemetry::{DownlinkMessage, Transmit, UplinkMessage};
 
-use crate::prelude::*;
-use crate::telemetry::*;
+bind_interrupts!(struct Irqs {
+    OTG_FS => embassy_stm32::usb_otg::InterruptHandler<USB_OTG_FS>;
+});
 
-static mut USB_BUFFER: [u32; 4096] = [0; 4096];
-static mut USB_BUS: Option<UsbBusAllocator<UsbBus<USB>>> = None;
-
-type ReadBufferStore = [u8; 128];
-type WriteBufferStore = [u8; 2048];
-
-pub struct UsbLink {
-    device: UsbDevice<'static, UsbBus<USB>>,
-    serial: SerialPort<'static, UsbBus<USB>, ReadBufferStore, WriteBufferStore>,
-    poll_counter: u32,
-    log_counter: u32,
-    uplink_buffer: Vec<u8>,
-    time: u32,
-    last_heartbeat: Option<u32>,
+/// Main USB handle used by vehicle to send telemetry and receive commands
+pub struct UsbHandle {
+    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
+    uplink_receiver: channel::Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 10>,
 }
 
-impl UsbLink {
-    pub fn init(usb: USB) -> Self {
-        unsafe {
-            USB_BUS = Some(UsbBus::new(usb, &mut USB_BUFFER));
-        }
+/// Handle given to flash implementation to allow faster flash download
+pub struct FlashUsbHandle {
+    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
+}
 
-        let mut serial = unsafe {
-            SerialPort::new_with_store(
-                USB_BUS.as_ref().unwrap(),
-                [0; 128],
-                [0; 2048]
-            )
+impl UsbHandle {
+    pub async fn init(peripheral: USB_OTG_FS, pin_dm: PA12, pin_dp: PA11) -> (UsbHandle, FlashUsbHandle) {
+        let mut config = embassy_stm32::usb_otg::Config::default();
+        config.vbus_detection = false;
+
+        let ep_out_buffer = &mut make_static!([0; 1024])[..];
+        let driver = Driver::new_fs(peripheral, Irqs, pin_dm, pin_dp, ep_out_buffer, config);
+
+        let mut config = embassy_usb::Config::new(0x0483, 0x5740);
+        config.manufacturer = Some("TUDSaT");
+        config.product = Some("Sting FC"); // TODO
+        config.serial_number = Some("12345678"); // TODO
+
+        // Required for windows compatibility.
+        // https://developer.nordicsemi.com/nRF_Connect_SDK/doc/1.9.1/kconfig/CONFIG_CDC_ACM_IAD.html#help
+        config.device_class = 0xEF;
+        config.device_sub_class = 0x02;
+        config.device_protocol = 0x01;
+        config.composite_with_iads = true;
+
+        let mut builder = Builder::new(
+            driver,
+            config,
+            &mut make_static!([0; 256])[..],
+            &mut make_static!([0; 256])[..],
+            &mut make_static!([0; 256])[..],
+            &mut [], // no msos descriptors
+            &mut make_static!([0; 128])[..],
+        );
+
+        let class = CdcAcmClass::new(&mut builder, make_static!(State::new()), 64);
+        let (usb_sender, usb_receiver) = class.split();
+
+        let usb = builder.build();
+
+        let uplink_channel = make_static!(Channel::<CriticalSectionRawMutex, UplinkMessage, 10>::new());
+        let downlink_channel = make_static!(Channel::<CriticalSectionRawMutex, DownlinkMessage, 10>::new());
+        let flash_downlink_channel = make_static!(Channel::<CriticalSectionRawMutex, DownlinkMessage, 10>::new());
+
+        let spawner = Spawner::for_current_executor().await;
+        spawner.spawn(run_usb(usb)).unwrap();
+        spawner.spawn(handle_usb_downlink(usb_sender, downlink_channel.receiver(), flash_downlink_channel.receiver())).unwrap();
+        spawner.spawn(handle_usb_uplink(usb_receiver, uplink_channel.sender())).unwrap();
+
+        let usb_handle = Self {
+            downlink_sender: downlink_channel.sender(),
+            uplink_receiver: uplink_channel.receiver(),
         };
 
-        let product = match (cfg!(feature = "gcs"), cfg!(feature = "rev2")) {
-            (false, false) => "Sting FC (rev. 1)",
-            (false, true)  => "Sting FC (rev. 2)",
-            (true, false)  => "Sting FC GCS (rev. 1)",
-            (true, true)   => "Sting FC GCS (rev. 2)"
+        let flash_usb_handle = FlashUsbHandle {
+            downlink_sender: downlink_channel.sender(),
         };
 
-        let mut device = unsafe {
-            UsbDeviceBuilder::new(USB_BUS.as_ref().unwrap(), UsbVidPid(0x0483, 0x5740))
-                .manufacturer("TUDSat")
-                .product(product)
-                .device_class(USB_CLASS_CDC)
-                .max_packet_size_0(64)
-                .build()
-        };
-
-        device.poll(&mut [&mut serial]);
-
-        Self {
-            device,
-            serial,
-            poll_counter: 0,
-            log_counter: 0,
-            uplink_buffer: Vec::with_capacity(1024),
-            time: 0,
-            last_heartbeat: None,
-        }
+        (usb_handle, flash_usb_handle)
     }
 
-    pub fn poll(&mut self) -> bool {
-        self.device.poll(&mut [&mut self.serial])
+    pub async fn send_message(&mut self, msg: DownlinkMessage) {
+        let _ = self.downlink_sender.try_send(msg);
     }
 
-    fn send_data(&mut self, data: &[u8]) -> Result<(), UsbError> {
-        self.serial.write(data)?;
-        self.serial.flush()?;
-        Ok(())
+    pub async fn next_uplink_message(&mut self) -> Option<UplinkMessage> {
+        self.uplink_receiver.try_receive().ok()
     }
+}
 
-    pub fn send_message(&mut self, msg: DownlinkMessage) {
-        let serialized = msg.serialize().unwrap_or_default();
-        if let Err(_e) = self.send_data(&serialized) {
-            // Since USB doesn't seem to work, we only try to send this via SWD
-            //rtt_target::rprintln!("Failed to send data via USB: {:?}", e);
-        }
+impl FlashUsbHandle {
+    pub async fn send_message(&mut self, msg: DownlinkMessage) {
+        let _ = self.downlink_sender.try_send(msg);
     }
+}
 
-    pub fn tick(&mut self, time: u32) -> Option<UplinkMessage> {
-        self.time = time;
-        self.poll_counter += 1;
-        self.log_counter += 1;
+#[embassy_executor::task]
+async fn run_usb(mut usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>) -> ! {
+    usb.run().await
+}
 
-        if self.poll_counter >= (MAIN_LOOP_FREQ_HERTZ / USB_POLL_FREQ_HERTZ) {
-            self.poll();
-            self.poll_counter = 0;
-        }
+#[embassy_executor::task]
+async fn handle_usb_downlink(
+    mut class: Sender<'static, Driver<'static, USB_OTG_FS>>,
+    downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
+    flash_downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 10>
+) -> ! {
+    loop {
+        class.wait_connection().await;
 
-        if self.log_counter >= (MAIN_LOOP_FREQ_HERTZ / USB_LOG_FREQ_HERTZ) {
-            if self.last_heartbeat.map(|t| self.time - t < 750).unwrap_or(false) {
-                if let Some((t, l, ll, m)) = Logger::next_usb() {
-                    self.send_message(DownlinkMessage::Log(t, l, ll, m));
+        loop {
+            let msg = match select(downlink_receiver.receive(), flash_downlink_receiver.receive()).await {
+                Either::First(msg) => msg,
+                Either::Second(msg) => msg,
+            };
+
+            let serialized = msg.serialize().unwrap_or_default();
+
+            let res = with_timeout(Duration::from_millis(5), async {
+                for chunk in serialized.chunks(64) {
+                    let _res = class.write_packet(chunk).await;
                 }
+
+                if serialized.len() % 64 == 0 {
+                    let _res = class.write_packet(&[]).await;
+                }
+            }).await;
+
+            if let Err(TimeoutError) = res {
+                Timer::after(Duration::from_millis(10)).await;
+                break;
             }
-            self.log_counter = 0;
         }
+    }
+}
 
-        let mut buf: [u8; 128] = [0; 128];
-        let read = self.serial.read(&mut buf).unwrap_or(0);
-        self.uplink_buffer.extend(&buf[..read]);
+#[embassy_executor::task]
+async fn handle_usb_uplink(
+    mut class: Receiver<'static, Driver<'static, USB_OTG_FS>>,
+    uplink_sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, UplinkMessage, 10>
+) -> ! {
+    let mut uplink_buffer: Vec<u8> = Vec::with_capacity(1024);
+    let mut packet_buffer: [u8; 64] = [0; 64];
 
-        if self.uplink_buffer.len() > 512 {
-            self.uplink_buffer.truncate(0);
-        }
+    loop {
+        class.wait_connection().await;
 
-        match postcard::take_from_bytes_cobs(&mut self.uplink_buffer.clone()) {
-            Ok((msg, rest)) => {
-                self.uplink_buffer = rest.to_vec();
+        match class.read_packet(&mut packet_buffer).await {
+            Ok(n) => {
+                uplink_buffer.extend(&packet_buffer[..n]);
 
-                if msg == UplinkMessage::Heartbeat {
-                    self.last_heartbeat = Some(self.time);
+                if uplink_buffer.len() > 512 {
+                    uplink_buffer.truncate(0);
                 }
 
-                Some(msg)
+                match postcard::take_from_bytes_cobs::<UplinkMessage>(&mut uplink_buffer.clone()) {
+                    Ok((msg, rest)) => {
+                        uplink_buffer = rest.to_vec();
+                        uplink_sender.send(msg).await;
+                    },
+                    Err(_) => {
+                        if uplink_buffer.iter().position(|b| *b == 0).is_some() {
+                            uplink_buffer.truncate(0);
+                        }
+                    }
+                }
             },
-            Err(_) => {
-                if self.uplink_buffer.iter().position(|b| *b == 0).is_some() {
-                    self.uplink_buffer.truncate(0);
-                }
-                None
+            Err(_e) => {
+                continue;
             }
         }
     }

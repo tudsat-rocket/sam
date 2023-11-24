@@ -1,6 +1,6 @@
 //! Data structures for permanent settings stored in FC flash.
 
-#[cfg(not(feature = "std"))]
+#[cfg(target_os = "none")]
 use alloc::string::String;
 
 use nalgebra::Vector3;

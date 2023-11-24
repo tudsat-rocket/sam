@@ -1,22 +1,14 @@
-use core::cell::RefCell;
-use core::ops::DerefMut;
-
-use alloc::sync::Arc;
-
-use embedded_hal_one::spi::blocking::SpiBus;
-use embedded_hal_one::digital::blocking::OutputPin;
-
-use cortex_m::interrupt::{free, Mutex};
+use embassy_time::{Timer, Duration};
+use embedded_hal_async::spi::SpiDevice;
 
 use nalgebra::Vector3;
 
-use crate::prelude::*;
+use defmt::*;
 
 const G_TO_MS2: f32 = 9.80665;
 
-pub struct Imu<SPI, CS> {
-    spi: Arc<Mutex<RefCell<SPI>>>,
-    cs: CS,
+pub struct LSM6<SPI: SpiDevice<u8>> {
+    spi: SPI,
     gyro_scale: LSM6GyroscopeScale,
     accel_scale: LSM6AccelerometerScale,
     gyro: Option<Vector3<f32>>,
@@ -25,14 +17,13 @@ pub struct Imu<SPI, CS> {
     accel_offset: Vector3<f32>,
 }
 
-impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
-    pub fn init(spi: Arc<Mutex<RefCell<SPI>>>, cs: CS) -> Result<Self, SPI::Error> {
+impl<SPI: SpiDevice<u8>> LSM6<SPI> {
+    pub async fn init(spi: SPI) -> Result<Self, SPI::Error> {
         let gyro_scale = LSM6GyroscopeScale::Max2000Dps;
         let accel_scale = LSM6AccelerometerScale::Max16G;
 
         let mut imu = Self {
             spi,
-            cs,
             gyro_scale,
             accel_scale,
             gyro: None,
@@ -41,90 +32,85 @@ impl<SPI: SpiBus, CS: OutputPin> Imu<SPI, CS> {
             accel_offset: Vector3::default(),
         };
 
-        // TODO: check status register?
-        //self.read_u8(LSM6RRegister::StatusReg);
+        for _i in 0..10 {
+            let whoami = imu.read_u8(LSM6RRegister::WhoAmI).await?;
+            if whoami == 0x6b {
+                break
+            }
 
-        imu.configure_gyroscope(LSM6GyroscopeMode::HighPerformance1660Hz, gyro_scale)?;
+            Timer::after(Duration::from_micros(100)).await;
+        }
+
+        // TODO: log initialization status
+
+        imu.configure_gyroscope(LSM6GyroscopeMode::HighPerformance1660Hz, gyro_scale).await?;
 
         imu.configure_accelerometer(
             LSM6AccelerometerMode::HighPerformance1660Hz,
             accel_scale,
             false, // TODO
-        )?;
+        ).await?;
 
         Ok(imu)
     }
 
-    fn write_u8(&mut self, address: LSM6RRegister, value: u8) -> Result<(), SPI::Error> {
+    async fn read_u8(&mut self, address: LSM6RRegister) -> Result<u8, SPI::Error> {
+        let mut payload = [address as u8 | 0x80, 0];
+        self.spi.transfer_in_place(&mut payload).await?;
+        Ok(payload[1])
+    }
+
+    async fn write_u8(&mut self, address: LSM6RRegister, value: u8) -> Result<(), SPI::Error> {
         let mut payload = [address as u8, value];
-
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
-
-            self.cs.set_low().ok();
-            let res = spi.transfer_in_place(&mut payload);
-            self.cs.set_high().ok();
-            res?;
-
-            Ok(())
-        })
+        self.spi.transfer_in_place(&mut payload).await?;
+        Ok(())
     }
 
-    fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
+    async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
         let mut payload = [(LSM6RRegister::OutTempL as u8) | 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        self.spi.transfer_in_place(&mut payload).await?;
 
-        free(|cs| {
-            let mut ref_mut = self.spi.borrow(cs).borrow_mut();
-            let spi = ref_mut.deref_mut();
+        // TODO: do we need this temp?
+        let _temp = ((payload[2] as i16) << 8) + (payload[1] as i16);
+        let gyro_x = ((payload[4] as i16) << 8) + (payload[3] as i16);
+        let gyro_y = ((payload[6] as i16) << 8) + (payload[5] as i16);
+        let gyro_z = ((payload[8] as i16) << 8) + (payload[7] as i16);
+        let accel_x = ((payload[10] as i16) << 8) + (payload[9] as i16);
+        let accel_y = ((payload[12] as i16) << 8) + (payload[11] as i16);
+        let accel_z = ((payload[14] as i16) << 8) + (payload[13] as i16);
 
-            self.cs.set_low().ok();
-            let res = spi.transfer_in_place(&mut payload);
-            self.cs.set_high().ok();
-            res?;
+        // rotate values to match vehicle coordinate system (invert x, swap y and z)
+        // and convert to m/s^2 and deg/s
+        self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(gyro_x.saturating_neg(), gyro_z, gyro_y)));
+        self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(accel_x.saturating_neg(), accel_z, accel_y)));
 
-            // TODO: do we need this temp?
-            let _temp = ((payload[2] as i16) << 8) + (payload[1] as i16);
-            let gyro_x = ((payload[4] as i16) << 8) + (payload[3] as i16);
-            let gyro_y = ((payload[6] as i16) << 8) + (payload[5] as i16);
-            let gyro_z = ((payload[8] as i16) << 8) + (payload[7] as i16);
-            let accel_x = ((payload[10] as i16) << 8) + (payload[9] as i16);
-            let accel_y = ((payload[12] as i16) << 8) + (payload[11] as i16);
-            let accel_z = ((payload[14] as i16) << 8) + (payload[13] as i16);
-
-            // rotate values to match vehicle coordinate system (invert x, swap y and z)
-            // and convert to m/s^2 and deg/s
-            self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(gyro_x.saturating_neg(), gyro_z, gyro_y)));
-            self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(accel_x.saturating_neg(), accel_z, accel_y)));
-
-            Ok(())
-        })
+        Ok(())
     }
 
-    fn configure_accelerometer(
+    async fn configure_accelerometer(
         &mut self,
         mode: LSM6AccelerometerMode,
         scale: LSM6AccelerometerScale,
         high_res: bool,
     ) -> Result<(), SPI::Error> {
         let reg = ((mode as u8) << 4) + ((scale as u8) << 2) + ((high_res as u8) << 1);
-        self.write_u8(LSM6RRegister::Ctrl1Xl, reg)
+        self.write_u8(LSM6RRegister::Ctrl1Xl, reg).await
     }
 
-    fn configure_gyroscope(
+    async fn configure_gyroscope(
         &mut self,
         mode: LSM6GyroscopeMode,
         scale: LSM6GyroscopeScale,
     ) -> Result<(), SPI::Error> {
         let reg = ((mode as u8) << 4) + (scale as u8);
-        self.write_u8(LSM6RRegister::Ctrl2G, reg)
+        self.write_u8(LSM6RRegister::Ctrl2G, reg).await
     }
 
-    pub fn tick(&mut self) {
-        if let Err(e) = self.read_sensor_data() {
+    pub async fn tick(&mut self) {
+        if let Err(e) = self.read_sensor_data().await {
             self.gyro = None;
             self.accel = None;
-            log!(Error, "{:?}", e);
+            error!("{:?}", Debug2Format(&e));
         }
     }
 
