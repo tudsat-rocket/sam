@@ -12,14 +12,12 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
 use mithril::telemetry::*;
-use state::VehicleState;
 
 mod data_source;
 mod file;
 mod gui;
 mod settings;
 mod simulation;
-mod state;
 mod telemetry_ext;
 
 use crate::data_source::serial::{self, *};
@@ -347,8 +345,8 @@ fn bin2kml(
         .split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
         .map(|msg| msg.into())
-        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_gps.is_some())
-        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_gps.unwrap()))
+        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_gps_asl.is_some())
+        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_gps_asl.unwrap()))
         .map(|(ln, lt, alt)| format!("     {},{},{}", ln, lt, alt + 100.0))
         .collect();
 

@@ -23,7 +23,6 @@ use mithril::telemetry::*;
 
 use crate::data_source::DataSource;
 use crate::settings::AppSettings;
-use crate::state::*;
 
 pub const BAUD_RATE: u32 = 115_200;
 pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(500);
@@ -388,7 +387,7 @@ impl DataSource for SerialDataSource {
             .vehicle_states
             .iter()
             .rev()
-            .find_map(|(_t, msg)| msg.telemetry_data_rate)
+            .find_map(|(_t, msg)| msg.data_rate)
             .unwrap_or(TelemetryDataRate::Low);
         let expected = match telemetry_data_rate {
             // TODO: don't hardcode these?

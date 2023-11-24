@@ -17,7 +17,6 @@ use mithril::telemetry::*;
 
 use crate::data_source::DataSource;
 use crate::simulation::*;
-use crate::state::VehicleState;
 
 #[derive(Default)]
 pub struct SimulationDataSource {

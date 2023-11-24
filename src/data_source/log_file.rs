@@ -22,7 +22,6 @@ use mithril::settings::*;
 use mithril::telemetry::*;
 
 use crate::data_source::DataSource;
-use crate::state::*;
 
 pub struct LogFileDataSource {
     path: Option<PathBuf>,

@@ -105,10 +105,10 @@ impl PlotTab {
             .line("True Vario [m/s]", B1, |vs| vs.true_vertical_speed);
 
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
-            .line("Altitude (Ground) [m]", BR, |vs| vs.altitude_ground)
+            .line("Altitude (Ground) [m]", BR, |vs| vs.altitude_ground_asl)
             .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
-            .line("Altitude [m]", B, |vs| vs.altitude)
-            .line("Altitude (GPS) [m]", G, |vs| vs.altitude_gps);
+            .line("Altitude [m]", B, |vs| vs.altitude_asl)
+            .line("Altitude (GPS) [m]", G, |vs| vs.altitude_gps_asl);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
             .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
@@ -129,32 +129,25 @@ impl PlotTab {
             .line("Mag (Z) [µT]", B, |vs| vs.magnetometer.map(|a| a.z));
 
         let barometer_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
-            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0))
-            .line("Drogue Cartridge [bar]", R1, |vs| vs.drogue_cartridge_pressure)
-            .line("Drogue Chamber [bar]", G1, |vs| vs.drogue_chamber_pressure)
-            .line("Main Cartridge [bar]", R, |vs| vs.main_cartridge_pressure)
-            .line("Main Chamber [bar]", G, |vs| vs.main_chamber_pressure);
+            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0));
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Baro. Temp. [°C]", C, |vs| vs.temperature_baro)
-            .line("Core Temp. [°C]", B, |vs| vs.temperature_core);
+            .line("Baro. Temp. [°C]", C, |vs| vs.temperature_baro);
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Arm Voltage [V]", O, |vs| vs.arm_voltage)
-            .line("Battery Voltage [V]", G, |vs| vs.battery_voltage)
-            .line("Current [A]", O1, |vs| vs.current)
-            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage)
-            .line("Breakwire Open?", R, |vs| vs.breakwire_open.map(|bw| bw.then(|| 1.0).unwrap_or(0.0)));
+            .line("Arm Voltage [V]", O, |vs| vs.arm_voltage.map(|v| (v as f32) / 1000.0))
+            .line("Battery Voltage [V]", G, |vs| vs.battery_voltage.map(|v| (v as f32) / 1000.0))
+            .line("Current [A]", O1, |vs| vs.current.map(|v| (v as f32) / 1000.0))
+            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0));
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization.map(|u| u as f32))
-            .line("Heap Util. [%]", G, |vs| vs.heap_utilization.map(|u| u as f32));
+            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization.map(|u| u as f32));
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
             .line("GCS RSSI [dBm]", B, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
             .line("GCS Signal RSSI [dBm]", B1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
             .line("GCS SNR [dB]", C, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", P, |vs| vs.vehicle_lora_rssi.map(|x| x as f32 / -2.0))
+            .line("Vehicle RSSI [dBm]", P, |vs| vs.lora_rssi.map(|x| x as f32 / -2.0))
             .line("HDOP", R, |vs| vs.hdop.map(|x| x as f32 / 100.0))
             .line("# Satellites", G, |vs| vs.num_satellites.map(|x| x as f32));
 

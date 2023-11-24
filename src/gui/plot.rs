@@ -13,7 +13,6 @@ use eframe::egui::PointerButton;
 use egui_plot::{AxisBools, Corner, Legend, Line, LineStyle, PlotBounds, VLine};
 
 use crate::gui::*;
-use crate::state::*;
 use crate::telemetry_ext::*;
 
 fn plot_time(x: &Instant, data_source: &dyn DataSource) -> f64 {

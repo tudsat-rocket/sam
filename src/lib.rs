@@ -13,7 +13,6 @@ mod file;
 mod gui;
 pub mod settings;
 mod simulation;
-mod state;
 mod telemetry_ext;
 
 pub use crate::gui::*;

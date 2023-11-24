@@ -1,9 +1,8 @@
 use egui::{CollapsingHeader, Vec2, Layout, Align};
-use mithril::telemetry::Command;
+use mithril::telemetry::*;
 
 use crate::gui::top_bar::*;
 use crate::data_source::DataSource;
-use crate::state::VehicleState;
 
 pub struct HeaderPanel {}
 
@@ -25,9 +24,9 @@ impl HeaderPanel {
         let rssi = Self::current(data_source, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0));
         let mode = Self::current(data_source, |vs| vs.mode).map(|s| format!("{:?}", s));
 
-        let alt_ground = Self::current(data_source, |vs| vs.altitude_ground).unwrap_or(0.0);
-        let alt_agl = Self::current(data_source, |vs| vs.altitude.map(|a| a - alt_ground));
-        let alt_max = Self::current(data_source, |vs| vs.altitude_max.map(|a| a - alt_ground));
+        let alt_ground = Self::current(data_source, |vs| vs.altitude_ground_asl).unwrap_or(0.0);
+        let alt_agl = Self::current(data_source, |vs| vs.altitude_asl.map(|a| a - alt_ground));
+        let apogee_agl = Self::current(data_source, |vs| vs.apogee_asl.map(|a| a - alt_ground));
         let vertical_accel = Self::current(data_source, |vs| vs.vertical_accel_filtered);
 
         let last_gps = data_source
@@ -56,7 +55,7 @@ impl HeaderPanel {
             ui.set_width(ui.available_width() / 2.0);
             ui.add_space(spacing);
             ui.nominal_value("📈", "Altitude (AGL) [m]", alt_agl, 1, -1.0, 10000.0);
-            ui.nominal_value("📈", "Max Alt. (AGL) [m]", alt_max, 1, -1.0, 10000.0);
+            ui.nominal_value("📈", "Apogee (AGL) [m]", apogee_agl, 1, -1.0, 10000.0);
             ui.nominal_value("☁", "Baro. Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_baro), 1, -100.0, 10000.0);
             ui.nominal_value("⏱", "Vertical Speed [m/s]", Self::current(data_source, |vs| vs.vertical_speed), 2, -1.0, 1.0);
             ui.nominal_value("⬆", "Vertical Accel. [m/s²]", vertical_accel, 1, -1.0, 1.0);
@@ -68,7 +67,7 @@ impl HeaderPanel {
             ui.telemetry_value("🌍", "GPS Status", gps_status);
             ui.nominal_value("📶", "# Sats", Self::current(data_source, |vs| vs.num_satellites.map(|n| n as f32)), 0, 5.0, 99.0);
             ui.nominal_value("🎯", "HDOP", hdop, 2, 0.0, 5.0);
-            ui.nominal_value("📡", "GPS Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_gps), 1, -100.0, 10000.0);
+            ui.nominal_value("📡", "GPS Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_gps_asl), 1, -100.0, 10000.0);
             ui.telemetry_value("🌐", "Coords", coords);
         });
     }
@@ -87,7 +86,7 @@ impl HeaderPanel {
 
         ui.separator();
 
-        let current_data_rate = Self::current(data_source, |vs| vs.telemetry_data_rate).unwrap_or_default();
+        let current_data_rate = Self::current(data_source, |vs| vs.data_rate).unwrap_or_default();
         let current_transmit_power = Self::current(data_source, |vs| vs.transmit_power).unwrap_or_default();
 
         if vertical {
@@ -118,7 +117,7 @@ impl HeaderPanel {
                 ui.command_button("⟲  Reboot", Command::Reboot, data_source);
                 ui.command_button("🗑 Erase Flash", Command::EraseFlash, data_source);
                 ui.flash_bar(ui.available_width() * 0.6, Self::current(data_source, |vs| vs.flash_pointer));
-                ui.battery_bar(ui.available_width(), Self::current(data_source, |vs| vs.battery_voltage));
+                ui.battery_bar(ui.available_width(), Self::current(data_source, |vs| vs.battery_voltage.map(|v| v as f32 / 1000.0)));
             });
 
             ui.separator();

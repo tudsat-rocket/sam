@@ -180,7 +180,7 @@ impl MapCache {
         let new_data = data_source.vehicle_states()
             .skip(keep_first)
             .filter(|(_t, vs)| vs.latitude.is_some() && vs.longitude.is_some())
-            .map(|(_t, vs)| (vs.latitude.unwrap(), vs.longitude.unwrap(), vs.altitude_gps.unwrap_or(0.0)))
+            .map(|(_t, vs)| (vs.latitude.unwrap(), vs.longitude.unwrap(), vs.altitude_gps_asl.unwrap_or(0.0)))
             .map(|(lat, lng, alt)| (lat as f64, lng as f64, alt as f64));
 
         if keep_first > 0 {

@@ -13,7 +13,6 @@ use mithril::settings::*;
 use mithril::telemetry::*;
 
 use crate::settings::AppSettings;
-use crate::state::*;
 
 pub mod log_file;
 pub mod serial;

@@ -9,8 +9,6 @@ use mithril::settings::*;
 use mithril::state_estimation::*;
 use mithril::telemetry::*;
 
-use crate::state::VehicleState;
-
 use crate::gui::windows::archive::ARCHIVE;
 
 #[cfg(any(target_os = "windows", target_os = "android"))]
@@ -165,7 +163,7 @@ impl SimulationState {
 
         let (altitude, latitude, longitude) = remaining_replication_states
             .front()
-            .map(|vs| (vs.altitude_gps.unwrap(), vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64))
+            .map(|vs| (vs.altitude_gps_asl.unwrap(), vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64))
             .unwrap_or((settings.altitude_ground, settings.launch_latitude, settings.launch_longitude));
 
         // Skip the first known states without raw sensor data
@@ -295,8 +293,8 @@ impl SimulationState {
                 break;
             }
 
-            if next.altitude_gps.is_some() && next.latitude.is_some() && next.longitude.is_some() {
-                self.altitude = next.altitude_gps.unwrap();
+            if next.altitude_gps_asl.is_some() && next.latitude.is_some() && next.longitude.is_some() {
+                self.altitude = next.altitude_gps_asl.unwrap();
                 self.latitude = next.latitude.unwrap() as f64;
                 self.longitude = next.longitude.unwrap() as f64;
             }
@@ -433,7 +431,7 @@ impl SimulationState {
 
         // update state estimation with sampled sensor values
         self.state_estimator.update(
-            self.time,
+            std::num::Wrapping(self.time),
             self.mode,
             self.gyroscope,
             self.accelerometer1,
@@ -457,11 +455,11 @@ impl From<&SimulationState> for VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
                 orientation: ss.state_estimator.orientation,
-                altitude: Some(ss.state_estimator.altitude_asl()),
+                altitude_asl: Some(ss.state_estimator.altitude_asl()),
                 altitude_baro: ss.altitude_baro,
-                altitude_ground: Some(ss.state_estimator.altitude_ground),
-                altitude_max: Some(ss.state_estimator.altitude_max),
-                altitude_gps: Some(ss.altitude), // TODO
+                altitude_ground_asl: Some(ss.state_estimator.altitude_ground),
+                apogee_asl: Some(ss.state_estimator.altitude_max),
+                altitude_gps_asl: Some(ss.altitude), // TODO
                 latitude: Some(ss.latitude as f32),
                 longitude: Some(ss.longitude as f32),
                 vertical_speed: Some(ss.state_estimator.vertical_speed()),
@@ -481,11 +479,11 @@ impl From<&SimulationState> for VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
                 orientation: ss.state_estimator.orientation,
-                altitude: Some(ss.state_estimator.altitude_asl()), // TODO
+                altitude_asl: Some(ss.state_estimator.altitude_asl()), // TODO
                 altitude_baro: ss.altitude_baro,
-                altitude_ground: Some(ss.altitude_ground),
-                altitude_max: Some(ss.state_estimator.altitude_max),
-                altitude_gps: Some(ss.altitude), // TODO
+                altitude_ground_asl: Some(ss.altitude_ground),
+                apogee_asl: Some(ss.state_estimator.altitude_max),
+                altitude_gps_asl: Some(ss.altitude), // TODO
                 latitude: Some(ss.latitude as f32),
                 longitude: Some(ss.longitude as f32),
                 vertical_speed: Some(ss.state_estimator.vertical_speed()),
@@ -498,11 +496,11 @@ impl From<&SimulationState> for VehicleState {
                 accelerometer1: ss.accelerometer1,
                 accelerometer2: ss.accelerometer2,
                 magnetometer: ss.magnetometer,
-                battery_voltage: Some(8.4),
+                battery_voltage: Some(8400),
                 arm_voltage: Some(if ss.time >= (ss.settings.sim_start_delay - 5000) {
-                    8.4
+                    8400
                 } else {
-                    0.0
+                    0
                 }),
                 true_orientation: Some(ss.orientation),
                 true_vertical_accel: Some(ss.acceleration.z),
