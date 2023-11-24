@@ -89,7 +89,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ac3d0c0a542d0ab5521211f873f62706a7136df415676f676d347e5a41dd80"
 dependencies = [
  "bitflags",
- "defmt",
  "embedded-hal 0.2.7",
  "nb 1.1.0",
  "vcell",
@@ -281,7 +280,6 @@ name = "embassy-embedded-hal"
 version = "0.1.0"
 source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
- "defmt",
  "embassy-futures",
  "embassy-sync",
  "embassy-time",
@@ -301,7 +299,6 @@ dependencies = [
  "atomic-polyfill 1.0.3",
  "cortex-m",
  "critical-section",
- "defmt",
  "embassy-macros",
  "embassy-time",
 ]
@@ -310,9 +307,6 @@ dependencies = [
 name = "embassy-futures"
 version = "0.1.1"
 source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
-dependencies = [
- "defmt",
-]
 
 [[package]]
 name = "embassy-hal-internal"
@@ -321,7 +315,6 @@ source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86
 dependencies = [
  "cortex-m",
  "critical-section",
- "defmt",
  "num-traits",
 ]
 
@@ -340,9 +333,6 @@ dependencies = [
 name = "embassy-net-driver"
 version = "0.2.0"
 source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
-dependencies = [
- "defmt",
-]
 
 [[package]]
 name = "embassy-net-driver-channel"
@@ -365,7 +355,6 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "critical-section",
- "defmt",
  "document-features",
  "embassy-embedded-hal",
  "embassy-futures",
@@ -400,7 +389,6 @@ source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86
 dependencies = [
  "cfg-if",
  "critical-section",
- "defmt",
  "futures-util",
  "heapless 0.8.0",
 ]
@@ -412,7 +400,6 @@ source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86
 dependencies = [
  "cfg-if",
  "critical-section",
- "defmt",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-rc.1",
  "futures-util",
@@ -424,7 +411,6 @@ name = "embassy-usb"
 version = "0.1.0"
 source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
 dependencies = [
- "defmt",
  "embassy-futures",
  "embassy-net-driver-channel",
  "embassy-sync",
@@ -438,9 +424,6 @@ dependencies = [
 name = "embassy-usb-driver"
 version = "0.1.0"
 source = "git+https://github.com/KoffeinFlummi/embassy?branch=usb_fix#624204da86196842c6be5187f6e3792b46af07e0"
-dependencies = [
- "defmt",
-]
 
 [[package]]
 name = "embedded-hal"
@@ -482,9 +465,6 @@ name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
-dependencies = [
- "defmt",
-]
 
 [[package]]
 name = "embedded-io-async"
@@ -492,7 +472,6 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de03527d6fb488b2d7c7a4dc81dfb6a657efe264256bfc70bb899746821666b1"
 dependencies = [
- "defmt",
  "embedded-io",
 ]
 
@@ -704,7 +683,6 @@ dependencies = [
  "embedded-hal-async",
  "filter",
  "nalgebra",
- "nb 1.1.0",
  "num-traits",
  "panic-probe",
  "postcard",
@@ -793,7 +771,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa6fa5645ef5a760cd340eaa92af9c1ce131c8c09e7f8926d8a24b59d26652b9"
 dependencies = [
  "cortex-m",
- "defmt",
 ]
 
 [[package]]

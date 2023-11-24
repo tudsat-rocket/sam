@@ -4,7 +4,6 @@ use core::num::Wrapping;
 use std::num::Wrapping;
 
 use nalgebra::*;
-use num_traits::Pow;
 use ahrs::Ahrs;
 use filter::kalman::kalman_filter::KalmanFilter;
 
@@ -61,19 +60,19 @@ impl StateEstimator {
             0.0, 0.0, 1.0
         );
         kalman.P = Matrix3::new(
-            settings.std_dev_barometer.pow(2), 0.0, 0.0,
+            settings.std_dev_barometer.powi(2), 0.0, 0.0,
             0.0, 1.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.pow(2),
+            0.0, 0.0, settings.std_dev_accelerometer.powi(2),
         );
         kalman.Q = Matrix3::new(
-            0.25f32 * dt.pow(4), 0.5f32 * dt.pow(3), 0.5f32 * dt.pow(2),
-            0.5f32 * dt.pow(3), dt.pow(2), dt,
-            0.5f32 * dt.pow(2), dt, 1.0f32,
-        ) * settings.std_dev_process.pow(2);
+            0.25f32 * dt.powi(4), 0.5f32 * dt.powi(3), 0.5f32 * dt.powi(2),
+            0.5f32 * dt.powi(3), dt.powi(2), dt,
+            0.5f32 * dt.powi(2), dt, 1.0f32,
+        ) * settings.std_dev_process.powi(2);
 
         kalman.R *= Matrix2::new(
-            settings.std_dev_barometer.pow(2), 0.0,
-            0.0, settings.std_dev_accelerometer.pow(2)
+            settings.std_dev_barometer.powi(2), 0.0,
+            0.0, settings.std_dev_accelerometer.powi(2)
         );
 
         Self {

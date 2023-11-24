@@ -106,11 +106,11 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
         self.write_u8(LSM6RRegister::Ctrl2G, reg).await
     }
 
-    pub async fn tick(&mut self) where <SPI as embedded_hal::spi::ErrorType>::Error: defmt::Format {
+    pub async fn tick(&mut self) {
         if let Err(e) = self.read_sensor_data().await {
             self.gyro = None;
             self.accel = None;
-            error!("{:?}", e);
+            error!("{:?}", Debug2Format(&e));
         }
     }
 
