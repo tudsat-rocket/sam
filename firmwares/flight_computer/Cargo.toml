@@ -55,9 +55,6 @@ panic-probe = { version = "0.3", features = [] }
 defmt-test = "0.3"
 
 [features]
-default = ["rev2"]
-std = []
-rev2 = []
 gcs = []
 
 # cargo build/run
