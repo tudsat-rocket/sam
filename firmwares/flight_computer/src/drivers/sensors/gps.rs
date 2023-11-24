@@ -1,6 +1,7 @@
 use alloc::format;
 use alloc::string::{String, ToString};
 
+use alloc::vec::Vec;
 use embassy_embedded_hal::SetConfig;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{Uart, Error};
@@ -25,6 +26,7 @@ const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
 const MEASUREMENT_RATE_MS: u16 = 100;
 
+#[allow(dead_code)]
 struct GPSDatum {
     utc_time: Option<u64>,
     latitude: Option<f32>,
@@ -35,29 +37,18 @@ struct GPSDatum {
     num_satellites: u8,
 }
 
-impl From<nmea::Nmea> for GPSDatum {
-    fn from(nmea: nmea::Nmea) -> Self {
-        Self {
-            utc_time: None, // TODO
-            latitude: nmea.latitude().map(|lat| lat as f32),
-            longitude: nmea.longitude().map(|lng| lng as f32), // TODO
-            altitude: nmea.altitude(),
-            fix: nmea.fix_type().into(),
-            hdop: (nmea.hdop().unwrap_or(99.99) * 100.0) as u16,
-            num_satellites: nmea.fix_satellites().unwrap_or(0) as u8,
-        }
-    }
-}
+impl TryFrom<&str> for GPSFixType {
+    type Error = ();
 
-impl From<Option<nmea::sentences::FixType>> for GPSFixType {
-    fn from(fix: Option<nmea::sentences::FixType>) -> GPSFixType {
-        use nmea::sentences::FixType::*;
-
-        // TODO: complete this?
-        match fix {
-            Some(Gps) => GPSFixType::AutonomousFix,
-            Some(DGps) => GPSFixType::DifferentialFix,
-            _ => GPSFixType::NoFix,
+    fn try_from(x: &str) -> Result<Self, Self::Error> {
+        match x {
+            "0" => Ok(GPSFixType::NoFix),
+            "1" => Ok(GPSFixType::AutonomousFix),
+            "2" => Ok(GPSFixType::DifferentialFix),
+            "4" => Ok(GPSFixType::RTKFix),
+            "5" => Ok(GPSFixType::RTKFloat),
+            "6" => Ok(GPSFixType::DeadReckoningFix),
+            _ => Err(()),
         }
     }
 }
@@ -76,7 +67,7 @@ pub struct GPSHandle {
 pub async fn run(mut gps: GPS) -> ! {
     loop {
         if let Err(e) = gps.run().await {
-            error!("{:?}", e);
+            error!("{:?}", Debug2Format(&e));
             Timer::after(Duration::from_millis(100)).await;
         }
     }
@@ -167,6 +158,50 @@ impl GPS {
         Ok(())
     }
 
+    async fn process_nmea_line(&mut self, line: &str) {
+        // We only care about GGA messages, those contain coordinates/fix info
+        if line.get(3..=5).unwrap_or("XXX") != "GGA" {
+            return;
+        }
+
+        let segments: Vec<&str> = line.split(',').collect();
+        if segments.len() < 15 {
+            return;
+        }
+
+        //let utc_time = Some(segments[1].to_string());
+
+        // Latitude needs to converted from degrees and minutes to decimal degrees
+        // Lat: DDMM.MM... Lng: DDDMM.MM...
+        let latitude = (segments[2].len() > 2)
+            .then(|| segments[2].split_at(2))
+            .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
+            .flatten()
+            .map(|(d, m)| (d + m / 60.0) * if segments[3] == "N" { 1.0 } else { -1.0 });
+        let longitude = (segments[4].len() > 3)
+            .then(|| segments[4].split_at(3))
+            .map(|(d, m)| d.parse::<f32>().ok().zip(m.parse::<f32>().ok()))
+            .flatten()
+            .map(|(d, m)| (d + m / 60.0) * if segments[5] == "E" { 1.0 } else { -1.0 });
+        let altitude = segments[9].parse::<f32>().ok();
+
+        let fix = segments[6].try_into().unwrap_or(GPSFixType::NoFix);
+        let num_satellites = segments[7].parse().unwrap_or(0);
+        let hdop = (segments[8].parse::<f32>().unwrap_or(99.99) * 100.0) as u16;
+
+        let datum: GPSDatum = GPSDatum {
+            utc_time: None,
+            latitude,
+            longitude,
+            altitude,
+            fix,
+            hdop,
+            num_satellites
+        };
+
+        self.sender.send(datum).await;
+    }
+
     async fn run(&mut self) -> Result<(), Error> {
         let current_baud_rate = self.find_baud_rate().await;
         info!("GPS using baud rate {:?}.", current_baud_rate);
@@ -187,12 +222,9 @@ impl GPS {
 
         loop {
             if let Ok(str) = self.read_gps_packet().await {
-                let mut nmea = nmea::Nmea::default();
                 for line in str.split("\r\n").filter(|str| str.len() > 0) {
-                    let _ = nmea.parse(line);
+                    self.process_nmea_line(line).await;
                 }
-                let datum: GPSDatum = nmea.into();
-                self.sender.send(datum).await;
             } else {
                 Timer::after(Duration::from_millis(1)).await;
             }
