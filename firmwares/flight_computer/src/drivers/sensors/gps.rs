@@ -10,7 +10,6 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Sender, Receiver, Channel};
 use embassy_time::{Timer, Duration, Instant};
 
-use ublox::{AlignmentToReferenceTime, CfgPrtUartBuilder, CfgRateBuilder, UartPortId};
 use static_cell::make_static;
 
 use defmt::*;
@@ -24,7 +23,7 @@ bind_interrupts!(struct Irqs {
 const DESIRED_BAUD_RATE: u32 = 115_200;
 const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
-const MEASUREMENT_RATE_MS: u16 = 100;
+//const MEASUREMENT_RATE_MS: u16 = 100;
 
 #[allow(dead_code)]
 struct GPSDatum {
@@ -136,20 +135,26 @@ impl GPS {
         self.uart.write(&msg.into_bytes()).await?;
 
         // Now that the RX is listening for UBX, set the baud rate.
-        self.uart.write(
-            &CfgPrtUartBuilder {
-                portid: UartPortId::Uart1,
-                reserved0: 0,
-                tx_ready: 0,
-                mode: 0x8c0,
-                baud_rate: DESIRED_BAUD_RATE,
-                in_proto_mask: 0x07,
-                out_proto_mask: 0x03,
-                flags: 0,
-                reserved5: 0,
-            }
-            .into_packet_bytes(),
-        ).await?;
+        // Message generated using the ublox crate for baud rate 115200, hardcoded to avoid the dependency
+        let baud_rate_msg = [
+            0xb5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00,
+            0x00, 0x00, 0xc0, 0x08, 0x00, 0x00, 0x00, 0xc2,
+            0x01, 0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0xb0, 0x7e
+        ];
+        //let baud_rate_msg = ublox::CfgPrtUartBuilder {
+        //        portid: ublox::UartPortId::Uart1,
+        //        reserved0: 0,
+        //        tx_ready: 0,
+        //        mode: 0x8c0,
+        //        baud_rate: DESIRED_BAUD_RATE,
+        //        in_proto_mask: 0x07,
+        //        out_proto_mask: 0x03,
+        //        flags: 0,
+        //        reserved5: 0,
+        //    }
+        //    .into_packet_bytes();
+        self.uart.write(&baud_rate_msg).await?;
 
         let mut uart_config = embassy_stm32::usart::Config::default();
         uart_config.baudrate = baud_rate;
@@ -211,14 +216,18 @@ impl GPS {
         }
 
         info!("Setting GPS measurement frequency...");
-        self.uart.write(
-            &CfgRateBuilder {
-                measure_rate_ms: MEASUREMENT_RATE_MS,
-                nav_rate: 1,
-                time_ref: AlignmentToReferenceTime::Gps,
-            }
-            .into_packet_bytes(),
-        ).await?;
+        // Generated using the ublox crate for 100ms, hardcoded to avoid the dependency
+        let measurement_rate_msg = [
+            0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0x64, 0x00,
+            0x01, 0x00, 0x01, 0x00, 0x7a, 0x12
+        ];
+        //let measurement_rate_msg = ublox::CfgRateBuilder {
+        //        measure_rate_ms: MEASUREMENT_RATE_MS,
+        //        nav_rate: 1,
+        //        time_ref: ublox::AlignmentToReferenceTime::Gps,
+        //    }
+        //    .into_packet_bytes();
+        self.uart.write(&measurement_rate_msg).await?;
 
         loop {
             if let Ok(str) = self.read_gps_packet().await {

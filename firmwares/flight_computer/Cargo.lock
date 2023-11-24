@@ -108,16 +108,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "chrono"
-version = "0.4.24"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e3c5919066adf22df73762e50cffcde3a758f2a848b113b586d1f86728b673b"
-dependencies = [
- "num-integer",
- "num-traits",
-]
-
-[[package]]
 name = "cobs"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -723,7 +713,6 @@ dependencies = [
  "serde",
  "siphasher",
  "static_cell",
- "ublox",
 ]
 
 [[package]]
@@ -1113,29 +1102,6 @@ name = "typenum"
 version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "497961ef93d974e23eb6f433eb5fe1b7930b659f06d12dec6fc44a8f554c0bba"
-
-[[package]]
-name = "ublox"
-version = "0.4.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42e34ea4d6a2860b2a6fd5fdf52a05c63d7586669eba1080100a5d355343dfa3"
-dependencies = [
- "bitflags",
- "chrono",
- "num-traits",
- "ublox_derive",
-]
-
-[[package]]
-name = "ublox_derive"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60619246c94c1f2149ae88cd46ab8d977d0ce73c81711f1c403264cf8d16937a"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "unicode-ident"
