@@ -10,6 +10,9 @@ pub struct MenuBarPanel {}
 
 impl MenuBarPanel {
     pub fn show(ctx: &egui::Context, sam: &mut Sam, enabled: bool) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let any = sam.data_source.as_any();
         let data_source_is_sim = any.is::<SimulationDataSource>();
         let data_source_is_log = any.is::<LogFileDataSource>();

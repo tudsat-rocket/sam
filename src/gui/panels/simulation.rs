@@ -9,6 +9,9 @@ pub struct SimulationPanel {}
 
 impl SimulationPanel {
     pub fn show(ctx: &egui::Context, data_source: &mut SimulationDataSource, enabled: bool) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let old_settings = data_source.settings.clone();
 
         egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {

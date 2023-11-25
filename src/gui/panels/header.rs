@@ -129,6 +129,9 @@ impl HeaderPanel {
     }
 
     pub fn show(ctx: &egui::Context, data_source: &mut dyn DataSource, enabled: bool) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         if ctx.screen_rect().width() > 1000.0 {
             egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
                 ui.set_enabled(enabled);

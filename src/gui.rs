@@ -155,6 +155,9 @@ impl Sam {
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
+            #[cfg(feature = "profiling")]
+            puffin::profile_function!();
+
             ui.set_enabled(!self.archive_window.open);
             ui.horizontal_centered(|ui| {
                 // Give the data source some space on the left ...

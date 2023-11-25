@@ -220,6 +220,9 @@ impl PlotTab {
     }
 
     fn plot_orientation(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         let mut viewport = ui.cursor();
         viewport.set_width(ui.available_width());
         viewport.set_height(ui.available_height());
@@ -242,6 +245,9 @@ impl PlotTab {
     }
 
     pub fn main_ui(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+
         self.shared_plot.borrow_mut().set_end(data_source.end());
 
         if ui.available_width() > 1000.0 {
