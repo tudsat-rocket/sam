@@ -14,25 +14,43 @@ use log::*;
 
 use crate::data_source::LogFileDataSource;
 
+#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+const FLASH_DARE_A: Option<&[u8]> = Some(include_bytes!("../../../archive/dare_launch_a_flash_filtered.json").as_slice());
+#[cfg(any(target_os = "wasm", target_os = "android"))]
+const FLASH_DARE_A: Option<&[u8]> = None;
+
+#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+const FLASH_DARE_B: Option<&[u8]> = Some(include_bytes!("../../../archive/dare_launch_b_flash_filtered.json").as_slice());
+#[cfg(any(target_os = "wasm", target_os = "android"))]
+const FLASH_DARE_B: Option<&[u8]> = None;
+
+#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+const FLASH_EUROC_2023: Option<&[u8]> = Some(include_bytes!("../../../archive/euroc_2023_flash_filtered.json").as_slice());
+#[cfg(any(target_os = "wasm", target_os = "android"))]
+const FLASH_EUROC_2023: Option<&[u8]> = None;
+
 // Log files included with the application.
 // TODO: migrate old launches
-pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>); 5] = [
-    ("Zülpich #1", None, None),
-    ("Zülpich #2", None, None),
+pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>, Option<&'static [u8]>); 5] = [
+    ("Zülpich #1", None, None, None),
+    ("Zülpich #2", None, None, None),
     (
         "DARE (FC A)",
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_telem_filtered.json"),
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_flash_filtered.json"),
+        FLASH_DARE_A,
     ),
     (
         "DARE (FC B)",
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_telem_filtered.json"),
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_flash_filtered.json"),
+        FLASH_DARE_B,
     ),
     (
         "EuRoC 2023 (ÆSIR Signý)",
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_telem_filtered.json"),
         Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_flash_filtered.json"),
+        FLASH_EUROC_2023,
     ),
 ];
 
@@ -150,7 +168,7 @@ impl ArchiveWindow {
             .show(ctx, |ui| {
                 ui.add_space(10.0);
 
-                for (i, (title, telem, flash)) in ARCHIVE.iter().enumerate() {
+                for (i, (title, telem, flash_url, _flash_bytes)) in ARCHIVE.iter().enumerate() {
                     if i != 0 {
                         ui.separator();
                     }
@@ -158,8 +176,8 @@ impl ArchiveWindow {
                     ui.horizontal(|ui| {
                         ui.label(*title);
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.add_enabled(flash.is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_log(ctx, flash.unwrap());
+                            if ui.add_enabled(flash_url.is_some(), Button::new("🖴  Flash")).clicked() {
+                                self.open_log(ctx, flash_url.unwrap());
                             }
 
                             if ui.add_enabled(telem.is_some(), Button::new("📡 Telemetry")).clicked() {

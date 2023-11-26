@@ -20,7 +20,7 @@ impl SimulationSettingsUiExt for SimulationSettings {
                         .selected_text(self.replication_log_index.map(|i| ARCHIVE[i].0).unwrap_or("None"))
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut self.replication_log_index, None, "None");
-                            for (i, (name, _, f)) in ARCHIVE.iter().enumerate() {
+                            for (i, (name, _, f, _)) in ARCHIVE.iter().enumerate() {
                                 if f.is_none() {
                                     continue;
                                 }

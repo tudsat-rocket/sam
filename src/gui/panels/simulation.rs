@@ -30,13 +30,12 @@ impl SimulationPanel {
             ui.add_space(20.0);
 
             let changed = data_source.settings != old_settings;
-            let released = false;
             ui.horizontal(|ui| {
                 if ui.button("Reset").clicked() {
                     data_source.settings = SimulationSettings::default();
                 }
 
-                if ui.button("↻  Rerun").clicked() || (changed && released) {
+                if ui.button("↻  Rerun").clicked() || changed {
                     data_source.reset();
                 }
             });

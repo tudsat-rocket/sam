@@ -115,15 +115,7 @@ pub struct SimulationState {
 }
 
 impl SimulationState {
-    async fn load_archive_log(url: &str) -> Result<Vec<u8>, reqwest::Error> {
-        let res = reqwest::Client::new().get(url).send().await?;
-        Ok(res.bytes().await?.to_vec())
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    fn load_log_states(url: &str) -> Result<VecDeque<VehicleState>, reqwest::Error> {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-        let bytes = rt.block_on(Self::load_archive_log(url))?;
+    fn load_log_states(bytes: &[u8]) -> Result<VecDeque<VehicleState>, reqwest::Error> {
         let msgs = serde_json::from_slice::<Vec<DownlinkMessage>>(&bytes).unwrap();
         Ok(msgs.into_iter().map(|x| x.into()).collect())
     }
@@ -147,9 +139,9 @@ impl SimulationState {
             .replication_log_index
             .map(|i| ARCHIVE.get(i))
             .flatten()
-            .map(|(_, _, flash)| *flash)
+            .map(|(_, _, _, flash_bytes)| *flash_bytes)
             .flatten()
-            .map(|url| Self::load_log_states(url).unwrap())
+            .map(|bytes| Self::load_log_states(bytes).unwrap())
             .unwrap_or_default();
 
         #[cfg(target_arch = "wasm32")]
@@ -179,6 +171,7 @@ impl SimulationState {
         let mut accelerometer1 = None;
         let mut accelerometer2 = None;
         let mut magnetometer = None;
+        let mut pressure_baro = None;
         let mut altitude_baro = None;
         if let Some(first) = remaining_replication_states.pop_front() {
             time = first.time;
@@ -187,7 +180,8 @@ impl SimulationState {
             accelerometer1 = first.accelerometer1;
             accelerometer2 = first.accelerometer2;
             magnetometer = first.magnetometer;
-            altitude_baro = first.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
+            pressure_baro = first.pressure_baro;
+            altitude_baro = pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
             state_estimator.altitude_ground = altitude_baro.unwrap();
         }
 
@@ -215,6 +209,7 @@ impl SimulationState {
             accelerometer1,
             accelerometer2,
             magnetometer,
+            pressure_baro,
             altitude_baro,
 
             remaining_replication_states,
@@ -332,11 +327,11 @@ impl SimulationState {
                 self.magnetometer.unwrap()
                     + (next.magnetometer.unwrap() - self.magnetometer.unwrap()) / delta_time as f32,
             );
-            let altitude_baro = next.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
-            self.altitude_baro = Some(
-                self.altitude_baro.unwrap()
-                    + (altitude_baro.unwrap() - self.altitude_baro.unwrap()) / delta_time as f32,
+            self.pressure_baro = Some(
+                self.pressure_baro.unwrap()
+                    + (next.pressure_baro.unwrap() - self.pressure_baro.unwrap()) / delta_time as f32,
             );
+            self.altitude_baro = self.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
         }
 
         false
@@ -477,6 +472,7 @@ impl From<&SimulationState> for VehicleState {
                 accelerometer1: ss.accelerometer1,
                 accelerometer2: ss.accelerometer2,
                 magnetometer: ss.magnetometer,
+                pressure_baro: ss.pressure_baro,
                 ..Default::default()
             }
         } else {
