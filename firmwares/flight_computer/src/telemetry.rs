@@ -235,16 +235,19 @@ pub struct VehicleState {
     pub true_orientation: Option<UnitQuaternion<f32>>,
     pub true_vertical_accel: Option<f32>,
     pub true_vertical_speed: Option<f32>,
-}
 
-impl VehicleState {
-    pub fn euler_angles(&self) -> Option<Vector3<f32>> {
-        self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
-    }
+    // Computed values. These are just calculated from the orientation value, but are cached for
+    // performance reasons. Since these are only needed by the ground station, we don't include
+    // them when compiling for the flight computer.
+    #[cfg(not(target_os = "none"))]
+    pub euler_angles: Option<Vector3<f32>>,
+    #[cfg(not(target_os = "none"))]
+    pub true_euler_angles: Option<Vector3<f32>>,
 
-    pub fn true_euler_angles(&self) -> Option<Vector3<f32>> {
-        self.true_orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI)
-    }
+    #[cfg(not(target_os = "none"))]
+    pub angle_of_attack: Option<f32>,
+    #[cfg(not(target_os = "none"))]
+    pub true_angle_of_attack: Option<f32>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -288,6 +291,16 @@ impl Into<VehicleState> for TelemetryMain {
             vertical_speed: Some(self.vertical_speed),
             vertical_accel: Some(self.vertical_accel),
             vertical_accel_filtered: Some(self.vertical_accel_filtered),
+
+            #[cfg(not(target_os = "none"))]
+            euler_angles: self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
+            #[cfg(not(target_os = "none"))]
+            angle_of_attack: self.orientation.map(|q| {
+                let up = Vector3::new(0.0, 0.0, 1.0);
+                let attitude = q * up;
+                90.0 - up.dot(&attitude).acos().to_degrees()
+            }),
+
             ..Default::default()
         }
     }
@@ -336,27 +349,37 @@ impl From<VehicleState> for TelemetryMainCompressed {
 
 impl Into<VehicleState> for TelemetryMainCompressed {
     fn into(self) -> VehicleState {
+        let (x, y, z, w) = self.orientation;
+        let quat_raw = Quaternion {
+            coords: Vector4::new(
+                ((x as f32) - 127.0) / 127.0,
+                ((y as f32) - 127.0) / 127.0,
+                ((z as f32) - 127.0) / 127.0,
+                ((w as f32) - 127.0) / 127.0
+            ),
+        };
+        let orientation = Some(UnitQuaternion::from_quaternion(quat_raw));
+
         VehicleState {
             time: self.time,
             mode: Some(self.mode),
-            orientation: {
-                let (x, y, z, w) = self.orientation;
-                let quat_raw = Quaternion {
-                    coords: Vector4::new(
-                        ((x as f32) - 127.0) / 127.0,
-                        ((y as f32) - 127.0) / 127.0,
-                        ((z as f32) - 127.0) / 127.0,
-                        ((w as f32) - 127.0) / 127.0
-                    ),
-                };
-                Some(UnitQuaternion::from_quaternion(quat_raw))
-            },
+            orientation,
             altitude_asl: Some((self.altitude as f32 - 1000.0) / 10.0),
             altitude_baro: Some((self.altitude_baro as f32 - 1000.0) / 10.0),
             apogee_asl: Some((self.altitude_max as f32 - 1000.0) / 10.0),
             vertical_speed: Some(Into::<f32>::into(self.vertical_speed) / 10.0),
             vertical_accel: Some(Into::<f32>::into(self.vertical_accel) / 10.0),
             vertical_accel_filtered: Some(Into::<f32>::into(self.vertical_accel_filtered) / 10.0),
+
+            #[cfg(not(target_os = "none"))]
+            euler_angles: orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
+            #[cfg(not(target_os = "none"))]
+            angle_of_attack: orientation.map(|q| {
+                let up = Vector3::new(0.0, 0.0, 1.0);
+                let attitude = q * up;
+                90.0 - up.dot(&attitude).acos().to_degrees()
+            }),
+
             ..Default::default()
         }
     }
