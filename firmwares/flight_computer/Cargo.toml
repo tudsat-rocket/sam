@@ -21,7 +21,7 @@ serde = { version = "1", default-features = false, features = ["derive", "alloc"
 postcard = "1.0"
 crc = "3"
 ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
-nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std"] }
+nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std", "macros"] }
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
 siphasher = { version = "0.3", default-features = false }
 rand = { version = "0.8", default-features = false }
