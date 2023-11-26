@@ -15,6 +15,9 @@ use egui_plot::{AxisBools, Corner, Legend, Line, LineStyle, PlotBounds, VLine};
 use crate::gui::*;
 use crate::telemetry_ext::*;
 
+const DOWNSAMPLING_FACTOR: usize = 4;
+const MAX_DOWNSAMPLING_RUNS: usize = 2;
+
 fn plot_time(x: &Instant, data_source: &dyn DataSource) -> f64 {
     if let Some((first_t, _first_vs)) = data_source.vehicle_states().next() {
         x.duration_since(*first_t).as_secs_f64()
@@ -23,12 +26,28 @@ fn plot_time(x: &Instant, data_source: &dyn DataSource) -> f64 {
     }
 }
 
+fn downsample_points(data: &Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+    data.chunks(DOWNSAMPLING_FACTOR * 2)
+        .map(|chunk| {
+            let (min_i, min) = chunk.iter().enumerate().min_by(|(_, x), (_, y)| x[1].total_cmp(&y[1])).unwrap();
+            let (max_i, max) = chunk.iter().enumerate().max_by(|(_, x), (_, y)| x[1].total_cmp(&y[1])).unwrap();
+            match (min_i, max_i) {
+                (i, j) if i < j => [*min, *max],
+                _ => [*max, *min],
+            }
+        })
+        .flatten()
+        .collect()
+}
+
 /// Cache for a single line.
 struct PlotCacheLine {
     name: String,
     color: Color32,
     pub callback: Box<dyn FnMut(&VehicleState) -> Option<f32>>,
-    data: Vec<[f64; 2]>,
+    /// Increasingly downsampled plot data. The first entry is the full data, followed by
+    /// smaller and smaller vectors.
+    data: Vec<Vec<[f64; 2]>>,
     stats: Option<(f64, f64, f64, f64)>,
     last_bounds: Option<PlotBounds>,
     last_view: Vec<[f64; 2]>,
@@ -40,7 +59,7 @@ impl PlotCacheLine {
             name: name.to_string(),
             color,
             callback: Box::new(cb),
-            data: Vec::new(),
+            data: vec![Vec::new()],
             stats: None,
             last_bounds: None,
             last_view: vec![],
@@ -54,17 +73,50 @@ impl PlotCacheLine {
                 .filter_map(|(x, vs)| (self.callback)(vs).map(|y| [x, y as f64]));
 
         if keep_first > 0 {
-            self.data.extend(new_data)
+            self.data[0].extend(new_data)
         } else {
-            self.data = new_data.collect();
+            self.data[0] = new_data.collect();
         }
+
+        // clear the downsample caches
+        self.data.truncate(1);
     }
 
     fn clear_cache(&mut self) {
-        self.data.truncate(0);
+        self.data.truncate(1);
+        self.data[0].truncate(0);
     }
 
-    pub fn data_for_bounds(&mut self, bounds: PlotBounds, data_source: &dyn DataSource) -> Vec<[f64; 2]> {
+    fn cached_data_downsampled(&mut self, bounds: PlotBounds, view_width: f32) -> Vec<[f64; 2]> {
+        if self.data[0].len() == 0 {
+            return Vec::new();
+        }
+
+        let (xmin, xmax) = (bounds.min()[0], bounds.max()[0]);
+
+        let mut imin = self.data[0].partition_point(|d| d[0] < xmin);
+        let mut imax = imin + self.data[0][imin..].partition_point(|d| d[0] < xmax);
+
+        imin = imin.saturating_sub(1);
+        imax = usize::min(imax + 1, self.data[0].len() - 1);
+
+        for level in 0..=MAX_DOWNSAMPLING_RUNS {
+            if level >= self.data.len() {
+                self.data.push(downsample_points(&self.data[level-1]));
+            }
+
+            if imax - imin < (2.0 * view_width) as usize {
+                return self.data[level][imin..imax].to_vec();
+            } else if level < MAX_DOWNSAMPLING_RUNS {
+                imin /= DOWNSAMPLING_FACTOR;
+                imax /= DOWNSAMPLING_FACTOR;
+            }
+        }
+
+        self.data.last().unwrap()[imin..imax].to_vec()
+    }
+
+    pub fn data_for_bounds(&mut self, bounds: PlotBounds, data_source: &dyn DataSource, view_width: f32) -> Vec<[f64; 2]> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -76,15 +128,7 @@ impl PlotCacheLine {
         }
 
         if self.last_bounds.map(|b| b != bounds).unwrap_or(true) {
-            let (xmin, xmax) = (bounds.min()[0], bounds.max()[0]);
-
-            let imin = self.data.partition_point(|d| d[0] < xmin);
-            let imax = imin + self.data[imin..].partition_point(|d| d[0] < xmax);
-
-            let imin = imin.saturating_sub(1);
-            let imax = usize::min(imax + 1, self.data.len() - 1);
-
-            self.last_view = self.data[imin..imax].to_vec();
+            self.last_view = self.cached_data_downsampled(bounds, view_width);
             self.last_bounds = Some(bounds);
             self.stats = None;
         }
@@ -196,7 +240,13 @@ impl PlotCache {
     }
 
     /// Lines to be plotted
-    pub fn plot_lines(&mut self, bounds: PlotBounds, show_stats: bool, data_source: &dyn DataSource) -> Vec<Line> {
+    pub fn plot_lines(
+        &mut self,
+        bounds: PlotBounds,
+        show_stats: bool,
+        data_source: &dyn DataSource,
+        view_width: f32,
+    ) -> Vec<Line> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -204,7 +254,7 @@ impl PlotCache {
         self.lines
             .iter_mut()
             .map(|pcl| {
-                let data = pcl.data_for_bounds(bounds, data_source);
+                let data = pcl.data_for_bounds(bounds, data_source, view_width);
                 let stats = show_stats.then(|| pcl.stats()).flatten();
                 let legend = if let Some((mean, std_dev, min, max)) = stats {
                     format!(
@@ -374,8 +424,9 @@ impl PlotUiExt for egui::Ui {
         }
 
         let show_stats = shared.show_stats;
+        let view_width = self.max_rect().width();
         let ir = plot.show(self, move |plot_ui| {
-            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats, data_source);
+            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats, data_source, view_width);
             for l in lines.into_iter() {
                 plot_ui.line(l.width(1.2));
             }

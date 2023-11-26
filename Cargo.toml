@@ -47,11 +47,6 @@ puffin_egui = { version = "0.23", optional = true }
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
-
-[target.'cfg(all(target_arch = "x86_64", not(target_os = "windows")))'.dependencies]
-rand = { version = "0.8", default-features = false, features = ["small_rng", "getrandom"] }
-
-[target.'cfg(target_os = "windows")'.dependencies]
 rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 # Android dependencies

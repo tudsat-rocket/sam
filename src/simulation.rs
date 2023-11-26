@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::f32::consts::PI;
 
 use nalgebra::{UnitQuaternion, Vector3};
 use rand::distributions::Distribution;
@@ -11,15 +12,12 @@ use mithril::telemetry::*;
 
 use crate::gui::windows::archive::ARCHIVE;
 
-#[cfg(any(target_os = "windows", target_os = "android"))]
 type Rng = rand::rngs::StdRng;
-#[cfg(not(any(target_os = "windows", target_os = "android")))]
-type Rng = rand::rngs::SmallRng;
 
 const GRAVITY: f32 = 9.80665;
 
 pub const SIMULATION_TICK_MS: u32 = 1;
-pub const PLOT_STEP_MS: u32 = 100;
+pub const PLOT_STEP_MS: u32 = 50;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
@@ -109,6 +107,7 @@ pub struct SimulationState {
     pub(crate) accelerometer1: Option<Vector3<f32>>,
     pub(crate) accelerometer2: Option<Vector3<f32>>,
     pub(crate) magnetometer: Option<Vector3<f32>>,
+    pub(crate) pressure_baro: Option<f32>,
     pub(crate) altitude_baro: Option<f32>,
 
     pub(crate) state_estimator: StateEstimator,
@@ -455,6 +454,12 @@ impl From<&SimulationState> for VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
                 orientation: ss.state_estimator.orientation,
+                euler_angles: ss.state_estimator.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
+                angle_of_attack: ss.state_estimator.orientation.map(|q| {
+                    let up = Vector3::new(0.0, 0.0, 1.0);
+                    let attitude = q * up;
+                    90.0 - up.dot(&attitude).acos().to_degrees()
+                }),
                 altitude_asl: Some(ss.state_estimator.altitude_asl()),
                 altitude_baro: ss.altitude_baro,
                 altitude_ground_asl: Some(ss.state_estimator.altitude_ground),
@@ -479,6 +484,12 @@ impl From<&SimulationState> for VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
                 orientation: ss.state_estimator.orientation,
+                euler_angles: ss.state_estimator.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
+                angle_of_attack: ss.state_estimator.orientation.map(|q| {
+                    let up = Vector3::new(0.0, 0.0, 1.0);
+                    let attitude = q * up;
+                    90.0 - up.dot(&attitude).acos().to_degrees()
+                }),
                 altitude_asl: Some(ss.state_estimator.altitude_asl()), // TODO
                 altitude_baro: ss.altitude_baro,
                 altitude_ground_asl: Some(ss.altitude_ground),
@@ -503,6 +514,15 @@ impl From<&SimulationState> for VehicleState {
                     0
                 }),
                 true_orientation: Some(ss.orientation),
+                true_euler_angles: {
+                    let (r, p, y) = ss.orientation.euler_angles();
+                    Some(Vector3::new(r, p, y) * 180.0 / PI)
+                },
+                true_angle_of_attack: {
+                    let up = Vector3::new(0.0, 0.0, 1.0);
+                    let attitude = ss.orientation * up;
+                    Some(90.0 - up.dot(&attitude).acos().to_degrees())
+                },
                 true_vertical_accel: Some(ss.acceleration.z),
                 true_vertical_speed: Some(ss.velocity.z),
                 ..Default::default()

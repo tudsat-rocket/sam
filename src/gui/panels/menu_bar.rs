@@ -38,7 +38,7 @@ impl MenuBarPanel {
                 ui.separator();
 
                 // Opening files manually is not available on web assembly
-                #[cfg(target_arch = "x86_64")]
+                #[cfg(all(not(target_arch = "wasm"), not(target_os = "android")))]
                 if ui.selectable_label(false, "🗁  Open Log File").clicked() {
                     if let Some(data_source) = open_log_file() {
                         sam.data_source = Box::new(data_source);
@@ -49,6 +49,7 @@ impl MenuBarPanel {
                 ui.toggle_value(&mut sam.archive_window.open, "🗄 Flight Archive");
 
                 // Toggle archive panel
+                #[cfg(all(not(target_arch = "wasm"), not(target_os = "android")))]
                 if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {
                     sam.data_source = Box::new(SimulationDataSource::default());
                 }

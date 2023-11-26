@@ -51,7 +51,7 @@ pub enum SerialStatus {
 /// If `send_heartbeats` is set, regular heartbeat messages will be sent to
 /// the device. If no heartbeats are sent, the device will not send log
 /// messages.
-#[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn downlink_port(
     ctx: Option<egui::Context>,
     downlink_tx: &mut Sender<DownlinkMessage>,
@@ -142,7 +142,7 @@ pub fn find_serial_port() -> Option<String> {
 
 /// Continuously monitors for connected USB serial devices and connects to them.
 /// Run in a separate thread using `spawn_downlink_monitor`.
-#[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
@@ -168,7 +168,7 @@ pub fn downlink_monitor(
 }
 
 /// Spawns `downlink_monitor` in a new thread.
-#[cfg(not(target_arch = "wasm32"))] // TODO: serial ports on wasm?
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn spawn_downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
@@ -209,7 +209,8 @@ impl SerialDataSource {
 
         let ctx = ctx.clone();
 
-        #[cfg(not(target_arch = "wasm32"))] // TODO: can't spawn threads on wasm
+        // There are no serial ports on wasm, and on android the Java side handles this.
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
         spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true);
 
         let telemetry_log_path = Self::new_telemetry_log_path();
