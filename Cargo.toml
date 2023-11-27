@@ -14,11 +14,11 @@ clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
 # egui & friends
-egui = "0.23"
-eframe = "0.23"
+egui = { version = "0.23", default-features = false }
+eframe = { version = "0.23", default-features = false, features = ["glow", "wayland", "x11"] }
 egui_plot = "0.23"
 egui_extras = { version = "0.23", features = ["image"] }
-image = { version = "0.24", features = ["png"] }
+image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 egui-gizmo = "0.12"
 # serialization & communication
 serde = { version = "1", features = ["derive"] }
@@ -35,7 +35,7 @@ slippy-map-tiles = "0.16"
 colorgrad = "0.6"
 rand_distr = { version = "0.4", default-features = false }
 tokio = "1.33"
-futures = "0.3.28"
+futures = { version = "0.3.28", default-features = false }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
 
 # Used for profiling
