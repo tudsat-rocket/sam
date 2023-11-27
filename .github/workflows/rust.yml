@@ -10,15 +10,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  build_native:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
     - name: Install dependencies
-      run: sudo apt-get install -y libglib2.0-dev libgtk-3-dev libudev-dev
+      run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libgtk-3-dev libudev-dev
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          override: true
     - name: Build
-      run: cargo build --verbose
+      run: cargo build
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test
+
+  build_wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install rust
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          override: true
+          target: wasm32-unknown-unknown
+    - name: Install wasm-pack
+      run: cargo install wasm-pack
+    - name: Build
+      run: wasm-pack build --target no-modules

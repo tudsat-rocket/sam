@@ -2744,6 +2744,7 @@ dependencies = [
 [[package]]
 name = "mithril"
 version = "0.1.0"
+source = "git+https://github.com/tudsat-rocket/mithril.git#ca7796fd8dabfbb0c75e945b63d7ce414ae8b048"
 dependencies = [
  "ahrs",
  "alloc-cortex-m",
