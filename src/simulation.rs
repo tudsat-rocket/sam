@@ -12,7 +12,10 @@ use mithril::telemetry::*;
 
 use crate::gui::windows::archive::ARCHIVE;
 
+#[cfg(not(target_arch = "wasm32"))]
 type Rng = rand::rngs::StdRng;
+#[cfg(target_arch = "wasm32")]
+type Rng = rand::rngs::SmallRng;
 
 const GRAVITY: f32 = 9.80665;
 
