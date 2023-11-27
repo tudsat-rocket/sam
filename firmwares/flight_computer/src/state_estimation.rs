@@ -49,9 +49,15 @@ impl StateEstimator {
         let ahrs = ahrs::Mahony::new(dt, settings.mahony_kp, settings.mahony_ki);
 
         let mut kalman = KalmanFilter::default();
-        // Höhe z, Vel z, Beschleunigung z
 
-        kalman.x = vector![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]; // state vec
+        // State Vector
+        kalman.x = vector![
+            0.0, 0.0, 0.0, // XYZ position (m)
+            0.0, 0.0, 0.0, // XYZ velocity (m/s)
+            0.0, 0.0, 0.0  // XYZ acceleration (m/s^2)
+        ];
+
+        // State Transition Matrix
         kalman.F = matrix![
                 1.0, 0.0, 0.0, dt, 0.0, 0.0, 0.5 * dt * dt, 0.0, 0.0;
                 0.0, 1.0, 0.0, 0.0, dt, 0.0, 0.0, 0.5 * dt * dt, 0.0;
@@ -64,23 +70,18 @@ impl StateEstimator {
                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
         ];
 
+        // Measurement Matrix
         kalman.H = matrix![
-            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0;
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0;
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0;
-            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0;
+            0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0; // barometer measures Z pos
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0; // acceleration X
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0; // acceleration Y
+            0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0; // acceleration Z
         ];
 
-        /*
-        kalman.P = Matrix3::new(
-            settings.std_dev_barometer.powi(2), 0.0, 0.0,
-            0.0, 1.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.powi(2),
-        );
-        */
-
+        // State Covariance Matrix (initialized to a high value)
         kalman.P = Matrix::<f32, U9, U9, _>::identity() * 999.0 ;
 
+        // Process Covariance Matrix
         kalman.Q = matrix![
             0.25f32 * dt.powi(4), 0.0, 0.0, 0.5f32 * dt.powi(3), 0.0, 0.0, 0.5f32 * dt.powi(2), 0.0, 0.0;
             0.0, 0.25f32 * dt.powi(4), 0.0, 0.0, 0.5f32 * dt.powi(3), 0.0, 0.0, 0.5f32 * dt.powi(2), 0.0;
@@ -93,6 +94,7 @@ impl StateEstimator {
             0.0, 0.0, 0.5f32 * dt.powi(2), 0.0, 0.0, dt, 0.0, 0.0, 1.0;
         ] * settings.std_dev_process.powi(2);
 
+        // Measurement Covariance Matrix
         kalman.R *= Matrix4::new(
             settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0,
             0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0,
@@ -163,11 +165,12 @@ impl StateEstimator {
             self.acceleration_world = None;
         }
 
-        // Update the Kalman filter with barometric altitude and world-space vertical acceleration
+        // Update the Kalman filter with barometric altitude and world-space acceleration
         let altitude_baro = barometer
             .and_then(|a| (!a.is_nan()).then(|| a)) // NaN is not a valid altitude
             .and_then(|a| (a > -100.0 && a < 12_000.0).then(|| a)); // neither is -13000
-        let accel = self.acceleration_world.map.and_then(|a| (!(a.x.is_nan() || a.y.is_nan() || a.z.is_nan())).then_some(a));
+        let accel = self.acceleration_world
+            .and_then(|a| (!(a.x.is_nan() || a.y.is_nan() || a.z.is_nan())).then_some(a));
 
         match (accel, altitude_baro) {
             (Some(accel), Some(altitude_baro)) => {
@@ -206,8 +209,20 @@ impl StateEstimator {
         }
     }
 
-    pub fn acceleration_world(&self) -> Option<&Vector3<f32>> {
+    pub fn acceleration_world_raw(&self) -> Option<&Vector3<f32>> {
         self.acceleration_world.as_ref()
+    }
+
+    pub fn position_local(&self) -> Vector3<f32> {
+        Vector3::new(self.kalman.x[0], self.kalman.x[1], self.kalman.x[2])
+    }
+
+    pub fn velocity(&self) -> Vector3<f32> {
+        Vector3::new(self.kalman.x[3], self.kalman.x[4], self.kalman.x[5])
+    }
+
+    pub fn acceleration_world(&self) -> Vector3<f32> {
+        Vector3::new(self.kalman.x[6], self.kalman.x[7], self.kalman.x[8])
     }
 
     pub fn altitude_asl(&self) -> f32 {
@@ -222,24 +237,12 @@ impl StateEstimator {
         self.velocity().z
     }
 
-    pub fn vertical_accel(&self) -> f32 {
-        self.acceleration().z
+    pub fn vertical_acceleration(&self) -> f32 {
+        self.acceleration_world().z
     }
 
     pub fn time_in_mode(&self) -> u32 {
         (self.time - self.mode_time).0
-    }
-
-    pub fn position_local(&self) -> Vector3<f32> {
-        Vector3::new(self.kalman.x[0], self.kalman.x[1], self.kalman.x[2])
-    }
-
-    pub fn velocity(&self) -> Vector3<f32> {
-        Vector3::new(self.kalman.x[3], self.kalman.x[4], self.kalman.x[5])
-    }
-
-    pub fn acceleration(&self) -> Vector3<f32> {
-        Vector3::new(self.kalman.x[6], self.kalman.x[7], self.kalman.x[8])
     }
 
     /// Main flight logic. This function is responsible for deciding whether to switch to a new

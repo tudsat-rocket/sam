@@ -11,8 +11,6 @@ use std::string::{String, ToString};
 #[cfg(not(target_os = "none"))]
 use std::vec::Vec;
 
-#[cfg(target_os="none")]
-use core::f32::consts::PI;
 #[cfg(not(target_os = "none"))]
 use std::f32::consts::PI;
 
