@@ -9,12 +9,13 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use mithril::telemetry::*;
 
-mod panels;
 mod fc_settings;
 mod map;
 mod maxi_grid;
 mod misc;
+mod panels;
 mod plot;
+mod plots;
 mod simulation_settings;
 mod tabs;
 mod theme;
@@ -34,6 +35,7 @@ pub struct Sam {
     data_source: Box<dyn DataSource>,
     tab: GuiTab,
     plot_tab: PlotTab,
+    launch_tab: LaunchTab,
     configure_tab: ConfigureTab,
     archive_window: ArchiveWindow,
 }
@@ -56,6 +58,7 @@ impl Sam {
 
         let plot_tab = PlotTab::init(&settings);
         let configure_tab = ConfigureTab::init();
+        let launch_tab = LaunchTab::init(&settings);
 
         egui_extras::install_image_loaders(ctx);
 
@@ -66,6 +69,7 @@ impl Sam {
             tab: GuiTab::Plot,
             plot_tab,
             configure_tab,
+            launch_tab,
 
             archive_window: ArchiveWindow::default(),
         }
@@ -151,7 +155,9 @@ impl Sam {
         }
 
         // Header containing text indicators and flight mode buttons
-        HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window.open);
+        if self.tab != GuiTab::Launch {
+            HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window.open);
+        }
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
@@ -167,12 +173,12 @@ impl Sam {
                 });
 
                 // ... and the current tab some space on the right.
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    match self.tab {
-                        GuiTab::Launch => {}
-                        GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
-                        GuiTab::Configure => {}
-                    }
+                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| match self
+                    .tab
+                {
+                    GuiTab::Launch => {}
+                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
+                    GuiTab::Configure => {}
                 });
             });
         });
@@ -181,7 +187,7 @@ impl Sam {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.set_enabled(!self.archive_window.open);
             match self.tab {
-                GuiTab::Launch => {}
+                GuiTab::Launch => self.launch_tab.main_ui(ui, self.data_source.as_mut()),
                 GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
                 GuiTab::Configure => {
                     let changed = self.configure_tab.main_ui(ui, self.data_source.as_mut(), &mut self.settings);
