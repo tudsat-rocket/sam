@@ -17,10 +17,14 @@ use crate::settings::AppSettings;
 pub mod log_file;
 pub mod serial;
 pub mod simulation;
+#[cfg(feature="futuresdr")]
+pub mod futuresdr;
 
 pub use log_file::LogFileDataSource;
 pub use serial::*;
 pub use simulation::SimulationDataSource;
+#[cfg(feature="futuresdr")]
+pub use futuresdr::SDRDataSource;
 
 /// Trait shared by all data sources.
 pub trait DataSource {

@@ -42,6 +42,9 @@ impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
     pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Option<Box<dyn DataSource>>) -> Self {
+        #[cfg(feature = "futuresdr")]
+        let data_source = data_source.unwrap_or(Box::new(SDRDataSource::new(ctx, settings.lora.clone())));
+        #[cfg(not(feature = "futuresdr"))]
         let data_source = data_source.unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
 
         let mut fonts = egui::FontDefinitions::default();
@@ -73,7 +76,10 @@ impl Sam {
 
     /// Closes the currently opened data source
     fn close_data_source(&mut self, ctx: &egui::Context) {
-        self.data_source = Box::new(SerialDataSource::new(ctx, self.settings.lora.clone()));
+        #[cfg(feature = "futuresdr")]
+        let data_source = Box::new(SDRDataSource::new(ctx, self.settings.lora.clone()));
+        #[cfg(not(feature = "futuresdr"))]
+        let data_source = Box::new(SerialDataSource::new(ctx, self.settings.lora.clone()));
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {

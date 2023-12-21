@@ -42,6 +42,11 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 puffin = { version = "0.17", optional = true }
 puffin_egui = { version = "0.23", optional = true }
 
+# Used for FutureSDR data source
+futuresdr = { path = "../Uni/master_thesis/futuresdr", optional = true }
+lora = { path = "../Uni/master_thesis/futuresdr/examples/lora", optional = true }
+async-trait = { version = "0.1", optional = true }
+
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 rfd = "0.10"
@@ -66,6 +71,7 @@ wasm-logger = "0.2.0"
 
 [features]
 profiling = ["dep:puffin", "dep:puffin_egui"]
+futuresdr = ["dep:futuresdr", "dep:lora", "dep:async-trait"]
 
 # The following entries are only required for web assembly compilation
 [lib]
