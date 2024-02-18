@@ -48,14 +48,17 @@ impl<'a> MaxiGrid<'a> {
         }
     }
 
-    fn draw_minimized(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) {
-        let top_left = self.available_rect.left_top();
-        let cell_size = self.available_rect.size() / Vec2::new(self.cells.0 as f32, self.cells.1 as f32);
+    fn draw(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui), maximized: bool) {
+        let rect = if maximized {
+            self.ui.available_rect_before_wrap()
+        } else {
+            let top_left = self.available_rect.left_top();
+            let cell_size = self.available_rect.size() / Vec2::new(self.cells.0 as f32, self.cells.1 as f32);
 
-        let cell_top_left = top_left + (cell_size * Vec2::new(self.current_cell.0 as f32, self.current_cell.1 as f32));
-        let cell_bottom_right = cell_top_left + cell_size;
-        let rect =
-            Rect::from_min_max(cell_top_left, cell_bottom_right).shrink2(self.ui.style().spacing.item_spacing / 2.0);
+            let cell_top_left = top_left + (cell_size * Vec2::new(self.current_cell.0 as f32, self.current_cell.1 as f32));
+            let cell_bottom_right = cell_top_left + cell_size;
+            Rect::from_min_max(cell_top_left, cell_bottom_right).shrink2(self.ui.style().spacing.item_spacing / 2.0)
+        };
 
         self.ui.put(rect, |ui: &mut Ui| {
             ui.vertical(|ui| {
@@ -63,8 +66,14 @@ impl<'a> MaxiGrid<'a> {
                 ui.horizontal(|ui| {
                     ui.heading(title);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("🗖").clicked() {
-                            self.state.maximize(self.current_cell);
+                        if maximized {
+                            if ui.button("🗕").clicked() {
+                                self.state.minimize();
+                            }
+                        } else {
+                            if ui.button("🗖").clicked() {
+                                self.state.maximize(self.current_cell);
+                            }
                         }
                     });
                 });
@@ -75,27 +84,12 @@ impl<'a> MaxiGrid<'a> {
         });
     }
 
-    fn draw_maximized(&mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) {
-        self.ui.vertical(|ui| {
-            ui.horizontal(|ui| {
-                ui.heading(title);
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("🗕").clicked() {
-                        self.state.minimize();
-                    }
-                });
-            });
-
-            (cb)(ui);
-        });
-    }
-
     pub fn cell(mut self, title: &'static str, cb: impl FnOnce(&mut Ui)) -> Self {
         let maximized = self.state.maximized();
         if maximized.map(|c| c == self.current_cell).unwrap_or(false) {
-            self.draw_maximized(title, cb);
+            self.draw(title, cb, true);
         } else if maximized.is_none() {
-            self.draw_minimized(title, cb);
+            self.draw(title, cb, false);
         }
 
         self.current_cell.0 += 1;
