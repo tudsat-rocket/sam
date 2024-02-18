@@ -54,7 +54,7 @@ impl Sam {
 
         ctx.set_fonts(fonts);
 
-        let plot_tab = PlotTab::init(&settings);
+        let plot_tab = PlotTab::init(ctx, &settings);
         let configure_tab = ConfigureTab::init();
 
         egui_extras::install_image_loaders(ctx);
@@ -181,7 +181,6 @@ impl Sam {
                     let changed = self.configure_tab.main_ui(ui, self.data_source.as_mut(), &mut self.settings);
                     if changed {
                         self.data_source.apply_settings(&self.settings);
-                        self.plot_tab.apply_settings(&self.settings);
                     }
                 }
             }
