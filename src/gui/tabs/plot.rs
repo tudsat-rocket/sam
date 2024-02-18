@@ -186,7 +186,7 @@ impl PlotTab {
         let enabled = !ui.rect_contains_pointer(viewport);
 
         // use top right of plot for indicator, space below for plot
-        let viewport = Rect::from_two_pos(viewport.lerp_inside(Vec2::new(0.4, 0.55)), viewport.right_top());
+        let viewport = Rect::from_two_pos(viewport.lerp_inside(Vec2::new(0.55, 0.55)), viewport.right_top());
 
         let fade_to_color = Color32::BLACK;
         ui.visuals_mut().widgets.noninteractive.weak_bg_fill = fade_to_color;
@@ -203,7 +203,6 @@ impl PlotTab {
             z_color: colors.2,
             inactive_alpha: 1.0,
             highlight_alpha: 1.0,
-            stroke_width: 3.0,
             gizmo_size: viewport_square_side * 0.4,
             ..Default::default()
         };
@@ -212,8 +211,8 @@ impl PlotTab {
             .mode(GizmoMode::Translate)
             .viewport(viewport)
             .orientation(egui_gizmo::GizmoOrientation::Local)
-            .model_matrix(orientation.to_homogeneous())
-            .view_matrix(view.to_homogeneous())
+            .model_matrix(orientation.to_homogeneous().into())
+            .view_matrix(view.to_homogeneous().into())
             .visuals(visuals);
 
         ui.add_enabled_ui(enabled, |ui| {
