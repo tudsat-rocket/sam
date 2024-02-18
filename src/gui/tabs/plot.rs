@@ -86,7 +86,7 @@ pub struct PlotTab {
 }
 
 impl PlotTab {
-    pub fn init(settings: &AppSettings) -> Self {
+    pub fn init(ctx: &egui::Context, settings: &AppSettings) -> Self {
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(540.0)), shared_plot.clone())
@@ -153,7 +153,7 @@ impl PlotTab {
             .line("HDOP", R, |vs| vs.hdop.map(|x| x as f32 / 100.0))
             .line("# Satellites", G, |vs| vs.num_satellites.map(|x| x as f32));
 
-        let map = MapState::new(settings.mapbox_access_token.clone());
+        let map = MapState::new(ctx, (settings.mapbox_access_token.len() > 0).then_some(settings.mapbox_access_token.clone()));
 
         Self {
             maxi_grid_state: MaxiGridState::default(),
@@ -256,7 +256,7 @@ impl PlotTab {
                 .cell("Orientation", |ui| self.plot_orientation(ui, data_source))
                 .cell("Vert. Speed & Accel", |ui| ui.plot_telemetry(&self.vertical_speed_plot, data_source))
                 .cell("Altitude (ASL)", |ui| ui.plot_telemetry(&self.altitude_plot, data_source))
-                .cell("Position", |ui| ui.map(&self.map, data_source))
+                .cell("Position", |ui| { ui.add(Map::new(&mut self.map, data_source)); })
                 .cell("Gyroscope", |ui| ui.plot_telemetry(&self.gyroscope_plot, data_source))
                 .cell("Accelerometers", |ui| ui.plot_telemetry(&self.accelerometer_plot, data_source))
                 .cell("Magnetometer", |ui| ui.plot_telemetry(&self.magnetometer_plot, data_source))
@@ -304,7 +304,7 @@ impl PlotTab {
                     SelectedPlot::Power          => ui.plot_telemetry(&self.power_plot, data_source),
                     SelectedPlot::Runtime        => ui.plot_telemetry(&self.runtime_plot, data_source),
                     SelectedPlot::Signal         => ui.plot_telemetry(&self.signal_plot, data_source),
-                    SelectedPlot::Map            => ui.map(&self.map, data_source),
+                    SelectedPlot::Map            => { ui.add(Map::new(&mut self.map, data_source)); },
                 }
             });
         }
@@ -312,9 +312,5 @@ impl PlotTab {
 
     pub fn bottom_bar_ui(&mut self, ui: &mut egui::Ui, _data_source: &mut dyn DataSource) {
         ui.toggle_button(&mut self.shared_plot.borrow_mut().show_stats, "📈 Show Stats", "📉 Hide Stats");
-    }
-
-    pub fn apply_settings(&mut self, settings: &AppSettings) {
-        self.map.set_access_token(settings.mapbox_access_token.clone());
     }
 }
