@@ -130,12 +130,6 @@ impl Sam {
         style.text_styles.insert(Heading, FontId::new(14.0, Proportional));
         ctx.set_style(style.clone());
 
-        // Prevent unnecessarily large UI on non-high-DPI displays
-        #[cfg(not(target_arch = "wasm32"))]
-        if ctx.pixels_per_point() > 1.0 && ctx.pixels_per_point() <= 1.5 {
-            ctx.set_pixels_per_point(1.0);
-        }
-
         // A window to open archived logs directly in the application
         if let Some(log) = self.archive_window.show_if_open(ctx) {
             self.data_source = Box::new(log);
@@ -219,10 +213,7 @@ pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>>
 
     eframe::run_native(
         "Sam Ground Station",
-        eframe::NativeOptions {
-            initial_window_size: Some(egui::vec2(1000.0, 700.0)),
-            ..Default::default()
-        },
+        eframe::NativeOptions::default(),
         Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, app_settings, data_source))),
     )?;
 

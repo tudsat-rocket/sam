@@ -8,9 +8,10 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
+use egui::Vec2b;
 use eframe::egui;
 use eframe::egui::PointerButton;
-use egui_plot::{AxisBools, Corner, Legend, Line, LineStyle, PlotBounds, VLine};
+use egui_plot::{Corner, Legend, Line, LineStyle, PlotBounds, VLine};
 
 use crate::gui::*;
 use crate::telemetry_ext::*;
@@ -156,7 +157,6 @@ impl PlotCacheLine {
 struct PlotCache {
     lines: Vec<PlotCacheLine>,
     mode_transitions: Vec<(f64, FlightMode)>,
-    reset_on_next_draw: bool,
     /// Identifies the origin of the current data using the last time cached and the number of
     /// states included
     cached_state: Option<(Instant, usize)> // TODO: maybe add some sort of flight identifier?
@@ -168,7 +168,6 @@ impl PlotCache {
         Self {
             lines: Vec::new(),
             mode_transitions: Vec::new(),
-            reset_on_next_draw: false,
             cached_state: None,
         }
     }
@@ -290,7 +289,6 @@ pub struct SharedPlotState {
     pub attached_to_edge: bool,
     /// Width of the view (in seconds)
     pub view_width: f64,
-    pub reset_on_next_draw: bool,
     pub box_dragging: bool,
     pub show_stats: bool,
 }
@@ -302,7 +300,6 @@ impl SharedPlotState {
             end: Instant::now(),
             attached_to_edge: true,
             view_width: 10.0,
-            reset_on_next_draw: false,
             box_dragging: false,
             show_stats: false,
         }
@@ -314,10 +311,6 @@ impl SharedPlotState {
 
     pub fn process_zoom(&mut self, zoom_delta: Vec2) {
         self.view_width /= zoom_delta[0] as f64;
-        // Zooming detaches the egui plot from the edge usually, so reattach
-        // if we were attached previously. This allows zooming without missing
-        // the end of the data.
-        self.reset_on_next_draw = self.attached_to_edge;
     }
 
     pub fn process_box_dragging(&mut self, box_dragging: bool) {
@@ -388,24 +381,29 @@ impl PlotUiExt for egui::Ui {
         let legend =
             Legend::default().text_style(egui::TextStyle::Small).background_alpha(0.5).position(Corner::LeftTop);
 
+        // Weaken the text color, used for the grid lines.
+        let text_color = self.style().visuals.text_color();
+        self.style_mut().visuals.override_text_color = Some(text_color.gamma_multiply(0.5));
+
         let view_end = plot_time(&data_source.end().unwrap_or(Instant::now()), data_source);
         let mut plot = egui_plot::Plot::new(&state.title)
             .link_axis("plot_axis_group", true, false)
             .link_cursor("plot_cursor_group", true, false)
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
             .allow_scroll(false) // TODO: x only
-            .allow_drag(AxisBools::new(true, false))
-            .allow_zoom(AxisBools::new(true, false))
-            .show_axes([false, false]) // egui 0.23 changed axis ticks to be outside of the plot
-                                       // boundary. this uses an unacceptable amount of space, so
-                                       // for now we simply have no axis ticks.
-                                       // TODO: maybe upstream an option to move ticks inside?
-            .x_axis_position(egui_plot::VPlacement::Top)
+            .allow_drag([true, false])
+            .allow_zoom([true, false])
+            .auto_bounds([false, true].into())
             .y_axis_position(egui_plot::HPlacement::Right)
+            // These two are needed to avoid egui adding a huge amount of space for the y axis ticks
+            .y_axis_width(3)
+            .y_axis_formatter(|gm, _digits, _range| {
+                let tick = gm.value;
+                let digits = (gm.step_size.log10() * -1.0) as usize;
+                format!("{tick:.digits$}")
+            })
             .include_x(view_end - shared.view_width)
             .include_x(view_end)
-            .auto_bounds_y()
-            .sharp_grid_lines(true)
             .legend(legend.clone());
 
         if let Some(min) = state.ymin {
@@ -416,16 +414,14 @@ impl PlotUiExt for egui::Ui {
             plot = plot.include_y(max);
         }
 
-        if cache.reset_on_next_draw || shared.reset_on_next_draw {
-            cache.reset_on_next_draw = false;
-            shared.reset_on_next_draw = false;
-            shared.attached_to_edge = true;
-            plot = plot.reset();
-        }
-
         let show_stats = shared.show_stats;
         let view_width = self.max_rect().width();
+        let attached_to_edge = shared.attached_to_edge;
         let ir = plot.show(self, move |plot_ui| {
+            if attached_to_edge {
+                plot_ui.set_auto_bounds(Vec2b::new(true, true));
+            }
+
             let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats, data_source, view_width);
             for l in lines.into_iter() {
                 plot_ui.line(l.width(1.2));
@@ -440,7 +436,7 @@ impl PlotUiExt for egui::Ui {
         // has been dragged or otherwise detached from the end of the data.
         if let Some(_hover_pos) = ir.response.hover_pos() {
             let zoom_delta = self.input(|i| i.zoom_delta_2d());
-            let scroll_delta = self.input(|i| i.scroll_delta);
+            let scroll_delta = self.input(|i| i.smooth_scroll_delta);
             if zoom_delta.x != 1.0 {
                 shared.process_zoom(self.input(|i| i.zoom_delta_2d()));
             } else if scroll_delta.x != 0.0 {
@@ -456,7 +452,7 @@ impl PlotUiExt for egui::Ui {
             shared.attached_to_edge = true;
         }
 
-        shared.process_drag_released(ir.response.drag_released);
+        shared.process_drag_released(ir.response.drag_released());
         shared.process_box_dragging(ir.response.dragged_by(PointerButton::Secondary));
     }
 }

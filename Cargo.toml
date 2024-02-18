@@ -14,12 +14,13 @@ clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
 # egui & friends
-egui = { version = "0.23", default-features = false }
-eframe = { version = "0.23", default-features = false, features = ["glow", "wayland", "x11"] }
-egui_plot = "0.23"
-egui_extras = { version = "0.23", features = ["image"] }
+egui = { version = "0.26", default-features = false }
+eframe = { version = "0.26", default-features = false, features = ["glow", "wayland", "x11"] }
+egui_plot = "0.26"
+egui_extras = { version = "0.26", features = ["image"] }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
-egui-gizmo = "0.12"
+egui-gizmo = "0.16"
+walkers = { git = "https://github.com/podusowski/walkers" }
 # serialization & communication
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"
@@ -28,10 +29,9 @@ serialport = "4"
 siphasher = "0.3"
 crc = "2"
 # misc
-nalgebra = "0.31"
+nalgebra = { version = "0.31", features = ["mint"] }
 chrono = "0.4"
 directories = "4.0"
-slippy-map-tiles = "0.16"
 colorgrad = "0.6"
 rand_distr = { version = "0.4", default-features = false }
 tokio = "1.33"
@@ -41,6 +41,7 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 # Used for profiling
 puffin = { version = "0.17", optional = true }
 puffin_egui = { version = "0.23", optional = true }
+#egui_tiles = "0.6.0"
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
