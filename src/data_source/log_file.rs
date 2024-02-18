@@ -15,24 +15,27 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
-use eframe::epaint::Color32;
 use log::*;
+
+use egui::{Layout, RichText, Slider};
 
 use mithril::settings::*;
 use mithril::telemetry::*;
 
 use crate::data_source::DataSource;
 
+#[derive(Debug)]
+enum PlaybackState {
+    Playing(f32),
+    Paused(Instant),
+}
+
 pub struct LogFileDataSource {
-    path: Option<PathBuf>,
-    name: Option<String>,
     file: Option<File>,
     buffer: Vec<u8>,
-    messages: Vec<(Instant, DownlinkMessage)>,
     is_json: bool,
     vehicle_states: Vec<(Instant, VehicleState)>,
-    last_time: Option<Instant>,
-    replay: bool,
+    playback: Option<PlaybackState>,
 }
 
 impl LogFileDataSource {
@@ -42,34 +45,93 @@ impl LogFileDataSource {
         let is_json = path.extension().map(|ext| ext == "json").unwrap_or(false);
 
         Ok(Self {
-            path: Some(path),
-            name: None,
             file: Some(file),
             buffer: Vec::new(),
-            messages: Vec::new(),
             is_json,
             vehicle_states: Vec::new(),
-            last_time: None,
-            replay: false,
+            playback: None,
         })
     }
 
     /// Create given data source using the given name and bytes. The name is
     /// only passed to the data source to allow identifying it based on the
     /// status text.
-    pub fn from_bytes(name: Option<String>, bytes: Vec<u8>, replay: bool) -> Self {
+    pub fn from_bytes(bytes: Vec<u8>) -> Self {
         let is_json = bytes[0] == b'[';
 
         Self {
-            path: None,
-            name,
             file: None,
             buffer: bytes,
-            messages: Vec::new(),
             is_json,
             vehicle_states: Vec::new(),
-            last_time: None,
-            replay,
+            playback: None,
+        }
+    }
+
+    fn playpause(&mut self) {
+        match self.playback {
+            Some(PlaybackState::Playing(offset)) => {
+                let inst = if offset < 0.0 {
+                    Instant::now() - Duration::from_secs_f32(offset.abs())
+                } else {
+                    Instant::now() + Duration::from_secs_f32(offset)
+                };
+                self.playback = Some(PlaybackState::Paused(inst));
+            },
+            Some(PlaybackState::Paused(inst)) => {
+                let now = Instant::now();
+                let offset = if inst > now {
+                    (inst - now).as_secs_f32()
+                } else {
+                    -(now - inst).as_secs_f32()
+                };
+                self.playback = Some(PlaybackState::Playing(offset));
+            },
+            None => {}
+        }
+    }
+
+    fn skip_to_next_flightmode(&mut self, reverse: bool) {
+        let Some(playback) = &self.playback else {
+            return;
+        };
+
+        let playing = if let PlaybackState::Playing(_) = playback {
+            true
+        } else {
+            false
+        };
+
+        let Some(fm) = self.vehicle_states().rev().find_map(|(_t, vs)| vs.mode) else {
+            return;
+        };
+
+        let Some(end) = self.end() else {
+            return;
+        };
+
+        let i = self.vehicle_states.partition_point(|(t, _)| *t <= end);
+
+        let inst = if reverse {
+            self.vehicle_states[..i]
+                .iter()
+                .rev()
+                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
+                .map(|(t, _)| t)
+                .next()
+        } else {
+            self.vehicle_states[i..]
+                .iter()
+                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
+                .map(|(t, _)| t)
+                .next()
+        };
+
+        if let Some(inst) = inst {
+            self.playback = Some(PlaybackState::Paused(*inst));
+            if playing {
+                self.playpause();
+            }
         }
     }
 }
@@ -98,7 +160,7 @@ impl DataSource for LogFileDataSource {
         // the time value contained in the packet, we need to handle the
         // occasional packet with a malformed time value.
         let start = Instant::now();
-        self.last_time.get_or_insert(start);
+        let mut last_time = start;
         let mut last_vehicle_times: VecDeque<u32> = VecDeque::new();
         for msg in msgs.into_iter() {
             let last = last_vehicle_times.front();
@@ -112,31 +174,28 @@ impl DataSource for LogFileDataSource {
                 last.map(|l| msg.time().saturating_sub(*l)).unwrap_or(0)
             };
 
-            self.last_time = self.last_time.map(|t| t + Duration::from_millis(since_previous as u64));
+            last_time += Duration::from_millis(since_previous as u64);
             last_vehicle_times.push_front(u32::max(*last.unwrap_or(&0), msg.time()));
             last_vehicle_times.truncate(5); // TODO: use these for better filtering?
 
-            self.messages.push((self.last_time.unwrap(), msg));
+            self.vehicle_states.push((last_time, msg.into()));
         }
 
-        let pointer = if self.replay {
-            let now = Instant::now();
-            self.messages.partition_point(|(t, _)| t <= &now)
-        } else {
-            self.messages.len()
-        };
-
-        for (t, msg) in self.messages.drain(..pointer) {
-            self.vehicle_states.push((t, msg.into()));
+        // We default to being paused at the end of the log file.
+        if self.playback.is_none() {
+            self.playback = self.vehicle_states.last().map(|(t, _vs)| PlaybackState::Paused(*t));
+            //self.playback = self.vehicle_states.last().map(|(_, _vs)| PlaybackState::Playing(0.0));
         }
 
-        if self.replay {
+        if let Some(PlaybackState::Playing(_)) = self.playback {
             ctx.request_repaint_after(Duration::from_millis(16));
         }
     }
 
     fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
-        self.vehicle_states.iter()
+        let inst = self.end().unwrap_or(Instant::now());
+        let i = self.vehicle_states.partition_point(|(t, _)| t <= &inst);
+        self.vehicle_states[..i].iter()
     }
 
     fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
@@ -148,7 +207,6 @@ impl DataSource for LogFileDataSource {
     }
 
     fn reset(&mut self) {
-        self.messages.truncate(0);
         self.vehicle_states.truncate(0);
     }
 
@@ -161,22 +219,79 @@ impl DataSource for LogFileDataSource {
     }
 
     fn end(&self) -> Option<Instant> {
-        if self.replay {
-            let last = self.last_time.unwrap_or(Instant::now());
-            Some(Instant::min(Instant::now(), last))
-        } else {
-            self.last_time
+        match self.playback {
+            Some(PlaybackState::Playing(offset)) => {
+                if offset < 0.0 {
+                    Some(Instant::now() - Duration::from_secs_f32(offset.abs()))
+                } else {
+                    Some(Instant::now() + Duration::from_secs_f32(offset.abs()))
+                }
+            },
+            Some(PlaybackState::Paused(inst)) => Some(inst),
+            None => None
         }
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
-        ui.colored_label(Color32::from_rgb(0x45, 0x85, 0x88), "Log File");
-        let name = self.path
-            .as_ref()
-            .map(|p| p.as_os_str().to_string_lossy().into())
-            .or(self.name.clone())
-            .unwrap_or_default();
-        ui.weak(name);
+        let first = self.vehicle_states.first().map(|(t, _vs)| *t).unwrap_or(Instant::now());
+        let last = self.vehicle_states.last().map(|(t, _vs)| *t).unwrap_or(Instant::now());
+        let total = (last - first).as_secs_f32();
+        let elapsed = self.end().map(|p| (p - first).as_secs_f32()).unwrap_or(0.0);
+
+        ui.set_enabled(self.playback.is_some());
+
+        if ui.button("⏮").clicked() {
+            self.playback = Some(PlaybackState::Paused(first));
+        }
+        if ui.button("⏪").clicked() {
+            self.skip_to_next_flightmode(true);
+        }
+        let label = if let Some(PlaybackState::Playing(_)) = self.playback { "⏸" } else { "⏵" };
+        if ui.button(label).clicked() {
+            self.playpause();
+        }
+        if ui.button("⏩").clicked() {
+            self.skip_to_next_flightmode(false);
+        }
+        if ui.button("⏭").clicked() {
+            self.playback = Some(PlaybackState::Paused(last));
+        }
+
+        ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+            let t = format!("{:02.0}:{:02.0}:{:02.0}/{:02.0}:{:02.0}:{:02.0}",
+                elapsed / 3600.0, (elapsed / 60.0) % 60.0, elapsed % 60.0,
+                total / 3600.0, (total / 60.0) % 60.0, total % 60.0
+            );
+            ui.label(RichText::new(t).monospace().weak());
+
+            ui.style_mut().spacing.slider_width = ui.available_width();
+
+            // Progress Bar
+            let current = (total > 0.0).then_some(elapsed / total).unwrap_or(0.0);
+            let mut new = current;
+            let slider = Slider::new(&mut new, 0.0..=1.0)
+                .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.3 })
+                .show_value(false);
+            let response = ui.add(slider);
+            if response.drag_released() {
+                self.playback = match self.playback {
+                    Some(PlaybackState::Playing(offset)) => {
+                        Some(PlaybackState::Playing(offset + (new - current) * total))
+                    },
+                    Some(PlaybackState::Paused(_)) => {
+                        Some(PlaybackState::Paused(first + Duration::from_secs_f32(total * new)))
+                    },
+                    None => None
+                }
+            }
+        });
+
+        //let name = self.path
+        //    .as_ref()
+        //    .map(|p| p.as_os_str().to_string_lossy().into())
+        //    .or(self.name.clone())
+        //    .unwrap_or_default();
+        //ui.weak(name);
     }
 
     fn as_any(&self) -> &dyn Any {

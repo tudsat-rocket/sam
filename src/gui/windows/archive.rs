@@ -14,19 +14,19 @@ use log::*;
 
 use crate::data_source::LogFileDataSource;
 
-#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 const FLASH_DARE_A: Option<&[u8]> = Some(include_bytes!("../../../archive/dare_launch_a_flash_filtered.json").as_slice());
-#[cfg(any(target_os = "wasm", target_os = "android"))]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 const FLASH_DARE_A: Option<&[u8]> = None;
 
-#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 const FLASH_DARE_B: Option<&[u8]> = Some(include_bytes!("../../../archive/dare_launch_b_flash_filtered.json").as_slice());
-#[cfg(any(target_os = "wasm", target_os = "android"))]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 const FLASH_DARE_B: Option<&[u8]> = None;
 
-#[cfg(all(not(target_os = "wasm"), not(target_os = "android")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 const FLASH_EUROC_2023: Option<&[u8]> = Some(include_bytes!("../../../archive/euroc_2023_flash_filtered.json").as_slice());
-#[cfg(any(target_os = "wasm", target_os = "android"))]
+#[cfg(any(target_arch = "wasm32", target_os = "android"))]
 const FLASH_EUROC_2023: Option<&[u8]> = None;
 
 // Log files included with the application.
@@ -63,7 +63,6 @@ enum ArchiveLoadProgress { Progress((u64, u64)),
 #[derive(Default)]
 pub struct ArchiveWindow {
     pub open: bool,
-    replay_logs: bool,
     progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
     progress: Option<(u64, u64)>,
 }
@@ -141,11 +140,7 @@ impl ArchiveWindow {
                     self.open = false;
                     self.progress_receiver = None;
                     self.progress = None;
-                    return Some(LogFileDataSource::from_bytes(
-                        Some("".to_string()), // TODO: show title
-                        bytes,
-                        self.replay_logs,
-                    ));
+                    return Some(LogFileDataSource::from_bytes(bytes));
                 }
                 Ok(ArchiveLoadProgress::Error(e)) => {
                     error!("{:?}", e); // TODO: show this visually
@@ -200,9 +195,6 @@ impl ArchiveWindow {
                         ui.add_sized([ui.available_width(), 20.0], ProgressBar::new(f).text(text));
                     });
                 });
-                ui.add_space(10.0);
-
-                ui.checkbox(&mut self.replay_logs, "Replay logs");
             });
 
         self.open = open;

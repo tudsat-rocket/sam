@@ -153,21 +153,18 @@ impl Sam {
             puffin::profile_function!();
 
             ui.set_enabled(!self.archive_window.open);
-            ui.horizontal_centered(|ui| {
-                // Give the data source some space on the left ...
-                ui.horizontal_centered(|ui| {
-                    ui.set_width(ui.available_width() / 2.0);
-                    self.data_source.status_bar_ui(ui);
-                });
+            ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
+                match self.tab {
+                    GuiTab::Launch => {}
+                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
+                    GuiTab::Configure => {}
+                }
 
-                // ... and the current tab some space on the right.
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    match self.tab {
-                        GuiTab::Launch => {}
-                        GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
-                        GuiTab::Configure => {}
-                    }
-                });
+                ui.separator();
+
+                ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    self.data_source.status_bar_ui(ui);
+                })
             });
         });
 
