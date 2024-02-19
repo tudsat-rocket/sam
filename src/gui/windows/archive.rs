@@ -60,11 +60,20 @@ enum ArchiveLoadProgress { Progress((u64, u64)),
     Error(reqwest::Error),
 }
 
-#[derive(Default)]
 pub struct ArchiveWindow {
     pub open: bool,
     progress_receiver: Option<Receiver<ArchiveLoadProgress>>,
     progress: Option<(u64, u64)>,
+}
+
+impl Default for ArchiveWindow {
+    fn default() -> Self {
+        Self {
+            open: cfg!(target_arch = "wasm32"),
+            progress_receiver: None,
+            progress: None
+        }
+    }
 }
 
 impl ArchiveWindow {

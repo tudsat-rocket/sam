@@ -163,8 +163,6 @@ impl MapState {
 
         // repopulate cache
         if self.cached_state.map(|s| s != state).unwrap_or(true) {
-            //let last_position = (
-
             let all_positions = data_source.vehicle_states()
                 .scan((None, None), |(ground_asl, altitude_asl), (_, vs)| {
                     *ground_asl = vs.altitude_ground_asl.or(*ground_asl);
