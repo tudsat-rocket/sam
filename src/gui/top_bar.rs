@@ -191,16 +191,17 @@ impl TopBarUiExt for egui::Ui {
         self.add_space(5.0);
         let pos = self.next_widget_position();
         let size = Vec2::new(self.available_width(), 50.0);
-        if self.add_sized(size, button).clicked() {
-            data_source.send_command(Command::SetFlightMode(fm)).unwrap();
-        }
 
         let shortcut = if is_current {
             Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).color(fg))
         } else {
             Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).weak())
         };
+
         self.put(Rect::from_two_pos(pos + size * Vec2::new(0.0, 0.6), pos + size), shortcut);
+        if self.put(Rect::from_two_pos(pos, pos + size), button).clicked() {
+            data_source.send_command(Command::SetFlightMode(fm)).unwrap();
+        }
     }
 
     fn flight_mode_buttons(&mut self, current: Option<FlightMode>, data_source: &mut dyn DataSource) {
