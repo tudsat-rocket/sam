@@ -54,7 +54,7 @@ pub enum SerialStatus {
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn downlink_port(
     ctx: Option<egui::Context>,
-    downlink_tx: &mut Sender<DownlinkMessage>,
+    downlink_tx: &mut Sender<(Instant, DownlinkMessage)>,
     uplink_rx: &mut Receiver<UplinkMessage>,
     port: String,
     send_heartbeats: bool,
@@ -111,7 +111,7 @@ pub fn downlink_port(
             };
 
             // If successful, send msg through channel.
-            downlink_tx.send(msg)?;
+            downlink_tx.send((Instant::now(), msg))?;
             last_message = now;
             if let Some(ctx) = &ctx {
                 ctx.request_repaint();
@@ -146,7 +146,7 @@ pub fn find_serial_port() -> Option<String> {
 pub fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
-    mut downlink_tx: Sender<DownlinkMessage>,
+    mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -172,7 +172,7 @@ pub fn downlink_monitor(
 pub fn spawn_downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
-    downlink_tx: Sender<DownlinkMessage>,
+    downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
 ) -> JoinHandle<()> {
@@ -183,7 +183,7 @@ pub fn spawn_downlink_monitor(
 
 pub struct SerialDataSource {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
-    downlink_rx: Receiver<DownlinkMessage>,
+    downlink_rx: Receiver<(Instant, DownlinkMessage)>,
     uplink_tx: Sender<UplinkMessage>,
 
     serial_port: Option<String>,
@@ -203,7 +203,7 @@ pub struct SerialDataSource {
 impl SerialDataSource {
     /// Create a new serial port data source.
     pub fn new(ctx: &egui::Context, lora_settings: LoRaSettings) -> Self {
-        let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<DownlinkMessage>();
+        let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<(Instant, DownlinkMessage)>();
         let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
         let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
 
@@ -301,7 +301,9 @@ impl DataSource for SerialDataSource {
         #[cfg(target_os = "android")]
         let msgs: Vec<_> = unsafe { DOWNLINK_MESSAGE_RECEIVER.as_mut().unwrap().try_iter().collect() };
 
-        for msg in msgs.into_iter() {
+        for (t, msg) in msgs.into_iter() {
+            // TODO: save instant to log as well?
+            // (richer log format in general?
             self.write_to_telemetry_log(&msg);
 
             // TODO
@@ -316,10 +318,9 @@ impl DataSource for SerialDataSource {
                     self.fc_settings = Some(settings);
                 }
                 _ => {
-                    let now = Instant::now();
                     let vs: VehicleState = msg.into();
-                    self.vehicle_states.push((now, vs.clone()));
-                    self.last_time = Some(now);
+                    self.vehicle_states.push((t, vs.clone()));
+                    self.last_time = Some(t);
                 }
             }
         }

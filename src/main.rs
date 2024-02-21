@@ -98,7 +98,7 @@ fn create_file_or_stdout(path: Option<PathBuf>) -> Result<Box<dyn Write>, std::i
 }
 
 fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let (downlink_tx, downlink_rx) = channel::<DownlinkMessage>();
+    let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
     let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>();
     let (serial_status_tx, serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
     spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, true);
@@ -116,7 +116,7 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        for msg in downlink_rx.try_iter() {
+        for (_t, msg) in downlink_rx.try_iter() {
             match msg {
                 DownlinkMessage::Log(t, loc, ll, msg) => {
                     let t = (t as f32) / 1_000.0;
@@ -142,7 +142,7 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
 
 fn read_flash_chunk(
     uplink_tx: &Sender<UplinkMessage>,
-    downlink_rx: &Receiver<DownlinkMessage>,
+    downlink_rx: &Receiver<(Instant, DownlinkMessage)>,
     address: u32,
     size: u32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -152,7 +152,7 @@ fn read_flash_chunk(
     uplink_tx.send(UplinkMessage::ReadFlash(address, size))?;
 
     loop {
-        if let Some(DownlinkMessage::FlashContent(adr, content)) = downlink_rx.iter().next() {
+        if let Some((_t, DownlinkMessage::FlashContent(adr, content))) = downlink_rx.iter().next() {
             println!("{:02x?} {:?} {:02x?} {:02x?}", address, size, adr, content);
             if address != adr || size != (content.len() as u32) {
                 return Err(Box::new(Error::new(ErrorKind::InvalidData, "Data mismatch.")));
@@ -177,7 +177,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
     }
 
     let mut f = File::create(path)?;
-    let (downlink_tx, downlink_rx) = channel::<DownlinkMessage>();
+    let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
     let (uplink_tx, uplink_rx) = channel::<UplinkMessage>();
     let (serial_status_tx, _serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
     spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, false);
