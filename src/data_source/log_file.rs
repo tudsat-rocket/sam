@@ -71,20 +71,11 @@ impl LogFileDataSource {
     fn playpause(&mut self) {
         match self.playback {
             Some(PlaybackState::Playing(offset)) => {
-                let inst = if offset < 0.0 {
-                    Instant::now() - Duration::from_secs_f32(offset.abs())
-                } else {
-                    Instant::now() + Duration::from_secs_f32(offset)
-                };
+                let inst = Instant::now() + Duration::from_secs_f32(offset);
                 self.playback = Some(PlaybackState::Paused(inst));
             },
             Some(PlaybackState::Paused(inst)) => {
-                let now = Instant::now();
-                let offset = if inst > now {
-                    (inst - now).as_secs_f32()
-                } else {
-                    -(now - inst).as_secs_f32()
-                };
+                let offset = (inst - Instant::now()).as_secs_f32();
                 self.playback = Some(PlaybackState::Playing(offset));
             },
             None => {}
@@ -96,11 +87,8 @@ impl LogFileDataSource {
             return;
         };
 
-        let playing = if let PlaybackState::Playing(_) = playback {
-            true
-        } else {
-            false
-        };
+        // Discriminant means we're just comparing the enum variant, not the actual value.
+        let playing = std::mem::discriminant(playback) == std::mem::discriminant(&PlaybackState::Playing(123.0));
 
         let Some(fm) = self.vehicle_states().rev().find_map(|(_t, vs)| vs.mode) else {
             return;
@@ -112,7 +100,7 @@ impl LogFileDataSource {
 
         let i = self.vehicle_states.partition_point(|(t, _)| *t <= end);
 
-        let inst = if reverse {
+        let next_flightmode = if reverse {
             self.vehicle_states[..i]
                 .iter()
                 .rev()
@@ -127,7 +115,7 @@ impl LogFileDataSource {
                 .next()
         };
 
-        if let Some(inst) = inst {
+        if let Some(inst) = next_flightmode {
             self.playback = Some(PlaybackState::Paused(*inst));
             if playing {
                 self.playpause();
@@ -181,14 +169,19 @@ impl DataSource for LogFileDataSource {
             self.vehicle_states.push((last_time, msg.into()));
         }
 
+        let last_state = self.vehicle_states.last().map(|(t, _vs)| t);
+
         // We default to being paused at the end of the log file.
         if self.playback.is_none() {
-            self.playback = self.vehicle_states.last().map(|(t, _vs)| PlaybackState::Paused(*t));
-            //self.playback = self.vehicle_states.last().map(|(_, _vs)| PlaybackState::Playing(0.0));
+            self.playback = last_state.map(|l| PlaybackState::Paused(*l));
         }
 
         if let Some(PlaybackState::Playing(_)) = self.playback {
             ctx.request_repaint_after(Duration::from_millis(16));
+
+            if self.end().and_then(|i| last_state.map(|l| i > *l)).unwrap_or(false) {
+                self.playback = last_state.map(|l| PlaybackState::Paused(*l));
+            }
         }
     }
 
@@ -285,13 +278,6 @@ impl DataSource for LogFileDataSource {
                 }
             }
         });
-
-        //let name = self.path
-        //    .as_ref()
-        //    .map(|p| p.as_os_str().to_string_lossy().into())
-        //    .or(self.name.clone())
-        //    .unwrap_or_default();
-        //ui.weak(name);
     }
 
     fn as_any(&self) -> &dyn Any {
