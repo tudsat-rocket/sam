@@ -133,7 +133,7 @@ impl DataSource for LogFileDataSource {
         }
 
         let msgs = if self.is_json {
-            if self.buffer.len() > 0 {
+            if !self.buffer.is_empty() {
                 serde_json::from_slice::<Vec<DownlinkMessage>>(&self.buffer).unwrap()
             } else {
                 vec![]
@@ -185,17 +185,17 @@ impl DataSource for LogFileDataSource {
         }
     }
 
-    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
         let inst = self.end().unwrap_or(Instant::now());
         let i = self.vehicle_states.partition_point(|(t, _)| t <= &inst);
         self.vehicle_states[..i].iter()
     }
 
-    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
+    fn fc_settings(&mut self) -> Option<&Settings> {
         None // TODO: store these in flash?
     }
 
-    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
+    fn fc_settings_mut(&mut self) -> Option<&mut Settings> {
         None
     }
 
@@ -260,7 +260,7 @@ impl DataSource for LogFileDataSource {
             ui.style_mut().spacing.slider_width = ui.available_width();
 
             // Progress Bar
-            let current = (total > 0.0).then_some(elapsed / total).unwrap_or(0.0);
+            let current = if total > 0.0 { elapsed / total } else { 0.0 };
             let mut new = current;
             let slider = Slider::new(&mut new, 0.0..=1.0)
                 .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.3 })

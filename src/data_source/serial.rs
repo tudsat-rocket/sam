@@ -75,10 +75,10 @@ pub fn downlink_port(
     while now.duration_since(last_message) < MESSAGE_TIMEOUT {
         // Send pending uplink messages, or heartbeats if necessary.
         if let Some(msg) = uplink_rx.try_iter().next() {
-            port.write(&msg.serialize().unwrap_or_default())?;
+            port.write_all(&msg.serialize().unwrap_or_default())?;
             port.flush()?;
         } else if now.duration_since(last_heartbeat) > HEARTBEAT_INTERVAL && send_heartbeats {
-            port.write(&UplinkMessage::Heartbeat.serialize().unwrap())?;
+            port.write_all(&UplinkMessage::Heartbeat.serialize().unwrap())?;
             port.flush()?;
             last_heartbeat = now;
         }
@@ -128,7 +128,7 @@ pub fn downlink_port(
 pub fn find_serial_port() -> Option<String> {
     serialport::available_ports()
         .ok()
-        .map(|ports| {
+        .and_then(|ports| {
             ports.iter().find_map(|p| {
                 if let serialport::SerialPortType::UsbPort(_) = p.port_type {
                     Some(p.port_name.clone())
@@ -137,7 +137,6 @@ pub fn find_serial_port() -> Option<String> {
                 }
             })
         })
-        .flatten()
 }
 
 /// Continuously monitors for connected USB serial devices and connects to them.
@@ -326,15 +325,15 @@ impl DataSource for SerialDataSource {
         }
     }
 
-    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
         self.vehicle_states.iter()
     }
 
-    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
+    fn fc_settings(&mut self) -> Option<&Settings> {
         self.fc_settings.as_ref()
     }
 
-    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
+    fn fc_settings_mut(&mut self) -> Option<&mut Settings> {
         self.fc_settings.as_mut()
     }
 

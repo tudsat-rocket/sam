@@ -217,13 +217,13 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
                         let page_data = &p[1..(256 - 2)];
                         debug!("{:02x?}", data);
                         let crc_stored = ((p[256 - 2] as u16) << 8) + (p[256 - 1] as u16);
-                        let crc_calc = X25.checksum(&page_data);
+                        let crc_calc = X25.checksum(page_data);
                         if crc_stored != crc_calc {
                             warn!("CRC mismatch for page 0x{:08x}", address + (i as u32) * 256);
                             continue;
                         }
 
-                        f.write_all(&page_data)?;
+                        f.write_all(page_data)?;
                     }
                     break;
                 }
@@ -280,8 +280,8 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
             None
         };
 
-        if contents.map(|(data, crc)| X25.checksum(&data) == crc).unwrap_or(false) {
-            std::io::stdout().write(contents.unwrap().0)?;
+        if contents.map(|(data, crc)| X25.checksum(data) == crc).unwrap_or(false) {
+            std::io::stdout().write_all(contents.unwrap().0)?;
         } else {
             warn!("No valid data found for page {:02x?}, skipping page: {:02x?}", address, chunk_buffer);
         }
@@ -304,7 +304,7 @@ fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
         false => UplinkMessage::Command(Command::Reboot),
     };
 
-    port.write(&msg.serialize().unwrap())?;
+    port.write_all(&msg.serialize().unwrap())?;
     port.flush()?;
 
     Ok(())
@@ -323,9 +323,9 @@ fn bin2json(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
         .map(|msg| serde_json::to_string(&msg).unwrap())
         .collect();
 
-    output.write(b"[\n")?;
-    output.write(&serialized.join(",\n").into_bytes())?;
-    output.write(b"\n]\n")?;
+    output.write_all(b"[\n")?;
+    output.write_all(&serialized.join(",\n").into_bytes())?;
+    output.write_all(b"\n]\n")?;
 
     Ok(())
 }
@@ -393,7 +393,7 @@ fn bin2kml(
         coords = coordinates.join("\n")
     );
 
-    output.write(xml.as_bytes())?;
+    output.write_all(xml.as_bytes())?;
 
     Ok(())
 }
@@ -404,7 +404,7 @@ fn json2bin(input: Option<PathBuf>, output: Option<PathBuf>) -> Result<(), Box<d
 
     let msgs: Vec<DownlinkMessage> = serde_json::from_reader(input)?;
     for msg in msgs {
-        output.write(&msg.serialize().unwrap())?;
+        output.write_all(&msg.serialize().unwrap())?;
     }
 
     Ok(())

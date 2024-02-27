@@ -47,15 +47,15 @@ impl DataSource for SimulationDataSource {
         }
     }
 
-    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)> {
+    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
         self.vehicle_states.iter()
     }
 
-    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings> {
+    fn fc_settings(&mut self) -> Option<&Settings> {
         None
     }
 
-    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings> {
+    fn fc_settings_mut(&mut self) -> Option<&mut Settings> {
         None
     }
 

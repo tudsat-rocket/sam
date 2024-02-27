@@ -31,7 +31,8 @@ const FLASH_EUROC_2023: Option<&[u8]> = None;
 
 // Log files included with the application.
 // TODO: migrate old launches
-pub const ARCHIVE: [(&str, Option<&'static str>, Option<&'static str>, Option<&'static [u8]>); 5] = [
+type ArchiveEntry = (&'static str, Option<&'static str>, Option<&'static str>, Option<&'static [u8]>);
+pub const ARCHIVE: [ArchiveEntry; 5] = [
     ("Zülpich #1", None, None, None),
     ("Zülpich #2", None, None, None),
     (
@@ -66,6 +67,8 @@ pub struct ArchiveWindow {
     progress: Option<(u64, u64)>,
 }
 
+// clippy tries to remove the open difference between platforms here
+#[allow(clippy::derivable_impls)]
 impl Default for ArchiveWindow {
     fn default() -> Self {
         Self {

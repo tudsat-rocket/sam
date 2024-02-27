@@ -60,7 +60,7 @@ impl FcSettingsUiExt for Settings {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if let Some(app_settings) = app_settings {
                         if ui.button("➡ Copy from GCS").clicked() {
-                            self.lora.authentication_key = app_settings.lora.authentication_key.clone();
+                            self.lora.authentication_key = app_settings.lora.authentication_key;
                         }
                     }
 

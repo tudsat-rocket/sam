@@ -32,7 +32,7 @@ impl HeaderPanel {
         let last_gps = data_source
             .vehicle_states()
             .rev()
-            .find_map(|(_t, vs)| vs.gps_fix.is_some().then(|| vs))
+            .find_map(|(_t, vs)| vs.gps_fix.is_some().then_some(vs))
             .cloned();
         let gps_status = last_gps.as_ref().map(|vs| format!("{:?}", vs.gps_fix.unwrap()));
         let hdop = last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0);

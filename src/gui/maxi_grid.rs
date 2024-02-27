@@ -70,10 +70,8 @@ impl<'a> MaxiGrid<'a> {
                             if ui.button("🗕").clicked() {
                                 self.state.minimize();
                             }
-                        } else {
-                            if ui.button("🗖").clicked() {
-                                self.state.maximize(self.current_cell);
-                            }
+                        } else if ui.button("🗖").clicked() {
+                            self.state.maximize(self.current_cell);
                         }
                     });
                 });

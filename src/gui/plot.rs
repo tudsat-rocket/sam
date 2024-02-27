@@ -27,9 +27,9 @@ fn plot_time(x: &Instant, data_source: &dyn DataSource) -> f64 {
     }
 }
 
-fn downsample_points(data: &Vec<[f64; 2]>) -> Vec<[f64; 2]> {
+fn downsample_points(data: &[[f64; 2]]) -> Vec<[f64; 2]> {
     data.chunks(DOWNSAMPLING_FACTOR * 2)
-        .map(|chunk| {
+        .flat_map(|chunk| {
             let (min_i, min) = chunk.iter().enumerate().min_by(|(_, x), (_, y)| x[1].total_cmp(&y[1])).unwrap();
             let (max_i, max) = chunk.iter().enumerate().max_by(|(_, x), (_, y)| x[1].total_cmp(&y[1])).unwrap();
             match (min_i, max_i) {
@@ -37,15 +37,16 @@ fn downsample_points(data: &Vec<[f64; 2]>) -> Vec<[f64; 2]> {
                 _ => [*max, *min],
             }
         })
-        .flatten()
         .collect()
 }
+
+type PlotCallback = dyn FnMut(&VehicleState) -> Option<f32>;
 
 /// Cache for a single line.
 struct PlotCacheLine {
     name: String,
     color: Color32,
-    pub callback: Box<dyn FnMut(&VehicleState) -> Option<f32>>,
+    pub callback: Box<PlotCallback>,
     /// Increasingly downsampled plot data. The first entry is the full data, followed by
     /// smaller and smaller vectors.
     data: Vec<Vec<[f64; 2]>>,
@@ -89,7 +90,7 @@ impl PlotCacheLine {
     }
 
     fn cached_data_downsampled(&mut self, bounds: PlotBounds, view_width: f32) -> Vec<[f64; 2]> {
-        if self.data[0].len() == 0 {
+        if self.data[0].is_empty() {
             return Vec::new();
         }
 
@@ -138,13 +139,13 @@ impl PlotCacheLine {
     }
 
     pub fn stats(&mut self) -> Option<(f64, f64, f64, f64)> {
-        if self.stats.is_none() && self.last_view.len() > 0 {
+        if self.stats.is_none() && !self.last_view.is_empty() {
             let count = self.last_view.len() as f64;
             let mean = self.last_view.iter().map(|i| i[1]).sum::<f64>() / count;
             let var = self.last_view.iter().map(|i| f64::powi(i[1] - mean, 2)).sum::<f64>() / count;
             let std_dev = f64::sqrt(var);
-            let min = self.last_view.iter().map(|i| i[1]).reduce(|a, b| f64::min(a, b)).unwrap();
-            let max = self.last_view.iter().map(|i| i[1]).reduce(|a, b| f64::max(a, b)).unwrap();
+            let min = self.last_view.iter().map(|i| i[1]).reduce(f64::min).unwrap();
+            let max = self.last_view.iter().map(|i| i[1]).reduce(f64::max).unwrap();
             self.stats = Some((mean, std_dev, min, max));
         }
 
@@ -177,7 +178,12 @@ impl PlotCache {
     }
 
     fn update_mode_transition_cache(&mut self, data_source: &dyn DataSource, keep_first: usize) {
-        let last_mode = (keep_first > 0).then_some(self.mode_transitions.last().map(|(_,m)| *m)).unwrap_or(None);
+        let last_mode = if keep_first > 0 {
+            self.mode_transitions.last().map(|(_,m)| *m)
+        } else {
+            None
+        };
+
         let new_data = data_source.vehicle_states()
             .skip(keep_first)
             .filter(|(_t, vs)| vs.mode.is_some())
@@ -189,7 +195,7 @@ impl PlotCache {
                     Some(None)
                 }
             })
-            .filter_map(|x| x);
+            .flatten();
 
         if keep_first > 0 {
             self.mode_transitions.extend(new_data);
@@ -207,7 +213,7 @@ impl PlotCache {
             return;
         }
 
-        let (last_t, _) = data_source.vehicle_states().rev().next().unwrap().clone();
+        let (last_t, _) = data_source.vehicle_states().next_back().unwrap().clone();
         let cached_state = Some((last_t, new_len));
 
         // We have already cached this exact set of vehicle states, do nothing.
@@ -219,14 +225,13 @@ impl PlotCache {
         // plotted data, which we have cached. If so, we keep the old and simply append the new
         // points. If not, we recalculate the cache completely.
         let old_len = self.cached_state.map(|(_, l)| l).unwrap_or(0);
-        let mut keep_first = (new_len > old_len).then_some(old_len).unwrap_or(0);
+        let mut keep_first = if new_len > old_len { old_len } else { 0 };
         if keep_first > 0 {
             // double-check that it is actually the same set of states by looking for our previous
             // last state in the new data
             let (previous_last, _) = data_source.vehicle_states()
                 .rev()
-                .skip(new_len - keep_first)
-                .next()
+                .nth(new_len - keep_first)
                 .unwrap();
             if self.cached_state.map(|(t, _)| t != *previous_last).unwrap_or(true) {
                 keep_first = 0;
@@ -427,7 +432,7 @@ impl PlotUiExt for egui::Ui {
                 plot_ui.line(l.width(1.2));
             }
 
-            for vl in cache.mode_lines(data_source).into_iter() {
+            for vl in cache.mode_lines(data_source) {
                 plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));
             }
         });

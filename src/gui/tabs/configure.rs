@@ -126,8 +126,8 @@ impl ConfigureTab {
                             if ui.button("⬅ Copy from FC").clicked() {
                                 settings.lora.authentication_key = data_source
                                     .fc_settings()
-                                    .map(|s| s.lora.authentication_key.clone())
-                                    .unwrap_or(settings.lora.authentication_key.clone());
+                                    .map(|s| s.lora.authentication_key)
+                                    .unwrap_or(settings.lora.authentication_key);
                             }
 
                             #[cfg(not(target_arch = "wasm32"))]
@@ -148,7 +148,7 @@ impl ConfigureTab {
                     ui.set_width(ui.available_width());
 
                     if ui.button("🔃Reload").clicked() {
-                        *settings = AppSettings::load().unwrap_or(AppSettings::default());
+                        *settings = AppSettings::load().unwrap_or_default();
                         changed = true;
                     }
 
@@ -187,7 +187,7 @@ impl ConfigureTab {
 
                     #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
                     if ui.add_enabled(data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
-                        save_fc_settings_file(&data_source.fc_settings().unwrap());
+                        save_fc_settings_file(data_source.fc_settings().unwrap());
                     }
 
                     #[cfg(not(any(target_arch = "wasm32", target_os="android")))]

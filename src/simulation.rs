@@ -119,7 +119,7 @@ pub struct SimulationState {
 
 impl SimulationState {
     fn load_log_states(bytes: &[u8]) -> Result<VecDeque<VehicleState>, reqwest::Error> {
-        let msgs = serde_json::from_slice::<Vec<DownlinkMessage>>(&bytes).unwrap();
+        let msgs = serde_json::from_slice::<Vec<DownlinkMessage>>(bytes).unwrap();
         Ok(msgs.into_iter().map(|x| x.into()).collect())
     }
 
@@ -140,10 +140,8 @@ impl SimulationState {
         #[cfg(not(target_arch = "wasm32"))]
         let mut remaining_replication_states = settings
             .replication_log_index
-            .map(|i| ARCHIVE.get(i))
-            .flatten()
-            .map(|(_, _, _, flash_bytes)| *flash_bytes)
-            .flatten()
+            .and_then(|i| ARCHIVE.get(i))
+            .and_then(|(_, _, _, flash_bytes)| *flash_bytes)
             .map(|bytes| Self::load_log_states(bytes).unwrap())
             .unwrap_or_default();
 
@@ -151,7 +149,7 @@ impl SimulationState {
         let mut remaining_replication_states: VecDeque<VehicleState> = VecDeque::new();
 
         // Skip the first known states without GPS data
-        while remaining_replication_states.get(0).map(|vs| vs.latitude.is_none()).unwrap_or(false) {
+        while remaining_replication_states.front().map(|vs| vs.latitude.is_none()).unwrap_or(false) {
             remaining_replication_states.pop_front();
         }
 
@@ -161,7 +159,7 @@ impl SimulationState {
             .unwrap_or((settings.altitude_ground, settings.launch_latitude, settings.launch_longitude));
 
         // Skip the first known states without raw sensor data
-        while remaining_replication_states.get(0).map(|vs| vs.gyroscope.is_none()).unwrap_or(false) {
+        while remaining_replication_states.front().map(|vs| vs.gyroscope.is_none()).unwrap_or(false) {
             remaining_replication_states.pop_front();
         }
 
@@ -375,7 +373,7 @@ impl SimulationState {
 
         let scaled_acceleration = self.acceleration * (SIMULATION_TICK_MS as f32) / 1000.0;
         let scaled_velocity = self.velocity * (SIMULATION_TICK_MS as f32) / 1000.0;
-        let old_velocity = self.velocity.clone();
+        let old_velocity = self.velocity;
 
         self.velocity += scaled_acceleration;
         self.latitude += (scaled_velocity.y as f64) / 111_320.0;

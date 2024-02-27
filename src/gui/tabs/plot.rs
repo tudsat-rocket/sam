@@ -143,7 +143,7 @@ impl PlotTab {
             .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0));
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization.map(|u| u as f32));
+            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization);
 
         let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
             .line("GCS RSSI [dBm]", B, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
@@ -153,7 +153,7 @@ impl PlotTab {
             .line("HDOP", R, |vs| vs.hdop.map(|x| x as f32 / 100.0))
             .line("# Satellites", G, |vs| vs.num_satellites.map(|x| x as f32));
 
-        let map = MapState::new(ctx, (settings.mapbox_access_token.len() > 0).then_some(settings.mapbox_access_token.clone()));
+        let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
             maxi_grid_state: MaxiGridState::default(),

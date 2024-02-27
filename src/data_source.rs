@@ -23,16 +23,17 @@ pub use serial::*;
 pub use simulation::SimulationDataSource;
 
 /// Trait shared by all data sources.
+#[allow(clippy::result_large_err)]
 pub trait DataSource {
     /// Called every frame.
     fn update(&mut self, ctx: &egui::Context);
     /// Return an iterator over all known states of the vehicle.
-    fn vehicle_states<'a>(&'a self) -> Iter<'_, (Instant, VehicleState)>;
+    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)>;
 
     /// Return the current flight computer settings, if known.
-    fn fc_settings<'a>(&'a mut self) -> Option<&'a Settings>;
+    fn fc_settings(&mut self) -> Option<&Settings>;
     /// Return the current flight computer settings, if known.
-    fn fc_settings_mut<'a>(&'a mut self) -> Option<&'a mut Settings>;
+    fn fc_settings_mut(&mut self) -> Option<&mut Settings>;
 
     /// Reset data source if applicable.
     fn reset(&mut self);

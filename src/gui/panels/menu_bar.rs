@@ -51,16 +51,14 @@ impl MenuBarPanel {
                 // Toggle archive panel
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
                 if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {
-                    sam.data_source = Box::new(SimulationDataSource::default());
+                    sam.data_source = Box::<SimulationDataSource>::default();
                 }
 
                 // Show a button to the right to close the current log/simulation and go back to
                 // live view
                 ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if data_source_is_log || data_source_is_sim {
-                        if ui.button("❌").clicked() {
-                            sam.close_data_source(ctx);
-                        }
+                    if (data_source_is_log || data_source_is_sim) && ui.button("❌").clicked() {
+                        sam.close_data_source(ctx);
                     }
                 });
             });

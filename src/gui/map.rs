@@ -70,7 +70,7 @@ impl Plugin for LinePlugin {
                 //    }
                 //}
                 Line::PathWithValue(positions_and_values, f) => {
-                    let screen_positions: Vec<_> = positions_and_values.into_iter()
+                    let screen_positions: Vec<_> = positions_and_values.iter()
                         .map(|(p, val)| (projector.project(*p).to_pos2(), val))
                         .collect();
                     for segment in screen_positions.windows(2) {
@@ -155,11 +155,11 @@ impl MapState {
     }
 
     pub fn vehicle_positions(&mut self, data_source: &mut dyn DataSource) -> Vec<(Position, f64)> {
-        let last = data_source.vehicle_states().rev().next();
-        if last.is_none() {
+        let Some(last) = data_source.vehicle_states().next_back() else {
             return Vec::new();
-        }
-        let state = (last.unwrap().0, data_source.vehicle_states().len());
+        };
+
+        let state = (last.0, data_source.vehicle_states().len());
 
         // repopulate cache
         if self.cached_state.map(|s| s != state).unwrap_or(true) {
@@ -167,7 +167,7 @@ impl MapState {
                 .scan((None, None), |(ground_asl, altitude_asl), (_, vs)| {
                     *ground_asl = vs.altitude_ground_asl.or(*ground_asl);
                     *altitude_asl = vs.altitude_asl.or(*altitude_asl);
-                    Some((ground_asl.clone(), altitude_asl.clone(), vs))
+                    Some((*ground_asl, *altitude_asl, vs))
                 })
                 .filter(|(_, _, vs)|
                     vs.latitude.is_some() &&
@@ -261,7 +261,7 @@ impl<'a> Widget for Map<'a> {
         if let Some((position, alt_agl, hdop)) = self.vehicle_position {
             map = map.with_plugin(Places::new(vec![
                 Place {
-                    position: position,
+                    position,
                     label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.lat(), position.lon(), alt_agl, hdop),
                     symbol: '🚀',
                     style: Style::default(),
