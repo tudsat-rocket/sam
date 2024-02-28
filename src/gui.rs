@@ -1,5 +1,6 @@
 //! Main GUI code
 
+use std::ops::DerefMut;
 use std::path::PathBuf;
 
 use eframe::egui;
@@ -28,10 +29,10 @@ use crate::gui::theme::*;
 use crate::gui::windows::*;
 use crate::settings::AppSettings;
 
-// The main state object of our GUI application
+/// Main state object of our GUI application
 pub struct Sam {
     settings: AppSettings,
-    data_source: Box<dyn DataSource>,
+    data_sources: Vec<Box<dyn DataSource>>,
     tab: GuiTab,
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
@@ -41,8 +42,9 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(ctx: &egui::Context, settings: AppSettings, data_source: Option<Box<dyn DataSource>>) -> Self {
-        let data_source = data_source.unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
+    pub fn init(ctx: &egui::Context, settings: AppSettings, default_data_source: Option<Box<dyn DataSource>>) -> Self {
+        let default_data_source = default_data_source
+            .unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
 
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
@@ -61,7 +63,7 @@ impl Sam {
 
         Self {
             settings,
-            data_source,
+            data_sources: vec![default_data_source],
 
             tab: GuiTab::Plot,
             plot_tab,
@@ -72,8 +74,22 @@ impl Sam {
     }
 
     /// Closes the currently opened data source
-    fn close_data_source(&mut self, ctx: &egui::Context) {
-        self.data_source = Box::new(SerialDataSource::new(ctx, self.settings.lora.clone()));
+    fn close_data_source(&mut self) {
+        // TODO: extend this to arbitrarily many data sources?
+        self.data_sources.truncate(1);
+    }
+
+    fn open_data_source(&mut self, data_source: Box<dyn DataSource>) {
+        self.close_data_source();
+        self.data_sources.push(data_source);
+    }
+
+    fn data_source(&mut self) -> &Box<dyn DataSource> {
+        self.data_sources.last().unwrap()
+    }
+
+    fn data_source_mut(&mut self) -> &mut Box<dyn DataSource> {
+        self.data_sources.last_mut().unwrap()
     }
 
     pub fn ui(&mut self, ctx: &egui::Context) {
@@ -84,11 +100,11 @@ impl Sam {
         #[cfg(feature = "profiling")]
         puffin_egui::profiler_window(ctx);
 
-        self.data_source.update(ctx);
+        self.data_source_mut().update(ctx);
 
         // TODO: only send this if we know it's not a ground station?
-        if self.data_source.fc_settings().is_none() && self.data_source.vehicle_states().next().is_some() {
-            self.data_source.send(UplinkMessage::ReadSettings).unwrap();
+        if self.data_source_mut().fc_settings().is_none() && self.data_source().vehicle_states().next().is_some() {
+            self.data_source_mut().send(UplinkMessage::ReadSettings).unwrap();
         }
 
         // Check for keyboard inputs for tab and flight mode changes
@@ -120,7 +136,7 @@ impl Sam {
 
         // Set new flight mode if keyboard shortcut was used
         if let Some(fm) = shortcut_mode {
-            self.data_source.send_command(Command::SetFlightMode(fm)).unwrap();
+            self.data_source_mut().send_command(Command::SetFlightMode(fm)).unwrap();
         }
 
         // Redefine text_styles
@@ -132,20 +148,22 @@ impl Sam {
 
         // A window to open archived logs directly in the application
         if let Some(log) = self.archive_window.show_if_open(ctx) {
-            self.data_source = Box::new(log);
+            self.open_data_source(Box::new(log));
         }
 
         // Top menu bar
         // TODO: avoid passing in self here
         MenuBarPanel::show(ctx, self, !self.archive_window.open);
 
+        let data_source = self.data_sources.last_mut().unwrap();
+
         // If our current data source is a simulation, show a config panel to the left
-        if let Some(sim) = self.data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
+        if let Some(sim) = data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
             SimulationPanel::show(ctx, sim, !self.archive_window.open);
         }
 
         // Header containing text indicators and flight mode buttons
-        HeaderPanel::show(ctx, self.data_source.as_mut(), !self.archive_window.open);
+        HeaderPanel::show(ctx, data_source.deref_mut(), !self.archive_window.open);
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
@@ -156,14 +174,14 @@ impl Sam {
             ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
                 match self.tab {
                     GuiTab::Launch => {}
-                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, self.data_source.as_mut()),
+                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, data_source.deref_mut()),
                     GuiTab::Configure => {}
                 }
 
                 ui.separator();
 
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    self.data_source.status_bar_ui(ui);
+                    data_source.status_bar_ui(ui);
                 })
             });
         });
@@ -173,11 +191,11 @@ impl Sam {
             ui.set_enabled(!self.archive_window.open);
             match self.tab {
                 GuiTab::Launch => {}
-                GuiTab::Plot => self.plot_tab.main_ui(ui, self.data_source.as_mut()),
+                GuiTab::Plot => self.plot_tab.main_ui(ui, data_source.deref_mut()),
                 GuiTab::Configure => {
-                    let changed = self.configure_tab.main_ui(ui, self.data_source.as_mut(), &mut self.settings);
+                    let changed = self.configure_tab.main_ui(ui, data_source.deref_mut(), &mut self.settings);
                     if changed {
-                        self.data_source.apply_settings(&self.settings);
+                        data_source.apply_settings(&self.settings);
                     }
                 }
             }
