@@ -1,5 +1,5 @@
-mod configure;
-mod plot;
+pub mod configure;
+pub mod plot;
 
 pub use configure::*;
 pub use plot::*;

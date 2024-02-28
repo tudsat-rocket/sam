@@ -13,11 +13,9 @@ use mithril::telemetry::*;
 mod panels;
 mod fc_settings;
 mod map;
-mod maxi_grid;
-mod misc;
 mod plot;
 mod simulation_settings;
-mod tabs;
+pub mod tabs;
 mod theme;
 mod top_bar;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
@@ -151,19 +149,21 @@ impl Sam {
             self.open_data_source(Box::new(log));
         }
 
+        let enabled = !self.archive_window.open;
+
         // Top menu bar
         // TODO: avoid passing in self here
-        MenuBarPanel::show(ctx, self, !self.archive_window.open);
+        MenuBarPanel::show(ctx, self, enabled);
 
         let data_source = self.data_sources.last_mut().unwrap();
 
         // If our current data source is a simulation, show a config panel to the left
         if let Some(sim) = data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
-            SimulationPanel::show(ctx, sim, !self.archive_window.open);
+            SimulationPanel::show(ctx, sim, enabled);
         }
 
         // Header containing text indicators and flight mode buttons
-        HeaderPanel::show(ctx, data_source.deref_mut(), !self.archive_window.open);
+        HeaderPanel::show(ctx, data_source.deref_mut(), enabled);
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
@@ -187,19 +187,20 @@ impl Sam {
         });
 
         // Everything else. This has to be called after all the other panels are created.
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(!self.archive_window.open);
-            match self.tab {
-                GuiTab::Launch => {}
-                GuiTab::Plot => self.plot_tab.main_ui(ui, data_source.deref_mut()),
-                GuiTab::Configure => {
-                    let changed = self.configure_tab.main_ui(ui, data_source.deref_mut(), &mut self.settings);
-                    if changed {
-                        data_source.apply_settings(&self.settings);
-                    }
+        match self.tab {
+            GuiTab::Launch => {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_enabled(enabled)
+                }).inner
+            }
+            GuiTab::Plot => self.plot_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled),
+            GuiTab::Configure => {
+                let changed = self.configure_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled);
+                if changed {
+                    data_source.apply_settings(&self.settings);
                 }
             }
-        });
+        }
     }
 }
 

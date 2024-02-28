@@ -19,6 +19,7 @@ eframe = { version = "0.26", default-features = false, features = ["glow", "wayl
 egui_plot = "0.26"
 egui_extras = { version = "0.26", features = ["image"] }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
+egui_tiles = "0.7.2"
 egui-gizmo = "0.16"
 walkers = { git = "https://github.com/podusowski/walkers" }
 # serialization & communication
@@ -41,7 +42,6 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 # Used for profiling
 puffin = { version = "0.19", optional = true }
 puffin_egui = { version = "0.26", optional = true }
-#egui_tiles = "0.6.0"
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]

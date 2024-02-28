@@ -1,4 +1,5 @@
 use std::fs::File;
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,7 @@ use mithril::settings::LoRaSettings;
 pub struct AppSettings {
     pub mapbox_access_token: String,
     pub lora: LoRaSettings,
+    pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::gui::tabs::plot::PlotCell>>>,
 }
 
 impl AppSettings {
