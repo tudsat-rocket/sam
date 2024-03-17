@@ -204,7 +204,7 @@ impl StateEstimator {
         // Only track maximum height during flight
         self.altitude_max = match mode {
             Idle | HardwareArmed | Armed => self.altitude_asl(),
-            Flight | RecoveryDrogue | RecoveryMain => f32::max(self.altitude_max, self.altitude_asl()),
+            Burn | Coast | RecoveryDrogue | RecoveryMain => f32::max(self.altitude_max, self.altitude_asl()),
             Landed => self.altitude_max,
         }
     }
@@ -250,7 +250,7 @@ impl StateEstimator {
     /// flight will take place.. Generally, all conditions have to be true for a given
     /// amount of time to avoid spurious decisions in case of weird sensor spikes/glitches.
     pub fn new_mode(&mut self, arm_voltage: u16, breakwire_open: Option<bool>) -> Option<FlightMode> {
-        let vertical_accel = self.acceleration.map(|acc| acc.z).unwrap_or(0.0);
+        let vertical_accel_vehicle_space = self.acceleration.map(|acc| acc.z).unwrap_or(0.0);
         let elapsed = self.time_in_mode();
         let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
 
@@ -268,7 +268,7 @@ impl StateEstimator {
                 // In the AND mode, we assume the breakwire to be open (pulled-out) when we lose
                 // contact with the power module. This way, if the CAN bus becomes damaged
                 // during/before takeoff, we simply fall back to acceleration-only detection.
-                let acceleration = vertical_accel > self.settings.min_takeoff_acc;
+                let acceleration = vertical_accel_vehicle_space > self.settings.min_takeoff_acc;
                 let condition = match self.settings.takeoff_detection_mode {
                     TakeoffDetectionMode::Acceleration             => acceleration,
                     TakeoffDetectionMode::Breakwire                => breakwire_open.unwrap_or(false),
@@ -276,10 +276,17 @@ impl StateEstimator {
                     TakeoffDetectionMode::AccelerationOrBreakwire  => acceleration || breakwire_open.unwrap_or(false),
                 };
 
-                self.true_since(condition, self.settings.min_takeoff_acc_time).then(|| FlightMode::Flight)
+                self.true_since(condition, self.settings.min_takeoff_acc_time).then(|| FlightMode::Burn)
+            }
+            // Wait for motor burnout
+            FlightMode::Burn => {
+                // TODO: acceleration
+                let burnout = self.true_since(vertical_accel_vehicle_space < 0.0, self.settings.min_takeoff_acc_time);
+                let min_exceeded = elapsed > self.settings.min_time_to_apogee;
+                (burnout || min_exceeded).then(|| FlightMode::Coast)
             }
             // Deployment of drogue parachute, i.e. apogee detection
-            FlightMode::Flight => {
+            FlightMode::Coast => {
                 let falling = self.true_since(self.vertical_speed() < 0.0, self.settings.apogee_min_falling_time);
                 let min_exceeded = elapsed > self.settings.min_time_to_apogee;
                 let max_exceeded = elapsed > self.settings.max_time_to_apogee;

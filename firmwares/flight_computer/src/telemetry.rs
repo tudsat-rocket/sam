@@ -87,10 +87,11 @@ pub enum FlightMode {
     Idle = 0,
     HardwareArmed = 1,
     Armed = 2,
-    Flight = 3,
-    RecoveryDrogue = 4,
-    RecoveryMain = 5,
-    Landed = 6,
+    Burn = 3,
+    Coast = 4,
+    RecoveryDrogue = 5,
+    RecoveryMain = 6,
+    Landed = 7,
 }
 
 impl FlightMode {
@@ -99,7 +100,8 @@ impl FlightMode {
             FlightMode::Idle => (false, false, true),                       // ( ,  , G)
             FlightMode::HardwareArmed => (true, time % 500 < 250, false),   // (R, y,  )
             FlightMode::Armed => (true, true, false),                       // (R, Y,  )
-            FlightMode::Flight => (false, true, false),                     // ( , Y,  )
+            FlightMode::Burn => (false, time % 200 < 100, false),           // ( , y,  )
+            FlightMode::Coast => (false, true, false),                      // ( , Y,  )
             FlightMode::RecoveryDrogue => (false, true, true),              // ( , Y, G)
             FlightMode::RecoveryMain => (true, false, true),                // (R,  , G)
             FlightMode::Landed => (false, false, time % 1000 < 500),        // ( ,  , g)
