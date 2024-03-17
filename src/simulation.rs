@@ -10,7 +10,7 @@ use mithril::settings::*;
 use mithril::state_estimation::*;
 use mithril::telemetry::*;
 
-use crate::gui::windows::archive::ARCHIVE;
+use crate::gui::windows::archive::ArchivedLog;
 
 #[cfg(not(target_arch = "wasm32"))]
 type Rng = rand::rngs::StdRng;
@@ -24,7 +24,7 @@ pub const PLOT_STEP_MS: u32 = 50;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
-    pub replication_log_index: Option<usize>, // TODO: represent this better than a simple index
+    pub replicated_log: Option<ArchivedLog>,
 
     pub altitude_ground: f32,
     pub launch_angle: f32,
@@ -57,7 +57,7 @@ pub struct SimulationSettings {
 impl Default for SimulationSettings {
     fn default() -> Self {
         Self {
-            replication_log_index: None,
+            replicated_log: None,
 
             altitude_ground: 150.0,
             launch_angle: 5.0,
@@ -132,16 +132,15 @@ impl SimulationState {
         let mut settings = settings.clone();
 
         // Fix FC orientation for EuRoC flight (TODO: do this better)
-        if let Some(4) = settings.replication_log_index {
+        if let Some(ArchivedLog::Euroc23) = settings.replicated_log {
             settings.fc_settings.orientation = Orientation::ZDown;
         }
 
         // TODO: do this nicer (separate thread/task, progress, caching, support WASM)
         #[cfg(not(target_arch = "wasm32"))]
         let mut remaining_replication_states = settings
-            .replication_log_index
-            .and_then(|i| ARCHIVE.get(i))
-            .and_then(|(_, _, _, flash_bytes)| *flash_bytes)
+            .replicated_log
+            .and_then(|log| log.flash_log())
             .map(|bytes| Self::load_log_states(bytes).unwrap())
             .unwrap_or_default();
 
@@ -261,7 +260,7 @@ impl SimulationState {
     }
 
     pub fn plottable(&self) -> bool {
-        if self.settings.replication_log_index.is_some() {
+        if self.settings.replicated_log.is_some() {
             (self.time + 3) % 10 == 5 // match flash log raw sensor timing
         } else {
             self.time % PLOT_STEP_MS == 0
@@ -408,7 +407,7 @@ impl SimulationState {
     }
 
     pub fn tick(&mut self) -> bool {
-        let (done, arm_voltage) = if self.settings.replication_log_index.is_some() {
+        let (done, arm_voltage) = if self.settings.replicated_log.is_some() {
             (self.advance_replication(), 8400)
         } else {
             let done = self.advance_simulation();
@@ -445,7 +444,7 @@ impl SimulationState {
 
 impl From<&SimulationState> for VehicleState {
     fn from(ss: &SimulationState) -> VehicleState {
-        if ss.settings.replication_log_index.is_some() {
+        if ss.settings.replicated_log.is_some() {
             VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),

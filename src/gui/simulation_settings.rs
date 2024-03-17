@@ -1,6 +1,6 @@
 use egui::{DragValue, InnerResponse, Ui};
 
-use crate::gui::windows::archive::ARCHIVE;
+use crate::gui::windows::archive::ArchivedLog;
 use crate::simulation::SimulationSettings;
 pub trait SimulationSettingsUiExt {
     fn ui(&mut self, ui: &mut Ui) -> InnerResponse<()>;
@@ -17,21 +17,21 @@ impl SimulationSettingsUiExt for SimulationSettings {
                 {
                     ui.label("Replication Log");
                     egui::ComboBox::from_id_source("replication_log")
-                        .selected_text(self.replication_log_index.map(|i| ARCHIVE[i].0).unwrap_or("None"))
+                        .selected_text(self.replicated_log.map(|l| l.to_string()).unwrap_or("None".into()))
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.replication_log_index, None, "None");
-                            for (i, (name, _, f, _)) in ARCHIVE.iter().enumerate() {
-                                if f.is_none() {
+                            ui.selectable_value(&mut self.replicated_log, None, "None");
+                            for log in &ArchivedLog::all() {
+                                if log.flash_log_url().is_none() {
                                     continue;
                                 }
-                                ui.selectable_value(&mut self.replication_log_index, Some(i), *name);
+                                ui.selectable_value(&mut self.replicated_log, Some(*log), log.to_string());
                             }
                         });
                     ui.end_row();
                 }
 
                 // Disable other settings if we are using a source log
-                ui.set_enabled(self.replication_log_index.is_none());
+                ui.set_enabled(self.replicated_log.is_none());
 
                 ui.label("Launch Parameters");
                 ui.horizontal(|ui| {

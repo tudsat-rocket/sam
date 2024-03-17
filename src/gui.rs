@@ -216,10 +216,12 @@ impl eframe::App for Sam {
 
 /// The main entrypoint for the egui interface.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn main(log_file: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn main(log_file: Option<PathBuf>, replicate: Option<ArchivedLog>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or_default();
 
-    let data_source: Option<Box<dyn DataSource>> = if let Some(path) = log_file {
+    let data_source: Option<Box<dyn DataSource>> = if let Some(log) = replicate {
+        Some(Box::new(SimulationDataSource::replicate(log)))
+    } else if let Some(path) = log_file {
         Some(Box::new(LogFileDataSource::new(path)?))
     } else {
         None

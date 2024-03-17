@@ -17,12 +17,26 @@ use mithril::telemetry::*;
 
 use crate::data_source::DataSource;
 use crate::simulation::*;
+use crate::gui::windows::ArchivedLog;
 
 #[derive(Default)]
 pub struct SimulationDataSource {
     pub settings: SimulationSettings,
     state: Option<SimulationState>,
     vehicle_states: Vec<(Instant, VehicleState)>,
+}
+
+impl SimulationDataSource {
+    pub fn replicate(replicated_log: ArchivedLog) -> Self {
+        let settings = SimulationSettings {
+            replicated_log: Some(replicated_log),
+            ..Default::default()
+        };
+        Self {
+            settings,
+            ..Default::default()
+        }
+    }
 }
 
 impl DataSource for SimulationDataSource {

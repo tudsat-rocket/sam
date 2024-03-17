@@ -21,6 +21,7 @@ mod simulation;
 mod telemetry_ext;
 
 use crate::data_source::serial::{self, *};
+use crate::gui::windows::ArchivedLog;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -34,6 +35,8 @@ enum CliCommand {
     /// Launch the main gui [default]
     Gui {
         log_path: Option<PathBuf>,
+        #[clap(long)]
+        replicate: Option<ArchivedLog>,
     },
     /// Attach to FC and tail logs
     /// TODO: embassy rewrite will remove USB logging, so this can be removed
@@ -414,8 +417,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new().filter_level(LevelFilter::Info).parse_default_env().init();
 
     let args = Cli::parse();
-    match args.command.unwrap_or(CliCommand::Gui { log_path: None }) {
-        CliCommand::Gui { log_path } => gui::main(log_path),
+    match args.command.unwrap_or(CliCommand::Gui { log_path: None, replicate: None }) {
+        CliCommand::Gui { log_path, replicate } => gui::main(log_path, replicate),
         CliCommand::Logcat { verbose } => logcat(verbose),
         CliCommand::DumpFlash {
             path,
