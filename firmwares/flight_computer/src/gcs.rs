@@ -14,7 +14,7 @@ use embassy_time::{Ticker, Duration};
 
 use defmt::*;
 
-//use crate::buzzer::*;
+use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::lora::*;
 use crate::settings::*;
 use crate::telemetry::*;
@@ -24,6 +24,8 @@ use crate::usb::*;
 type RadioHandle = Radio<SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PA1>>, Input<'static, PC0>,Input<'static, PC1>>;
 
 type LEDs = (Output<'static, PC13>, Output<'static, PC14>, Output<'static, PC15>);
+// TODO
+type Buzzer = BuzzerDriver<TIM3>;
 
 const MAIN_LOOP_FREQUENCY: Hertz = Hertz::hz(1000);
 
@@ -32,6 +34,7 @@ pub struct GroundControlStation {
     usb: UsbHandle,
     radio: RadioHandle,
     leds: LEDs,
+    buzzer: Buzzer,
 }
 
 // TODO: move to main?
@@ -50,12 +53,14 @@ impl GroundControlStation {
         usb: UsbHandle,
         radio: RadioHandle,
         leds: LEDs,
+        buzzer: Buzzer,
     ) -> Self {
         Self {
             time: core::num::Wrapping(0),
             usb,
             radio,
             leds,
+            buzzer,
         }
     }
 
@@ -81,7 +86,7 @@ impl GroundControlStation {
         self.leds.0.set_level((!(self.radio.transmit_power >= TransmitPower::P20dBm)).into());
         self.leds.1.set_level((!rssi_led).into());
         self.leds.2.set_level((!true).into());
-        //self.buzzer.tick(self.time);
+        self.buzzer.tick(self.time.0);
 
         if let Some(msg) = uplink_msg {
             self.radio.queue_uplink_message(msg);

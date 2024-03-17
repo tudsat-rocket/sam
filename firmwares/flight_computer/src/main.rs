@@ -202,7 +202,7 @@ async fn main(_low_priority_spawner: Spawner) {
     );
 
     #[cfg(feature="gcs")]
-    let gcs = GroundControlStation::init(usb, radio, leds);
+    let gcs = GroundControlStation::init(usb, radio, leds, buzzer);
 
     // Start high priority executor
     interrupt::I2C3_EV.set_priority(Priority::P6);

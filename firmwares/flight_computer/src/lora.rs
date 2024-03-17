@@ -317,7 +317,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
 
     #[cfg(feature = "gcs")]
     pub async fn tick(&mut self, time: u32) -> Option<DownlinkMessage> {
-        if self.sequence.is_none() || time < 3000 {
+        if self.sequence.is_none() {
             return None;
         }
 
@@ -331,8 +331,8 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
         let fc_time = (self.time as i64).wrapping_add(self.fc_time_offset as i64) as u32;
 
         // When not in contact with the FC we do a slow sweep across channels.
-        if !in_contact && self.time % 5000 == 0 {
-            let i = (self.time as usize / 5000) % CHANNELS.len();
+        if !in_contact && self.time % 1000 == 0 {
+            let i = (self.time as usize / 1000) % CHANNELS.len();
             info!("Sweeping, switching to {}MHz.", (CHANNELS[i] as f32) / 1_000_000.0);
             if let Err(e) = self.trx.set_frequency(CHANNELS[i]).await {
                 error!("Failed to switch frequencies: {:?}", Debug2Format(&e));
