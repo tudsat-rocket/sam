@@ -326,11 +326,15 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
 
         self.command(LLCC68OpCode::ClearIrqStatus, &[0xff, 0xff], 0).await?;
 
-        // Get the packet stats before the data, since this is useful even if the data is corrupted
-        let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 4).await?;
-        self.rssi = packet_status[1];
-        self.rssi_signal = packet_status[3];
-        self.snr = packet_status[2] as i8;
+        // Get the packet stats before the data, since this is useful even if the data is corrupted.
+        // Sometimes the response data is shifted to the right for some reason, which is why we read
+        // 5 bytes instead of the 4 we'd actually need.
+        // e.g. [164, 0, 78, 51, 80] instead of [164, 78, 51, 80]
+        let packet_status = self.command(LLCC68OpCode::GetPacketStatus, &[], 5).await?;
+        let offset = if packet_status[1] == 0 { 1 } else { 0 };
+        self.rssi = packet_status[1+offset];
+        self.rssi_signal = packet_status[3+offset];
+        self.snr = packet_status[2+offset] as i8;
 
         // Abort in case of a CRC mismatch
         // Sometimes this seems to trigger unnecessarily, especially for uplink
