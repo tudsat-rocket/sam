@@ -204,15 +204,22 @@ impl FcSettingsUiExt for Settings {
                 ui.end_row();
 
                 ui.label("Kalman std devs.");
-                ui.horizontal(|ui| {
-                    ui.weak("accelerometer");
-                    ui.add(DragValue::new(&mut self.std_dev_accelerometer).speed(0.001).clamp_range(0.0..=10.0));
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.weak("accelerometer");
+                        ui.add(DragValue::new(&mut self.std_dev_accelerometer).speed(0.001).clamp_range(0.0..=10.0));
 
-                    ui.weak(" barometer");
-                    ui.add(DragValue::new(&mut self.std_dev_barometer).speed(0.001).clamp_range(0.0..=10.0));
+                        ui.weak(" barometer");
+                        ui.add(DragValue::new(&mut self.std_dev_barometer).speed(0.001).clamp_range(0.0..=10.0));
 
-                    ui.weak(" process");
-                    ui.add(DragValue::new(&mut self.std_dev_process).speed(0.001).clamp_range(0.0..=10.0));
+                        ui.weak(" process");
+                        ui.add(DragValue::new(&mut self.std_dev_process).speed(0.001).clamp_range(0.0..=10.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.weak("(barometer");
+                        ui.add(DragValue::new(&mut self.std_dev_barometer_transsonic).speed(0.001).clamp_range(0.0..=10.0));
+                        ui.weak("when transsonic)");
+                    });
                 });
                 ui.end_row();
 
