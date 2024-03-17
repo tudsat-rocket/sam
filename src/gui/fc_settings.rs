@@ -260,40 +260,49 @@ impl FcSettingsUiExt for Settings {
                 ui.end_row();
 
                 ui.label("Apogee drogue deployment");
-                ui.horizontal(|ui| {
-                    ui.weak("between");
-                    ui.add(
-                        DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
-                    );
-                    ui.weak("and");
-                    ui.add(
-                        DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
-                    );
-                    ui.weak("post-launch, after falling for");
-                    ui.add(
-                        DragValue::new(&mut self.apogee_min_falling_time).suffix(" ms").speed(1).clamp_range(0..=10000),
-                    );
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.weak("between");
+                        ui.add(
+                            DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
+                        );
+                        ui.weak("and");
+                        ui.add(
+                            DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
+                        );
+                        ui.weak("post-launch,");
+                    });
+                    ui.horizontal(|ui| {
+                        ui.weak("after falling for");
+                        ui.add(
+                            DragValue::new(&mut self.apogee_min_falling_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                        );
+                    });
                 });
                 ui.end_row();
 
                 ui.label("Main deployment");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.main_output_mode, MainOutputMode::Never, "never");
-                    ui.selectable_value(&mut self.main_output_mode, MainOutputMode::AtApogee, "at apogee");
-                    ui.selectable_value(
-                        &mut self.main_output_mode,
-                        MainOutputMode::BelowAltitude,
-                        "below altitude of ",
-                    );
-                    ui.add(
-                        DragValue::new(&mut self.main_output_deployment_altitude)
-                            .suffix(" m")
-                            .speed(0.1)
-                            .clamp_range(0.0..=10000.0),
-                    );
-                    ui.weak("at least");
-                    ui.add(DragValue::new(&mut self.min_time_to_main).suffix(" ms").speed(1).clamp_range(0..=1000000));
-                    ui.weak("after drogue");
+                ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut self.main_output_mode, MainOutputMode::Never, "never");
+                        ui.selectable_value(&mut self.main_output_mode, MainOutputMode::AtApogee, "at apogee");
+                        ui.selectable_value(
+                            &mut self.main_output_mode,
+                            MainOutputMode::BelowAltitude,
+                            "below altitude of ",
+                        );
+                        ui.add(
+                            DragValue::new(&mut self.main_output_deployment_altitude)
+                                .suffix(" m")
+                                .speed(0.1)
+                                .clamp_range(0.0..=10000.0),
+                        );
+                    });
+                    ui.horizontal(|ui| {
+                        ui.weak("and at least");
+                        ui.add(DragValue::new(&mut self.min_time_to_main).suffix(" ms").speed(1).clamp_range(0..=1000000));
+                        ui.weak("after drogue");
+                    });
                 });
                 ui.end_row();
 
