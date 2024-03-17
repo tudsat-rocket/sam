@@ -114,14 +114,16 @@ impl Sam {
             self.tab = GuiTab::Configure;
         }
 
-        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
+        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F4)) {
             Some(FlightMode::Idle)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
             Some(FlightMode::HardwareArmed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
             Some(FlightMode::Armed)
+        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
+            Some(FlightMode::Burn)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
-            Some(FlightMode::Flight)
+            Some(FlightMode::Coast)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
             Some(FlightMode::RecoveryDrogue)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {

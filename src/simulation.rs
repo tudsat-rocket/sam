@@ -361,7 +361,7 @@ impl SimulationState {
         if !f32::is_nan(velocity_dir.x) {
             use FlightMode::*;
             let drag = match self.mode {
-                Idle | HardwareArmed | Armed | Flight => self.settings.drag_flight,
+                Idle | HardwareArmed | Armed | Burn | Coast => self.settings.drag_flight,
                 RecoveryDrogue => self.settings.drag_drogue,
                 RecoveryMain | Landed => self.settings.drag_main,
             };

@@ -14,10 +14,11 @@ impl ColorExt for FlightMode {
             FlightMode::Idle => Color32::from_rgb(0xb8, 0xbb, 0x26),
             FlightMode::HardwareArmed => Color32::from_rgb(0xfe, 0x80, 0x19),
             FlightMode::Armed => Color32::from_rgb(0xcc, 0x24, 0x1d),
-            FlightMode::Flight => Color32::from_rgb(0xb1, 0x62, 0x86),
-            FlightMode::RecoveryDrogue => Color32::from_rgb(0x45, 0x85, 0x88),
+            FlightMode::Burn => Color32::from_rgb(0xb1, 0x62, 0x86),
+            FlightMode::Coast => Color32::from_rgb(0x45, 0x85, 0x88),
+            FlightMode::RecoveryDrogue => Color32::from_rgb(0xd5, 0xc4, 0xa1),
             FlightMode::RecoveryMain => Color32::from_rgb(0x68, 0x96, 0x6a),
-            FlightMode::Landed => Color32::from_rgb(0xd5, 0xc4, 0xa1),
+            FlightMode::Landed => Color32::from_rgb(0x61, 0x48, 0x1c),
         }
     }
 }
