@@ -52,10 +52,11 @@ pub enum PlotCell {
     Runtime,
     Signal,
     Map,
+    Kalman,
 }
 
 impl PlotCell {
-    fn all() -> Vec<Self> {
+    fn all_grid() -> Vec<Self> {
         vec![
             PlotCell::Orientation,
             PlotCell::VerticalSpeed,
@@ -70,6 +71,13 @@ impl PlotCell {
             PlotCell::Runtime,
             PlotCell::Signal,
         ]
+    }
+
+    fn all() -> Vec<Self> {
+        // TODO: find a better way to add optional plots to grid?
+        let mut grid = Self::all_grid();
+        grid.extend(vec![PlotCell::Kalman]);
+        grid
     }
 }
 
@@ -88,6 +96,7 @@ impl std::fmt::Display for PlotCell {
             PlotCell::Runtime        => write!(f, "Runtime"),
             PlotCell::Signal         => write!(f, "Signal"),
             PlotCell::Map            => write!(f, "Map"),
+            PlotCell::Kalman         => write!(f, "Kalman"),
         }
     }
 }
@@ -105,6 +114,7 @@ struct TileBehavior<'a> {
     power_plot: &'a mut PlotState,
     runtime_plot: &'a mut PlotState,
     signal_plot: &'a mut PlotState,
+    kalman_plot: &'a mut PlotState,
     map: &'a mut MapState,
 }
 
@@ -170,7 +180,7 @@ impl<'a> TileBehavior<'a> {
             .unwrap_or(UnitQuaternion::new(Vector3::new(0.0, 0.0, 0.0)));
         let true_orientation = self.data_source.vehicle_states()
             .rev()
-            .find_map(|(_, vs)| vs.true_orientation);
+            .find_map(|(_, vs)| vs.sim.as_ref().and_then(|s| s.orientation));
 
         ui.plot_telemetry(&self.orientation_plot, self.data_source);
 
@@ -200,6 +210,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Power          => ui.plot_telemetry(&self.power_plot, self.data_source),
             PlotCell::Runtime        => ui.plot_telemetry(&self.runtime_plot, self.data_source),
             PlotCell::Signal         => ui.plot_telemetry(&self.signal_plot, self.data_source),
+            PlotCell::Kalman         => ui.plot_telemetry(&self.kalman_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
         }
 
@@ -259,6 +270,7 @@ pub struct PlotTab {
     power_plot: PlotState,
     runtime_plot: PlotState,
     signal_plot: PlotState,
+    kalman_plot: PlotState,
     map: MapState,
 }
 
@@ -271,17 +283,17 @@ impl PlotTab {
             .line("Pitch (X) [°]", R, |vs| vs.euler_angles.map(|a| a.x))
             .line("Yaw (Y) [°]", G, |vs| vs.euler_angles.map(|a| a.y))
             .line("Angle of Attack [°]", O, |vs| vs.angle_of_attack)
-            .line("Roll (True) (Z) [°]", B1, |vs| vs.true_euler_angles.map(|a| a.z))
-            .line("Pitch (True) (X) [°]", R1, |vs| vs.true_euler_angles.map(|a| a.x))
-            .line("Yaw (True) (Y) [°]", G1, |vs| vs.true_euler_angles.map(|a| a.y))
-            .line("Angle of Attack (True) [°]", O1, |vs| vs.true_angle_of_attack);
+            .line("Roll (True) (Z) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.z)))
+            .line("Pitch (True) (X) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.x)))
+            .line("Yaw (True) (Y) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.y)))
+            .line("Angle of Attack (True) [°]", O1, |vs| vs.sim.as_ref().and_then(|s| s.angle_of_attack));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
             .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
             .line("Vertical Accel (Filt.) [m/s²]", O, |vs| vs.vertical_accel_filtered)
             .line("Vario [m/s]", B, |vs| vs.vertical_speed)
-            .line("True Vertical Accel [m/s²]", G, |vs| vs.true_vertical_accel)
-            .line("True Vario [m/s]", B1, |vs| vs.true_vertical_speed);
+            .line("True Vertical Accel [m/s²]", G, |vs| vs.sim.as_ref().and_then(|s| s.vertical_accel))
+            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed));
 
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
             .line("Altitude (Ground) [m]", BR, |vs| vs.altitude_ground_asl)
@@ -330,6 +342,18 @@ impl PlotTab {
             .line("HDOP", R, |vs| vs.hdop.map(|x| x as f32 / 100.0))
             .line("# Satellites", G, |vs| vs.num_satellites.map(|x| x as f32));
 
+        let kalman_plot = PlotState::new("Kalman", (None, None), shared_plot.clone())
+            //.line("P (pos. X) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_P[0]))
+            //.line("P (pos. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_P[1]))
+            .line("P (pos. Z) [m]", B, |vs| vs.sim.as_ref().map(|s| s.kalman_P[2]))
+            //.line("P (speed X) [m/s]", R1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[3]))
+            //.line("P (speed Y) [m/s]", G1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[4]))
+            .line("P (speed Z) [m/s]", B1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[5]))
+            //.line("P (accel. X) [m/s²]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_P[6]))
+            //.line("P (accel. Y) [m/s²]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_P[7]))
+            .line("P (accel. Z) [m/s²]", B, |vs| vs.sim.as_ref().map(|s| s.kalman_P[8]))
+            .line("R (baro.) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[0]));
+
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
@@ -348,12 +372,13 @@ impl PlotTab {
             power_plot,
             runtime_plot,
             signal_plot,
+            kalman_plot,
             map,
         }
     }
 
     fn tree_grid() -> egui_tiles::Tree<PlotCell> {
-        egui_tiles::Tree::new_grid("plot_tree", PlotCell::all())
+        egui_tiles::Tree::new_grid("plot_tree", PlotCell::all_grid())
     }
 
     fn tree_from_tiles(tiles: egui_tiles::Tiles<PlotCell>) -> egui_tiles::Tree<PlotCell> {
@@ -366,7 +391,7 @@ impl PlotTab {
 
     fn tree_presets() -> Vec<(&'static str, egui_tiles::Tree<PlotCell>)> {
         vec![
-            ("Grid", egui_tiles::Tree::new_grid("plot_tree", PlotCell::all())),
+            ("Grid", egui_tiles::Tree::new_grid("plot_tree", PlotCell::all_grid())),
             ("Tabs", egui_tiles::Tree::new_tabs("plot_tree", PlotCell::all())),
         ]
     }
@@ -456,6 +481,7 @@ impl PlotTab {
                 power_plot: &mut self.power_plot,
                 runtime_plot: &mut self.runtime_plot,
                 signal_plot: &mut self.signal_plot,
+                kalman_plot: &mut self.kalman_plot,
                 map: &mut self.map,
             };
             self.tile_tree.ui(&mut behavior, ui);

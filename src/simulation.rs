@@ -445,6 +445,16 @@ impl SimulationState {
 impl From<&SimulationState> for VehicleState {
     fn from(ss: &SimulationState) -> VehicleState {
         if ss.settings.replicated_log.is_some() {
+            let sim = SimulatedState {
+                orientation: None,
+                euler_angles: None,
+                angle_of_attack: None,
+                vertical_accel: None,
+                vertical_speed: None,
+                kalman_x: ss.state_estimator.kalman.x,
+                kalman_P: ss.state_estimator.kalman.P.diagonal(),
+                kalman_R: ss.state_estimator.kalman.R.diagonal(),
+            };
             VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
@@ -473,9 +483,27 @@ impl From<&SimulationState> for VehicleState {
                 accelerometer2: ss.accelerometer2,
                 magnetometer: ss.magnetometer,
                 pressure_baro: ss.pressure_baro,
+                sim: Some(Box::new(sim)),
                 ..Default::default()
             }
         } else {
+            let sim = SimulatedState {
+                orientation: Some(ss.orientation),
+                euler_angles: {
+                    let (r, p, y) = ss.orientation.euler_angles();
+                    Some(Vector3::new(r, p, y) * 180.0 / PI)
+                },
+                angle_of_attack: {
+                    let up = Vector3::new(0.0, 0.0, 1.0);
+                    let attitude = ss.orientation * up;
+                    Some(90.0 - up.dot(&attitude).acos().to_degrees())
+                },
+                vertical_accel: Some(ss.acceleration.z),
+                vertical_speed: Some(ss.velocity.z),
+                kalman_x: ss.state_estimator.kalman.x,
+                kalman_P: ss.state_estimator.kalman.P.diagonal(),
+                kalman_R: ss.state_estimator.kalman.R.diagonal(),
+            };
             VehicleState {
                 time: ss.time,
                 mode: Some(ss.mode),
@@ -509,18 +537,7 @@ impl From<&SimulationState> for VehicleState {
                 } else {
                     0
                 }),
-                true_orientation: Some(ss.orientation),
-                true_euler_angles: {
-                    let (r, p, y) = ss.orientation.euler_angles();
-                    Some(Vector3::new(r, p, y) * 180.0 / PI)
-                },
-                true_angle_of_attack: {
-                    let up = Vector3::new(0.0, 0.0, 1.0);
-                    let attitude = ss.orientation * up;
-                    Some(90.0 - up.dot(&attitude).acos().to_degrees())
-                },
-                true_vertical_accel: Some(ss.acceleration.z),
-                true_vertical_speed: Some(ss.velocity.z),
+                sim: Some(Box::new(sim)),
                 ..Default::default()
             }
         }
