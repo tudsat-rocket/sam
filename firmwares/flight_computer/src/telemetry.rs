@@ -183,6 +183,19 @@ impl From<u8> for TelemetryDataRate {
     }
 }
 
+#[derive(Clone, Default, Debug)]
+#[allow(non_snake_case)]
+pub struct SimulatedState {
+    pub orientation: Option<UnitQuaternion<f32>>,
+    pub vertical_accel: Option<f32>,
+    pub vertical_speed: Option<f32>,
+    pub euler_angles: Option<Vector3<f32>>,
+    pub angle_of_attack: Option<f32>,
+    pub kalman_x: OVector<f32, U9>,
+    pub kalman_P: OVector<f32, U9>,
+    pub kalman_R: OVector<f32, U4>,
+}
+
 // contains everything that might be sent via telemetry or stored
 #[derive(Clone, Default, Debug)]
 pub struct VehicleState {
@@ -227,14 +240,10 @@ pub struct VehicleState {
     pub altitude_gps_asl: Option<f32>,
 
     // ground station data, only used by sam to correlate GCS value with vehicle measurements
+    // TODO: exclude for firmware?
     pub gcs_lora_rssi: Option<u8>,
     pub gcs_lora_rssi_signal: Option<u8>,
     pub gcs_lora_snr: Option<i8>,
-
-    // simulation state TODO: exclude for firmware, refactor?
-    pub true_orientation: Option<UnitQuaternion<f32>>,
-    pub true_vertical_accel: Option<f32>,
-    pub true_vertical_speed: Option<f32>,
 
     // Computed values. These are just calculated from the orientation value, but are cached for
     // performance reasons. Since these are only needed by the ground station, we don't include
@@ -242,12 +251,10 @@ pub struct VehicleState {
     #[cfg(not(target_os = "none"))]
     pub euler_angles: Option<Vector3<f32>>,
     #[cfg(not(target_os = "none"))]
-    pub true_euler_angles: Option<Vector3<f32>>,
+    pub angle_of_attack: Option<f32>,
 
     #[cfg(not(target_os = "none"))]
-    pub angle_of_attack: Option<f32>,
-    #[cfg(not(target_os = "none"))]
-    pub true_angle_of_attack: Option<f32>,
+    pub sim: Option<Box<SimulatedState>>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

@@ -27,7 +27,7 @@ pub struct StateEstimator {
     /// orientation
     ahrs: ahrs::Mahony<f32>,
     /// main Kalman filter
-    kalman: KalmanFilter<f32, U9, U4, U0>,
+    pub kalman: KalmanFilter<f32, U9, U4, U0>,
     /// current orientation
     pub orientation: Option<Unit<Quaternion<f32>>>,
     /// current vehicle-space acceleration, switched between low- and high-G accelerometer
