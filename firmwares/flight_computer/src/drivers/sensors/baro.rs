@@ -78,7 +78,7 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
         if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
             info!("MS5611 successfully initialized.");
         } else {
-            info!("Failed to initialize MS5611");
+            error!("Failed to initialize MS5611");
         }
 
         Ok(baro)
