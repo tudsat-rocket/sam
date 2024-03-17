@@ -81,6 +81,8 @@ pub struct Settings {
     pub std_dev_accelerometer: f32,
     /// barometer standard deviation for kalman filter
     pub std_dev_barometer: f32,
+    /// barometer standard deviation for kalman filter when in the transsonic region
+    pub std_dev_barometer_transsonic: f32,
     /// process standard deviation for kalman filter
     pub std_dev_process: f32,
     /// which data source to use for takeoff detection
@@ -127,6 +129,7 @@ impl Default for Settings {
             mahony_ki: 0.025,
             std_dev_accelerometer: 0.5,
             std_dev_barometer: 0.8,
+            std_dev_barometer_transsonic: 5.0,
             std_dev_process: 0.5,
             // TODO: unused
             takeoff_detection_mode: TakeoffDetectionMode::default(),

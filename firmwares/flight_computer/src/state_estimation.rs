@@ -79,7 +79,7 @@ impl StateEstimator {
         ];
 
         // State Covariance Matrix (initialized to a high value)
-        kalman.P = Matrix::<f32, U9, U9, _>::identity() * 999.0 ;
+        kalman.P = Matrix::<f32, U9, U9, _>::identity() * 999.0;
 
         // Process Covariance Matrix
         kalman.Q = matrix![
@@ -95,7 +95,7 @@ impl StateEstimator {
         ] * settings.std_dev_process.powi(2);
 
         // Measurement Covariance Matrix
-        kalman.R *= Matrix4::new(
+        kalman.R = Matrix4::new(
             settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0,
             0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0,
             0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0,
@@ -133,6 +133,14 @@ impl StateEstimator {
             self.mode = mode;
             self.mode_time = self.time;
             self.condition_true_since = None;
+
+            // Set the barometer variance depending on the current situation.
+            // In the trans-/supersonic region, barometer readings become unreliable.
+            // TODO: make this more refined than simply mode-based?
+            self.kalman.R[0] = match self.mode {
+                FlightMode::Burn | FlightMode::Coast => self.settings.std_dev_barometer_transsonic,
+                _ => self.settings.std_dev_barometer,
+            }
         }
 
         // Determine accelerometer to use. We prefer the primary because it is less noisy,
