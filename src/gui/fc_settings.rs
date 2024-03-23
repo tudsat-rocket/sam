@@ -303,7 +303,7 @@ impl FcSettingsUiExt for Settings {
                         DragValue::new(&mut self.outputs_warning_frequency)
                             .suffix(" Hz")
                             .speed(1.0)
-                            .clamp_range(100.0..=10000.0),
+                            .clamp_range(300.0..=1500.0),
                     );
                     ui.weak("warning tone");
                 });
