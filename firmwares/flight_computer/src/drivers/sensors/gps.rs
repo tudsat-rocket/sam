@@ -25,17 +25,6 @@ const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
 //const MEASUREMENT_RATE_MS: u16 = 100;
 
-#[allow(dead_code)]
-struct GPSDatum {
-    utc_time: Option<u64>,
-    latitude: Option<f32>,
-    longitude: Option<f32>,
-    altitude: Option<f32>,
-    fix: GPSFixType,
-    hdop: u16,
-    num_satellites: u8,
-}
-
 impl TryFrom<&str> for GPSFixType {
     type Error = ();
 
@@ -255,6 +244,11 @@ impl GPSHandle {
         if value_expired {
             self.last_datum = None;
         }
+    }
+
+    pub fn datum(&mut self) -> Option<GPSDatum> {
+        self.check_for_new_values();
+        self.last_datum
     }
 
     pub fn latitude(&mut self) -> Option<f32> {

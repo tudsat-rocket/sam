@@ -115,7 +115,7 @@ impl Default for FlightMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum GPSFixType {
     NoFix = 0,
     AutonomousFix = 1,
@@ -196,6 +196,18 @@ pub struct SimulatedState {
     pub kalman_R: OVector<f32, U4>,
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Default, Debug)]
+pub struct GPSDatum {
+    pub utc_time: Option<u64>,
+    pub latitude: Option<f32>,
+    pub longitude: Option<f32>,
+    pub altitude: Option<f32>,
+    pub fix: GPSFixType,
+    pub hdop: u16,
+    pub num_satellites: u8,
+}
+
 // contains everything that might be sent via telemetry or stored
 #[derive(Clone, Default, Debug)]
 pub struct VehicleState {
@@ -232,12 +244,7 @@ pub struct VehicleState {
     pub cpu_utilization: Option<f32>,
     pub flash_pointer: Option<u32>,
 
-    pub gps_fix: Option<GPSFixType>,
-    pub hdop: Option<u16>,
-    pub num_satellites: Option<u8>,
-    pub latitude: Option<f32>,
-    pub longitude: Option<f32>,
-    pub altitude_gps_asl: Option<f32>,
+    pub gps: Option<GPSDatum>,
 
     // ground station data, only used by sam to correlate GCS value with vehicle measurements
     // TODO: exclude for firmware?
@@ -532,24 +539,28 @@ pub struct TelemetryGPS {
 
 impl From<VehicleState> for TelemetryGPS {
     fn from(vs: VehicleState) -> Self {
-        let latitude = vs.latitude
+        let latitude = vs.gps.as_ref()
+            .and_then(|gps| gps.latitude)
             .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
             .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
             .unwrap_or([0, 0, 0]);
-        let longitude = vs.longitude
+        let longitude = vs.gps.as_ref()
+            .and_then(|gps| gps.longitude)
             .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
             .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
             .unwrap_or([0, 0, 0]);
-        let fix_and_sats = ((vs.gps_fix.clone().unwrap_or_default() as u8) << 5) + ((vs.num_satellites.unwrap_or(0) as u8) & 0x1f);
+
+        let fix_and_sats = ((vs.gps.as_ref().map(|gps| gps.fix).clone().unwrap_or_default() as u8) << 5) +
+            ((vs.gps.as_ref().map(|gps| gps.num_satellites).unwrap_or(0) as u8) & 0x1f);
 
         // TODO
         TelemetryGPS {
             time: vs.time,
             fix_and_sats,
-            hdop: vs.hdop.unwrap_or(u16::MAX),
+            hdop: vs.gps.as_ref().map(|gps| gps.hdop).unwrap_or(u16::MAX),
             latitude,
             longitude,
-            altitude_asl: vs.altitude_gps_asl.map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
+            altitude_asl: vs.gps.and_then(|gps| gps.altitude).map(|alt| (alt * 10.0 + 1000.0) as u16).unwrap_or(u16::MAX),
             flash_pointer: (vs.flash_pointer.unwrap_or_default() / 1024) as u16,
         }
     }
@@ -557,11 +568,11 @@ impl From<VehicleState> for TelemetryGPS {
 
 impl Into<VehicleState> for TelemetryGPS {
     fn into(self) -> VehicleState {
-        VehicleState {
-            time: self.time,
-            gps_fix: Some((self.fix_and_sats >> 5).into()),
-            num_satellites: Some(self.fix_and_sats & 0x1f),
-            hdop: (self.hdop != u16::MAX).then_some(self.hdop),
+        let gps = GPSDatum {
+            utc_time: None,
+            fix: (self.fix_and_sats >> 5).into(),
+            num_satellites: self.fix_and_sats & 0x1f,
+            hdop: self.hdop,
             latitude: {
                 let lat =
                     ((self.latitude[0] as u32) << 16) + ((self.latitude[1] as u32) << 8) + (self.latitude[2] as u32);
@@ -572,7 +583,12 @@ impl Into<VehicleState> for TelemetryGPS {
                     ((self.longitude[0] as u32) << 16) + ((self.longitude[1] as u32) << 8) + (self.longitude[2] as u32);
                 (lng > 0).then(|| lng).map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0)
             },
-            altitude_gps_asl: (self.altitude_asl != u16::MAX).then(|| (self.altitude_asl as f32 - 1000.0) / 10.0),
+            altitude: (self.altitude_asl != u16::MAX).then(|| (self.altitude_asl as f32 - 1000.0) / 10.0),
+        };
+
+        VehicleState {
+            time: self.time,
+            gps: Some(gps),
             flash_pointer: Some((self.flash_pointer as u32) * 1024),
             ..Default::default()
         }
