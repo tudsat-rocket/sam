@@ -35,7 +35,7 @@ enum CliCommand {
     Gui {
         log_path: Option<PathBuf>,
         #[clap(long)]
-        replicate: Option<ArchivedLog>,
+        simulate: Option<Option<ArchivedLog>>,
     },
     /// Attach to FC and tail logs
     /// TODO: embassy rewrite will remove USB logging, so this can be removed
@@ -416,8 +416,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new().filter_level(LevelFilter::Info).parse_default_env().init();
 
     let args = Cli::parse();
-    match args.command.unwrap_or(CliCommand::Gui { log_path: None, replicate: None }) {
-        CliCommand::Gui { log_path, replicate } => gui::main(log_path, replicate),
+    match args.command.unwrap_or(CliCommand::Gui { log_path: None, simulate: None }) {
+        CliCommand::Gui { log_path, simulate } => gui::main(log_path, simulate),
         CliCommand::Logcat { verbose } => logcat(verbose),
         CliCommand::DumpFlash {
             path,
