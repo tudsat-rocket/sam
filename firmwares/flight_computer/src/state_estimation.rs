@@ -7,10 +7,12 @@ use nalgebra::*;
 use ahrs::Ahrs;
 use filter::kalman::kalman_filter::KalmanFilter;
 
-use crate::telemetry::FlightMode::{*, self};
 use crate::settings::*;
+use crate::telemetry::*;
+use crate::telemetry::FlightMode::*;
 
 const GRAVITY: f32 = 9.80665;
+const GPS_NO_FIX_STD_DEV: f32 = 999_999.0;
 
 #[derive(Debug)]
 pub struct StateEstimator {
@@ -27,7 +29,7 @@ pub struct StateEstimator {
     /// orientation
     ahrs: ahrs::Mahony<f32>,
     /// main Kalman filter
-    pub kalman: KalmanFilter<f32, U9, U4, U0>,
+    pub kalman: KalmanFilter<f32, U9, U6, U0>,
     /// current orientation
     pub orientation: Option<Unit<Quaternion<f32>>>,
     /// current vehicle-space acceleration, switched between low- and high-G accelerometer
@@ -38,6 +40,9 @@ pub struct StateEstimator {
     pub altitude_ground: f32,
     /// apogee (ASL)
     pub altitude_max: f32,
+    /// GPS origin (lat, lng)
+    // TODO: move altitude_ground into here?
+    gps_origin: Option<Vector3<f32>>,
 }
 
 impl StateEstimator {
@@ -76,6 +81,8 @@ impl StateEstimator {
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0; // acceleration X
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0; // acceleration Y
             0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0; // acceleration Z
+            1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0; // GPS X pos
+            0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0; // GPS Y pos
         ];
 
         // State Covariance Matrix (initialized to a high value)
@@ -95,11 +102,13 @@ impl StateEstimator {
         ] * settings.std_dev_process.powi(2);
 
         // Measurement Covariance Matrix
-        kalman.R = Matrix4::new(
-            settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0,
-            0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0,
-            0.0, 0.0, 0.0, settings.std_dev_accelerometer.powi(2),
+        kalman.R = Matrix6::new(
+            settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0, 0.0, 0.0,
+            0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0, 0.0,
+            0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0,
+            0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2), 0.0,
+            0.0, 0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2),
         );
 
         Self {
@@ -115,7 +124,38 @@ impl StateEstimator {
             acceleration_world: None,
             altitude_ground: 0.0,
             altitude_max: -10_000.0,
+            gps_origin: None,
         }
+    }
+
+    fn apply_measurements(
+        &mut self,
+        altitude_baro: f32,
+        accel: Vector3<f32>,
+        gps: Option<GPSDatum>
+    ) {
+        // Update GPS measurement noise
+        let std_dev = self.hdop_to_std_dev(gps.as_ref().map(|gps| gps.hdop));
+        self.kalman.R[(4, 4)] = std_dev;
+        self.kalman.R[(5, 5)] = std_dev;
+
+        let pos = if let Some(gps) = gps {
+            let global_pos = Vector3::new(
+                gps.latitude.unwrap_or_default(),
+                gps.longitude.unwrap_or_default(),
+                gps.altitude.unwrap_or_default()
+            );
+            if self.gps_origin.is_none() {
+                self.gps_origin = Some(global_pos);
+            }
+            self.global_to_local(global_pos)
+        } else {
+            self.position_local()
+        };
+
+        self.kalman.predict(None, None, None, None);
+        let z = Vector6::new(altitude_baro, accel.x, accel.y, accel.z, pos.x, pos.y);
+        self.kalman.update(&z, None, None);
     }
 
     pub fn update(
@@ -126,7 +166,8 @@ impl StateEstimator {
         accelerometer1: Option<Vector3<f32>>,
         accelerometer2: Option<Vector3<f32>>,
         magnetometer: Option<Vector3<f32>>,
-        barometer: Option<f32>
+        barometer: Option<f32>,
+        gps_datum: Option<GPSDatum>,
     ) {
         self.time = time;
         if mode != self.mode {
@@ -175,28 +216,24 @@ impl StateEstimator {
 
         // Update the Kalman filter with barometric altitude and world-space acceleration
         let altitude_baro = barometer
-            .and_then(|a| (!a.is_nan()).then(|| a)) // NaN is not a valid altitude
-            .and_then(|a| (a > -100.0 && a < 12_000.0).then(|| a)); // neither is -13000
+            .and_then(|a| (!a.is_nan()).then_some(a)) // NaN is not a valid altitude
+            .and_then(|a| (a > -100.0 && a < 12_000.0).then_some(a)); // neither is -13000
         let accel = self.acceleration_world
             .and_then(|a| (!(a.x.is_nan() || a.y.is_nan() || a.z.is_nan())).then_some(a));
+        let gps = gps_datum
+            .and_then(|d| self.gps_reliable(&d).then_some(d));
 
         match (accel, altitude_baro) {
             (Some(accel), Some(altitude_baro)) => {
-                self.kalman.predict(None, None, None, None);
-                let z = Vector4::new(altitude_baro, accel.x, accel.y , accel.z);
-                self.kalman.update(&z, None, None);
+                self.apply_measurements(altitude_baro, accel, gps);
             },
             (Some(accel), None) => {
                 // Use predicted altitude values, basically attempting to do inertial navigation.
-                self.kalman.predict(None, None, None, None);
-                let z = Vector4::new(self.altitude_asl(), accel.x, accel.y , accel.z);
-                self.kalman.update(&z, None, None);
+                self.apply_measurements(self.altitude_asl(), accel, gps);
             }
             (None, Some(altitude_baro)) => {
                 // Just assume acceleration is zero.
-                self.kalman.predict(None, None, None, None);
-                let z = Vector4::new(altitude_baro, 0.0, 0.0, 0.0);
-                self.kalman.update(&z, None, None);
+                self.apply_measurements(altitude_baro, Vector3::new(0.0, 0.0, 0.0), gps);
             },
             (None, None) => {
                 // Do nothing, as long as this gap isn't too big and barometer values come back,
@@ -223,6 +260,24 @@ impl StateEstimator {
 
     pub fn position_local(&self) -> Vector3<f32> {
         Vector3::new(self.kalman.x[0], self.kalman.x[1], self.kalman.x[2])
+    }
+
+    pub fn latitude(&self) -> Option<f32> {
+        if self.gps_origin.is_some() {
+            let pos_global = self.local_to_global(self.position_local());
+            Some(pos_global.x)
+        } else {
+            None
+        }
+    }
+
+    pub fn longitude(&self) -> Option<f32> {
+        if self.gps_origin.is_some() {
+            let pos_global = self.local_to_global(self.position_local());
+            Some(pos_global.y)
+        } else {
+            None
+        }
     }
 
     pub fn velocity(&self) -> Vector3<f32> {
@@ -341,5 +396,31 @@ impl StateEstimator {
             Orientation::ZUp => *raw,
             Orientation::ZDown => Vector3::new(-raw.x, raw.y, -raw.z),
         }
+    }
+
+    fn gps_reliable(&self, datum: &GPSDatum) -> bool {
+        self.mode != FlightMode::Burn &&
+            self.mode != FlightMode::Coast &&
+            datum.fix != GPSFixType::NoFix &&
+            datum.num_satellites > 6 &&
+            datum.hdop < 300 &&
+            datum.latitude.is_some() &&
+            datum.longitude.is_some() &&
+            datum.altitude.is_some()
+    }
+
+    fn hdop_to_std_dev(&self, hdop: Option<u16>) -> f32 {
+        hdop.map(|hdop| (hdop as f32 / 100.0) * 0.003).unwrap_or(GPS_NO_FIX_STD_DEV)
+    }
+
+    fn global_to_local(&self, global: Vector3<f32>) -> Vector3<f32> {
+        let offset = global - self.gps_origin.unwrap_or_default();
+        let (lat, lng) = (offset.x, offset.y);
+        Vector3::new(lng * 111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos(), lat * 111_111.0, global.z)
+    }
+
+    fn local_to_global(&self, local: Vector3<f32>) -> Vector3<f32> {
+        let offset = Vector3::new(local.y / 111_111.0, local.x / (111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos()), local.z);
+        self.gps_origin.unwrap_or_default() + offset
     }
 }

@@ -193,7 +193,7 @@ pub struct SimulatedState {
     pub angle_of_attack: Option<f32>,
     pub kalman_x: OVector<f32, U9>,
     pub kalman_P: OVector<f32, U9>,
-    pub kalman_R: OVector<f32, U4>,
+    pub kalman_R: OVector<f32, U6>,
 }
 
 #[allow(dead_code)]
@@ -222,6 +222,8 @@ pub struct VehicleState {
     pub altitude_asl: Option<f32>,
     pub altitude_ground_asl: Option<f32>,
     pub apogee_asl: Option<f32>,
+    pub latitude: Option<f32>,
+    pub longitude: Option<f32>,
 
     pub gyroscope: Option<Vector3<f32>>,
     pub accelerometer1: Option<Vector3<f32>>,
