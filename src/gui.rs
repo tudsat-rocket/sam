@@ -232,7 +232,13 @@ pub fn main(log_file: Option<PathBuf>, replicate: Option<ArchivedLog>) -> Result
 
     eframe::run_native(
         "Sam Ground Station",
-        eframe::NativeOptions::default(),
+        eframe::NativeOptions {
+            viewport: egui::viewport::ViewportBuilder {
+                inner_size: Some(Vec2::new(1920.0, 1080.0)),
+                ..Default::default()
+            },
+            ..Default::default()
+        },
         Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, app_settings, data_source))),
     )?;
 
