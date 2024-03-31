@@ -135,9 +135,9 @@ impl Default for Settings {
             takeoff_detection_mode: TakeoffDetectionMode::default(),
             min_takeoff_acc: 30.0,
             min_takeoff_acc_time: 50,
-            min_time_to_apogee: 20000,
+            min_time_to_apogee: 1000,
             max_time_to_apogee: 40000,
-            apogee_min_falling_time: 1000,
+            apogee_min_falling_time: 100,
             main_output_mode: MainOutputMode::default(),
             main_output_deployment_altitude: 450.0,
             // TODO: unused for actual sound duration
