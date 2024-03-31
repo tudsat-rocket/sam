@@ -190,7 +190,8 @@ pub struct SimulatedState {
     pub vertical_accel: Option<f32>,
     pub vertical_speed: Option<f32>,
     pub euler_angles: Option<Vector3<f32>>,
-    pub angle_of_attack: Option<f32>,
+    pub elevation: Option<f32>,
+    pub azimuth: Option<f32>,
     pub kalman_x: OVector<f32, U9>,
     pub kalman_P: OVector<f32, U9>,
     pub kalman_R: OVector<f32, U6>,
@@ -260,7 +261,9 @@ pub struct VehicleState {
     #[cfg(not(target_os = "none"))]
     pub euler_angles: Option<Vector3<f32>>,
     #[cfg(not(target_os = "none"))]
-    pub angle_of_attack: Option<f32>,
+    pub elevation: Option<f32>,
+    #[cfg(not(target_os = "none"))]
+    pub azimuth: Option<f32>,
 
     #[cfg(not(target_os = "none"))]
     pub sim: Option<Box<SimulatedState>>,
@@ -311,10 +314,15 @@ impl Into<VehicleState> for TelemetryMain {
             #[cfg(not(target_os = "none"))]
             euler_angles: self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
             #[cfg(not(target_os = "none"))]
-            angle_of_attack: self.orientation.map(|q| {
+            elevation: self.orientation.map(|q| {
                 let up = Vector3::new(0.0, 0.0, 1.0);
                 let attitude = q * up;
                 90.0 - up.dot(&attitude).acos().to_degrees()
+            }),
+            #[cfg(not(target_os = "none"))]
+            azimuth: self.orientation.map(|q| {
+                let attitude = q * Vector3::new(0.0, 0.0, 1.0);
+                (90.0 - attitude.y.atan2(attitude.x).to_degrees()).rem_euclid(360.0)
             }),
 
             ..Default::default()
@@ -390,7 +398,7 @@ impl Into<VehicleState> for TelemetryMainCompressed {
             #[cfg(not(target_os = "none"))]
             euler_angles: orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
             #[cfg(not(target_os = "none"))]
-            angle_of_attack: orientation.map(|q| {
+            elevation: orientation.map(|q| {
                 let up = Vector3::new(0.0, 0.0, 1.0);
                 let attitude = q * up;
                 90.0 - up.dot(&attitude).acos().to_degrees()
