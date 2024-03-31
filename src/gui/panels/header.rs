@@ -29,15 +29,15 @@ impl HeaderPanel {
         let apogee_agl = Self::current(data_source, |vs| vs.apogee_asl.map(|a| a - alt_ground));
         let vertical_accel = Self::current(data_source, |vs| vs.vertical_accel_filtered);
 
-        let last_gps = data_source
+        // TODO: also show estimated position?
+        let last_gps: Option<GPSDatum> = data_source
             .vehicle_states()
             .rev()
-            .find_map(|(_t, vs)| vs.gps_fix.is_some().then_some(vs))
-            .cloned();
-        let gps_status = last_gps.as_ref().map(|vs| format!("{:?}", vs.gps_fix.unwrap()));
-        let hdop = last_gps.as_ref().map(|vs| vs.hdop.unwrap_or(9999) as f32 / 100.0);
-        let latitude = last_gps.as_ref().and_then(|vs| vs.latitude);
-        let longitude = last_gps.as_ref().and_then(|vs| vs.longitude);
+            .find_map(|(_t, vs)| vs.gps.clone());
+        let gps_status = last_gps.as_ref().map(|gps| format!("{:?}", gps.fix));
+        let hdop = last_gps.as_ref().map(|gps| gps.hdop as f32 / 100.0);
+        let latitude = last_gps.as_ref().and_then(|gps| gps.latitude);
+        let longitude = last_gps.as_ref().and_then(|gps| gps.longitude);
         let coords = latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng)));
 
         ui.vertical(|ui| {
@@ -65,9 +65,9 @@ impl HeaderPanel {
             ui.set_width(ui.available_width());
             ui.add_space(spacing);
             ui.telemetry_value("🌍", "GPS Status", gps_status);
-            ui.nominal_value("📶", "# Sats", Self::current(data_source, |vs| vs.num_satellites.map(|n| n as f32)), 0, 5.0, 99.0);
+            ui.nominal_value("📶", "# Sats", last_gps.as_ref().map(|gps| gps.num_satellites as f32), 0, 5.0, 99.0);
             ui.nominal_value("🎯", "HDOP", hdop, 2, 0.0, 5.0);
-            ui.nominal_value("📡", "GPS Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_gps_asl), 1, -100.0, 10000.0);
+            ui.nominal_value("📡", "GPS Alt. (ASL) [m]", last_gps.as_ref().and_then(|gps| gps.altitude), 1, -100.0, 10000.0);
             ui.telemetry_value("🌐", "Coords", coords);
         });
     }

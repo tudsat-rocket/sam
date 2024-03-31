@@ -348,8 +348,8 @@ fn bin2kml(
         .split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
         .map(|msg| msg.into())
-        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_gps_asl.is_some())
-        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_gps_asl.unwrap()))
+        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_asl.is_some())
+        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_asl.unwrap()))
         .map(|(ln, lt, alt)| format!("     {},{},{}", ln, lt, alt + 100.0))
         .collect();
 
