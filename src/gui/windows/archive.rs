@@ -4,6 +4,7 @@ use std::sync::mpsc::{Receiver, Sender};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+use mithril::telemetry::{VehicleState, DownlinkMessage};
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -86,6 +87,14 @@ impl ArchivedLog {
     #[cfg(any(target_arch = "wasm32", target_os = "android"))]
     pub fn flash_log(&self) -> Option<&'static [u8]> {
         None
+    }
+
+    pub fn flash_messages(&self) -> Option<Vec<DownlinkMessage>> {
+        self.flash_log().map(|bytes| serde_json::from_slice::<Vec<DownlinkMessage>>(bytes).unwrap())
+    }
+
+    pub fn flash_states(&self) -> Option<Vec<VehicleState>> {
+        self.flash_messages().map(|vec| vec.into_iter().map(|msg| Into::<VehicleState>::into(msg)).collect())
     }
 }
 

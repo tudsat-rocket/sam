@@ -20,7 +20,7 @@ pub mod simulation;
 
 pub use log_file::LogFileDataSource;
 pub use serial::*;
-pub use simulation::SimulationDataSource;
+pub use simulation::{SimulationDataSource, SimulationSettings};
 
 /// Trait shared by all data sources.
 #[allow(clippy::result_large_err)]
@@ -31,9 +31,13 @@ pub trait DataSource {
     fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)>;
 
     /// Return the current flight computer settings, if known.
-    fn fc_settings(&mut self) -> Option<&Settings>;
+    fn fc_settings(&mut self) -> Option<&Settings> {
+        None
+    }
     /// Return the current flight computer settings, if known.
-    fn fc_settings_mut(&mut self) -> Option<&mut Settings>;
+    fn fc_settings_mut(&mut self) -> Option<&mut Settings> {
+        None
+    }
 
     /// Reset data source if applicable.
     fn reset(&mut self);

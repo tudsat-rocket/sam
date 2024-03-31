@@ -17,7 +17,6 @@ mod data_source;
 mod file;
 mod gui;
 mod settings;
-mod simulation;
 mod telemetry_ext;
 
 use crate::data_source::serial::{self, *};

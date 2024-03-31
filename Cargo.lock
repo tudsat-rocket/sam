@@ -1743,6 +1743,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "galadriel"
+version = "0.1.0"
+source = "git+https://github.com/tudsat-rocket/galadriel.git?branch=sam-integration#6f5c5324927f98d4b148d06d3be6ba382fdcbcf2"
+dependencies = [
+ "eframe",
+ "egui",
+ "egui_plot",
+ "nalgebra",
+ "rand",
+ "rand_distr",
+]
+
+[[package]]
 name = "gdk-pixbuf-sys"
 version = "0.15.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2824,7 +2837,7 @@ dependencies = [
 [[package]]
 name = "mithril"
 version = "0.1.0"
-source = "git+https://github.com/tudsat-rocket/mithril.git#ca7796fd8dabfbb0c75e945b63d7ce414ae8b048"
+source = "git+https://github.com/tudsat-rocket/mithril.git?branch=develop#95a1b18a8935934c839ab19a6a59080a9a5bdec4"
 dependencies = [
  "ahrs",
  "alloc-cortex-m",
@@ -3834,6 +3847,7 @@ dependencies = [
  "egui_tiles",
  "env_logger",
  "futures",
+ "galadriel",
  "home",
  "image",
  "indicatif",

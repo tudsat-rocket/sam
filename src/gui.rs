@@ -14,7 +14,6 @@ mod panels;
 mod fc_settings;
 mod map;
 mod plot;
-mod simulation_settings;
 pub mod tabs;
 mod theme;
 mod top_bar;

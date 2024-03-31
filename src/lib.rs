@@ -12,7 +12,6 @@ mod file;
 #[allow(unused_imports)]
 mod gui;
 pub mod settings;
-mod simulation;
 mod telemetry_ext;
 
 pub use crate::gui::*;

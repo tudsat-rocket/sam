@@ -6,8 +6,10 @@ edition = "2021"
 
 [dependencies]
 # FC firmware. Contains shared types (e.g. telemetry) and code (state estimation)
-mithril = { git = "https://github.com/tudsat-rocket/mithril.git", default-features = false }
+mithril = { git = "https://github.com/tudsat-rocket/mithril.git", branch = "develop", default-features = false }
 #mithril = { path = "../mithril", default-features = false }
+galadriel = { git = "https://github.com/tudsat-rocket/galadriel.git", branch = "sam-integration", features = ["egui"] }
+#galadriel = { path = "../galadriel", features = ["egui"] }
 # CLI & logging
 colored = "2"
 clap = { version = "3.2", features = ["derive"] }

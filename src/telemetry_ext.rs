@@ -1,6 +1,7 @@
 //! Contains some extension traits of the telemetry data types.
 
 use eframe::egui::Color32;
+use nalgebra::{UnitQuaternion, Vector3};
 
 use mithril::telemetry::*;
 
@@ -32,5 +33,23 @@ impl ColorExt for LogLevel {
             LogLevel::Error => Color32::from_rgb(0xcc, 0x24, 0x1d),
             LogLevel::Critical => Color32::from_rgb(0xb1, 0x62, 0x86),
         }
+    }
+}
+
+pub trait QuaternionExt {
+    fn elevation(&self) -> f32;
+    fn azimuth(&self) -> f32;
+}
+
+impl QuaternionExt for UnitQuaternion<f32> {
+    fn elevation(&self) -> f32 {
+        let up = Vector3::new(0.0, 0.0, 1.0);
+        let attitude = self * up;
+        90.0 - up.dot(&attitude).acos().to_degrees()
+    }
+
+    fn azimuth(&self) -> f32 {
+        let attitude = self * Vector3::new(0.0, 0.0, 1.0);
+        (90.0 - attitude.y.atan2(attitude.x).to_degrees()).rem_euclid(360.0)
     }
 }
