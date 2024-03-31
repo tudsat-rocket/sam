@@ -53,7 +53,7 @@ impl SimulationPanel {
                 ui.add_space(20.0);
 
                 CollapsingHeader::new("(Simulated) FC Settings").default_open(false).show(ui, |ui| {
-                    data_source.settings.fc_settings.ui(ui, None)
+                    data_source.settings.fc_settings.ui(ui, None, true)
                 });
 
                 ui.add_space(20.0);

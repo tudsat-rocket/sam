@@ -159,7 +159,7 @@ impl ConfigureTab {
         ui.add_space(10.0);
 
         if let Some(fc_settings) = data_source.fc_settings_mut() {
-            fc_settings.ui(ui, Some(settings));
+            fc_settings.ui(ui, Some(settings), false);
         } else {
             ui.colored_label(Color32::GRAY, "Not connected.");
         }
