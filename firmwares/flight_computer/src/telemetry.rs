@@ -209,6 +209,24 @@ pub struct GPSDatum {
     pub num_satellites: u8,
 }
 
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub enum ThrusterValveState {
+    #[default]
+    Closed,
+    OpenPrograde,
+    OpenRetrograde,
+}
+
+impl Into<f32> for ThrusterValveState {
+    fn into(self) -> f32 {
+        match self {
+            Self::Closed => 0.0,
+            Self::OpenPrograde => 1.0,
+            Self::OpenRetrograde => -1.0,
+        }
+    }
+}
+
 // contains everything that might be sent via telemetry or stored
 #[derive(Clone, Default, Debug)]
 pub struct VehicleState {
@@ -248,6 +266,8 @@ pub struct VehicleState {
     pub flash_pointer: Option<u32>,
 
     pub gps: Option<GPSDatum>,
+
+    pub thruster_valve: Option<ThrusterValveState>,
 
     // ground station data, only used by sam to correlate GCS value with vehicle measurements
     // TODO: exclude for firmware?

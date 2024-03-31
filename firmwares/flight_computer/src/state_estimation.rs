@@ -39,10 +39,12 @@ pub struct StateEstimator {
     /// altitude (ASL) at ground level, to allow calculating AGL altitude. locked in when armed.
     pub altitude_ground: f32,
     /// apogee (ASL)
-    pub altitude_max: f32,
+    altitude_max: f32,
     /// GPS origin (lat, lng)
     // TODO: move altitude_ground into here?
     gps_origin: Option<Vector3<f32>>,
+    last_valve_state: ThrusterValveState,
+    last_valve_state_change: Wrapping<u32>,
 }
 
 impl StateEstimator {
@@ -125,6 +127,8 @@ impl StateEstimator {
             altitude_ground: 0.0,
             altitude_max: -10_000.0,
             gps_origin: None,
+            last_valve_state: ThrusterValveState::Closed,
+            last_valve_state_change: Wrapping(0),
         }
     }
 
@@ -296,6 +300,21 @@ impl StateEstimator {
         self.altitude_asl() - self.altitude_ground
     }
 
+    pub fn apogee_asl(&self) -> Option<f32> {
+        match self.mode {
+            FlightMode::Coast => {
+                let avg_acc = (-self.vertical_acceleration() + GRAVITY) / 2.0;
+                Some(self.altitude_asl() + self.vertical_speed().powi(2) / (2.0 * avg_acc))
+            },
+            FlightMode::RecoveryDrogue | FlightMode::RecoveryMain | FlightMode::Landed => Some(self.altitude_max),
+            _ => None
+        }
+    }
+
+    pub fn apogee_agl(&self) -> Option<f32> {
+        self.apogee_asl().map(|alt| alt - self.altitude_ground)
+    }
+
     pub fn vertical_speed(&self) -> f32 {
         self.velocity().z
     }
@@ -377,6 +396,38 @@ impl StateEstimator {
             // Once in the Landed mode, the vehicle will not do anything by itself
             FlightMode::Landed => None
         }
+    }
+
+    pub fn thruster_valve(&mut self) -> ThrusterValveState {
+        if self.mode != FlightMode::Coast || self.altitude_agl() < 1500.0 || self.vertical_speed().abs() < 10.0 {
+            self.last_valve_state = ThrusterValveState::Closed;
+            self.last_valve_state_change = self.time;
+            return ThrusterValveState::Closed;
+        }
+
+        // TODO: configuration, etc.
+        let error = self.apogee_agl().unwrap_or_default() - 3000.0;
+        let threshold = if self.last_valve_state == ThrusterValveState::Closed {
+            2.0
+        } else {
+            1.0
+        };
+        let mut new = match error {
+            _ if error < -threshold => ThrusterValveState::OpenPrograde,
+            _ if error > threshold => ThrusterValveState::OpenRetrograde,
+            _ => ThrusterValveState::Closed
+        };
+
+        if (self.time - self.last_valve_state_change).0 < 200 {
+            new = self.last_valve_state;
+        }
+
+        if new != self.last_valve_state {
+            self.last_valve_state = new;
+            self.last_valve_state_change = self.time;
+        }
+
+        self.last_valve_state
     }
 
     fn true_since(&mut self, cond: bool, duration: u32) -> bool {
