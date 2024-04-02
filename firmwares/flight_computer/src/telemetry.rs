@@ -195,6 +195,9 @@ pub struct SimulatedState {
     pub kalman_x: OVector<f32, U9>,
     pub kalman_P: OVector<f32, U9>,
     pub kalman_R: OVector<f32, U6>,
+    pub mass: Option<f32>,
+    pub motor_mass: Option<f32>,
+    pub thruster_propellant_mass: Option<f32>,
 }
 
 #[allow(dead_code)]
