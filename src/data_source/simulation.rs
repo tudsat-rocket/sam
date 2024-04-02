@@ -130,11 +130,11 @@ impl SimulationDataSource {
             self.current_state = states.pop_front().unwrap();
             self.stored_vehicle_states.push((Instant::now(), self.current_state.clone()));
             self.remaining_states = states;
+            self.mode = FlightMode::Armed;
             Simulation::Replication(repl)
         } else {
-            let sim = galadriel::Simulation::new(&self.settings.galadriel);
-            self.mode = FlightMode::Armed;
-            Simulation::Simulation(sim)
+            self.settings.fc_settings.orientation = Orientation::ZUp;
+            Simulation::Simulation(galadriel::Simulation::new(&self.settings.galadriel))
         }
     }
 
@@ -161,8 +161,8 @@ impl SimulationDataSource {
                 if self.remaining_states.front().map(|s| self.current_state.time >= s.time).unwrap_or(false) {
                     let t = self.current_state.time;
                     self.current_state = self.remaining_states.pop_front().unwrap();
+                    self.current_state.mode = Some(self.mode);
                     self.current_state.time = t;
-                    self.mode = self.current_state.mode.unwrap_or(self.mode);
                     plot = true;
                 }
 
@@ -180,6 +180,10 @@ impl SimulationDataSource {
                 } else if self.mode == FlightMode::RecoveryMain {
                     sim.rocket.parachutes[0].open = false;
                     sim.rocket.parachutes[1].open = true;
+                }
+
+                if self.current_state.time == 1000 {
+                    self.mode = FlightMode::Armed;
                 }
 
                 self.current_state.mode = Some(self.mode);
@@ -204,6 +208,15 @@ impl SimulationDataSource {
                     hdop: 100,
                     num_satellites: 10,
                 });
+
+                if let Some(thrusters) = sim.rocket.thrusters.as_mut() {
+                    // TODO: this is slightly awkward
+                    thrusters.set_valve(match state_estimator.thruster_valve() {
+                        ThrusterValveState::Closed => galadriel::thrusters::ValveState::Closed,
+                        ThrusterValveState::OpenPrograde => galadriel::thrusters::ValveState::OpenPrograde,
+                        ThrusterValveState::OpenRetrograde => galadriel::thrusters::ValveState::OpenRetrograde,
+                    });
+                }
 
                 // We don't really want to show every single tick in the plot. For simulations,
                 // we plot 100Hz, so every 10th simulated state.
@@ -238,9 +251,10 @@ impl SimulationDataSource {
             self.current_state.vertical_accel_filtered = Some(state_estimator.vertical_acceleration());
             self.current_state.altitude_asl = Some(state_estimator.altitude_asl());
             self.current_state.altitude_ground_asl = Some(state_estimator.altitude_ground);
-            self.current_state.apogee_asl = Some(state_estimator.altitude_max);
+            self.current_state.apogee_asl = state_estimator.apogee_asl();
             self.current_state.latitude = state_estimator.latitude();
             self.current_state.longitude = state_estimator.longitude();
+            self.current_state.thruster_valve = Some(state_estimator.thruster_valve());
 
             let mut sim_state = SimulatedState {
                 orientation: None,
@@ -252,6 +266,7 @@ impl SimulationDataSource {
                 kalman_x: state_estimator.kalman.x,
                 kalman_P: state_estimator.kalman.P.diagonal(),
                 kalman_R: state_estimator.kalman.R.diagonal(),
+                ..Default::default()
             };
 
             if let Some(Simulation::Simulation(sim)) = &self.sim {
@@ -262,6 +277,9 @@ impl SimulationDataSource {
                 sim_state.azimuth = Some(sim.state.orientation.azimuth());
                 sim_state.vertical_speed = Some(sim.state.velocity.z);
                 sim_state.vertical_accel = Some(sim.state.acceleration.z);
+                sim_state.mass = Some(0.0); // TODO
+                sim_state.motor_mass = Some(0.0); // TODO
+                sim_state.thruster_propellant_mass = sim.rocket.thrusters.as_ref().map(|t| t.propellant_mass);
             }
 
             self.current_state.sim = Some(Box::new(sim_state));
@@ -302,7 +320,7 @@ impl DataSource for SimulationDataSource {
         self.stored_vehicle_states.truncate(0);
         self.remaining_states.truncate(0);
         self.done = false;
-        self.mode = FlightMode::Armed;
+        self.mode = FlightMode::HardwareArmed;
         self.playback = None;
     }
 
