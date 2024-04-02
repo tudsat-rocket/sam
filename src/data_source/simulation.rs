@@ -13,14 +13,13 @@ use galadriel::FlightPhase;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
-use egui::Color32;
 use nalgebra::Vector3;
 
 use mithril::settings::*;
 use mithril::telemetry::*;
 use mithril::state_estimation::StateEstimator;
 
-use crate::data_source::DataSource;
+use crate::data_source::*;
 use crate::gui::windows::ArchivedLog;
 use crate::telemetry_ext::QuaternionExt;
 
@@ -98,6 +97,7 @@ pub struct SimulationDataSource {
     stored_vehicle_states: Vec<(Instant, VehicleState)>,
     // Remaining raw vehicle states from replicated log, if used
     remaining_states: VecDeque<VehicleState>,
+    playback: Option<PlaybackState>,
 }
 
 impl SimulationDataSource {
@@ -276,9 +276,8 @@ impl SimulationDataSource {
     }
 }
 
-// TODO: replay
 impl DataSource for SimulationDataSource {
-    fn update(&mut self, _ctx: &egui::Context) {
+    fn update(&mut self, ctx: &egui::Context) {
         if self.sim.is_none() {
             self.sim = Some(self.init_simulation());
             self.state_estimator = Some(StateEstimator::new(1000.0, self.settings.fc_settings.clone()));
@@ -286,10 +285,14 @@ impl DataSource for SimulationDataSource {
 
         // TODO: move to another thread
         while !self.tick() {}
+
+        self.update_playback(ctx);
     }
 
     fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
-        self.stored_vehicle_states.iter()
+        let inst = self.end().unwrap_or(Instant::now());
+        let i = self.stored_vehicle_states.partition_point(|(t, _)| t <= &inst);
+        self.stored_vehicle_states[..i].iter()
     }
 
     fn reset(&mut self) {
@@ -300,6 +303,7 @@ impl DataSource for SimulationDataSource {
         self.remaining_states.truncate(0);
         self.done = false;
         self.mode = FlightMode::Armed;
+        self.playback = None;
     }
 
     fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
@@ -311,12 +315,12 @@ impl DataSource for SimulationDataSource {
     }
 
     fn end(&self) -> Option<Instant> {
-        self.stored_vehicle_states.last().map(|(t, _vs)| *t)
+        self.playback_end()
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
-        ui.colored_label(Color32::KHAKI, "Simulation");
         // TODO: maybe computation times or something?
+        self.playback_ui(ui)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -325,5 +329,19 @@ impl DataSource for SimulationDataSource {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+impl ReplayableDataSource for SimulationDataSource {
+    fn playback_state(&self) -> Option<PlaybackState> {
+        self.playback.clone()
+    }
+
+    fn playback_state_mut(&mut self) -> &mut Option<PlaybackState> {
+        &mut self.playback
+    }
+
+    fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)> {
+        &self.stored_vehicle_states
     }
 }

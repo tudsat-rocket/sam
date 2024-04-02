@@ -17,18 +17,9 @@ use web_time::Instant;
 
 use log::*;
 
-use egui::{Layout, RichText, Slider};
-
-use mithril::settings::*;
 use mithril::telemetry::*;
 
-use crate::data_source::DataSource;
-
-#[derive(Debug)]
-enum PlaybackState {
-    Playing(f32),
-    Paused(Instant),
-}
+use crate::data_source::*;
 
 pub struct LogFileDataSource {
     file: Option<File>,
@@ -65,61 +56,6 @@ impl LogFileDataSource {
             is_json,
             vehicle_states: Vec::new(),
             playback: None,
-        }
-    }
-
-    fn playpause(&mut self) {
-        match self.playback {
-            Some(PlaybackState::Playing(offset)) => {
-                let inst = Instant::now() + Duration::from_secs_f32(offset);
-                self.playback = Some(PlaybackState::Paused(inst));
-            },
-            Some(PlaybackState::Paused(inst)) => {
-                let offset = (inst - Instant::now()).as_secs_f32();
-                self.playback = Some(PlaybackState::Playing(offset));
-            },
-            None => {}
-        }
-    }
-
-    fn skip_to_next_flightmode(&mut self, reverse: bool) {
-        let Some(playback) = &self.playback else {
-            return;
-        };
-
-        // Discriminant means we're just comparing the enum variant, not the actual value.
-        let playing = std::mem::discriminant(playback) == std::mem::discriminant(&PlaybackState::Playing(123.0));
-
-        let Some(fm) = self.vehicle_states().rev().find_map(|(_t, vs)| vs.mode) else {
-            return;
-        };
-
-        let Some(end) = self.end() else {
-            return;
-        };
-
-        let i = self.vehicle_states.partition_point(|(t, _)| *t <= end);
-
-        let next_flightmode = if reverse {
-            self.vehicle_states[..i]
-                .iter()
-                .rev()
-                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
-                .map(|(t, _)| t)
-                .next()
-        } else {
-            self.vehicle_states[i..]
-                .iter()
-                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
-                .map(|(t, _)| t)
-                .next()
-        };
-
-        if let Some(inst) = next_flightmode {
-            self.playback = Some(PlaybackState::Paused(*inst));
-            if playing {
-                self.playpause();
-            }
         }
     }
 }
@@ -169,20 +105,7 @@ impl DataSource for LogFileDataSource {
             self.vehicle_states.push((last_time, msg.into()));
         }
 
-        let last_state = self.vehicle_states.last().map(|(t, _vs)| t);
-
-        // We default to being paused at the end of the log file.
-        if self.playback.is_none() {
-            self.playback = last_state.map(|l| PlaybackState::Paused(*l));
-        }
-
-        if let Some(PlaybackState::Playing(_)) = self.playback {
-            ctx.request_repaint_after(Duration::from_millis(16));
-
-            if self.end().and_then(|i| last_state.map(|l| i > *l)).unwrap_or(false) {
-                self.playback = last_state.map(|l| PlaybackState::Paused(*l));
-            }
-        }
+        self.update_playback(ctx);
     }
 
     fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
@@ -212,72 +135,11 @@ impl DataSource for LogFileDataSource {
     }
 
     fn end(&self) -> Option<Instant> {
-        match self.playback {
-            Some(PlaybackState::Playing(offset)) => {
-                if offset < 0.0 {
-                    Some(Instant::now() - Duration::from_secs_f32(offset.abs()))
-                } else {
-                    Some(Instant::now() + Duration::from_secs_f32(offset.abs()))
-                }
-            },
-            Some(PlaybackState::Paused(inst)) => Some(inst),
-            None => None
-        }
+        self.playback_end()
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
-        let first = self.vehicle_states.first().map(|(t, _vs)| *t).unwrap_or(Instant::now());
-        let last = self.vehicle_states.last().map(|(t, _vs)| *t).unwrap_or(Instant::now());
-        let total = (last - first).as_secs_f32();
-        let elapsed = self.end().map(|p| (p - first).as_secs_f32()).unwrap_or(0.0);
-
-        ui.set_enabled(self.playback.is_some());
-
-        if ui.button("⏮").clicked() {
-            self.playback = Some(PlaybackState::Paused(first));
-        }
-        if ui.button("⏪").clicked() {
-            self.skip_to_next_flightmode(true);
-        }
-        let label = if let Some(PlaybackState::Playing(_)) = self.playback { "⏸" } else { "⏵" };
-        if ui.button(label).clicked() {
-            self.playpause();
-        }
-        if ui.button("⏩").clicked() {
-            self.skip_to_next_flightmode(false);
-        }
-        if ui.button("⏭").clicked() {
-            self.playback = Some(PlaybackState::Paused(last));
-        }
-
-        ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-            let t = format!("{:02.0}:{:02.0}:{:02.0}/{:02.0}:{:02.0}:{:02.0}",
-                elapsed / 3600.0, (elapsed / 60.0) % 60.0, elapsed % 60.0,
-                total / 3600.0, (total / 60.0) % 60.0, total % 60.0
-            );
-            ui.label(RichText::new(t).monospace().weak());
-
-            ui.style_mut().spacing.slider_width = ui.available_width();
-
-            // Progress Bar
-            let current = if total > 0.0 { elapsed / total } else { 0.0 };
-            let mut new = current;
-            let slider = Slider::new(&mut new, 0.0..=1.0)
-                .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.3 })
-                .show_value(false);
-            let response = ui.add(slider);
-            if response.drag_released() {
-                self.playback = match self.playback {
-                    Some(PlaybackState::Playing(offset)) => {
-                        Some(PlaybackState::Playing(offset + (new - current) * total))
-                    },
-                    Some(PlaybackState::Paused(_)) => {
-                        Some(PlaybackState::Paused(first + Duration::from_secs_f32(total * new)))
-                    },
-                    None => None
-                }
-            }
-        });
+        self.playback_ui(ui)
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -286,5 +148,19 @@ impl DataSource for LogFileDataSource {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+}
+
+impl ReplayableDataSource for LogFileDataSource {
+    fn playback_state(&self) -> Option<PlaybackState> {
+        self.playback.clone()
+    }
+
+    fn playback_state_mut(&mut self) -> &mut Option<PlaybackState> {
+        &mut self.playback
+    }
+
+    fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)> {
+        &self.vehicle_states
     }
 }
