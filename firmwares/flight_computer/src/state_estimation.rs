@@ -178,14 +178,6 @@ impl StateEstimator {
             self.mode = mode;
             self.mode_time = self.time;
             self.condition_true_since = None;
-
-            // Set the barometer variance depending on the current situation.
-            // In the trans-/supersonic region, barometer readings become unreliable.
-            // TODO: make this more refined than simply mode-based?
-            self.kalman.R[0] = match self.mode {
-                FlightMode::Burn | FlightMode::Coast => self.settings.std_dev_barometer_transsonic,
-                _ => self.settings.std_dev_barometer,
-            }
         }
 
         // Determine accelerometer to use. We prefer the primary because it is less noisy,
@@ -217,6 +209,15 @@ impl StateEstimator {
             self.orientation = None;
             self.acceleration_world = None;
         }
+
+        // Set the barometer variance depending on the current situation.
+        // In the trans-/supersonic region, barometer readings become unreliable.
+        // TODO: make this more refined than simply mode-based?
+        let mach = (self.mode == FlightMode::Burn || self.mode == FlightMode::Coast)
+            .then_some(self.mach())
+            .unwrap_or(0.0);
+        let f = ((mach.clamp(0.1, 1.0) - 0.1) / 0.9).powi(1);
+        self.kalman.R[0] = self.settings.std_dev_barometer + f * self.settings.std_dev_barometer_transsonic;
 
         // Update the Kalman filter with barometric altitude and world-space acceleration
         let altitude_baro = barometer
@@ -321,6 +322,10 @@ impl StateEstimator {
 
     pub fn vertical_acceleration(&self) -> f32 {
         self.acceleration_world().z
+    }
+
+    pub fn mach(&self) -> f32 {
+        self.velocity().magnitude() / 343.2
     }
 
     pub fn time_in_mode(&self) -> u32 {

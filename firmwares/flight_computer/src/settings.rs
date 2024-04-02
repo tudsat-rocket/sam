@@ -128,9 +128,9 @@ impl Default for Settings {
             mahony_kp: 0.1,
             mahony_ki: 0.025,
             std_dev_accelerometer: 0.5,
-            std_dev_barometer: 0.8,
-            std_dev_barometer_transsonic: 5.0,
-            std_dev_process: 0.5,
+            std_dev_barometer: 1.0,
+            std_dev_barometer_transsonic: 99.0,
+            std_dev_process: 0.1,
             // TODO: unused
             takeoff_detection_mode: TakeoffDetectionMode::default(),
             min_takeoff_acc: 30.0,
