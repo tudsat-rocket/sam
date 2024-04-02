@@ -192,7 +192,10 @@ impl MapState {
                     gps.latitude.is_some() && gps.longitude.is_some() && gps.num_satellites >= 6 && gps.hdop < 500
                 ).unwrap_or(false))
                 .map(|(ground_asl, alt_asl, orientation, fm, vs)| {
-                    let pos = Position::from_lat_lon(vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64);
+                    let pos = Position::from_lat_lon(
+                        vs.gps.as_ref().and_then(|gps| gps.latitude).unwrap() as f64,
+                        vs.gps.as_ref().and_then(|gps| gps.longitude).unwrap() as f64
+                    );
                     let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
                     let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
                     let hdop = vs.gps.as_ref().map(|gps| gps.hdop).unwrap_or_default() as f32 / 100.0;
@@ -286,7 +289,7 @@ impl<'a> Widget for Map<'a> {
                 stroke_callback: Box::new(move |(alt, _att, _fm, _var)| {
                     let f = alt / GRADIENT_MAX_ALT;
                     let i = (f * (gradient_lookup.len() as f64)) as usize;
-                    Stroke { width: (1.0 + (alt/GRADIENT_MAX_ALT)*10.0) as f32, color: gradient_lookup[i] }
+                    Stroke { width: (1.0 + (alt/GRADIENT_MAX_ALT)*10.0) as f32, color: gradient_lookup[usize::min(i, gradient_lookup.len() - 1)] }
                 })
             },
             Visualization::FlightMode => Path {

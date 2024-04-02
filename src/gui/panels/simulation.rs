@@ -15,8 +15,9 @@ impl SimulationPanel {
 
         egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {
             ui.set_enabled(enabled);
+            ui.add_space(10.0);
             ui.heading("Simulation");
-            ui.add_space(20.0);
+            ui.add_space(10.0);
 
             egui::ScrollArea::vertical().show(ui, |ui| {
                 CollapsingHeader::new("Simulation Parameters").default_open(true).show(ui, |ui| {
@@ -50,13 +51,13 @@ impl SimulationPanel {
                     })
                 });
 
-                ui.add_space(20.0);
+                ui.add_space(10.0);
 
                 CollapsingHeader::new("(Simulated) FC Settings").default_open(false).show(ui, |ui| {
                     data_source.settings.fc_settings.ui(ui, None, true)
                 });
 
-                ui.add_space(20.0);
+                ui.add_space(10.0);
 
                 let changed = data_source.settings != old_settings;
                 ui.horizontal(|ui| {

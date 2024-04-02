@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
+use egui_plot::HLine;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -344,6 +345,7 @@ pub struct PlotState {
     pub ymin: Option<f32>,
     // y-axis maximum (always included)
     pub ymax: Option<f32>,
+    horizontal_lines: Vec<(f64, Color32)>,
 }
 
 impl PlotState {
@@ -362,11 +364,17 @@ impl PlotState {
             shared,
             ymin,
             ymax,
+            horizontal_lines: Vec::new(),
         }
     }
 
     pub fn line(self, name: &str, color: Color32, cb: impl FnMut(&VehicleState) -> Option<f32> + 'static) -> Self {
         self.cache.borrow_mut().add_line(name, color, cb);
+        self
+    }
+
+    pub fn horizontal_line(mut self, y: f64, color: Color32) -> Self {
+        self.horizontal_lines.push((y, color));
         self
     }
 }
@@ -434,6 +442,11 @@ impl PlotUiExt for egui::Ui {
 
             for vl in cache.mode_lines(data_source) {
                 plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));
+            }
+
+            for (y, color) in &state.horizontal_lines {
+                let hl = HLine::new(*y).color(*color);
+                plot_ui.hline(hl.style(LineStyle::Dashed { length: 4.0 }));
             }
         });
 

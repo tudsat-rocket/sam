@@ -10,6 +10,7 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use mithril::telemetry::*;
 
+mod acs;
 mod panels;
 mod fc_settings;
 mod map;

@@ -20,7 +20,10 @@ use egui_tiles::SimplificationOptions;
 use nalgebra::UnitQuaternion;
 use nalgebra::Vector3;
 
+use mithril::telemetry::FlightMode;
+
 use crate::data_source::DataSource;
+use crate::gui::acs::AcsSystemDiagram;
 use crate::settings::AppSettings;
 
 use crate::gui::map::*;
@@ -53,10 +56,13 @@ pub enum PlotCell {
     Signal,
     Map,
     Kalman,
+    Valves,
+    Masses,
+    Acs,
 }
 
 impl PlotCell {
-    fn all_grid() -> Vec<Self> {
+    fn all() -> Vec<Self> {
         vec![
             PlotCell::Orientation,
             PlotCell::VerticalSpeed,
@@ -70,14 +76,11 @@ impl PlotCell {
             PlotCell::Power,
             PlotCell::Runtime,
             PlotCell::Signal,
+            PlotCell::Kalman,
+            PlotCell::Valves,
+            PlotCell::Masses,
+            PlotCell::Acs,
         ]
-    }
-
-    fn all() -> Vec<Self> {
-        // TODO: find a better way to add optional plots to grid?
-        let mut grid = Self::all_grid();
-        grid.extend(vec![PlotCell::Kalman]);
-        grid
     }
 }
 
@@ -97,6 +100,9 @@ impl std::fmt::Display for PlotCell {
             PlotCell::Signal         => write!(f, "Signal"),
             PlotCell::Map            => write!(f, "Map"),
             PlotCell::Kalman         => write!(f, "Kalman"),
+            PlotCell::Valves         => write!(f, "Valves"),
+            PlotCell::Masses         => write!(f, "Masses"),
+            PlotCell::Acs            => write!(f, "ACS"),
         }
     }
 }
@@ -115,6 +121,8 @@ struct TileBehavior<'a> {
     runtime_plot: &'a mut PlotState,
     signal_plot: &'a mut PlotState,
     kalman_plot: &'a mut PlotState,
+    valve_plot: &'a mut PlotState,
+    masses_plot: &'a mut PlotState,
     map: &'a mut MapState,
 }
 
@@ -211,7 +219,10 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Runtime        => ui.plot_telemetry(&self.runtime_plot, self.data_source),
             PlotCell::Signal         => ui.plot_telemetry(&self.signal_plot, self.data_source),
             PlotCell::Kalman         => ui.plot_telemetry(&self.kalman_plot, self.data_source),
+            PlotCell::Valves         => ui.plot_telemetry(&self.valve_plot, self.data_source),
+            PlotCell::Masses         => ui.plot_telemetry(&self.masses_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
+            PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
         }
 
         egui_tiles::UiResponse::None
@@ -271,6 +282,8 @@ pub struct PlotTab {
     runtime_plot: PlotState,
     signal_plot: PlotState,
     kalman_plot: PlotState,
+    valve_plot: PlotState,
+    masses_plot: PlotState,
     map: MapState,
 }
 
@@ -297,15 +310,20 @@ impl PlotTab {
             .line("Speed [m/s]", G, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2) + s.kalman_x[5].powi(2)).sqrt()))
             .line("Ground Speed [m/s]", BR, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2)).sqrt()))
             .line("True Vertical Accel [m/s²]", G, |vs| vs.sim.as_ref().and_then(|s| s.vertical_accel))
-            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed));
+            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed))
+            .horizontal_line(343.2, R);
 
-        let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
-            .line("Altitude (Ground) [m]", BR, |vs| vs.altitude_ground_asl)
-            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
-            .line("Altitude [m]", B, |vs| vs.altitude_asl)
-            .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude));
+        // TODO: do AGL plot better (GPS won't work in reality because altitude_ground isn't included)
+        let altitude_plot = PlotState::new("Altitude (AGL)", (None, None), shared_plot.clone())
+            .line("Sea Level [m]", C, |vs| vs.altitude_ground_asl.map(|alt| -alt))
+            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
+            .line("Altitude [m]", B, |vs| vs.altitude_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
+            .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default())).flatten())
+            .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude))
+            .horizontal_line(1500.0, O)
+            .horizontal_line(3000.0, G1);
 
-        let gyroscope_plot = PlotState::new("Gyroscope", (Some(-10.0), Some(10.0)), shared_plot.clone())
+        let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
             .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
             .line("Gyro (Y) [°/s]", G, |vs| vs.gyroscope.map(|a| a.y))
             .line("Gyro (Z) [°/s]", B, |vs| vs.gyroscope.map(|a| a.z));
@@ -359,6 +377,14 @@ impl PlotTab {
             .line("R (pos. X) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]))
             .line("R (pos. Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[5]));
 
+        let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
+            .line("Thrusters", B1, |vs| vs.thruster_valve.map(|v| v.into()));
+
+        let masses_plot = PlotState::new("Masses", (Some(0.0), None), shared_plot.clone())
+            .line("Vehicle [kg]", B, |vs| vs.sim.as_ref().and_then(|sim| sim.mass))
+            .line("Motor [kg]", R, |vs| vs.sim.as_ref().and_then(|sim| sim.motor_mass))
+            .line("Thruster Propellant [kg]", O1, |vs| vs.sim.as_ref().and_then(|sim| sim.thruster_propellant_mass));
+
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
@@ -378,12 +404,43 @@ impl PlotTab {
             runtime_plot,
             signal_plot,
             kalman_plot,
+            valve_plot,
+            masses_plot,
             map,
         }
     }
 
     fn tree_grid() -> egui_tiles::Tree<PlotCell> {
-        egui_tiles::Tree::new_grid("plot_tree", PlotCell::all_grid())
+        let mut tiles = egui_tiles::Tiles::default();
+        let t1 = vec![
+            tiles.insert_pane(PlotCell::Acs),
+            tiles.insert_pane(PlotCell::Pressures),
+            tiles.insert_pane(PlotCell::Valves),
+        ];
+        let t2 = vec![
+            tiles.insert_pane(PlotCell::Runtime),
+            tiles.insert_pane(PlotCell::Kalman),
+        ];
+        let t3 = vec![
+            tiles.insert_pane(PlotCell::Signal),
+            tiles.insert_pane(PlotCell::Masses),
+        ];
+        let children = vec![
+            tiles.insert_pane(PlotCell::Orientation),
+            tiles.insert_pane(PlotCell::VerticalSpeed),
+            tiles.insert_pane(PlotCell::Altitude),
+            tiles.insert_pane(PlotCell::Map),
+            tiles.insert_pane(PlotCell::Gyroscope),
+            tiles.insert_pane(PlotCell::Accelerometers),
+            tiles.insert_pane(PlotCell::Magnetometer),
+            tiles.insert_tab_tile(t1),
+            tiles.insert_pane(PlotCell::Temperatures),
+            tiles.insert_pane(PlotCell::Power),
+            tiles.insert_tab_tile(t2),
+            tiles.insert_tab_tile(t3),
+        ];
+        let grid = tiles.insert_grid_tile(children);
+        egui_tiles::Tree::new("plot_tree", grid, tiles)
     }
 
     fn tree_from_tiles(tiles: egui_tiles::Tiles<PlotCell>) -> egui_tiles::Tree<PlotCell> {
@@ -396,7 +453,7 @@ impl PlotTab {
 
     fn tree_presets() -> Vec<(&'static str, egui_tiles::Tree<PlotCell>)> {
         vec![
-            ("Grid", egui_tiles::Tree::new_grid("plot_tree", PlotCell::all_grid())),
+            ("Grid", Self::tree_grid()),
             ("Tabs", egui_tiles::Tree::new_tabs("plot_tree", PlotCell::all())),
         ]
     }
@@ -487,6 +544,8 @@ impl PlotTab {
                 runtime_plot: &mut self.runtime_plot,
                 signal_plot: &mut self.signal_plot,
                 kalman_plot: &mut self.kalman_plot,
+                valve_plot: &mut self.valve_plot,
+                masses_plot: &mut self.masses_plot,
                 map: &mut self.map,
             };
             self.tile_tree.ui(&mut behavior, ui);
