@@ -49,7 +49,7 @@ impl AcsSystemDiagram {
     }
 
     fn draw_regulator(&self, painter: &Painter, pos: Pos2, w: f32, stroke: Stroke) {
-        // TODO
+        // TODO: draw the rest of the fucking regulator
         painter.rect(Rect::from_center_size(pos, Vec2::splat(w)), 0.0, Color32::TRANSPARENT, stroke);
     }
 

@@ -126,14 +126,17 @@ impl SimulationDataSource {
                 .filter(|vs| vs.pressure_baro.is_some())
                 .map(|state| state.measurements())
                 .collect();
+            let initial_orientation = states.iter().find_map(|vs| vs.orientation).unwrap();
             let repl = galadriel::Replication::new(1, measurements);
             self.current_state = states.pop_front().unwrap();
             self.stored_vehicle_states.push((Instant::now(), self.current_state.clone()));
             self.remaining_states = states;
             self.mode = FlightMode::Armed;
+            self.state_estimator = Some(StateEstimator::new_with_quat(1000.0, self.settings.fc_settings.clone(), initial_orientation));
             Simulation::Replication(repl)
         } else {
             self.settings.fc_settings.orientation = Orientation::ZUp;
+            self.state_estimator = Some(StateEstimator::new(1000.0, self.settings.fc_settings.clone()));
             Simulation::Simulation(galadriel::Simulation::new(&self.settings.galadriel))
         }
     }
@@ -277,9 +280,11 @@ impl SimulationDataSource {
                 sim_state.azimuth = Some(sim.state.orientation.azimuth());
                 sim_state.vertical_speed = Some(sim.state.velocity.z);
                 sim_state.vertical_accel = Some(sim.state.acceleration.z);
-                sim_state.mass = Some(0.0); // TODO
-                sim_state.motor_mass = Some(0.0); // TODO
+                sim_state.mass = Some(sim.rocket.last_mass);
+                sim_state.motor_mass = Some(sim.rocket.motor.last_mass);
                 sim_state.thruster_propellant_mass = sim.rocket.thrusters.as_ref().map(|t| t.propellant_mass);
+                sim_state.force_drag = Some(sim.rocket.last_drag);
+                sim_state.force_thrust = Some(sim.rocket.last_thrust);
             }
 
             self.current_state.sim = Some(Box::new(sim_state));
@@ -298,7 +303,6 @@ impl DataSource for SimulationDataSource {
     fn update(&mut self, ctx: &egui::Context) {
         if self.sim.is_none() {
             self.sim = Some(self.init_simulation());
-            self.state_estimator = Some(StateEstimator::new(1000.0, self.settings.fc_settings.clone()));
         }
 
         // TODO: move to another thread
