@@ -111,6 +111,7 @@ impl MapState {
 
         HttpOptions {
             cache: cache_path,
+            ..Default::default()
         }
     }
 
