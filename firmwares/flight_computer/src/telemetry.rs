@@ -198,6 +198,8 @@ pub struct SimulatedState {
     pub mass: Option<f32>,
     pub motor_mass: Option<f32>,
     pub thruster_propellant_mass: Option<f32>,
+    pub force_drag: Option<Vector3<f32>>,
+    pub force_thrust: Option<Vector3<f32>>,
 }
 
 #[allow(dead_code)]
