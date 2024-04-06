@@ -315,8 +315,17 @@ impl StateEstimator {
     pub fn apogee_asl(&self) -> Option<f32> {
         match self.mode {
             FlightMode::Coast => {
-                let avg_acc = (-self.vertical_acceleration() + GRAVITY) / 2.0;
-                Some(self.altitude_asl() + self.vertical_speed().powi(2) / (2.0 * avg_acc))
+                // First, figure out the current drag force
+                //let vehicle_mass = 13.657 + 3.567;
+                let drag = (self.acceleration_world() + Vector3::new(0.0, 0.0, GRAVITY));
+                // This gives 0.5 * air density * drag coefficient * area
+                let drag_over_vel_squared = drag.magnitude() / self.velocity().magnitude_squared();
+
+                // Calculate terminal velocity and remaining vertical distance
+                let terminal_vel_squared = GRAVITY / drag_over_vel_squared;
+                let remaining_height = (terminal_vel_squared / (2.0 * GRAVITY)) * ((self.vertical_speed().powi(2) + terminal_vel_squared) / terminal_vel_squared).ln();
+
+                Some(self.altitude_asl() + remaining_height)
             },
             FlightMode::RecoveryDrogue | FlightMode::RecoveryMain | FlightMode::Landed => Some(self.altitude_max),
             _ => None
