@@ -48,12 +48,23 @@ pub struct StateEstimator {
 }
 
 impl StateEstimator {
-    pub fn new(
+    pub fn new(main_loop_freq_hertz: f32, settings: Settings) -> Self {
+        let quat = UnitQuaternion::new_unchecked(Quaternion::new(
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+        ));
+        Self::new_with_quat(main_loop_freq_hertz, settings, quat)
+    }
+
+    pub fn new_with_quat(
         main_loop_freq_hertz: f32,
         settings: Settings,
+        initial_orientation: UnitQuaternion<f32>,
     ) -> Self {
         let dt = 1.0 / main_loop_freq_hertz;
-        let ahrs = ahrs::Mahony::new(dt, settings.mahony_kp, settings.mahony_ki);
+        let ahrs = ahrs::Mahony::new_with_quat(dt, settings.mahony_kp, settings.mahony_ki, initial_orientation);
 
         let mut kalman = KalmanFilter::default();
 
