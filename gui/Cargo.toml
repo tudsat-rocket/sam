@@ -6,14 +6,14 @@ edition = "2021"
 
 [dependencies]
 # Workspace members
-galadriel = { path = "../galadriel", features = ["egui"] }
-shared_types = { path = "../shared_types" }
-state_estimator = { path = "../state_estimator" }
+galadriel = { workspace = true, features = ["egui"] }
+shared_types = { workspace = true }
+state_estimator = { workspace = true }
 # CLI & logging
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
 colored = "2"
-clap = { version = "3.2", features = ["derive"] }
-log = "0.4"
-env_logger = "0.10"
 # egui & friends
 egui = { workspace = true }
 eframe = { workspace = true }
@@ -22,20 +22,18 @@ egui_extras = { workspace = true }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
 egui_tiles = "0.7.2"
 egui-gizmo = "0.16"
-walkers = { git = "https://github.com/podusowski/walkers" }
+walkers = "0.20"
 # serialization & communication
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0.89"
-postcard = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
 serialport = "4"
-siphasher = "0.3"
 crc = "2"
 # misc
 nalgebra = { workspace = true }
 chrono = "0.4"
 directories = "4.0"
 colorgrad = "0.6"
-rand_distr = { version = "0.4", default-features = false }
 tokio = "1.33"
 futures = { version = "0.3.28", default-features = false }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }

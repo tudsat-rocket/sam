@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 nalgebra = { workspace = true }
-serde = { version = "1", features = ["derive"] }
-postcard = "1.0"
-siphasher = "0.3"
+serde = { workspace = true }
+postcard = { workspace = true }
+siphasher = { workspace = true }

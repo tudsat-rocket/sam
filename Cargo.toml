@@ -8,9 +8,26 @@ members = [
 ]
 default-members = ["gui"] # Allows running GUI by simply running `$ cargo run` in root of workspace
 
+# We specify dependencies we use in multiple places here, so we can make sure
+# every crate uses the same version.
 [workspace.dependencies]
+# Workspace member packages
+galadriel = { path = "galadriel" }
+shared_types = { path = "shared_types" }
+state_estimator = { path = "state_estimator" }
+# CLI & logging
+clap = { version = "3.2", features = ["derive"] }
+log = "0.4"
+env_logger = "0.10"
+# Math
 nalgebra = { version = "0.32", features = ["macros", "mint", "serde-serialize-no-std"] }
+# egui & friends
 egui = { version = "0.26", default-features = false }
 eframe = { version = "0.26", default-features = false, features = ["glow", "wayland", "x11"] }
 egui_plot = "0.26"
 egui_extras = { version = "0.26", features = ["image"] }
+# serialization & communication
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.89"
+postcard = "1.0"
+siphasher = "0.3"

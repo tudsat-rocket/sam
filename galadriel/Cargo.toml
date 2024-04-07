@@ -13,7 +13,7 @@ eframe = { workspace = true, optional = true }
 egui_plot = { workspace = true, optional = true }
 
 [dev-dependencies]
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [features]
 egui = ["dep:egui", "dep:eframe", "dep:egui_plot"]
