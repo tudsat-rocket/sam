@@ -1,0 +1,12 @@
+[package]
+name = "state_estimator"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+shared_types = { path = "../shared_types" }
+nalgebra = { workspace = true }
+ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
+filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }

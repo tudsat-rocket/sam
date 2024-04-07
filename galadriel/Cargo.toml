@@ -1,0 +1,24 @@
+[package]
+name = "galadriel"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nalgebra = { workspace = true }
+rand = { version = "0.8.5", features = ["std_rng"] }
+rand_distr = "0.4.3"
+
+egui = { workspace = true, optional = true }
+eframe = { workspace = true, optional = true }
+egui_plot = { workspace = true, optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[features]
+egui = ["dep:egui", "dep:eframe", "dep:egui_plot"]
+default = []
+
+[[bench]]
+name = "bench"
+harness = false
