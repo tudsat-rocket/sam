@@ -12,13 +12,16 @@ egui = { workspace = true, optional = true }
 eframe = { workspace = true, optional = true }
 egui_plot = { workspace = true, optional = true }
 
-[dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
-
 [features]
 egui = ["dep:egui", "dep:eframe", "dep:egui_plot"]
 default = []
 
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
 [[bench]]
 name = "bench"
 harness = false
+
+[profile.release]
+lto = true

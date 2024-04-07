@@ -2,7 +2,11 @@
 
 use std::any::Any;
 use std::collections::VecDeque;
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
 use std::sync::mpsc::SendError;
+use std::sync::mpsc::Sender;
+use std::thread::JoinHandle;
 use std::time::Duration;
 use std::slice::Iter;
 use std::f32::consts::PI;
@@ -83,41 +87,36 @@ impl StateSimulation for VehicleState {
     }
 }
 
-#[derive(Default)]
-pub struct SimulationDataSource {
+pub struct SimulationWorker {
     // The settings for the simulation, adjusted via GUI
     pub settings: SimulationSettings,
     // Core simulation/galadriel object and our state estimator
-    sim: Option<Simulation>,
-    state_estimator: Option<StateEstimator>,
+    sim: Simulation,
+    state_estimator: StateEstimator,
+    time_origin: (Instant, u32),
     done: bool,
     current_state: VehicleState,
     mode: FlightMode,
-    // Produced vehicle states that are plotted by GUI
-    stored_vehicle_states: Vec<(Instant, VehicleState)>,
     // Remaining raw vehicle states from replicated log, if used
     remaining_states: VecDeque<VehicleState>,
-    playback: Option<PlaybackState>,
+    sender: Sender<(Instant, VehicleState)>,
 }
 
-impl SimulationDataSource {
-    pub fn replicate(replicated_log: ArchivedLog) -> Self {
-        let settings = SimulationSettings {
-            replicated_log: Some(replicated_log),
-            ..Default::default()
-        };
-        Self {
-            settings,
-            ..Default::default()
+impl SimulationWorker {
+    pub fn run(settings: SimulationSettings, sender: Sender<(Instant, VehicleState)>) {
+        let mut worker = Self::init(settings, sender);
+        while !worker.done {
+            worker.tick();
+
         }
     }
 
-    pub fn init_simulation(&mut self) -> Simulation {
-        if let Some(log) = self.settings.replicated_log {
+    pub fn init(mut settings: SimulationSettings, sender: Sender<(Instant, VehicleState)>) -> Self {
+        if let Some(log) = settings.replicated_log {
             if log == ArchivedLog::Euroc23 {
-                self.settings.fc_settings.orientation = Orientation::ZDown;
+                settings.fc_settings.orientation = Orientation::ZDown;
             } else {
-                self.settings.fc_settings.orientation = Orientation::ZUp;
+                settings.fc_settings.orientation = Orientation::ZUp;
             }
 
             // TODO: wasm, hardcoded tick rate
@@ -128,35 +127,48 @@ impl SimulationDataSource {
                 .collect();
             let initial_orientation = states.iter().find_map(|vs| vs.orientation).unwrap();
             let repl = galadriel::Replication::new(1, measurements);
-            self.current_state = states.pop_front().unwrap();
-            self.stored_vehicle_states.push((Instant::now(), self.current_state.clone()));
-            self.remaining_states = states;
-            self.mode = FlightMode::Armed;
-            self.state_estimator = Some(StateEstimator::new_with_quat(1000.0, self.settings.fc_settings.clone(), initial_orientation));
-            Simulation::Replication(repl)
+
+            let current_state = states.pop_front().unwrap();
+            let time_origin = (Instant::now(), current_state.time);
+            sender.send((time_origin.0, current_state.clone())).unwrap();
+
+            let state_estimator = StateEstimator::new_with_quat(1000.0, settings.fc_settings.clone(), initial_orientation);
+
+            Self {
+                settings,
+                sim: Simulation::Replication(repl),
+                state_estimator,
+                time_origin,
+                done: false,
+                current_state,
+                mode: FlightMode::Armed,
+                remaining_states: states,
+                sender,
+            }
         } else {
-            self.settings.fc_settings.orientation = Orientation::ZUp;
-            self.state_estimator = Some(StateEstimator::new(1000.0, self.settings.fc_settings.clone()));
-            Simulation::Simulation(galadriel::Simulation::new(&self.settings.galadriel))
+            settings.fc_settings.orientation = Orientation::ZUp;
+
+            let sim = Simulation::Simulation(galadriel::Simulation::new(&settings.galadriel));
+            let state_estimator = StateEstimator::new(1000.0, settings.fc_settings.clone());
+
+            Self {
+                settings,
+                sim,
+                state_estimator,
+                time_origin: (Instant::now(), 0),
+                done: false,
+                current_state: VehicleState::default(), // TODO
+                mode: FlightMode::HardwareArmed,
+                remaining_states: VecDeque::new(),
+                sender,
+            }
         }
     }
 
     pub fn tick(&mut self) -> bool {
-        if self.done {
-            return true;
-        }
-
-        let Some(sim) = self.sim.as_mut() else {
-            return true;
-        };
-
-        let Some(state_estimator) = self.state_estimator.as_mut() else {
-            return true;
-        };
-
         self.current_state.time += 1;
 
-        let plot = match sim {
+        let plot = match &mut self.sim {
             Simulation::Replication(repl) => {
                 let mut plot = false;
 
@@ -172,6 +184,10 @@ impl SimulationDataSource {
                 if let Some(sensors) = repl.next() {
                     self.current_state.join_measurement(sensors);
                 } else {
+                    self.done = true;
+                }
+
+                if self.mode == FlightMode::Landed {
                     self.done = true;
                 }
 
@@ -214,7 +230,7 @@ impl SimulationDataSource {
 
                 if let Some(thrusters) = sim.rocket.thrusters.as_mut() {
                     // TODO: this is slightly awkward
-                    thrusters.set_valve(match state_estimator.thruster_valve() {
+                    thrusters.set_valve(match self.state_estimator.thruster_valve() {
                         ThrusterValveState::Closed => galadriel::thrusters::ValveState::Closed,
                         ThrusterValveState::OpenPrograde => galadriel::thrusters::ValveState::OpenPrograde,
                         ThrusterValveState::OpenRetrograde => galadriel::thrusters::ValveState::OpenRetrograde,
@@ -222,13 +238,13 @@ impl SimulationDataSource {
                 }
 
                 // We don't really want to show every single tick in the plot. For simulations,
-                // we plot 100Hz, so every 10th simulated state.
-                self.current_state.time % 10 == 0
+                // we plot 100Hz, so every 50th simulated state.
+                self.current_state.time % 50 == 0
             }
         };
 
         // update state estimation with sampled sensor values
-        state_estimator.update(
+        self.state_estimator.update(
             std::num::Wrapping(self.current_state.time),
             self.mode,
             self.current_state.gyroscope,
@@ -239,25 +255,25 @@ impl SimulationDataSource {
             self.current_state.gps.clone(),
         );
 
-        if let Some(mode) = state_estimator.new_mode(8400, None) {
+        if let Some(mode) = self.state_estimator.new_mode(8400, None) {
             self.mode = mode;
             self.current_state.mode = Some(mode);
         }
 
         if plot {
-            self.current_state.orientation = state_estimator.orientation;
-            self.current_state.euler_angles = state_estimator.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI);
-            self.current_state.elevation = state_estimator.orientation.map(|q| q.elevation());
-            self.current_state.azimuth = state_estimator.orientation.map(|q| q.azimuth());
-            self.current_state.vertical_speed = Some(state_estimator.vertical_speed());
-            self.current_state.vertical_accel = state_estimator.acceleration_world_raw().map(|v| v.z);
-            self.current_state.vertical_accel_filtered = Some(state_estimator.vertical_acceleration());
-            self.current_state.altitude_asl = Some(state_estimator.altitude_asl());
-            self.current_state.altitude_ground_asl = Some(state_estimator.altitude_ground);
-            self.current_state.apogee_asl = state_estimator.apogee_asl();
-            self.current_state.latitude = state_estimator.latitude();
-            self.current_state.longitude = state_estimator.longitude();
-            self.current_state.thruster_valve = Some(state_estimator.thruster_valve());
+            self.current_state.orientation = self.state_estimator.orientation;
+            self.current_state.euler_angles = self.state_estimator.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI);
+            self.current_state.elevation = self.state_estimator.orientation.map(|q| q.elevation());
+            self.current_state.azimuth = self.state_estimator.orientation.map(|q| q.azimuth());
+            self.current_state.vertical_speed = Some(self.state_estimator.vertical_speed());
+            self.current_state.vertical_accel = self.state_estimator.acceleration_world_raw().map(|v| v.z);
+            self.current_state.vertical_accel_filtered = Some(self.state_estimator.vertical_acceleration());
+            self.current_state.altitude_asl = Some(self.state_estimator.altitude_asl());
+            self.current_state.altitude_ground_asl = Some(self.state_estimator.altitude_ground);
+            self.current_state.apogee_asl = self.state_estimator.apogee_asl();
+            self.current_state.latitude = self.state_estimator.latitude();
+            self.current_state.longitude = self.state_estimator.longitude();
+            self.current_state.thruster_valve = Some(self.state_estimator.thruster_valve());
 
             let mut sim_state = SimulatedState {
                 orientation: None,
@@ -266,13 +282,13 @@ impl SimulationDataSource {
                 azimuth: None,
                 vertical_accel: None,
                 vertical_speed: None,
-                kalman_x: state_estimator.kalman.x,
-                kalman_P: state_estimator.kalman.P.diagonal(),
-                kalman_R: state_estimator.kalman.R.diagonal(),
+                kalman_x: self.state_estimator.kalman.x,
+                kalman_P: self.state_estimator.kalman.P.diagonal(),
+                kalman_R: self.state_estimator.kalman.R.diagonal(),
                 ..Default::default()
             };
 
-            if let Some(Simulation::Simulation(sim)) = &self.sim {
+            if let Simulation::Simulation(sim) = &self.sim {
                 let (r, p, y) = sim.state.orientation.euler_angles();
                 sim_state.orientation = Some(sim.state.orientation);
                 sim_state.euler_angles = Some(Vector3::new(r, p, y) * 180.0 / PI);
@@ -289,24 +305,50 @@ impl SimulationDataSource {
 
             self.current_state.sim = Some(Box::new(sim_state));
 
-            let t = self.stored_vehicle_states.first()
-                .map(|(t, vs)| *t + Duration::from_millis((self.current_state.time.wrapping_sub(vs.time)) as u64))
-                .unwrap_or(Instant::now());
-            self.stored_vehicle_states.push((t, self.current_state.clone()));
+            let t = self.time_origin.0 + Duration::from_millis((self.current_state.time.wrapping_sub(self.time_origin.1)) as u64);
+            self.sender.send((t, self.current_state.clone())).unwrap();
         }
 
         self.done
     }
 }
 
+#[derive(Default)]
+pub struct SimulationDataSource {
+    // The settings for the simulation, adjusted via GUI
+    pub settings: SimulationSettings,
+    // Produced vehicle states that are plotted by GUI
+    stored_vehicle_states: Vec<(Instant, VehicleState)>,
+    playback: Option<PlaybackState>,
+    // Handles for interacting with worker thread
+    worker_thread: Option<JoinHandle<()>>,
+    state_receiver: Option<Receiver<(Instant, VehicleState)>>,
+}
+
+impl SimulationDataSource {
+    pub fn replicate(replicated_log: ArchivedLog) -> Self {
+        let settings = SimulationSettings {
+            replicated_log: Some(replicated_log),
+            ..Default::default()
+        };
+        Self {
+            settings,
+            ..Default::default()
+        }
+    }
+}
+
 impl DataSource for SimulationDataSource {
     fn update(&mut self, ctx: &egui::Context) {
-        if self.sim.is_none() {
-            self.sim = Some(self.init_simulation());
+        if self.worker_thread.is_none() || self.state_receiver.is_none() {
+            self.reset();
         }
 
-        // TODO: move to another thread
-        while !self.tick() {}
+        if let Some(receiver) = &self.state_receiver {
+            self.stored_vehicle_states.extend(receiver.try_iter());
+            // We're still getting states in, keep skipping to end
+            *self.playback_state_mut() = self.stored_vehicle_states.last().map(|(t, _vs)| PlaybackState::Paused(*t));
+        }
 
         self.update_playback(ctx);
     }
@@ -318,13 +360,13 @@ impl DataSource for SimulationDataSource {
     }
 
     fn reset(&mut self) {
-        self.sim = None;
-        self.state_estimator = None;
-        self.current_state = VehicleState::default();
+        let (sender, receiver) = channel::<(Instant, VehicleState)>();
+        let settings = self.settings.clone();
+        self.worker_thread = Some(std::thread::spawn(move || {
+            SimulationWorker::run(settings, sender);
+        }));
+        self.state_receiver = Some(receiver);
         self.stored_vehicle_states.truncate(0);
-        self.remaining_states.truncate(0);
-        self.done = false;
-        self.mode = FlightMode::HardwareArmed;
         self.playback = None;
     }
 

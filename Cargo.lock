@@ -4121,6 +4121,7 @@ name = "state_estimator"
 version = "0.1.0"
 dependencies = [
  "ahrs",
+ "criterion",
  "filter",
  "nalgebra",
  "shared_types",

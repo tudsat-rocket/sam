@@ -10,3 +10,10 @@ shared_types = { workspace = true }
 nalgebra = { workspace = true }
 ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
 filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bench"
+harness = false
