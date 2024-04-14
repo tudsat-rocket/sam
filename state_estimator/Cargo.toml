@@ -8,8 +8,8 @@ edition = "2021"
 [dependencies]
 shared_types = { workspace = true }
 nalgebra = { workspace = true }
-ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
-filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
+ahrs = { git = "https://github.com/tudsat-rocket/ahrs-rs", branch="sensor-gains", default-features = false, features = ["field_access"] }
+filter = { git = "https://github.com/tudsat-rocket/filter-rs" }
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

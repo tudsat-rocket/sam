@@ -69,7 +69,7 @@ dependencies = [
 [[package]]
 name = "ahrs"
 version = "0.6.0"
-source = "git+https://github.com/KoffeinFlummi/ahrs-rs#bf7b41d09115b47ce8f6060624ed6a8a9bc445d4"
+source = "git+https://github.com/tudsat-rocket/ahrs-rs?branch=sensor-gains#d48bf7a2ceaae8c18a0ea075644d9626a99e7e2a"
 dependencies = [
  "nalgebra",
  "num-traits",
@@ -1367,7 +1367,7 @@ dependencies = [
 [[package]]
 name = "filter"
 version = "0.2.1-dev"
-source = "git+https://github.com/KoffeinFlummi/filter-rs#ca82f1271d8c44d67d6b6420c9fdf423006364a2"
+source = "git+https://github.com/tudsat-rocket/filter-rs#ca82f1271d8c44d67d6b6420c9fdf423006364a2"
 dependencies = [
  "nalgebra",
  "num-traits",

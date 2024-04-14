@@ -184,6 +184,13 @@ impl StateEstimator {
             self.mode = mode;
             self.mode_time = self.time;
             self.condition_true_since = None;
+
+            // In the free-fall flight modes we ignore the accelerometer data
+            // for orientation estimation.
+            (*self.ahrs.acc_gain_mut(), *self.ahrs.kp_mut(), *self.ahrs.ki_mut()) = match self.mode {
+                FlightMode::Burn | FlightMode::Coast => (0.0, self.settings.mahony_kp_ascent, self.settings.mahony_ki_ascent),
+                _ => (1.0, self.settings.mahony_kp, self.settings.mahony_ki),
+            }
         }
 
         // Determine accelerometer to use. We prefer the primary because it is less noisy,

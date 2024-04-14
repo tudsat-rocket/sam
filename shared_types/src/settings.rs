@@ -77,6 +77,10 @@ pub struct Settings {
     pub mahony_kp: f32,
     /// integral filter gain for Mahony attitude estimator
     pub mahony_ki: f32,
+    /// proportional filter gain for Mahony attitude estimator
+    pub mahony_kp_ascent: f32,
+    /// integral filter gain for Mahony attitude estimator
+    pub mahony_ki_ascent: f32,
     /// accelerometer standard deviation for kalman filter
     pub std_dev_accelerometer: f32,
     /// barometer standard deviation for kalman filter
@@ -126,10 +130,12 @@ impl Default for Settings {
             acc2_offset: Vector3::default(),
             mag_offset: Vector3::default(),
             mahony_kp: 0.1,
-            mahony_ki: 0.025,
+            mahony_ki: 0.0,
+            mahony_kp_ascent: 0.1,
+            mahony_ki_ascent: 0.0,
             std_dev_accelerometer: 0.5,
             std_dev_barometer: 1.0,
-            std_dev_barometer_transsonic: 99.0,
+            std_dev_barometer_transsonic: 400.0,
             std_dev_process: 0.1,
             // TODO: unused
             takeoff_detection_mode: TakeoffDetectionMode::default(),

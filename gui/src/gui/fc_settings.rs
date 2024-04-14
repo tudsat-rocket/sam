@@ -200,9 +200,14 @@ impl FcSettingsUiExt for Settings {
                 ui.horizontal(|ui| {
                     ui.weak("kP");
                     ui.add(DragValue::new(&mut self.mahony_kp).speed(0.001).clamp_range(0.0..=10.0));
-
                     ui.weak(" kI");
                     ui.add(DragValue::new(&mut self.mahony_ki).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.weak(", (kP");
+                    ui.add(DragValue::new(&mut self.mahony_kp_ascent).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.weak(" kI");
+                    ui.add(DragValue::new(&mut self.mahony_ki_ascent).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.weak("during ascent)")
+
                 });
                 ui.end_row();
 
