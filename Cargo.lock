@@ -69,7 +69,7 @@ dependencies = [
 [[package]]
 name = "ahrs"
 version = "0.5.0"
-source = "git+https://github.com/KoffeinFlummi/ahrs-rs#fefedda6fc761eca27b76ace5bc48f5fd35be692"
+source = "git+https://github.com/KoffeinFlummi/ahrs-rs?branch=main#ef5656abc25b8b03fec69e7b5c6bd5fafe84b21b"
 dependencies = [
  "nalgebra",
  "num-traits",
@@ -1580,7 +1580,7 @@ dependencies = [
 [[package]]
 name = "filter"
 version = "0.2.1-dev"
-source = "git+https://github.com/KoffeinFlummi/filter-rs#5945c79426c9a16767929eb15a33efa4e51a4a39"
+source = "git+https://github.com/KoffeinFlummi/filter-rs?rev=5945c79426c9a16767929eb15a33efa4e51a4a39#5945c79426c9a16767929eb15a33efa4e51a4a39"
 dependencies = [
  "nalgebra",
  "num-traits",
@@ -2824,7 +2824,7 @@ dependencies = [
 [[package]]
 name = "mithril"
 version = "0.1.0"
-source = "git+https://github.com/tudsat-rocket/mithril.git#ca7796fd8dabfbb0c75e945b63d7ce414ae8b048"
+source = "git+https://github.com/tudsat-rocket/mithril.git?branch=main#16297e8adcec265d7f543406da29964a63946e6a"
 dependencies = [
  "ahrs",
  "alloc-cortex-m",
@@ -4821,8 +4821,9 @@ dependencies = [
 
 [[package]]
 name = "walkers"
-version = "0.18.0"
-source = "git+https://github.com/podusowski/walkers#f12f433413255ed0d309607cadfaad424593a124"
+version = "0.19.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "670494f6629020b06ee5d221719f02f2825cf65bfabd0662e428e6259505edae"
 dependencies = [
  "egui",
  "egui_extras",
