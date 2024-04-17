@@ -114,29 +114,6 @@ impl Sam {
             self.tab = GuiTab::Configure;
         }
 
-        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
-            Some(FlightMode::Idle)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            Some(FlightMode::HardwareArmed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
-            Some(FlightMode::Armed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
-            Some(FlightMode::Flight)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
-            Some(FlightMode::RecoveryDrogue)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {
-            Some(FlightMode::RecoveryMain)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F11)) {
-            Some(FlightMode::Landed)
-        } else {
-            None
-        };
-
-        // Set new flight mode if keyboard shortcut was used
-        if let Some(fm) = shortcut_mode {
-            self.data_source_mut().send_command(Command::SetFlightMode(fm)).unwrap();
-        }
-
         // Redefine text_styles
         let colors = ThemeColors::new(ctx);
         let mut style = (*ctx.style()).clone();
