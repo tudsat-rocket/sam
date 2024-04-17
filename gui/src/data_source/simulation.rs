@@ -149,7 +149,8 @@ impl SimulationWorker {
             settings.fc_settings.orientation = Orientation::ZUp;
 
             let sim = Simulation::Simulation(galadriel::Simulation::new(&settings.galadriel));
-            let state_estimator = StateEstimator::new(1000.0, settings.fc_settings.clone());
+            let freq = 1000.0 / (settings.galadriel.delta_time as f32);
+            let state_estimator = StateEstimator::new(freq, settings.fc_settings.clone());
 
             Self {
                 settings,
@@ -166,7 +167,7 @@ impl SimulationWorker {
     }
 
     pub fn tick(&mut self) -> bool {
-        self.current_state.time += 1;
+        self.current_state.time += self.settings.galadriel.delta_time;
 
         let plot = match &mut self.sim {
             Simulation::Replication(repl) => {
@@ -212,7 +213,7 @@ impl SimulationWorker {
                     self.done = true;
                 }
 
-                let gps = self.current_state.time % 100 == 0 && !(
+                let gps = self.current_state.time % (100 - 100 % self.settings.galadriel.delta_time) == 0 && !(
                     sim.state.flight_phase == FlightPhase::Burn ||
                     sim.state.flight_phase == FlightPhase::Coast ||
                     sim.state.flight_phase == FlightPhase::Descent && sim.time_in_phase() < 5.0
@@ -239,7 +240,8 @@ impl SimulationWorker {
 
                 // We don't really want to show every single tick in the plot. For simulations,
                 // we plot 100Hz, so every 50th simulated state.
-                self.current_state.time % 50 == 0
+                self.settings.galadriel.delta_time >= 50 ||
+                    self.current_state.time % (50 - 50 % self.settings.galadriel.delta_time) == 0
             }
         };
 
@@ -383,7 +385,6 @@ impl DataSource for SimulationDataSource {
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
-        // TODO: maybe computation times or something?
         self.playback_ui(ui)
     }
 

@@ -33,7 +33,7 @@ pub enum FlightPhase {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
-    delta_time: u32,
+    pub delta_time: u32,
     rocket: RocketSettings,
     environment: Environment,
     sensors: SensorSettings,
