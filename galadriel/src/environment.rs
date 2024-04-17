@@ -28,8 +28,8 @@ impl Default for Environment {
             launch_location: (39.390104, -8.289324),
             launch_altitude: 100.0,
             launch_rail_length: 6.0,
-            azimuth: 135.0, // south east
-            elevation: 82.0,
+            azimuth: 133.0,
+            elevation: 84.0,
         }
     }
 }
