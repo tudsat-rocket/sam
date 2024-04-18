@@ -308,7 +308,9 @@ impl SimulationWorker {
             self.current_state.sim = Some(Box::new(sim_state));
 
             let t = self.time_origin.0 + Duration::from_millis((self.current_state.time.wrapping_sub(self.time_origin.1)) as u64);
-            self.sender.send((t, self.current_state.clone())).unwrap();
+            if let Err(_) = self.sender.send((t, self.current_state.clone())) {
+                self.done = true;
+            }
         }
 
         self.done
