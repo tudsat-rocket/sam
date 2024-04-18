@@ -8,9 +8,10 @@ use web_time::Instant;
 use directories::ProjectDirs;
 use eframe::egui;
 use egui::{Color32, Vec2, Widget, Frame, Rect, Stroke, Layout};
+use egui_gizmo::{Gizmo, GizmoMode, GizmoVisuals};
 use walkers::extras::{Places, Place, Style};
-use walkers::{Tiles, MapMemory, Position, Plugin, HttpOptions};
-use nalgebra::Vector3;
+use walkers::{HttpOptions, MapMemory, Plugin, Position, Projector, Tiles};
+use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3};
 
 use shared_types::telemetry::FlightMode;
 
@@ -88,6 +89,7 @@ pub struct MapState {
     satellite: bool,
     position_source: PositionSource,
     visualization: Visualization,
+    show_gizmos: bool,
     gradient_lookup: Vec<Color32>,
     estimated_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     gps_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
@@ -149,6 +151,7 @@ impl MapState {
             satellite,
             position_source: PositionSource::Estimate,
             visualization: Visualization::Altitude,
+            show_gizmos: true,
             gradient_lookup,
             estimated_positions: Vec::new(),
             gps_positions: Vec::new(),
@@ -251,17 +254,20 @@ pub struct Map<'a> {
     state: &'a mut MapState,
     vehicle_position: Option<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     vehicle_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
+    orientation: Option<UnitQuaternion<f32>>,
 }
 
 impl<'a> Map<'a> {
     pub fn new(state: &'a mut MapState, data_source: &mut dyn DataSource) -> Self {
         let vehicle_positions = state.vehicle_positions(data_source);
         let vehicle_position = state.last_position();
+        let orientation = data_source.vehicle_states().rev().find_map(|(_t, vs)| vs.orientation);
 
         Self {
             state,
             vehicle_position,
             vehicle_positions,
+            orientation,
         }
     }
 }
@@ -333,19 +339,62 @@ impl<'a> Widget for Map<'a> {
                 render_crosshair: detached_pos.is_some(),
             });
 
-        // Label for current vehicle position
-        if let Some((position, (alt_agl, _att, _fm, hdop))) = self.vehicle_positions.last().as_ref().copied() {
-            map = map.with_plugin(Places::new(vec![
-                Place {
-                    position: *position,
-                    label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.lat(), position.lon(), alt_agl, hdop),
-                    symbol: '🚀',
-                    style: Style::default(),
-                },
-            ]));
+        if !self.state.show_gizmos {
+            if let Some((position, (alt_agl, _att, _fm, hdop))) = self.vehicle_positions.last().as_ref().copied() {
+                map = map.with_plugin(Places::new(vec![
+                    Place {
+                        position: *position,
+                        label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.lat(), position.lon(), alt_agl, hdop),
+                        symbol: '🚀',
+                        style: Style::default(),
+                    },
+                ]));
+            }
         }
 
         let response = ui.add(map);
+
+        if self.state.show_gizmos {
+            if let Some(q) = self.orientation {
+                let projector = Projector::new(ui.clip_rect(), &self.state.memory, position);
+                let viewport_pos = projector.project(position);
+
+                // We use viewport pixel coordinates for the rendering of the gizmo,
+                // but we need to invert the y axis, since screen coordinates are Y down
+                let model_matrix = q.to_homogeneous()
+                    .append_translation(&Vector3::new(viewport_pos.x, -viewport_pos.y, 0.0))
+                    .into();
+                let projection_matrix = Matrix4::new_orthographic(
+                    ui.clip_rect().left(),
+                    ui.clip_rect().right(),
+                    -ui.clip_rect().bottom(),
+                    -ui.clip_rect().top(),
+                    0.1,
+                    1000.,
+                );
+
+                let camera_pos = Point3::new(0., 0., 1.);
+                let camera_target = Point3::new(0., 0., 0.);
+                let north = Vector3::new(0., 1., 0.);
+                let view_matrix = Matrix4::look_at_rh(&camera_pos, &camera_target, &north);
+
+                let visuals = GizmoVisuals {
+                    inactive_alpha: 1.0,
+                    highlight_alpha: 1.0,
+                    gizmo_size: 50.0,
+                    ..Default::default()
+                };
+
+                let gizmo = Gizmo::new("map_gizmo")
+                    .mode(GizmoMode::Translate)
+                    .model_matrix(model_matrix)
+                    .view_matrix(view_matrix.into())
+                    .projection_matrix(projection_matrix.into())
+                    .orientation(egui_gizmo::GizmoOrientation::Local)
+                    .visuals(visuals);
+                gizmo.interact(ui);
+            }
+        }
 
         // Panel for selecting map type
         let map_type_rect = Rect::from_two_pos(
@@ -409,6 +458,20 @@ impl<'a> Widget for Map<'a> {
                     ui.selectable_value(&mut self.state.visualization, Visualization::FlightMode, "🏷");
                     ui.selectable_value(&mut self.state.visualization, Visualization::Attitude, "🔃");
                     ui.selectable_value(&mut self.state.visualization, Visualization::Uncertainty, "⁉");
+                });
+            }).response
+        });
+
+        // Panel for switching between gizmos and position tags
+        let gizmo_rect = Rect::from_two_pos(
+            rect.right_top() + Vec2::new(-10.0, 10.0),
+            rect.right_top() + Vec2::new(-100.0, 40.0)
+        );
+        ui.put(gizmo_rect, |ui: &mut egui::Ui| {
+            Frame::window(ui.style()).show(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.selectable_value(&mut self.state.show_gizmos, false, "📋");
+                    ui.selectable_value(&mut self.state.show_gizmos, true, "🔃");
                 });
             }).response
         });
