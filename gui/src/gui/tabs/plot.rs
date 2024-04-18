@@ -381,7 +381,7 @@ impl PlotTab {
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
-            tile_tree: Self::tree_grid(),
+            tile_tree: Self::tree_launch(),
             show_view_settings: false,
             new_preset_name: String::new(),
             shared_plot,
@@ -402,6 +402,57 @@ impl PlotTab {
             map,
         }
     }
+
+    fn tree_launch() -> egui_tiles::Tree<PlotCell> {
+        let mut tiles = egui_tiles::Tiles::default();
+
+        let left_misc = vec![
+            tiles.insert_pane(PlotCell::Valves),
+            tiles.insert_pane(PlotCell::Masses),
+            tiles.insert_pane(PlotCell::Kalman),
+        ];
+
+        let left = vec![
+            tiles.insert_pane(PlotCell::Altitude),
+            tiles.insert_pane(PlotCell::VerticalSpeed),
+            tiles.insert_tab_tile(left_misc),
+        ];
+
+        let overview = vec![
+            tiles.insert_pane(PlotCell::Orientation),
+            tiles.insert_pane(PlotCell::Temperatures),
+            tiles.insert_pane(PlotCell::Acs),
+            tiles.insert_pane(PlotCell::Power),
+            tiles.insert_pane(PlotCell::Runtime),
+            tiles.insert_pane(PlotCell::Signal),
+        ];
+
+        let raw_sensors = vec![
+            tiles.insert_pane(PlotCell::Gyroscope),
+            tiles.insert_pane(PlotCell::Accelerometers),
+            tiles.insert_pane(PlotCell::Magnetometer),
+            tiles.insert_pane(PlotCell::Pressures),
+        ];
+
+        let right_misc = vec![
+            tiles.insert_grid_tile(overview),
+            tiles.insert_vertical_tile(raw_sensors),
+        ];
+
+        let right = vec![
+            tiles.insert_pane(PlotCell::Map),
+            tiles.insert_tab_tile(right_misc),
+        ];
+
+        let children = vec![
+            tiles.insert_vertical_tile(left),
+            tiles.insert_vertical_tile(right),
+        ];
+
+        let root = tiles.insert_horizontal_tile(children);
+        egui_tiles::Tree::new("plot_tree", root, tiles)
+    }
+
 
     fn tree_grid() -> egui_tiles::Tree<PlotCell> {
         let mut tiles = egui_tiles::Tiles::default();
@@ -446,6 +497,7 @@ impl PlotTab {
 
     fn tree_presets() -> Vec<(&'static str, egui_tiles::Tree<PlotCell>)> {
         vec![
+            ("Launch", Self::tree_launch()),
             ("Grid", Self::tree_grid()),
             ("Tabs", egui_tiles::Tree::new_tabs("plot_tree", PlotCell::all())),
         ]
