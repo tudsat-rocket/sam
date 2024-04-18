@@ -292,16 +292,10 @@ impl PlotTab {
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(360.0)), shared_plot.clone())
-            .line("Roll (Z) [°]", B, |vs| vs.euler_angles.map(|a| a.z))
-            .line("Pitch (X) [°]", R, |vs| vs.euler_angles.map(|a| a.x))
-            .line("Yaw (Y) [°]", G, |vs| vs.euler_angles.map(|a| a.y))
-            .line("Elevation [°]", O, |vs| vs.elevation)
-            .line("Azimuth [°]", P, |vs| vs.azimuth)
-            //.line("Roll (True) (Z) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.z)))
-            //.line("Pitch (True) (X) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.x)))
-            //.line("Yaw (True) (Y) [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.euler_angles.map(|a| a.y)))
-            .line("Elevation (True) [°]", O1, |vs| vs.sim.as_ref().and_then(|s| s.elevation))
-            .line("Azimuth (True) [°]", C, |vs| vs.sim.as_ref().and_then(|s| s.azimuth));
+            .line("Elevation [°]", B, |vs| vs.elevation)
+            .line("Azimuth [°]", R, |vs| vs.azimuth)
+            .line("True Elevation [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.elevation))
+            .line("True Azimuth [°]", R1, |vs| vs.sim.as_ref().and_then(|s| s.azimuth));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
             .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
@@ -320,7 +314,6 @@ impl PlotTab {
             .line("Altitude [m]", B, |vs| vs.altitude_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
             .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default())).flatten())
             .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude))
-            .horizontal_line(1500.0, O)
             .horizontal_line(3000.0, G1);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
@@ -369,13 +362,13 @@ impl PlotTab {
             .line("x (pos. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_x[1]))
             .line("x (speed X) [m]", R1, |vs| vs.sim.as_ref().map(|s| s.kalman_x[3]))
             .line("x (speed Y) [m]", G1, |vs| vs.sim.as_ref().map(|s| s.kalman_x[4]))
-            .line("P (pos. X) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_P[0]))
-            .line("P (pos. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_P[1]))
+            .line("x (accel. X) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_x[6]))
+            .line("x (accel. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_x[7]))
+            .line("P (pos. X/Y) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_P[0]))
             .line("P (speed Z) [m/s]", B1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[5]))
             .line("P (accel. Z) [m/s²]", B, |vs| vs.sim.as_ref().map(|s| s.kalman_P[8]))
             .line("R (baro.) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[0]))
-            .line("R (pos. X) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]))
-            .line("R (pos. Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[5]));
+            .line("R (pos. X/Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]));
 
         let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
             .line("Thrusters", B1, |vs| vs.thruster_valve.map(|v| v.into()));
