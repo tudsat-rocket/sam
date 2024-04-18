@@ -84,8 +84,8 @@ impl Simulation {
 
         let a = settings.environment.azimuth.to_radians();
         let b = settings.environment.elevation.to_radians();
-        let direction = Vector3::new(-f32::sin(a) * f32::cos(b), f32::cos(a) * f32::cos(b), f32::sin(b));
-        let orientation = UnitQuaternion::face_towards(&direction, &Vector3::new(0.0, 0.0, 1.0));
+        let direction = Vector3::new(f32::sin(a) * f32::cos(b), f32::cos(a) * f32::cos(b), f32::sin(b));
+        let orientation = UnitQuaternion::rotation_between(&Vector3::new(0., 0., 1.), &direction).unwrap();
 
         let state = SimulationState {
             orientation,
@@ -120,11 +120,11 @@ impl Simulation {
     }
 
     pub fn latitude(&self) -> f32 {
-        self.settings.environment.launch_location.0 + self.state.position.x / 111_111.0
+        self.settings.environment.launch_location.0 + self.state.position.y / 111_111.0
     }
 
     pub fn longitude(&self) -> f32 {
-        self.settings.environment.launch_location.1 + self.state.position.y / (111_111.0 * self.settings.environment.launch_location.0.to_radians().cos())
+        self.settings.environment.launch_location.1 + self.state.position.x / (111_111.0 * self.settings.environment.launch_location.0.to_radians().cos())
     }
 
     pub fn tick(&mut self) {
@@ -199,10 +199,10 @@ impl Simulation {
         let last_orientation = self.state.orientation;
         let new_orientation = match self.state.flight_phase {
             FlightPhase::Burn | FlightPhase::Coast | FlightPhase::Descent =>
-            Some(UnitQuaternion::face_towards(
-                &self.state.velocity,
+            UnitQuaternion::rotation_between(
                 &Vector3::new(0.0, 0.0, 1.0),
-            )),
+                &self.state.velocity,
+            ),
             _ => None,
         };
 
@@ -210,12 +210,8 @@ impl Simulation {
             self.state.orientation = orientation;
         }
 
-        let (r,p,y) = last_orientation.rotation_to(&self.state.orientation).euler_angles();
-        self.state.angular_velocity = Vector3::new(p,y,r) / delta_time; // TODO
-
-        if self.state.orientation.euler_angles().0.is_nan() {
-            std::process::exit(1);
-        }
+        let (r,p,y) = (last_orientation.inverse() * &self.state.orientation).euler_angles();
+        self.state.angular_velocity = Vector3::new(p.to_degrees(),r.to_degrees(),y.to_degrees()) / delta_time;
 
         self.state.t += self.settings.delta_time;
     }

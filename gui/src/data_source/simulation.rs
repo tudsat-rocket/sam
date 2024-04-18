@@ -347,9 +347,16 @@ impl DataSource for SimulationDataSource {
         }
 
         if let Some(receiver) = &self.state_receiver {
-            self.stored_vehicle_states.extend(receiver.try_iter());
-            // We're still getting states in, keep skipping to end
-            *self.playback_state_mut() = self.stored_vehicle_states.last().map(|(t, _vs)| PlaybackState::Paused(*t));
+            let new: Vec<_> = receiver.try_iter().collect();
+            if new.len() > 0 {
+                // We're still getting states in, keep skipping to end
+                *self.playback_state_mut() = new.last().map(|(t, _vs)| PlaybackState::Paused(*t));
+            }
+            self.stored_vehicle_states.extend(new);
+        }
+
+        if self.worker_thread.as_ref().map(|h| !h.is_finished()).unwrap_or(false) {
+            ctx.request_repaint();
         }
 
         self.update_playback(ctx);
