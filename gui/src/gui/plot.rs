@@ -83,11 +83,15 @@ impl PlotCacheLine {
 
         // clear the downsample caches
         self.data.truncate(1);
+        self.last_bounds = None;
+        self.last_view.truncate(0);
     }
 
     fn clear_cache(&mut self) {
         self.data.truncate(1);
         self.data[0].truncate(0);
+        self.last_bounds = None;
+        self.last_view.truncate(0);
     }
 
     fn cached_data_downsampled(&mut self, bounds: PlotBounds, view_width: f32) -> Vec<[f64; 2]> {
@@ -161,7 +165,7 @@ struct PlotCache {
     mode_transitions: Vec<(f64, FlightMode)>,
     /// Identifies the origin of the current data using the last time cached and the number of
     /// states included
-    cached_state: Option<(Instant, usize)> // TODO: maybe add some sort of flight identifier?
+    cached_state: Option<(Instant, Instant, usize)> // TODO: maybe add some sort of flight identifier?
 }
 
 impl PlotCache {
@@ -214,8 +218,9 @@ impl PlotCache {
             return;
         }
 
+        let (first_t, _) = data_source.vehicle_states().next().unwrap().clone();
         let (last_t, _) = data_source.vehicle_states().next_back().unwrap().clone();
-        let cached_state = Some((last_t, new_len));
+        let cached_state = Some((first_t, last_t, new_len));
 
         // We have already cached this exact set of vehicle states, do nothing.
         if cached_state == self.cached_state {
@@ -225,7 +230,7 @@ impl PlotCache {
         // Try to determine if the new data is simply a few more points appended to the previously
         // plotted data, which we have cached. If so, we keep the old and simply append the new
         // points. If not, we recalculate the cache completely.
-        let old_len = self.cached_state.map(|(_, l)| l).unwrap_or(0);
+        let old_len = self.cached_state.map(|(_, _, l)| l).unwrap_or(0);
         let mut keep_first = if new_len > old_len { old_len } else { 0 };
         if keep_first > 0 {
             // double-check that it is actually the same set of states by looking for our previous
@@ -234,7 +239,7 @@ impl PlotCache {
                 .rev()
                 .nth(new_len - keep_first)
                 .unwrap();
-            if self.cached_state.map(|(t, _)| t != *previous_last).unwrap_or(true) {
+            if self.cached_state.map(|(_, t, _)| t != *previous_last).unwrap_or(true) {
                 keep_first = 0;
             }
         }
