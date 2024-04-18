@@ -208,11 +208,13 @@ impl StateEstimator {
             let mag = self.correct_orientation(mag);
 
             // Update the orientation estimator with IMU data
-            self.orientation = self
-                .ahrs
-                .update(&(gyro * 3.14159 / 180.0), &acc, &mag)
-                .ok()
-                .map(|q| *q);
+            if self.mode != FlightMode::Burn {
+                self.orientation = self
+                    .ahrs
+                    .update(&(gyro * 3.14159 / 180.0), &acc, &mag)
+                    .ok()
+                    .map(|q| *q);
+            }
 
             // Rotate acceleration vector to get world-space acceleration
             // (where Z is straight up) and subtract gravity.
