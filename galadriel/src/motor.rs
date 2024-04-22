@@ -40,7 +40,8 @@ impl Into<MotorSettings> for KnownMotors {
                     (4.541, 91.692),
                     (4.597, 0.0),
                 ],
-                performance: 1.0,
+                impulse: 8088.9,
+                performance: 1.0, 
             }
         }
     }
@@ -52,6 +53,7 @@ pub struct MotorSettings {
     pub dry_mass: f32,
     pub wet_mass: f32,
     pub thrust_curve: Vec<(f32, f32)>,
+    pub impulse: f32,
     pub performance: f32,
 }
 
@@ -104,9 +106,26 @@ impl Motor {
     pub fn mass(&mut self, time: f32) -> f32 {
         self.last_mass = if self.burned_out(time) {
             self.settings.dry_mass
-        } else {
-            // TODO: use thrust curve for interpolation
-            self.settings.dry_mass + self.propellant_mass() * (1.0 - time / self.burn_time())
+        } else { 
+            let i = self.settings.thrust_curve.iter()
+                .position(|(x, _y)| *x > time)
+                .unwrap_or_default();
+            let mut burned_impulse = 0.0;
+            if i > 0 {
+                let mut c = 0;
+                while c < i - 1 {
+                    let a = self.settings.thrust_curve[c+1];
+                    let b = self.settings.thrust_curve[c];
+                    burned_impulse += (a.0 - b.0) * ((a.1 + b.1)/2.0);
+                    c += 1;
+                }
+                let a = self.settings.thrust_curve[c+1];
+                let b = self.settings.thrust_curve[c];
+                // interpolate thrust value between data points 
+                let n_interp = b.1 + ((time - b.0) / (a.0 - b.0)) * (a.1-b.1);
+                burned_impulse += (time - b.0) * ((b.1 + n_interp)/2.0);
+            }
+            self.settings.dry_mass + self.propellant_mass() * (1.0 - (burned_impulse / self.settings.impulse))
         };
         self.last_mass
     }
@@ -161,6 +180,15 @@ impl egui::Widget for &mut MotorSettings {
                         egui::DragValue::new(&mut self.performance)
                             .speed(0.001)
                             .clamp_range(0.0..=10.0),
+                    );
+                    ui.end_row();
+
+                    ui.label("Impulse");
+                    ui.add(
+                        egui::DragValue::new(&mut self.impulse)
+                            .suffix(" Ns")
+                            .speed(0.1)
+                            .clamp_range(0.0..=15000.0),
                     );
                     ui.end_row();
 
