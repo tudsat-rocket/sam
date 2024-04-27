@@ -46,13 +46,13 @@ impl ArchiveWindow {
         let response = match reqwest::Client::new().get(url).send().await {
             Ok(res) => res,
             Err(e) => {
-                progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
+                let _ = progress_sender.send(ArchiveLoadProgress::Error(e));
                 return;
             }
         };
 
         let total_size = response.content_length().unwrap_or(0);
-        progress_sender.send(ArchiveLoadProgress::Progress((0, total_size))).unwrap();
+        let _ = progress_sender.send(ArchiveLoadProgress::Progress((0, total_size)));
         ctx.request_repaint();
 
         let mut cursor = std::io::Cursor::new(Vec::with_capacity(total_size as usize));
@@ -70,14 +70,14 @@ impl ArchiveWindow {
                     }
                 }
                 Err(e) => {
-                    progress_sender.send(ArchiveLoadProgress::Error(e)).unwrap();
+                    let _ = progress_sender.send(ArchiveLoadProgress::Error(e));
                     ctx.request_repaint();
                     return;
                 }
             }
         }
 
-        progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner())).unwrap();
+        let _ = progress_sender.send(ArchiveLoadProgress::Complete(cursor.into_inner()));
         let duration = start.elapsed().as_secs_f32();
         let mib = (total_size as f32) / 1024.0 / 1024.0;
         info!("Downloaded {}MiB in {:.1}ms ({}MiB/s)", mib, duration * 1000.0, mib / duration);
