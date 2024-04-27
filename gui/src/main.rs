@@ -20,7 +20,6 @@ mod settings;
 mod telemetry_ext;
 
 use crate::data_source::serial::{self, *};
-use crate::gui::windows::ArchivedLog;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -35,7 +34,7 @@ enum CliCommand {
     Gui {
         log_path: Option<PathBuf>,
         #[clap(long)]
-        simulate: Option<Option<ArchivedLog>>,
+        simulate: Option<Option<String>>,
     },
     /// Attach to FC and tail logs
     /// TODO: embassy rewrite will remove USB logging, so this can be removed

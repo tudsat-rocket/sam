@@ -216,7 +216,7 @@ impl eframe::App for Sam {
 
 /// The main entrypoint for the egui interface.
 #[cfg(not(target_arch = "wasm32"))]
-pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<ArchivedLog>>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or_default();
 
     let data_source: Option<Box<dyn DataSource>> = if let Some(log) = simulate {

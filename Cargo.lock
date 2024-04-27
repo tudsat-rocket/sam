@@ -180,6 +180,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "archive"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "shared_types",
+]
+
+[[package]]
 name = "arg_enum_proc_macro"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3761,6 +3771,7 @@ dependencies = [
 name = "sam"
 version = "0.1.0"
 dependencies = [
+ "archive",
  "chrono",
  "clap 3.2.25",
  "colored",

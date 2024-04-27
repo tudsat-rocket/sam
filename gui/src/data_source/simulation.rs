@@ -18,13 +18,13 @@ use web_time::Instant;
 
 use nalgebra::Vector3;
 
+use archive::ArchivedLog;
 use galadriel::FlightPhase;
 use shared_types::settings::*;
 use shared_types::telemetry::*;
 use state_estimator::StateEstimator;
 
 use crate::data_source::*;
-use crate::gui::windows::ArchivedLog;
 use crate::telemetry_ext::QuaternionExt;
 
 pub enum Simulation {
@@ -34,7 +34,7 @@ pub enum Simulation {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimulationSettings {
-    pub replicated_log: Option<ArchivedLog>,
+    pub replicated_log_id: Option<String>,
     pub galadriel: galadriel::SimulationSettings,
     pub fc_settings: Settings,
 }
@@ -42,7 +42,7 @@ pub struct SimulationSettings {
 impl Default for SimulationSettings {
     fn default() -> Self {
         Self {
-            replicated_log: None,
+            replicated_log_id: None,
             galadriel: galadriel::SimulationSettings::default(),
             fc_settings: Settings::default(),
         }
@@ -112,14 +112,13 @@ impl SimulationWorker {
     }
 
     pub fn init(mut settings: SimulationSettings, sender: Sender<(Instant, VehicleState)>) -> Self {
-        if let Some(log) = settings.replicated_log {
-            if log == ArchivedLog::Euroc23 {
-                settings.fc_settings.orientation = Orientation::ZDown;
-            } else {
-                settings.fc_settings.orientation = Orientation::ZUp;
+        let replicated_log = settings.replicated_log_id.as_ref().and_then(|id| ArchivedLog::find(id));
+        if let Some(log) = replicated_log {
+            if let Some(fc_settings) = log.fc_settings() {
+                // TODO: do we want to copy other settings?
+                settings.fc_settings.orientation = fc_settings.orientation;
             }
 
-            // TODO: wasm, hardcoded tick rate
             let mut states: VecDeque<VehicleState> = log.flash_states().unwrap().into_iter().collect();
             let measurements = states.iter()
                 .filter(|vs| vs.pressure_baro.is_some())
@@ -330,9 +329,9 @@ pub struct SimulationDataSource {
 }
 
 impl SimulationDataSource {
-    pub fn replicate(replicated_log: ArchivedLog) -> Self {
+    pub fn replicate(replicated_log_id: String) -> Self {
         let settings = SimulationSettings {
-            replicated_log: Some(replicated_log),
+            replicated_log_id: Some(replicated_log_id),
             ..Default::default()
         };
         Self {

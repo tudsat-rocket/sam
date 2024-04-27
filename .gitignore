@@ -3,9 +3,9 @@
 *.json
 *.gpx
 *.kml
-!archive/*.json
-!archive/*.gpx
-!archive/*.kml
+!archive/assets/*.json
+!archive/assets/*.gpx
+!archive/assets/*.kml
 *.exe
 *.bin
 perf.data

@@ -31,7 +31,7 @@ serialport = "4"
 crc = "2"
 # misc
 nalgebra = { workspace = true }
-chrono = "0.4"
+chrono = { workspace = true }
 directories = "4.0"
 colorgrad = "0.6"
 tokio = "1.33"

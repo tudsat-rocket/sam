@@ -435,8 +435,8 @@ impl PlotTab {
         ];
 
         let right_misc = vec![
-            tiles.insert_grid_tile(overview),
             tiles.insert_vertical_tile(raw_sensors),
+            tiles.insert_grid_tile(overview),
         ];
 
         let right = vec![

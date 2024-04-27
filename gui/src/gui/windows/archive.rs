@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::str::FromStr;
 use std::sync::mpsc::{Receiver, Sender};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -8,96 +7,14 @@ use std::time::Instant;
 use web_time::Instant;
 
 use eframe::egui;
-use egui::{Align, Align2, Button, Layout, ProgressBar};
+use egui::{Align, Align2, Button, Layout, ProgressBar, RichText};
 
 use futures::StreamExt;
 use log::*;
 
-use shared_types::telemetry::{VehicleState, DownlinkMessage};
+use archive::ARCHIVED_LOGS;
 
 use crate::data_source::LogFileDataSource;
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum ArchivedLog {
-    Zuelpich1,
-    Zuelpich2,
-    Dare23A,
-    Dare23B,
-    Euroc23,
-}
-
-impl FromStr for ArchivedLog {
-    type Err = &'static str;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "dare_a" => Ok(Self::Dare23A),
-            "dare_b" => Ok(Self::Dare23B),
-            "euroc23" => Ok(Self::Euroc23),
-            _ => Err("Failed to parse log enum.")
-        }
-    }
-}
-
-impl ToString for ArchivedLog {
-    fn to_string(&self) -> String {
-        match self {
-            Self::Zuelpich1 => "Zülpich #1".into(),
-            Self::Zuelpich2 => "Zülpich #2".into(),
-            Self::Dare23A => "Dare (FC A)".into(),
-            Self::Dare23B => "Dare (FC B)".into(),
-            Self::Euroc23 => "EuRoC 2023 (ÆSIR Signý)".into(),
-        }
-    }
-}
-
-impl ArchivedLog {
-    pub fn all() -> Vec<Self> {
-        vec![Self::Zuelpich1, Self::Zuelpich2, Self::Dare23A, Self::Dare23B, Self::Euroc23]
-    }
-
-    // TODO: migrate old launches
-    pub fn telemetry_log_url(&self) -> Option<&'static str> {
-        match self {
-            Self::Dare23A => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_telem_filtered.json"),
-            Self::Dare23B => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_telem_filtered.json"),
-            Self::Euroc23 => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_telem_filtered.json"),
-            _ => None
-        }
-    }
-
-    pub fn flash_log_url(&self) -> Option<&'static str> {
-        match self {
-            Self::Dare23A => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_a_flash_filtered.json"),
-            Self::Dare23B => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/dare_launch_b_flash_filtered.json"),
-            Self::Euroc23 => Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/euroc_2023_flash_filtered.json"),
-            _ => None
-        }
-    }
-
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub fn flash_log(&self) -> Option<&'static [u8]> {
-        match self {
-            Self::Dare23A => Some(include_bytes!("../../../../archive/dare_launch_a_flash_filtered.json").as_slice()),
-            Self::Dare23B => Some(include_bytes!("../../../../archive/dare_launch_b_flash_filtered.json").as_slice()),
-            Self::Euroc23 => Some(include_bytes!("../../../../archive/euroc_2023_flash_filtered.json").as_slice()),
-            _ => None
-        }
-    }
-
-    #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-    pub fn flash_log(&self) -> Option<&'static [u8]> {
-        None
-    }
-
-    pub fn flash_messages(&self) -> Option<Vec<DownlinkMessage>> {
-        self.flash_log().map(|bytes| serde_json::from_slice::<Vec<DownlinkMessage>>(bytes).unwrap())
-    }
-
-    pub fn flash_states(&self) -> Option<Vec<VehicleState>> {
-        self.flash_messages().map(|vec| vec.into_iter().map(|msg| Into::<VehicleState>::into(msg)).collect())
-    }
-}
 
 #[derive(Debug)]
 enum ArchiveLoadProgress { Progress((u64, u64)),
@@ -212,30 +129,55 @@ impl ArchiveWindow {
 
         egui::Window::new("Flight Archive")
             .open(&mut open)
-            .min_width(300.0)
+            .min_width(400.0)
             .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
             .resizable(false)
             .collapsible(false)
             .show(ctx, |ui| {
                 ui.add_space(10.0);
 
-                for (i, log) in ArchivedLog::all().iter().enumerate() {
+                for (i, log) in ARCHIVED_LOGS.iter().enumerate() {
                     if i != 0 {
                         ui.separator();
                     }
 
                     ui.horizontal(|ui| {
                         ui.label(log.to_string());
+
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.add_enabled(log.flash_log_url().is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_log(ctx, log.flash_log_url().unwrap());
+                            ui.label(RichText::new(log.id).weak().monospace());
+                        });
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("🚀");
+                        ui.weak(log.vehicle);
+                        ui.label("🚩");
+                        ui.weak(log.site.name);
+                        ui.label("📆");
+                        ui.weak(log.date.to_string());
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("🏷");
+                        ui.weak(log.fc_serial);
+                        ui.label("⬆");
+                        ui.weak(format!("{}m", log.apogee_agl));
+
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui.add_enabled(log.flash_log_url.is_some(), Button::new("🖴  Flash")).clicked() {
+                                self.open_log(ctx, log.flash_log_url.unwrap());
                             }
 
-                            if ui.add_enabled(log.telemetry_log_url().is_some(), Button::new("📡 Telemetry")).clicked() {
-                                self.open_log(ctx, log.telemetry_log_url().unwrap());
+                            if ui.add_enabled(log.telemetry_log_url.is_some(), Button::new("📡 Telemetry")).clicked() {
+                                self.open_log(ctx, log.telemetry_log_url.unwrap());
                             }
                         });
                     });
+
+                    if !log.description.is_empty() {
+                        ui.weak(log.description);
+                    }
                 }
 
                 ui.add_space(10.0);

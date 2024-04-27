@@ -1,0 +1,65 @@
+{
+  "identifier": "🚀 FRODO-J1 D (rev 2)",
+  "gyro_offset": [
+    -0.31,
+    -0.13,
+    -0.28
+  ],
+  "acc_offset": [
+    0.13,
+    0.37,
+    -0.1
+  ],
+  "acc2_offset": [
+    3.8,
+    23.9,
+    1.72
+  ],
+  "mag_offset": [
+    1141.085,
+    1004.9,
+    -441.935
+  ],
+  "mahony_kp": 0.5,
+  "mahony_ki": 0.0,
+  "mahony_kp_ascent": 0.5,
+  "mahony_ki_ascent": 0.0,
+  "std_dev_accelerometer": 0.5,
+  "std_dev_barometer": 0.8,
+  "std_dev_barometer_transsonic": 0.8,
+  "std_dev_process": 0.5,
+  "takeoff_detection_mode": "AccelerationOrBreakwire",
+  "min_takeoff_acc": 30.0,
+  "min_takeoff_acc_time": 50,
+  "min_time_to_apogee": 8000,
+  "max_time_to_apogee": 18000,
+  "apogee_min_falling_time": 100,
+  "main_output_mode": "BelowAltitude",
+  "main_output_deployment_altitude": 300.0,
+  "outputs_warning_time": 500,
+  "outputs_high_time": 500,
+  "lora": {
+    "channels": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "binding_phrase": "secondary",
+    "authentication_key": 262301267280954023728658797401745099570
+  },
+  "default_data_rate": "Low",
+  "min_time_to_main": 5000,
+  "orientation": "ZUp",
+  "outputs_warning_frequency": 900.0
+}

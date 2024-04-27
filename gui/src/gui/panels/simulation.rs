@@ -1,8 +1,9 @@
 use egui::CollapsingHeader;
 
+use archive::{ArchivedLog, ARCHIVED_LOGS};
+
 use crate::data_source::{DataSource, SimulationDataSource, SimulationSettings};
 use crate::gui::fc_settings::FcSettingsUiExt;
-use crate::gui::windows::ArchivedLog;
 
 pub struct SimulationPanel {}
 
@@ -30,21 +31,21 @@ impl SimulationPanel {
                             .show(ui, |ui| {
                                 ui.label("Replication Log");
                                 egui::ComboBox::from_id_source("replication_log")
-                                    .selected_text(data_source.settings.replicated_log.map(|l| l.to_string()).unwrap_or("None".into()))
+                                    .selected_text(data_source.settings.replicated_log_id.as_ref().and_then(|id| ArchivedLog::find(&id).map(|log| log.to_string())).unwrap_or("None".into()))
                                     .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut data_source.settings.replicated_log, None, "None");
-                                        for log in &ArchivedLog::all() {
-                                            if log.flash_log_url().is_none() {
+                                        ui.selectable_value(&mut data_source.settings.replicated_log_id, None, "None");
+                                        for log in &ARCHIVED_LOGS {
+                                            if log.flash_log_url.is_none() {
                                                 continue;
                                             }
-                                            ui.selectable_value(&mut data_source.settings.replicated_log, Some(*log), log.to_string());
+                                            ui.selectable_value(&mut data_source.settings.replicated_log_id, Some(log.id.to_string()), log.to_string());
                                         }
                                     });
                                 ui.end_row();
                             });
 
                         // Disable other settings if we are using a source log
-                        ui.set_enabled(data_source.settings.replicated_log.is_none());
+                        ui.set_enabled(data_source.settings.replicated_log_id.is_none());
                         ui.add_space(10.0);
 
                         ui.add(&mut data_source.settings.galadriel);
