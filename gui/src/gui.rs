@@ -160,7 +160,9 @@ impl Sam {
         let data_source = self.data_sources.last_mut().unwrap();
 
         // If our current data source is a simulation, show a config panel to the left
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
         if let Some(sim) = data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
+            #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
             SimulationPanel::show(ctx, sim, enabled);
         }
 

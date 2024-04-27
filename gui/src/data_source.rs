@@ -19,10 +19,12 @@ use crate::settings::AppSettings;
 
 pub mod log_file;
 pub mod serial;
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub mod simulation;
 
 pub use log_file::LogFileDataSource;
 pub use serial::*;
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub use simulation::{SimulationDataSource, SimulationSettings};
 
 /// Trait shared by all data sources.

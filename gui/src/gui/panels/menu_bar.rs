@@ -1,7 +1,10 @@
-use crate::data_source::{SimulationDataSource, LogFileDataSource};
+use crate::data_source::LogFileDataSource;
 use crate::file::*;
 use crate::gui::tabs::GuiTab;
 use crate::gui::Sam;
+
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+use crate::data_source::SimulationDataSource;
 
 use eframe::egui;
 use egui::{Align, Layout, Vec2};
@@ -15,7 +18,10 @@ impl MenuBarPanel {
 
         let data_source = sam.data_source();
         let any = data_source.as_any();
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
         let data_source_is_sim = any.is::<SimulationDataSource>();
+        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
+        let data_source_is_sim = false;
         let data_source_is_log = any.is::<LogFileDataSource>();
 
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
@@ -52,6 +58,7 @@ impl MenuBarPanel {
                 // Toggle archive panel
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
                 if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {
+                    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
                     sam.open_data_source(Box::<SimulationDataSource>::default());
                 }
 

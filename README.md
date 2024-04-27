@@ -7,10 +7,10 @@ Ground station software for the Sting FC, includes both command line tools and G
 
 # Running
 
-To run for debugging purposes:
+To run for debugging purposes (`--release` recommended for simulations):
 
 ```
-cargo run
+$ cargo run
 ```
 
 # Installation
@@ -18,7 +18,7 @@ cargo run
 (Assuming rust/rustup is already installed)
 
 ```
-cargo install --path .
+$ cargo install --path .
 ````
 
 # Building Web Assembly Version
@@ -26,17 +26,17 @@ cargo install --path .
 ## Setup
 
 ```
-rustup target add wasm32-unknown-unknown
-cargo install wasm-pack --features curl/static-curl
+$ rustup target add wasm32-unknown-unknown
+$ cargo install wasm-pack --features curl/static-curl
 ```
 
 ## Building
 
 ```
-wasm-pack build --target no-modules
+$ wasm-pack build gui --target no-modules
 ```
 
-This will store the compiled application in `pkg/`.
+This will store the compiled application in `gui/pkg/`.
 
 # Usage
 

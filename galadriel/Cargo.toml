@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 nalgebra = { workspace = true }
-rand = { version = "0.8.5", features = ["std_rng"] }
+rand = { workspace = true }
 rand_distr = "0.4.3"
 
 egui = { workspace = true, optional = true }

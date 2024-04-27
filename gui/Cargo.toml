@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 # Workspace members
-galadriel = { workspace = true, features = ["egui"] }
+archive = { workspace = true }
 shared_types = { workspace = true }
 state_estimator = { workspace = true }
 # CLI & logging
@@ -44,16 +44,17 @@ puffin_egui = { version = "0.26", optional = true }
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
+galadriel = { workspace = true, features = ["egui"] }
+rand = { workspace = true }
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
-rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 # Android dependencies
 [target.'cfg(target_os = "android")'.dependencies]
+rand = { workspace = true }
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
-rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
 
 # Web Assembly dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
