@@ -1,0 +1,43 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    ndkVersion "25.2.9519653"
+    compileSdk 31
+
+    defaultConfig {
+        applicationId "space.tudsat.sam"
+        minSdk 28
+        targetSdk 31
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
+            //packagingOptions {
+            //    doNotStrip '**/*.so'
+            //}
+            //debuggable true
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    namespace 'space.tudsat.sam'
+}
+
+dependencies {
+    implementation 'com.google.android.gms:play-services-location:21.0.1'
+    implementation 'com.github.mik3y:usb-serial-for-android:3.7.0'
+}
+

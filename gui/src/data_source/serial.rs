@@ -31,7 +31,7 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
 // For Android, the Java wrapper has to handle the actual serial port and
 // we use these questionable methods to pass the data in via JNI
 #[cfg(target_os="android")]
-pub static mut DOWNLINK_MESSAGE_RECEIVER: Option<Receiver<DownlinkMessage>> = None;
+pub static mut DOWNLINK_MESSAGE_RECEIVER: Option<Receiver<(Instant, DownlinkMessage)>> = None;
 #[cfg(target_os="android")]
 pub static mut UPLINK_MESSAGE_SENDER: Option<Sender<UplinkMessage>> = None;
 #[cfg(target_os="android")]

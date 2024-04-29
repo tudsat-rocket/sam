@@ -217,7 +217,7 @@ impl eframe::App for Sam {
 }
 
 /// The main entrypoint for the egui interface.
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os="android")))]
 pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or_default();
 

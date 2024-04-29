@@ -105,7 +105,7 @@ impl MapState {
         // On Android, we just hardcode the path for now. If we wanted to do it properly, we'd
         // have to request a path and pass it to our code via the JNI.
         #[cfg(target_os = "android")]
-        let cache_path = Some(std::path::PathBuf::new("/data/user/0/space.tudsat.sam/cache"));
+        let cache_path = Some(std::path::PathBuf::from("/data/user/0/space.tudsat.sam/cache"));
 
         // On other platforms, we store map tiles on-disk
         #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
