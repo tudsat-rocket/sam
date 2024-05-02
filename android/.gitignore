@@ -13,3 +13,6 @@ local.properties
 # Added by cargo
 
 /target
+
+# build
+*.apk
