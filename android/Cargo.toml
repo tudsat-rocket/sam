@@ -1,0 +1,38 @@
+[package]
+name = "sam_android"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+android_logger = "0.11.0"
+android-activity = { version = "0.4", features = [ "native-activity" ] }
+ndk-context = "0.1"
+ndk = "0.7"
+ndk-sys = "0.4"
+jni = "0.21"
+jni-utils = "0.1"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = "1.0"
+
+pollster = "0.2"
+
+# For some reason logging within the egui crate isn't working, even with
+# the log feature. Maybe the android_logger crate is broken?
+egui = { workspace = true }
+eframe = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+#egui_demo_lib = "0.23"
+
+sam = { workspace = true }
+shared_types = { workspace = true }
+#mithril = { path = "../mithril", default-features = false }
+#mithril = { git = "https://github.com/tudsat-rocket/mithril.git", default-features = false }
+
+[lib]
+crate_type=["cdylib"]
