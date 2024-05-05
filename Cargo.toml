@@ -24,14 +24,15 @@ clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
 env_logger = "0.10"
 # Math
+mint = "0.5.9"
 nalgebra = { version = "0.32", features = ["macros", "mint", "serde-serialize-no-std"] }
 # egui & friends
-egui = { version = "0.26", default-features = false }
-egui-wgpu = { version = "0.26", features = [ "winit" ] }
-egui-winit = { version = "0.26", default-features = false, features = [ "android-native-activity" ] }
-eframe = { version = "0.26", default-features = false, features = ["glow", "wayland", "x11"] }
-egui_plot = "0.26"
-egui_extras = { version = "0.26", features = ["image"] }
+egui = { version = "0.27", default-features = false }
+egui-wgpu = { version = "0.27", features = [ "winit" ] }
+egui-winit = { version = "0.27", default-features = false, features = [ "android-native-activity" ] }
+eframe = { version = "0.27", default-features = false, features = ["glow", "wayland", "x11"] }
+egui_plot = "0.27"
+egui_extras = { version = "0.27", features = ["image"] }
 # serialization & communication
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0.89"

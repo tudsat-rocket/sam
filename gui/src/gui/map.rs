@@ -8,10 +8,11 @@ use web_time::Instant;
 use directories::ProjectDirs;
 use eframe::egui;
 use egui::{Color32, Vec2, Widget, Frame, Rect, Stroke, Layout};
-use egui_gizmo::{Gizmo, GizmoMode, GizmoVisuals};
+use transform_gizmo_egui::{enum_set, Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
+use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 use walkers::extras::{Places, Place, Style};
 use walkers::{HttpOptions, MapMemory, Plugin, Position, Projector, Tiles};
-use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3};
+use nalgebra::{UnitQuaternion, Vector3};
 
 use shared_types::telemetry::FlightMode;
 
@@ -152,7 +153,7 @@ impl MapState {
             satellite,
             #[cfg(target_arch = "wasm32")]
             satellite: false,
-            position_source: PositionSource::Gps,
+            position_source: PositionSource::Estimate,
             visualization: Visualization::Altitude,
             show_gizmos: true,
             gradient_lookup,
@@ -359,27 +360,29 @@ impl<'a> Widget for Map<'a> {
 
         if self.state.show_gizmos {
             if let Some(q) = self.orientation {
-                let projector = Projector::new(ui.clip_rect(), &self.state.memory, position);
-                let viewport_pos = projector.project(position);
+                let viewport = ui.clip_rect();
 
-                // We use viewport pixel coordinates for the rendering of the gizmo,
-                // but we need to invert the y axis, since screen coordinates are Y down
-                let model_matrix = q.to_homogeneous()
-                    .append_translation(&Vector3::new(viewport_pos.x, -viewport_pos.y, 0.0))
-                    .into();
-                let projection_matrix = Matrix4::new_orthographic(
-                    ui.clip_rect().left(),
-                    ui.clip_rect().right(),
-                    -ui.clip_rect().bottom(),
-                    -ui.clip_rect().top(),
+                // Fun type conversion bullshit
+                let rotation: mint::Quaternion<f64> = q.cast::<f64>().into();
+                let rotation: transform_gizmo_egui::mint::Quaternion<f64> = rotation.into();
+
+                let view_matrix = DMat4::look_at_rh(DVec3::new(0., 0., 1.), DVec3::ZERO, DVec3::new(0., 1., 0.));
+                let projection_matrix = DMat4::orthographic_rh(
+                    viewport.left() as f64,
+                    viewport.right() as f64,
+                    -viewport.bottom() as f64,
+                    -viewport.top() as f64,
                     0.1,
-                    1000.,
+                    1000.0
                 );
 
-                let camera_pos = Point3::new(0., 0., 1.);
-                let camera_target = Point3::new(0., 0., 0.);
-                let north = Vector3::new(0., 1., 0.);
-                let view_matrix = Matrix4::look_at_rh(&camera_pos, &camera_target, &north);
+                // We use viewport pixel coordinates (obtained from the Map projector)
+                // for the rendering of the gizmo, but we need to invert the y axis,
+                // since screen coordinates are Y down
+                let projector = Projector::new(viewport, &self.state.memory, position);
+                let viewport_pos = projector.project(position);
+                let translation = DVec3::new(viewport_pos.x as f64, -viewport_pos.y as f64, 0.0);
+                let transform = Transform::from_scale_rotation_translation(DVec3::ONE, rotation, translation);
 
                 let visuals = GizmoVisuals {
                     inactive_alpha: 1.0,
@@ -388,14 +391,17 @@ impl<'a> Widget for Map<'a> {
                     ..Default::default()
                 };
 
-                let gizmo = Gizmo::new("map_gizmo")
-                    .mode(GizmoMode::Translate)
-                    .model_matrix(model_matrix)
-                    .view_matrix(view_matrix.into())
-                    .projection_matrix(projection_matrix.into())
-                    .orientation(egui_gizmo::GizmoOrientation::Local)
-                    .visuals(visuals);
-                gizmo.interact(ui);
+                let config = GizmoConfig {
+                    viewport,
+                    view_matrix: view_matrix.into(),
+                    projection_matrix: projection_matrix.into(),
+                    modes: enum_set!(GizmoMode::Translate),
+                    orientation: transform_gizmo_egui::GizmoOrientation::Local,
+                    visuals,
+                    ..Default::default()
+                };
+
+                Gizmo::new(config).interact(ui, &[transform]);
             }
         }
 

@@ -62,7 +62,8 @@ impl egui::Widget for &mut ParachuteSettings {
                 ui.label("☂ Main");
             }
 
-            egui::Grid::new("galadriel_chute")
+            // TODO: ids
+            egui::Grid::new(format!("parachute_{:?}", self.trigger))
                 .num_columns(2)
                 .min_col_width(0.25 * ui.available_width())
                 .spacing([40.0, 4.0])

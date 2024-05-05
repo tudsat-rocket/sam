@@ -9,16 +9,10 @@ use egui::TextEdit;
 use serde::{Deserialize, Serialize};
 use egui::CentralPanel;
 use egui::Color32;
-use egui::Rect;
 use egui::SidePanel;
 use egui::Stroke;
 use egui::Vec2;
-use egui_gizmo::Gizmo;
-use egui_gizmo::GizmoMode;
-use egui_gizmo::GizmoVisuals;
 use egui_tiles::SimplificationOptions;
-use nalgebra::UnitQuaternion;
-use nalgebra::Vector3;
 
 use shared_types::telemetry::FlightMode;
 
@@ -126,80 +120,6 @@ struct TileBehavior<'a> {
     map: &'a mut MapState,
 }
 
-// TODO: move these somewhere else
-impl<'a> TileBehavior<'a> {
-    fn plot_gizmo(
-        &mut self,
-        ui: &mut egui::Ui,
-        viewport: Rect,
-        orientation: UnitQuaternion<f32>,
-        colors: (Color32, Color32, Color32)
-    ) {
-        // We can't disable interaction with the gizmo, so we disable the entire UI
-        // when the user gets too close. TODO: upstream way to disable interaction?
-        let enabled = !ui.rect_contains_pointer(viewport);
-
-        // use top right of plot for indicator, space below for plot
-        let viewport = Rect::from_two_pos(viewport.lerp_inside(Vec2::new(0.55, 0.55)), viewport.right_top());
-
-        let fade_to_color = Color32::BLACK;
-        ui.visuals_mut().widgets.noninteractive.weak_bg_fill = fade_to_color;
-
-        // square viewport
-        let viewport_square_side = f32::min(viewport.width(), viewport.height());
-        let viewport = viewport.shrink2((viewport.size() - Vec2::splat(viewport_square_side))*0.5);
-
-        let view = UnitQuaternion::from_euler_angles(-90.0f32.to_radians(), 180f32.to_radians(), 0.0f32.to_radians());
-
-        let visuals = GizmoVisuals {
-            x_color: colors.0,
-            y_color: colors.1,
-            z_color: colors.2,
-            inactive_alpha: 1.0,
-            highlight_alpha: 1.0,
-            gizmo_size: viewport_square_side * 0.4,
-            ..Default::default()
-        };
-
-        let gizmo = Gizmo::new("My gizmo")
-            .mode(GizmoMode::Translate)
-            .viewport(viewport)
-            .orientation(egui_gizmo::GizmoOrientation::Local)
-            .model_matrix(orientation.to_homogeneous().into())
-            .view_matrix(view.to_homogeneous().into())
-            .visuals(visuals);
-
-        ui.add_enabled_ui(enabled, |ui| {
-            gizmo.interact(ui);
-        });
-    }
-
-    fn plot_orientation(&mut self, ui: &mut egui::Ui) {
-        #[cfg(feature = "profiling")]
-        puffin::profile_function!();
-
-        let mut viewport = ui.cursor();
-        viewport.set_width(ui.available_width());
-        viewport.set_height(ui.available_height());
-
-        let orientation = self.data_source.vehicle_states()
-            .rev()
-            .find_map(|(_, vs)| vs.orientation)
-            .unwrap_or(UnitQuaternion::new(Vector3::new(0.0, 0.0, 0.0)));
-        let true_orientation = self.data_source.vehicle_states()
-            .rev()
-            .find_map(|(_, vs)| vs.sim.as_ref().and_then(|s| s.orientation));
-
-        ui.plot_telemetry(&self.orientation_plot, self.data_source);
-
-        if let Some(orientation) = true_orientation {
-            self.plot_gizmo(ui, viewport, orientation, (R1, G1, B1));
-        }
-
-        self.plot_gizmo(ui, viewport, orientation, (R, G, B));
-    }
-}
-
 impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
     fn tab_title_for_pane(&mut self, pane: &PlotCell) -> egui::WidgetText {
         format!("{}", pane).into()
@@ -207,7 +127,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
 
     fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: egui_tiles::TileId, pane: &mut PlotCell) -> egui_tiles::UiResponse {
         match pane {
-            PlotCell::Orientation    => self.plot_orientation(ui),
+            PlotCell::Orientation    => ui.plot_telemetry(&self.orientation_plot, self.data_source),
             PlotCell::VerticalSpeed  => ui.plot_telemetry(&self.vertical_speed_plot, self.data_source),
             PlotCell::Altitude       => ui.plot_telemetry(&self.altitude_plot, self.data_source),
             PlotCell::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot, self.data_source),

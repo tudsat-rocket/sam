@@ -20,9 +20,9 @@ eframe = { workspace = true }
 egui_plot = { workspace = true }
 egui_extras = { workspace = true }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
-egui_tiles = "0.7.2"
-egui-gizmo = "0.16"
-walkers = "0.20"
+egui_tiles = "0.8.0"
+transform-gizmo-egui = "0.1.0"
+walkers = "0.22"
 # serialization & communication
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -30,6 +30,7 @@ postcard = { workspace = true }
 serialport = "4"
 crc = "2"
 # misc
+mint = { workspace = true }
 nalgebra = { workspace = true }
 chrono = { workspace = true }
 directories = "4.0"

@@ -475,7 +475,7 @@ impl PlotUiExt for egui::Ui {
             shared.attached_to_edge = true;
         }
 
-        shared.process_drag_released(ir.response.drag_released());
+        shared.process_drag_released(ir.response.drag_stopped());
         shared.process_box_dragging(ir.response.dragged_by(PointerButton::Secondary));
     }
 }

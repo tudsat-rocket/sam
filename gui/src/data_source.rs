@@ -215,7 +215,7 @@ pub trait ReplayableDataSource: DataSource {
                 .handle_shape(egui::style::HandleShape::Rect { aspect_ratio: 0.3 })
                 .show_value(false);
             let response = ui.add(slider);
-            if response.drag_released() {
+            if response.drag_stopped() {
                 *self.playback_state_mut() = match self.playback_state() {
                     Some(PlaybackState::Playing(offset)) => {
                         Some(PlaybackState::Playing(offset + (new - current) * total))
