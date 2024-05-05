@@ -62,6 +62,7 @@ pub enum Orientation {
 
 /// Main Settings struct. Stored in flash using postcard (non-COBS) encoding.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct Settings {
     /// unique name for this flight controller
     pub identifier: String,
