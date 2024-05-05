@@ -17,11 +17,11 @@ pub struct SensorSettings {
 impl Default for SensorSettings {
     fn default() -> Self {
         Self {
-            std_dev_gyroscope: 0.07,
+            std_dev_gyroscope: 0.2,
             std_dev_accelerometer1: 0.05,
-            std_dev_accelerometer2: 0.7,
-            std_dev_magnetometer: 0.05,
-            std_dev_barometer: 0.5,
+            std_dev_accelerometer2: 4.0,
+            std_dev_magnetometer: 2.0,
+            std_dev_barometer: 1.0,
         }
     }
 }
