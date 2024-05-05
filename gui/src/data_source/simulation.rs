@@ -323,6 +323,7 @@ pub struct SimulationDataSource {
     // Produced vehicle states that are plotted by GUI
     stored_vehicle_states: Vec<(Instant, VehicleState)>,
     playback: Option<PlaybackState>,
+    playback_speed: usize,
     // Handles for interacting with worker thread
     worker_thread: Option<JoinHandle<()>>,
     state_receiver: Option<Receiver<(Instant, VehicleState)>>,
@@ -412,6 +413,14 @@ impl ReplayableDataSource for SimulationDataSource {
 
     fn playback_state_mut(&mut self) -> &mut Option<PlaybackState> {
         &mut self.playback
+    }
+
+    fn playback_speed(&self) -> usize {
+        self.playback_speed
+    }
+
+    fn playback_speed_mut(&mut self) -> &mut usize {
+        &mut self.playback_speed
     }
 
     fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)> {

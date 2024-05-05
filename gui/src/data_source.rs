@@ -27,6 +27,8 @@ pub use serial::*;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub use simulation::{SimulationDataSource, SimulationSettings};
 
+const PLAYBACK_SPEEDS: [(&'static str, f32); 7] = [("1x", 1.0), ("2x", 2.0), ("5x", 5.0), ("10x", 10.0), ("⅒ x", 0.1), ("⅕ x", 0.2), ("½ x", 0.5)];
+
 /// Trait shared by all data sources.
 #[allow(clippy::result_large_err)]
 pub trait DataSource {
@@ -71,14 +73,33 @@ pub trait DataSource {
 
 #[derive(Debug, Clone)]
 pub enum PlaybackState {
-    Playing(f32),
+    Playing(Instant, f32),
     Paused(Instant),
 }
 
 pub trait ReplayableDataSource: DataSource {
+    // TODO: do this better?
     fn playback_state(&self) -> Option<PlaybackState>;
     fn playback_state_mut(&mut self) -> &mut Option<PlaybackState>;
+    fn playback_speed(&self) -> usize;
+    fn playback_speed_mut(&mut self) -> &mut usize;
     fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)>;
+
+    fn playing(&self) -> bool {
+        // Discriminant means we're just comparing the enum variant, not the actual value.
+        self.playback_state()
+            .map(|pb| std::mem::discriminant(&pb) == std::mem::discriminant(&PlaybackState::Playing(Instant::now(), 123.0)))
+            .unwrap_or(false)
+    }
+
+    fn reached_end(&self) -> bool {
+        let last_state = self.all_vehicle_states().last().map(|(t, _vs)| t).copied();
+        self.end().and_then(|i| last_state.map(|l| i >= l)).unwrap_or(false)
+    }
+
+    fn current_speed(&self) -> f32 {
+        PLAYBACK_SPEEDS[self.playback_speed()].1
+    }
 
     fn update_playback(&mut self, ctx: &egui::Context) {
         let last_state = self.all_vehicle_states().last().map(|(t, _vs)| t).copied();
@@ -88,10 +109,10 @@ pub trait ReplayableDataSource: DataSource {
             *self.playback_state_mut() = last_state.map(|l| PlaybackState::Paused(l));
         }
 
-        if let Some(PlaybackState::Playing(_)) = self.playback_state() {
+        if let Some(PlaybackState::Playing(_, _)) = self.playback_state() {
             ctx.request_repaint_after(Duration::from_millis(16));
 
-            if self.end().and_then(|i| last_state.map(|l| i > l)).unwrap_or(false) {
+            if self.reached_end() {
                 *self.playback_state_mut() = last_state.map(|l| PlaybackState::Paused(l));
             }
         }
@@ -99,12 +120,17 @@ pub trait ReplayableDataSource: DataSource {
 
     fn playback_end(&self) -> Option<Instant> {
         match self.playback_state().as_ref() {
-            Some(PlaybackState::Playing(offset)) => {
-                if *offset < 0.0 {
-                    Some(Instant::now() - Duration::from_secs_f32(offset.abs()))
+            Some(PlaybackState::Playing(playback_start, offset)) => {
+                // in real time
+                let playback_end = if *offset < 0.0 {
+                    Instant::now() - Duration::from_secs_f32(offset.abs())
                 } else {
-                    Some(Instant::now() + Duration::from_secs_f32(offset.abs()))
-                }
+                    Instant::now() + Duration::from_secs_f32(offset.abs())
+                };
+                let rt_duration = playback_end - *playback_start;
+                let played_duration = Duration::from_secs_f32(rt_duration.as_secs_f32() * self.current_speed());
+
+                Some(*playback_start + played_duration)
             },
             Some(PlaybackState::Paused(inst)) => Some(*inst),
             None => None
@@ -113,37 +139,29 @@ pub trait ReplayableDataSource: DataSource {
 
     fn playpause(&mut self) {
         match self.playback_state() {
-            Some(PlaybackState::Playing(offset)) => {
-                let inst = if offset < 0.0 {
-                    Instant::now() - Duration::from_secs_f32(offset.abs())
-                } else {
-                    Instant::now() + Duration::from_secs_f32(offset.abs())
-                };
-                *self.playback_state_mut() = Some(PlaybackState::Paused(inst));
+            Some(PlaybackState::Playing(_, _)) => {
+                *self.playback_state_mut() = self.playback_end()
+                    .map(|inst| PlaybackState::Paused(inst));
             },
-            Some(PlaybackState::Paused(inst)) => {
+            Some(PlaybackState::Paused(mut inst)) => {
+                // we're at the end, restart when pressing play again
+                if self.reached_end() {
+                    inst = self.all_vehicle_states().first().map(|(t, _vs)| *t).unwrap_or(inst);
+                }
+
                 let offset = if inst > Instant::now() {
                     (inst - Instant::now()).as_secs_f32()
                 } else {
                     -1.0 * (Instant::now() - inst).as_secs_f32()
                 };
-                *self.playback_state_mut() = Some(PlaybackState::Playing(offset));
+                *self.playback_state_mut() = Some(PlaybackState::Playing(inst, offset));
             },
             None => {}
         }
     }
 
     fn skip_to_next_flightmode(&mut self, reverse: bool) {
-        let Some(playback) = &self.playback_state() else {
-            return;
-        };
-
-        // Discriminant means we're just comparing the enum variant, not the actual value.
-        let playing = std::mem::discriminant(playback) == std::mem::discriminant(&PlaybackState::Playing(123.0));
-
-        let Some(fm) = self.vehicle_states().rev().find_map(|(_t, vs)| vs.mode) else {
-            return;
-        };
+        let fm = self.vehicle_states().rev().find_map(|(_t, vs)| vs.mode);
 
         let Some(end) = self.end() else {
             return;
@@ -155,18 +173,19 @@ pub trait ReplayableDataSource: DataSource {
             self.all_vehicle_states()[..i]
                 .iter()
                 .rev()
-                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
+                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != fm)
                 .map(|(t, _)| t)
                 .next()
         } else {
             self.all_vehicle_states()[i..]
                 .iter()
-                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != Some(fm))
+                .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != fm)
                 .map(|(t, _)| t)
                 .next()
         };
 
         if let Some(inst) = next_flightmode {
+            let playing = self.playing();
             *self.playback_state_mut() = Some(PlaybackState::Paused(*inst));
             if playing {
                 self.playpause();
@@ -188,10 +207,26 @@ pub trait ReplayableDataSource: DataSource {
         if ui.button("⏪").clicked() {
             self.skip_to_next_flightmode(true);
         }
-        let label = if let Some(PlaybackState::Playing(_)) = self.playback_state() { "⏸" } else { "⏵" };
+
+        let label = if self.playing() { "⏸" } else { "⏵" };
         if ui.button(label).clicked() {
             self.playpause();
         }
+
+        let current_speed = PLAYBACK_SPEEDS[self.playback_speed()];
+        let speed_response = ui.button(current_speed.0);
+        if speed_response.clicked() || speed_response.secondary_clicked() {
+            // we reset the playback origin so we only modify the speed for the
+            // stuff that hasn't been played yet.
+            self.playpause();
+            self.playpause();
+            if speed_response.clicked() {
+                *self.playback_speed_mut() = (self.playback_speed() + 1) % PLAYBACK_SPEEDS.len();
+            } else {
+                *self.playback_speed_mut() = (self.playback_speed() + PLAYBACK_SPEEDS.len() - 1) % PLAYBACK_SPEEDS.len();
+            }
+        }
+
         if ui.button("⏩").clicked() {
             self.skip_to_next_flightmode(false);
         }
@@ -217,8 +252,8 @@ pub trait ReplayableDataSource: DataSource {
             let response = ui.add(slider);
             if response.drag_stopped() {
                 *self.playback_state_mut() = match self.playback_state() {
-                    Some(PlaybackState::Playing(offset)) => {
-                        Some(PlaybackState::Playing(offset + (new - current) * total))
+                    Some(PlaybackState::Playing(origin, offset)) => {
+                        Some(PlaybackState::Playing(origin, offset + (new - current) * total / self.current_speed()))
                     },
                     Some(PlaybackState::Paused(_)) => {
                         Some(PlaybackState::Paused(first + Duration::from_secs_f32(total * new)))

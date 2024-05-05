@@ -27,6 +27,7 @@ pub struct LogFileDataSource {
     is_json: bool,
     vehicle_states: Vec<(Instant, VehicleState)>,
     playback: Option<PlaybackState>,
+    playback_speed: usize,
 }
 
 impl LogFileDataSource {
@@ -41,6 +42,7 @@ impl LogFileDataSource {
             is_json,
             vehicle_states: Vec::new(),
             playback: None,
+            playback_speed: 0,
         })
     }
 
@@ -56,6 +58,7 @@ impl LogFileDataSource {
             is_json,
             vehicle_states: Vec::new(),
             playback: None,
+            playback_speed: 0,
         }
     }
 }
@@ -158,6 +161,14 @@ impl ReplayableDataSource for LogFileDataSource {
 
     fn playback_state_mut(&mut self) -> &mut Option<PlaybackState> {
         &mut self.playback
+    }
+
+    fn playback_speed(&self) -> usize {
+        self.playback_speed
+    }
+
+    fn playback_speed_mut(&mut self) -> &mut usize {
+        &mut self.playback_speed
     }
 
     fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)> {
