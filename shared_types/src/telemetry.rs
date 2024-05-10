@@ -145,6 +145,22 @@ impl From<u8> for GPSFixType {
     }
 }
 
+impl TryFrom<&str> for GPSFixType {
+    type Error = ();
+
+    fn try_from(x: &str) -> Result<Self, Self::Error> {
+        match x {
+            "0" => Ok(GPSFixType::NoFix),
+            "1" => Ok(GPSFixType::AutonomousFix),
+            "2" => Ok(GPSFixType::DifferentialFix),
+            "4" => Ok(GPSFixType::RTKFix),
+            "5" => Ok(GPSFixType::RTKFloat),
+            "6" => Ok(GPSFixType::DeadReckoningFix),
+            _ => Err(()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub enum TransmitPower {
     #[default]

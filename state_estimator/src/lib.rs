@@ -1,3 +1,5 @@
+#![cfg_attr(target_os="none", no_std)] // this is imported by the firmware, so no standard library
+
 #[cfg(target_os="none")]
 use core::num::Wrapping;
 #[cfg(not(target_os="none"))]
@@ -39,7 +41,7 @@ pub struct StateEstimator {
     /// altitude (ASL) at ground level, to allow calculating AGL altitude. locked in when armed.
     pub altitude_ground: f32,
     /// apogee (ASL)
-    altitude_max: f32,
+    pub altitude_max: f32,
     /// GPS origin (lat, lng)
     // TODO: move altitude_ground into here?
     gps_origin: Option<Vector3<f32>>,
