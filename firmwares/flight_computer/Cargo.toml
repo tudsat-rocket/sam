@@ -15,14 +15,14 @@ harness = false
 harness = false
 
 [dependencies]
+shared_types = { path = "../sam/shared_types" }
+state_estimator = { path = "../sam/state_estimator" }
 static_cell = { version = "1.1", features = ["nightly"] }
 num-traits = { version = "0.2.15", default-features = false }
 serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
 postcard = "1.0"
 crc = "3"
-ahrs = { git = "https://github.com/KoffeinFlummi/ahrs-rs", default-features = false }
-nalgebra = { version = "0.31", default-features = false, features = ["alloc", "serde-serialize-no-std", "macros"] }
-filter = { git = "https://github.com/KoffeinFlummi/filter-rs" }
+nalgebra = { version = "0.32", default-features = false, features = ["alloc", "serde-serialize-no-std", "macros"] }
 siphasher = { version = "0.3", default-features = false }
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
@@ -64,7 +64,7 @@ debug = "full"
 debug-assertions = false
 incremental = false
 lto = "fat"
-opt-level = 3
+opt-level = 2
 overflow-checks = false
 
 # cargo build/run --release
@@ -74,5 +74,5 @@ debug = "full"
 debug-assertions = false
 incremental = false
 lto = "fat"
-opt-level = 3
+opt-level = 2
 overflow-checks = false

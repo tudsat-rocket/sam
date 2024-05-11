@@ -9,7 +9,8 @@ use embassy_stm32::pac::gpio::vals;
 
 use num_traits::Float;
 
-use crate::telemetry::FlightMode;
+use shared_types::*;
+
 use Semitone::*;
 
 #[allow(dead_code)]

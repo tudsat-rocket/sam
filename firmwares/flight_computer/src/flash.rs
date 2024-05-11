@@ -23,9 +23,9 @@ use static_cell::make_static;
 
 use defmt::*;
 
+use shared_types::*;
+
 use crate::drivers::flash::W25Q;
-use crate::settings::*;
-use crate::telemetry::*;
 use crate::usb::FlashUsbHandle;
 
 const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);

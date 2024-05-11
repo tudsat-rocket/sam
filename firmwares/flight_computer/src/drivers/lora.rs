@@ -13,8 +13,9 @@ use embassy_time::{Duration, Timer};
 
 use defmt::*;
 
+use shared_types::*;
+
 use crate::lora::RadioError;
-use crate::telemetry::TransmitPower;
 
 // both RX and TX get half of the available 256 bytes
 const TX_BASE_ADDRESS: u8 = 0;

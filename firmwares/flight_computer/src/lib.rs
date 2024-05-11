@@ -6,10 +6,6 @@
 #[cfg(target_os = "none")]
 extern crate alloc;
 
-pub mod telemetry;
-pub mod settings;
-pub mod state_estimation;
-
 #[cfg(target_os = "none")]
 use defmt_rtt as _; // global logger (TODO)
 

@@ -36,9 +36,6 @@ mod can;
 mod drivers;
 mod flash;
 mod lora;
-mod settings;
-mod state_estimation;
-mod telemetry;
 mod usb;
 
 #[cfg(not(feature="gcs"))]
@@ -224,10 +221,6 @@ async fn main(_low_priority_spawner: Spawner) {
 
     #[cfg(feature="gcs")]
     high_priority_spawner.spawn(crate::gcs::run(gcs, iwdg)).unwrap();
-
-    loop {
-        Timer::after(Duration::from_micros(1)).await;
-    }
 }
 
 #[interrupt]

@@ -14,7 +14,7 @@ use static_cell::make_static;
 
 use defmt::*;
 
-use crate::telemetry::*;
+use shared_types::*;
 
 bind_interrupts!(struct Irqs {
     USART2 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART2>;
@@ -25,22 +25,6 @@ const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
 //const MEASUREMENT_RATE_MS: u16 = 100;
 
-impl TryFrom<&str> for GPSFixType {
-    type Error = ();
-
-    fn try_from(x: &str) -> Result<Self, Self::Error> {
-        match x {
-            "0" => Ok(GPSFixType::NoFix),
-            "1" => Ok(GPSFixType::AutonomousFix),
-            "2" => Ok(GPSFixType::DifferentialFix),
-            "4" => Ok(GPSFixType::RTKFix),
-            "5" => Ok(GPSFixType::RTKFloat),
-            "6" => Ok(GPSFixType::DeadReckoningFix),
-            _ => Err(()),
-        }
-    }
-}
-
 pub struct GPS {
     uart: Uart<'static, USART2, DMA1_CH6, DMA1_CH5>,
     sender: Sender<'static, CriticalSectionRawMutex, GPSDatum, 5>,
@@ -49,6 +33,7 @@ pub struct GPS {
 pub struct GPSHandle {
     receiver: Receiver<'static, CriticalSectionRawMutex, GPSDatum, 5>,
     last_datum: Option<(GPSDatum, Instant)>,
+    new_datum: bool,
 }
 
 #[embassy_executor::task]
@@ -78,7 +63,8 @@ impl GPS {
 
         let handle = GPSHandle {
             receiver: channel.receiver(),
-            last_datum: None
+            last_datum: None,
+            new_datum: false,
         };
 
         (gps, handle)
@@ -234,6 +220,7 @@ impl GPSHandle {
     fn check_for_new_values(&mut self) {
         while let Ok(datum) = self.receiver.try_receive() {
             self.last_datum = Some((datum, Instant::now()));
+            self.new_datum = true;
         }
 
         // we discard our last value after 200ms to avoid reporting stale values
@@ -248,7 +235,15 @@ impl GPSHandle {
 
     pub fn datum(&mut self) -> Option<GPSDatum> {
         self.check_for_new_values();
-        self.last_datum
+        self.last_datum.as_ref().map(|(datum, _t)| datum.clone())
+    }
+
+    // Return the current datum only if it has been received since this was
+    // called last.
+    pub fn new_datum(&mut self) -> Option<GPSDatum> {
+        let d = self.new_datum.then_some(self.datum()).flatten();
+        self.new_datum = false;
+        d
     }
 
     pub fn latitude(&mut self) -> Option<f32> {

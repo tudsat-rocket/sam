@@ -4,8 +4,8 @@ version = 3
 
 [[package]]
 name = "ahrs"
-version = "0.5.0"
-source = "git+https://github.com/KoffeinFlummi/ahrs-rs#fefedda6fc761eca27b76ace5bc48f5fd35be692"
+version = "0.6.0"
+source = "git+https://github.com/tudsat-rocket/ahrs-rs?branch=sensor-gains#d48bf7a2ceaae8c18a0ea075644d9626a99e7e2a"
 dependencies = [
  "nalgebra",
  "num-traits",
@@ -468,24 +468,24 @@ checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
 
 [[package]]
 name = "embedded-io-async"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de03527d6fb488b2d7c7a4dc81dfb6a657efe264256bfc70bb899746821666b1"
+checksum = "3ff09972d4073aa8c299395be75161d582e7629cd663171d62af73c8d50dba3f"
 dependencies = [
  "embedded-io",
 ]
 
 [[package]]
 name = "embedded-storage"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "156d7a2fdd98ebbf9ae579cbceca3058cff946e13f8e17b90e3511db0508c723"
+checksum = "a21dea9854beb860f3062d10228ce9b976da520a73474aed3171ec276bc0c032"
 
 [[package]]
 name = "embedded-storage-async"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "052997a894670d0cde873faa7405bc98e2fd29f569d2acd568561bc1c396b35a"
+checksum = "1763775e2323b7d5f0aa6090657f5e21cfa02ede71f5dc40eead06d64dcd15cc"
 dependencies = [
  "embedded-storage",
 ]
@@ -499,7 +499,7 @@ checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 [[package]]
 name = "filter"
 version = "0.2.1-dev"
-source = "git+https://github.com/KoffeinFlummi/filter-rs#5945c79426c9a16767929eb15a33efa4e51a4a39"
+source = "git+https://github.com/tudsat-rocket/filter-rs#ca82f1271d8c44d67d6b6420c9fdf423006364a2"
 dependencies = [
  "nalgebra",
  "num-traits",
@@ -634,9 +634,9 @@ checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "libm"
-version = "0.2.6"
+version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "348108ab3fba42ec82ff6e9564fc4ca0247bdccdc68dd8af9764bbc79c3c8ffb"
+checksum = "4ec2a862134d2a7d32d7983ddcdd1c4923530833c9f2ea1a44fc5fa473989058"
 
 [[package]]
 name = "linked_list_allocator"
@@ -661,10 +661,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mint"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e53debba6bda7a793e5f99b8dacf19e626084f525f7829104ba9898f367d85ff"
+
+[[package]]
 name = "mithril"
 version = "0.1.0"
 dependencies = [
- "ahrs",
  "alloc-cortex-m",
  "cortex-m",
  "cortex-m-rt",
@@ -681,7 +686,6 @@ dependencies = [
  "embassy-usb",
  "embedded-hal 1.0.0-rc.1",
  "embedded-hal-async",
- "filter",
  "nalgebra",
  "num-traits",
  "panic-probe",
@@ -689,17 +693,20 @@ dependencies = [
  "rand",
  "rand_chacha",
  "serde",
+ "shared_types",
  "siphasher",
+ "state_estimator",
  "static_cell",
 ]
 
 [[package]]
 name = "nalgebra"
-version = "0.31.4"
+version = "0.32.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20bd243ab3dbb395b39ee730402d2e5405e448c75133ec49cc977762c4cba3d1"
+checksum = "3ea4908d4f23254adda3daa60ffef0f1ac7b8c3e9a864cf3cc154b251908a2ef"
 dependencies = [
  "approx",
+ "mint",
  "nalgebra-macros",
  "num-complex",
  "num-rational",
@@ -711,9 +718,9 @@ dependencies = [
 
 [[package]]
 name = "nalgebra-macros"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "01fcc0b8149b4632adc89ac3b7b31a12fb6099a0317a4eb2ebff574ef7de7218"
+checksum = "91761aed67d03ad966ef783ae962ef9bbaca728d2dd7ceb7939ec110fffad998"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -968,10 +975,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "shared_types"
+version = "0.1.0"
+dependencies = [
+ "nalgebra",
+ "postcard",
+ "serde",
+ "siphasher",
+]
+
+[[package]]
 name = "simba"
-version = "0.7.3"
+version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f3fd720c48c53cace224ae62bef1bbff363a70c68c4802a78b5cc6159618176"
+checksum = "061507c94fc6ab4ba1c9a0305018408e312e17c041eb63bef8aa726fa33aceae"
 dependencies = [
  "approx",
  "libm",
@@ -1010,6 +1027,16 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "state_estimator"
+version = "0.1.0"
+dependencies = [
+ "ahrs",
+ "filter",
+ "nalgebra",
+ "shared_types",
+]
 
 [[package]]
 name = "static_cell"

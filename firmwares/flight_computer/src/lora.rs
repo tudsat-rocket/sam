@@ -13,9 +13,9 @@ use siphasher::sip::SipHasher;
 
 use defmt::*;
 
+use shared_types::*;
+
 use crate::drivers::lora::*;
-use crate::settings::LoRaSettings;
-use crate::telemetry::*;
 
 // The available channels for telemetry, assuming a 500kHz band width.
 const CHANNELS: [u32; 14] = [

@@ -14,13 +14,13 @@ use embassy_time::{Ticker, Duration};
 
 use defmt::*;
 
+use state_estimator::StateEstimator;
+use shared_types::*;
+
 use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::can::*;
 use crate::drivers::sensors::*;
 use crate::lora::*;
-use crate::settings::*;
-use crate::state_estimation::StateEstimator;
-use crate::telemetry::*;
 use crate::flash::*;
 use crate::usb::*;
 
@@ -98,12 +98,7 @@ impl Into<VehicleState> for &mut Vehicle {
             cpu_utilization: Some(self.loop_runtime_history.iter().sum::<f32>() / self.loop_runtime_history.len() as f32),
             flash_pointer: Some(self.flash.pointer),
 
-            gps_fix: self.gps.fix(),
-            hdop: self.gps.hdop(),
-            num_satellites: self.gps.num_satellites(),
-            latitude: self.gps.latitude(),
-            longitude: self.gps.longitude(),
-            altitude_gps_asl: self.gps.altitude(),
+            gps: self.gps.datum(),
 
             ..Default::default()
 
@@ -185,8 +180,6 @@ impl Vehicle {
         self.baro.tick().await;
         self.power.tick();
 
-        //self.gps.tick(self.time, &self.clocks);
-
         // Handle incoming CAN messages
         if let Some((id, msg)) = self.can.receive() {
             match id {
@@ -205,7 +198,8 @@ impl Vehicle {
             self.imu.accelerometer(),
             self.acc.accelerometer(),
             self.mag.magnetometer(),
-            self.baro.altitude()
+            self.baro.altitude(),
+            self.gps.new_datum(),
         );
 
         // Switch to new mode if necessary

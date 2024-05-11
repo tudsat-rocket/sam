@@ -14,7 +14,7 @@ use embassy_futures::select::{select, Either};
 
 use static_cell::make_static;
 
-use crate::telemetry::{DownlinkMessage, Transmit, UplinkMessage};
+use shared_types::*;
 
 bind_interrupts!(struct Irqs {
     OTG_FS => embassy_stm32::usb_otg::InterruptHandler<USB_OTG_FS>;
