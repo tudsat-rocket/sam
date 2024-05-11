@@ -24,6 +24,8 @@ pub struct StateEstimator {
     mode: FlightMode,
     /// time current flight mode was entered
     mode_time: Wrapping<u32>,
+    /// time current flight mode was entered
+    takeoff_time: Wrapping<u32>,
     /// time since which flight mode logic condition has been true TODO: refactor
     condition_true_since: Option<Wrapping<u32>>,
     /// settings
@@ -125,6 +127,7 @@ impl StateEstimator {
             time: Wrapping(0),
             mode: Idle,
             mode_time: Wrapping(0),
+            takeoff_time: Wrapping(0),
             condition_true_since: None,
             settings,
             ahrs,
@@ -183,6 +186,10 @@ impl StateEstimator {
     ) {
         self.time = time;
         if mode != self.mode {
+            if mode == FlightMode::Burn {
+                self.takeoff_time = self.time;
+            }
+
             self.mode = mode;
             self.mode_time = self.time;
             self.condition_true_since = None;
@@ -229,7 +236,6 @@ impl StateEstimator {
 
         // Set the barometer variance depending on the current situation.
         // In the trans-/supersonic region, barometer readings become unreliable.
-        // TODO: make this more refined than simply mode-based?
         let mach = (self.mode == FlightMode::Burn || self.mode == FlightMode::Coast)
             .then_some(self.mach())
             .unwrap_or(0.0);
@@ -354,6 +360,10 @@ impl StateEstimator {
         self.velocity().magnitude() / 343.2
     }
 
+    pub fn time_since_takeoff(&self) -> u32 {
+        (self.time - self.takeoff_time).0
+    }
+
     pub fn time_in_mode(&self) -> u32 {
         (self.time - self.mode_time).0
     }
@@ -363,8 +373,10 @@ impl StateEstimator {
     /// flight will take place.. Generally, all conditions have to be true for a given
     /// amount of time to avoid spurious decisions in case of weird sensor spikes/glitches.
     pub fn new_mode(&mut self, arm_voltage: u16, breakwire_open: Option<bool>) -> Option<FlightMode> {
+        let t_since_takeoff = self.time_since_takeoff();
+        let t_in_mode = self.time_in_mode();
+
         let vertical_accel_vehicle_space = self.acceleration.map(|acc| acc.z).unwrap_or(0.0);
-        let elapsed = self.time_in_mode();
         let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
 
         let gravity_present = self.acceleration
@@ -395,34 +407,34 @@ impl StateEstimator {
             FlightMode::Burn => {
                 // TODO: acceleration
                 let burnout = self.true_since(vertical_accel_vehicle_space < 0.0, self.settings.min_takeoff_acc_time);
-                let min_exceeded = elapsed > self.settings.min_time_to_apogee;
+                let min_exceeded = t_since_takeoff > self.settings.min_time_to_apogee;
                 (burnout || min_exceeded).then(|| FlightMode::Coast)
             }
             // Deployment of drogue parachute, i.e. apogee detection
             FlightMode::Coast => {
                 let falling = self.true_since(self.vertical_speed() < 0.0, self.settings.apogee_min_falling_time);
-                let min_exceeded = elapsed > self.settings.min_time_to_apogee;
-                let max_exceeded = elapsed > self.settings.max_time_to_apogee;
+                let min_exceeded = t_since_takeoff > self.settings.min_time_to_apogee;
+                let max_exceeded = t_since_takeoff > self.settings.max_time_to_apogee;
                 ((min_exceeded && falling) || max_exceeded).then(|| FlightMode::RecoveryDrogue)
             }
             // Main parachute deployment, if required
             FlightMode::RecoveryDrogue => match self.settings.main_output_mode {
-                MainOutputMode::AtApogee => (elapsed > recovery_duration).then(|| FlightMode::RecoveryMain),
+                MainOutputMode::AtApogee => (t_in_mode > recovery_duration).then(|| FlightMode::RecoveryMain),
                 MainOutputMode::BelowAltitude => {
                     let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
                     let below_alt = self.true_since(condition, 100);
                     let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
-                    (elapsed > min_time && below_alt).then(|| FlightMode::RecoveryMain)
+                    (t_in_mode > min_time && below_alt).then(|| FlightMode::RecoveryMain)
                 },
                 MainOutputMode::Never => {
                     let landed = self.true_since(condition_landed, 1000);
-                    (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
+                    (t_in_mode > recovery_duration && landed).then(|| FlightMode::Landed)
                 },
             },
             // Landing detection
             FlightMode::RecoveryMain => {
                 let landed = self.true_since(condition_landed, 1000);
-                (elapsed > recovery_duration && landed).then(|| FlightMode::Landed)
+                (t_in_mode > recovery_duration && landed).then(|| FlightMode::Landed)
             },
             // Once in the Landed mode, the vehicle will not do anything by itself
             FlightMode::Landed => None
