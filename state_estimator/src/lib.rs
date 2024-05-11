@@ -54,8 +54,7 @@ pub struct StateEstimator {
 
 impl StateEstimator {
     pub fn new(main_loop_freq_hertz: f32, settings: Settings) -> Self {
-        let quat = UnitQuaternion::new_unchecked(Quaternion::new(1., 0., 0., 0.));
-        Self::new_with_quat(main_loop_freq_hertz, settings, quat)
+        Self::new_with_quat(main_loop_freq_hertz, settings, UnitQuaternion::default())
     }
 
     pub fn new_with_quat(

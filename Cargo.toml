@@ -25,7 +25,7 @@ log = "0.4"
 env_logger = "0.10"
 # Math
 mint = "0.5.9"
-nalgebra = { version = "0.32", default-features = false, features = ["alloc", "libm", "macros", "mint", "serde-serialize-no-std"] }
+nalgebra = { version = "0.32", default-features = false, features = ["alloc", "macros", "mint", "serde-serialize-no-std"] }
 # egui & friends
 egui = { version = "0.27", default-features = false }
 egui-wgpu = { version = "0.27", features = [ "winit" ] }
