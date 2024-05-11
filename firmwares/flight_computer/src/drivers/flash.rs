@@ -21,15 +21,15 @@ impl<SPI: SpiDevice> W25Q<SPI> {
         let ids = w25.command(W25OpCode::JedecId, &[], 3).await?;
         let (man_id, dev_id) = (ids[0], u16::from_le_bytes([ids[2], ids[1]]));
         let (name, size_mbit) = match (man_id, dev_id) {
-            (0xef, 0x4019) => ("Winbond W25Q256JV-IQ", 256),
-            (0xef, 0x7019) => ("Winbond W25Q256JV-IM", 256),
+            (0xef, 0x4019) => ("W25Q256JV-IQ", 256),
+            (0xef, 0x7019) => ("W25Q256JV-IM", 256),
             _ => ("unknown", 0),
         };
 
         if size_mbit > 0 {
-            info!("Initialized flash ({}, {}Mb, 0x{:02x}, 0x{:04x}).", name, size_mbit, man_id, dev_id);
+            info!("{} initialized", name);
         } else {
-            error!("Failed to connect to flash (0x{:02x}, 0x{:04x}).", man_id, dev_id);
+            error!("Failed to initialize flash (0x{:02x}, 0x{:04x}).", man_id, dev_id);
         }
 
         w25.size = size_mbit * 1024 * 1024 / 8;

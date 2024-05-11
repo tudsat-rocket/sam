@@ -11,8 +11,20 @@ pub struct MCP2517FD<SPI> {
     fifo_index: u32,
 }
 
+#[derive(Debug)]
+pub enum MCP2517Error<SpiError> {
+    Initialization,
+    Spi(SpiError),
+}
+
+impl<SpiError> From<SpiError> for MCP2517Error<SpiError> {
+    fn from(e: SpiError) -> Self {
+        MCP2517Error::Spi(e)
+    }
+}
+
 impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
-    pub async fn init(spi: SPI) -> Result<Self, SPI::Error> {
+    pub async fn init(spi: SPI) -> Result<Self, MCP2517Error<SPI::Error>> {
         let mut mcp = Self {
             spi,
             fifo_index: 0,
@@ -31,8 +43,8 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         }
 
         if (c1con >> 21) & 0b111 != 0b100 {
-            error!("Failed to transition CAN controller to configuration mode.");
-            // TODO: return error
+            error!("Failed to initialize MCP2517FD");
+            return Err(MCP2517Error::Initialization);
         }
 
         // Configure 125000 bitrate
@@ -60,7 +72,7 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
             }
         }
 
-        info!("MCP2517FD initalized.");
+        info!("MCP2517FD initalized");
 
         Ok(mcp)
     }

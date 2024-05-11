@@ -30,9 +30,9 @@ impl<SPI: SpiDevice<u8>> LIS3MDL<SPI> {
         lis3.write_u8(LIS3MDLRegister::CtrlReg3, 0b0000_0000).await?;
 
         if whoami != 0x3d {
-            error!("Failed to connect to LIS3MDL (0x{:02x} != 0x3d).", whoami);
+            error!("Failed to initialize LIS3MDL (0x{:02x} != 0x3d)", whoami);
         } else {
-            info!("LIS3MDL initialized.");
+            info!("LIS3MDL initialized");
         }
 
         Ok(lis3)
@@ -79,9 +79,8 @@ impl<SPI: SpiDevice<u8>> LIS3MDL<SPI> {
     }
 
     pub async fn tick(&mut self) {
-        if let Err(e) = self.read_sensor_data().await {
+        if let Err(_e) = self.read_sensor_data().await {
             self.mag = None;
-            error!("Failed to read compass data: {:?}", Debug2Format(&e));
         }
     }
 

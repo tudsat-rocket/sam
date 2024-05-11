@@ -24,11 +24,10 @@ use embassy_stm32::{interrupt, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer, Delay};
+use embassy_time::Delay;
 
 use static_cell::StaticCell;
 
-use defmt::*;
 use {defmt_rtt as _, panic_probe as _};
 
 mod buzzer;
@@ -101,7 +100,6 @@ async fn main(_low_priority_spawner: Spawner) {
 
     // Initialize heap
     unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
-    info!("Heap initialized.");
 
     let (usb, usb_flash) = UsbHandle::init(p.USB_OTG_FS, p.PA12, p.PA11).await;
 
@@ -148,9 +146,6 @@ async fn main(_low_priority_spawner: Spawner) {
 
     let spi3_cs_flash = Output::new(p.PD2, Level::High, Speed::VeryHigh);
     let (flash, flash_handle, settings) = Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
-
-    #[cfg(not(feature="gcs"))]
-    info!("Loaded Settings: {:#?}", Debug2Format(&settings));
 
     // Initialize GPS
     let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);

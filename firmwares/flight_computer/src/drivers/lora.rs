@@ -11,8 +11,6 @@ use embedded_hal_async::spi::SpiDevice;
 
 use embassy_time::{Duration, Timer};
 
-use defmt::*;
-
 use shared_types::*;
 
 use crate::lora::RadioError;
@@ -288,7 +286,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
 
     pub async fn send(&mut self, msg: &[u8]) -> Result<(), RadioError<SPI::Error>> {
         if msg.len() > TX_PACKET_SIZE as usize {
-            error!("message exceeds PACKET_SIZE");
+            //error!("message exceeds PACKET_SIZE");
             return Ok(());
         }
 
@@ -297,7 +295,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
         // This should be changed if we change bandwidths.
         let reg = self.read_register(0x0889).await?;
         if reg & 0xfb != reg {
-            info!("Applying LLCC68 mod quality workaround.");
+            //info!("Applying LLCC68 mod quality workaround.");
             self.write_register(0x0889, reg & 0xfb).await?;
         }
 

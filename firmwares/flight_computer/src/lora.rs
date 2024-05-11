@@ -155,7 +155,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
         self.channels = settings.channels;
         self.binding_phrase = settings.binding_phrase.clone();
         self.sequence = self.generate_sequence(settings.channels, &settings.binding_phrase);
-        info!("Generated sequence {:?} using phrase {:?}", self.sequence, Debug2Format(&self.binding_phrase));
+        //info!("Generated sequence {:?} using phrase {:?}", self.sequence, Debug2Format(&self.binding_phrase));
     }
 
     async fn switch_to_next_frequency(&mut self) -> Result<(), RadioError<SPI::Error>> {
@@ -237,7 +237,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
 
         let deserialized = postcard::from_bytes_cobs(serialized).ok();
         if deserialized.is_none() {
-            error!("{}: Failed to decode message: {}", self.time, &buffer[1..]);
+            error!("Failed to decode message: {}", &buffer[1..]);
         }
 
         Ok(deserialized)
@@ -294,14 +294,8 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
                     self.last_message_received = self.time;
 
                     match msg {
-                        UplinkMessage::Heartbeat => None,
-                        UplinkMessage::Command(cmd) => {
-                            Some(cmd)
-                        },
-                        msg => {
-                            warn!("Unsupported message type via LoRa: {:?}", Debug2Format(&msg));
-                            None
-                        }
+                        UplinkMessage::Command(cmd) => Some(cmd),
+                        _ => None
                     }
                 },
                 Ok(None) => None,
@@ -333,7 +327,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
         // When not in contact with the FC we do a slow sweep across channels.
         if !in_contact && self.time % 1000 == 0 {
             let i = (self.time as usize / 1000) % CHANNELS.len();
-            info!("Sweeping, switching to {}MHz.", (CHANNELS[i] as f32) / 1_000_000.0);
+            info!("Sweeping, switching to {}kHz.", CHANNELS[i] / 1_000);
             if let Err(e) = self.trx.set_frequency(CHANNELS[i]).await {
                 error!("Failed to switch frequencies: {:?}", Debug2Format(&e));
             }

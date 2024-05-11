@@ -31,9 +31,9 @@ impl<SPI: SpiDevice<u8>> H3LIS331DL<SPI> {
         h3lis.write_u8(H3LIS331DLRegister::CtrlReg4, 0b0001_0000).await?;
 
         if whoami != 0x32 {
-            error!("Failed to connect to H3LIS331DL (0x{:02x} != 0x32).", whoami);
+            error!("Failed to initialize H3LIS331DL (0x{:02x} != 0x32)", whoami);
         } else {
-            info!("H3LIS331DL initialized.");
+            info!("H3LIS331DL initialized");
         }
 
         Ok(h3lis)
@@ -68,9 +68,8 @@ impl<SPI: SpiDevice<u8>> H3LIS331DL<SPI> {
     }
 
     pub async fn tick(&mut self) {
-        if let Err(e) = self.read_sensor_data().await {
+        if let Err(_e) = self.read_sensor_data().await {
             self.acc = None;
-            error!("Failed to read backup-up acc. data: {:?}", Debug2Format(&e));
         }
     }
 

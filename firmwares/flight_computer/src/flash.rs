@@ -130,8 +130,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
         let settings = loop {
             match flash.read_settings().await {
                 Ok(settings) => break settings,
-                Err(e) if retries > 0 => {
-                    error!("Failed to read settings from flash ({:?}), retrying {} more times...", Debug2Format(&e), retries);
+                Err(_e) if retries > 0 => {
                     retries -= 1;
                 }
                 Err(e) => {
@@ -162,8 +161,6 @@ impl<SPI: SpiDevice> Flash<SPI> {
         }
 
         self.pointer = u32::max(b, FLASH_HEADER_SIZE);
-        info!("Determined Flash pointer: {:?}", self.pointer);
-
         Ok(())
     }
 
@@ -197,7 +194,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
     pub async fn write_message(&mut self, msg: DownlinkMessage) -> Result<(), FlashError<SPI::Error>> {
         let serialized = msg.serialize().unwrap_or_default();
         if serialized.len() > 2 * PAGE_SIZE - self.write_buffer.len() {
-            error!("Flash message too big.");
+            //error!("Flash message too big.");
             return Ok(());
         }
 
@@ -275,8 +272,6 @@ impl<SPI: SpiDevice> Flash<SPI> {
         self.update_pointer(self.driver.size() - SECTOR_SIZE);
 
         loop {
-            debug!("{:?}", self.pointer);
-
             if self.pointer == FLASH_HEADER_SIZE {
                 info!("Flash erase done, reinitializing.");
                 self.write_buffer.truncate(0);
@@ -284,7 +279,6 @@ impl<SPI: SpiDevice> Flash<SPI> {
             }
 
             if self.driver.is_busy().await {
-                debug!("busy");
                 continue;
             }
 
@@ -317,7 +311,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
             match request {
                 FlashRequest::WriteMessage(msg) => {
                     if let Err(e) = self.write_message(msg).await {
-                        error!("Failed to write message to flash ({:?}), discarding.", Debug2Format(&e));
+                        error!("Failed to write flash msg: {:?}", Debug2Format(&e));
                     }
                 },
                 FlashRequest::WriteSettings(settings) => {
@@ -341,7 +335,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
                             }
                         },
                         Err(e) => {
-                            error!("Error reading from flash: {:?}", Debug2Format(&e));
+                            error!("Failed to read flash: {:?}", Debug2Format(&e));
                         }
                     }
                 },

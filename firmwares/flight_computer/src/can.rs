@@ -15,7 +15,7 @@ use static_cell::make_static;
 
 use defmt::*;
 
-use crate::drivers::can::MCP2517FD;
+use crate::drivers::can::{MCP2517FD, MCP2517Error};
 
 pub struct Can<SPI> {
     driver: MCP2517FD<SPI>,
@@ -43,7 +43,7 @@ impl CanHandle {
 }
 
 impl<SPI: SpiDevice<u8>> Can<SPI> {
-    pub async fn init(spi: SPI) -> Result<(Can<SPI>, CanHandle), SPI::Error> {
+    pub async fn init(spi: SPI) -> Result<(Can<SPI>, CanHandle), MCP2517Error<SPI::Error>> {
         //let outgoing_channel = make_static!(Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>::new());
         let incoming_channel = make_static!(Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>::new());
 
@@ -60,8 +60,6 @@ impl<SPI: SpiDevice<u8>> Can<SPI> {
             //sender: outgoing_channel.sender(),
         };
 
-        info!("MCP2517FD initalized.");
-
         Ok((can, handle))
     }
 
@@ -74,14 +72,14 @@ impl<SPI: SpiDevice<u8>> Can<SPI> {
                     continue;
                 }
                 Err(e) => {
-                    error!("Failed to read from CAN controller: {:?}", Debug2Format(&e));
+                    error!("Failed to read CAN msg: {:?}", Debug2Format(&e));
                     Timer::after(Duration::from_micros(1000)).await;
                     continue;
                 }
             };
 
             if let Err(e) = self.sender.try_send((id, msg)) {
-                error!("Failed to send CAN message along: {:?}", Debug2Format(&e));
+                error!("Failed to send CAN msg: {:?}", Debug2Format(&e));
             }
         }
     }

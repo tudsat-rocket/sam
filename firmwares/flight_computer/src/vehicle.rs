@@ -185,7 +185,7 @@ impl Vehicle {
             match id {
                 0x100 => self.power.handle_battery_can_msg(msg),
                 id => {
-                    debug!("Message from unknown CAN id ({}): {:?}", id, msg)
+                    info!("Message from unknown CAN id 0x{:04x}", id)
                 }
             }
         }

@@ -80,7 +80,7 @@ impl GPS {
         loop {
             for baud_rate in &BAUD_RATE_OPTIONS {
                 let start = Instant::now();
-                info!("Trying baud rate {:?} for GPS...", baud_rate);
+                info!("Trying baud rate {:?} for GPS", baud_rate);
 
                 let mut uart_config = embassy_stm32::usart::Config::default();
                 uart_config.baudrate = *baud_rate;
@@ -94,7 +94,7 @@ impl GPS {
                 }
             }
 
-            warn!("Failed to find GPS baud rate, retrying.");
+            warn!("Failed to find GPS baud rate, retrying");
         }
     }
 
@@ -184,13 +184,13 @@ impl GPS {
 
     async fn run(&mut self) -> Result<(), Error> {
         let current_baud_rate = self.find_baud_rate().await;
-        info!("GPS using baud rate {:?}.", current_baud_rate);
+        info!("GPS using baud rate {:?}", current_baud_rate);
 
         if current_baud_rate != DESIRED_BAUD_RATE {
             self.change_gps_baud_rate(DESIRED_BAUD_RATE).await?;
         }
 
-        info!("Setting GPS measurement frequency...");
+        info!("Setting measurement frequency");
         // Generated using the ublox crate for 100ms, hardcoded to avoid the dependency
         let measurement_rate_msg = [
             0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0x64, 0x00,

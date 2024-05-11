@@ -32,8 +32,9 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
             accel_offset: Vector3::default(),
         };
 
+        let mut whoami = 0x00;
         for _i in 0..10 {
-            let whoami = imu.read_u8(LSM6RRegister::WhoAmI).await?;
+            whoami = imu.read_u8(LSM6RRegister::WhoAmI).await?;
             if whoami == 0x6b {
                 break
             }
@@ -41,7 +42,11 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
             Timer::after(Duration::from_micros(100)).await;
         }
 
-        // TODO: log initialization status
+        if whoami != 0x6b {
+            error!("Failed to initialize LSM6DSR (0x{:02x} != 0x6b)", whoami);
+        } else {
+            info!("LSM6DSR initialized");
+        }
 
         imu.configure_gyroscope(LSM6GyroscopeMode::HighPerformance1660Hz, gyro_scale).await?;
 
@@ -107,10 +112,9 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
     }
 
     pub async fn tick(&mut self) {
-        if let Err(e) = self.read_sensor_data().await {
+        if let Err(_e) = self.read_sensor_data().await {
             self.gyro = None;
             self.accel = None;
-            error!("{:?}", Debug2Format(&e));
         }
     }
 
