@@ -31,6 +31,7 @@ pub const LORA_UPLINK_INTERVAL: u32 = 200;
 pub const LORA_UPLINK_MODULO: u32 = 100;
 pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
+pub const FLASH_SETTINGS_SIZE: u32 = 1024; // we don't need the full sector, so make the buffers smaller
 
 pub use LogLevel::*;
 
