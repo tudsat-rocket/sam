@@ -47,6 +47,7 @@ pub struct StateEstimator {
     /// GPS origin (lat, lng)
     // TODO: move altitude_ground into here?
     gps_origin: Option<Vector3<f32>>,
+    last_covariance_update: Wrapping<u32>,
     last_valve_state: ThrusterValveState,
     last_valve_state_change: Wrapping<u32>,
 }
@@ -138,6 +139,7 @@ impl StateEstimator {
             altitude_ground: 0.0,
             altitude_max: -10_000.0,
             gps_origin: None,
+            last_covariance_update: Wrapping(0),
             last_valve_state: ThrusterValveState::Closed,
             last_valve_state_change: Wrapping(0),
         }
@@ -154,7 +156,7 @@ impl StateEstimator {
         self.kalman.R[(4, 4)] = std_dev;
         self.kalman.R[(5, 5)] = std_dev;
 
-        let pos = if let Some(gps) = gps {
+        let pos = if let Some(gps) = &gps {
             let global_pos = Vector3::new(
                 gps.latitude.unwrap_or_default(),
                 gps.longitude.unwrap_or_default(),
@@ -170,7 +172,16 @@ impl StateEstimator {
 
         self.kalman.predict(None, None, None, None);
         let z = Vector6::new(altitude_baro, accel.x, accel.y, accel.z, pos.x, pos.y);
-        self.kalman.update(&z, None, None);
+
+        // Updating the state covariance is pretty expensive, so we just don't
+        // do it every time.
+        // TODO: try and get rid of this, at least make configurable
+        if gps.is_some() || (self.time - self.last_covariance_update).0 > 10 {
+            self.kalman.update(&z, None, None);
+            self.last_covariance_update = self.time;
+        } else {
+            self.kalman.update_steadystate(&z);
+        }
     }
 
     pub fn update(
