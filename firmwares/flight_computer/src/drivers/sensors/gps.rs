@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Sender, Receiver, Channel};
 use embassy_time::{Timer, Duration, Instant};
 
-use static_cell::make_static;
+use static_cell::StaticCell;
 
 use defmt::*;
 
@@ -24,6 +24,8 @@ const DESIRED_BAUD_RATE: u32 = 115_200;
 const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 //const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
 //const MEASUREMENT_RATE_MS: u16 = 100;
+
+static CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
 pub struct GPS {
     uart: Uart<'static, USART2, DMA1_CH6, DMA1_CH5>,
@@ -49,7 +51,7 @@ pub async fn run(mut gps: GPS) -> ! {
 impl GPS {
     // TODO: dma channels
     pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
-        let channel = make_static!(Channel::<CriticalSectionRawMutex, GPSDatum, 5>::new());
+        let channel = CHANNEL.init(Channel::new());
 
         let mut uart_config = embassy_stm32::usart::Config::default();
         uart_config.baudrate = BAUD_RATE_OPTIONS[0];

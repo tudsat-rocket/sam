@@ -16,10 +16,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as SpiDeviceImpl;
 use embassy_sync::signal::Signal;
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
 
 use crc::{Crc, CRC_16_IBM_SDLC};
-use static_cell::make_static;
+use static_cell::StaticCell;
 
 use defmt::*;
 
@@ -32,6 +33,8 @@ const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
 const PAGE_SIZE: usize = 256;
 const SECTOR_SIZE: u32 = 4096;
+
+static REQUEST_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FlashRequest, 3>> = StaticCell::new();
 
 /// Signal for sending flash pointer to flash handle, in order to pass it on via telemetry. There
 /// is probably a better way to do this.
@@ -63,6 +66,7 @@ pub struct FlashHandle {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum FlashError<E> {
     Spi(E),
     Serialization(postcard::Error),
@@ -112,7 +116,7 @@ impl FlashHandle {
 
 impl<SPI: SpiDevice> Flash<SPI> {
     pub async fn init(spi: SPI, usb: FlashUsbHandle) -> Result<(Self, FlashHandle, Settings), FlashError<SPI::Error>> {
-        let request_channel = make_static!(Channel::<CriticalSectionRawMutex, FlashRequest, 3>::new());
+        let request_channel = REQUEST_CHANNEL.init(Channel::new());
 
         let driver = W25Q::init(spi).await?;
 
@@ -207,9 +211,9 @@ impl<SPI: SpiDevice> Flash<SPI> {
     }
 
     pub async fn read_settings(&mut self) -> Result<Settings, FlashError<SPI::Error>> {
-        let page = self.driver.read(0x00, FLASH_HEADER_SIZE).await?;
+        let page = self.driver.read(0x00, FLASH_SETTINGS_SIZE).await?;
 
-        let (settings, crc) = page.split_at(FLASH_HEADER_SIZE as usize - 2);
+        let (settings, crc) = page.split_at(FLASH_SETTINGS_SIZE as usize - 2);
         let crc = u16::from_be_bytes([crc[0], crc[1]]);
 
         if crc != X25.checksum(&settings) {
@@ -220,18 +224,6 @@ impl<SPI: SpiDevice> Flash<SPI> {
     }
 
     async fn write_settings(&mut self, settings: &Settings) -> Result<(), FlashError<SPI::Error>> {
-        // TODO: pretty this up a bit, especially get rid of the is_busy loops
-
-        let mut buf: [u8; 1024] = [0x00; 1024];
-        let serialized = postcard::to_slice(settings, &mut buf).unwrap();
-
-        let mut sector: [u8; FLASH_HEADER_SIZE as usize] = [0x00; FLASH_HEADER_SIZE as usize];
-        sector[..serialized.len()].copy_from_slice(serialized);
-
-        let crc = X25.checksum(&sector[..(FLASH_HEADER_SIZE as usize - 2)]);
-        sector[FLASH_HEADER_SIZE as usize - 2] = (crc >> 8) as u8;
-        sector[FLASH_HEADER_SIZE as usize - 1] = crc as u8;
-
         let mut res = Ok(());
         for _i in 0..3 {
             res = self.driver.erase_sector(0x00).await;
@@ -242,20 +234,35 @@ impl<SPI: SpiDevice> Flash<SPI> {
         res?;
 
         // Wait for flash to finish erasing before writing
-        for _i in 0..2000 {
+        for _i in 0..10 {
             if !self.driver.is_busy().await {
                 break;
             }
+            Timer::after(Duration::from_millis(1)).await;
         }
 
-        // We can only write a single page at a time
-        for i in 0..(FLASH_HEADER_SIZE as usize / PAGE_SIZE) {
-            self.driver.write(PAGE_SIZE * i, &sector[(PAGE_SIZE * i)..(PAGE_SIZE * (i+1))]).await?;
+        // separate scope so we get rid of these buffers before reading back
+        {
+            let mut buffer = [0u8; 512];
+            let serialized = postcard::to_slice(settings, &mut buffer).unwrap();
 
-            // Wait for flash to finish writing
-            for _i in 0..100 {
-                if !self.driver.is_busy().await {
-                    break;
+            let mut sector: [u8; FLASH_SETTINGS_SIZE as usize] = [0x00; FLASH_SETTINGS_SIZE as usize];
+            sector[..serialized.len()].copy_from_slice(serialized);
+
+            let crc = X25.checksum(&sector[..(FLASH_SETTINGS_SIZE as usize - 2)]);
+            sector[FLASH_SETTINGS_SIZE as usize - 2] = (crc >> 8) as u8;
+            sector[FLASH_SETTINGS_SIZE as usize - 1] = crc as u8;
+
+            // We can only write a single page at a time
+            for i in 0..(FLASH_SETTINGS_SIZE as usize / PAGE_SIZE) {
+                self.driver.write(PAGE_SIZE * i, &sector[(PAGE_SIZE * i)..(PAGE_SIZE * (i+1))]).await?;
+
+                // Wait for flash to finish writing
+                for _i in 0..10 {
+                    if !self.driver.is_busy().await {
+                        break;
+                    }
+                    Timer::after(Duration::from_millis(1)).await;
                 }
             }
         }

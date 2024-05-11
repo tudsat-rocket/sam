@@ -11,7 +11,7 @@ use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::{Timer, Duration};
 use embedded_hal_async::spi::SpiDevice;
 
-use static_cell::make_static;
+use static_cell::StaticCell;
 
 use defmt::*;
 
@@ -31,6 +31,8 @@ pub struct CanHandle {
 type SpiInst = Spi<'static, SPI2, DMA1_CH4, DMA1_CH3>;
 type CanInst = Can<SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst, Output<'static, PB12>>>;
 
+static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>> = StaticCell::new();
+
 #[embassy_executor::task]
 pub async fn run(mut flash: CanInst) -> ! {
     flash.run().await
@@ -44,8 +46,7 @@ impl CanHandle {
 
 impl<SPI: SpiDevice<u8>> Can<SPI> {
     pub async fn init(spi: SPI) -> Result<(Can<SPI>, CanHandle), MCP2517Error<SPI::Error>> {
-        //let outgoing_channel = make_static!(Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>::new());
-        let incoming_channel = make_static!(Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>::new());
+        let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
 
         let mcp = MCP2517FD::init(spi).await?;
 

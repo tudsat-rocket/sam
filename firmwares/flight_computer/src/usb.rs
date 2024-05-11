@@ -11,10 +11,21 @@ use embassy_time::{Timer, Duration, TimeoutError, with_timeout};
 use embassy_usb::{Builder, UsbDevice};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State, Sender, Receiver};
 use embassy_futures::select::{select, Either};
-
-use static_cell::make_static;
+use static_cell::StaticCell;
 
 use shared_types::*;
+
+static EP_OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
+static DEVICE_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
+static CONFIG_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
+static BOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
+static CONTROL_BUFFER: StaticCell<[u8; 128]> = StaticCell::new();
+
+static CDC_ACM_STATE: StaticCell<State> = StaticCell::new();
+
+static UPLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, UplinkMessage, 3>> = StaticCell::new();
+static DOWNLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
+static FLASH_DOWNLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
 
 bind_interrupts!(struct Irqs {
     OTG_FS => embassy_stm32::usb_otg::InterruptHandler<USB_OTG_FS>;
@@ -22,22 +33,25 @@ bind_interrupts!(struct Irqs {
 
 /// Main USB handle used by vehicle to send telemetry and receive commands
 pub struct UsbHandle {
-    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
-    uplink_receiver: channel::Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 10>,
+    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    uplink_receiver: channel::Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
 }
 
 /// Handle given to flash implementation to allow faster flash download
 pub struct FlashUsbHandle {
-    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
+    downlink_sender: channel::Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
 }
 
 impl UsbHandle {
     pub async fn init(peripheral: USB_OTG_FS, pin_dm: PA12, pin_dp: PA11) -> (UsbHandle, FlashUsbHandle) {
+        let uplink_channel = UPLINK_CHANNEL.init(Channel::new());
+        let downlink_channel = DOWNLINK_CHANNEL.init(Channel::new());
+        let flash_downlink_channel = FLASH_DOWNLINK_CHANNEL.init(Channel::new());
+
         let mut config = embassy_stm32::usb_otg::Config::default();
         config.vbus_detection = false;
 
-        let ep_out_buffer = &mut make_static!([0; 1024])[..];
-        let driver = Driver::new_fs(peripheral, Irqs, pin_dm, pin_dp, ep_out_buffer, config);
+        let driver = Driver::new_fs(peripheral, Irqs, pin_dm, pin_dp, EP_OUT_BUFFER.init([0; 256]), config);
 
         let mut config = embassy_usb::Config::new(0x0483, 0x5740);
         config.manufacturer = Some("TUDSaT");
@@ -54,21 +68,17 @@ impl UsbHandle {
         let mut builder = Builder::new(
             driver,
             config,
-            &mut make_static!([0; 256])[..],
-            &mut make_static!([0; 256])[..],
-            &mut make_static!([0; 256])[..],
-            &mut [], // no msos descriptors
-            &mut make_static!([0; 128])[..],
+            DEVICE_DESCRIPTOR_BUFFER.init([0; 256]),
+            CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
+            BOS_DESCRIPTOR_BUFFER.init([0; 256]),
+            &mut [],
+            CONTROL_BUFFER.init([0; 128]),
         );
 
-        let class = CdcAcmClass::new(&mut builder, make_static!(State::new()), 64);
+        let class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
         let (usb_sender, usb_receiver) = class.split();
 
         let usb = builder.build();
-
-        let uplink_channel = make_static!(Channel::<CriticalSectionRawMutex, UplinkMessage, 10>::new());
-        let downlink_channel = make_static!(Channel::<CriticalSectionRawMutex, DownlinkMessage, 10>::new());
-        let flash_downlink_channel = make_static!(Channel::<CriticalSectionRawMutex, DownlinkMessage, 10>::new());
 
         let spawner = Spawner::for_current_executor().await;
         spawner.spawn(run_usb(usb)).unwrap();
@@ -110,8 +120,8 @@ async fn run_usb(mut usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>) -> ! 
 #[embassy_executor::task]
 async fn handle_usb_downlink(
     mut class: Sender<'static, Driver<'static, USB_OTG_FS>>,
-    downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 10>,
-    flash_downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 10>
+    downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    flash_downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>
 ) -> ! {
     loop {
         class.wait_connection().await;
@@ -145,9 +155,11 @@ async fn handle_usb_downlink(
 #[embassy_executor::task]
 async fn handle_usb_uplink(
     mut class: Receiver<'static, Driver<'static, USB_OTG_FS>>,
-    uplink_sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, UplinkMessage, 10>
+    uplink_sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>
 ) -> ! {
-    let mut uplink_buffer: Vec<u8> = Vec::with_capacity(1024);
+    const UPLINK_BUFFER_SIZE: usize = 512;
+
+    let mut uplink_buffer: Vec<u8> = Vec::with_capacity(UPLINK_BUFFER_SIZE);
     let mut packet_buffer: [u8; 64] = [0; 64];
 
     loop {
@@ -155,9 +167,9 @@ async fn handle_usb_uplink(
 
         match class.read_packet(&mut packet_buffer).await {
             Ok(n) => {
-                uplink_buffer.extend(&packet_buffer[..n]);
+                uplink_buffer.extend(&packet_buffer[..usize::min(n, UPLINK_BUFFER_SIZE - uplink_buffer.len())]);
 
-                if uplink_buffer.len() > 512 {
+                if uplink_buffer.len() >= UPLINK_BUFFER_SIZE {
                     uplink_buffer.truncate(0);
                 }
 

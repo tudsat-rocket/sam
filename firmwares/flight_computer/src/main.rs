@@ -3,8 +3,6 @@
 
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
-#![feature(future_join)]
 
 extern crate alloc;
 
@@ -54,7 +52,7 @@ use vehicle::*;
 #[cfg(feature="gcs")]
 use gcs::*;
 
-const HEAP_SIZE: usize = 16384;
+const HEAP_SIZE: usize = 12384;
 static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
 
 #[global_allocator]
@@ -70,7 +68,7 @@ static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI3, DMA1_CH7
 #[cfg_attr(feature="gcs", allow(dead_code))]
 #[cfg_attr(feature="gcs", allow(unused_variables))]
 #[embassy_executor::main]
-async fn main(_low_priority_spawner: Spawner) {
+async fn main(low_priority_spawner: Spawner) {
     // Basic setup, including clocks
     // Divider values taken from STM32CubeMx
     let mut config = Config::default();
@@ -167,16 +165,10 @@ async fn main(_low_priority_spawner: Spawner) {
     let pwm = SimplePwm::new(p.TIM3, None, Some(pwm_pin), None, None, Hertz::hz(440), Default::default());
     let buzzer = Buzzer::init(pwm, Channel::Ch2, gpioc_block, 7);
 
-//    // The MCO test point can either be used for Master Clock Out, e.g. for
-//    // diagnosing clock-speed issues, or as general purpose debugging IO.
-//    let mut mco = gpioa.pa8.into_push_pull_output_in_state(PinState::Low);
-
     iwdg.unleash();
 
     #[cfg(not(feature="gcs"))]
     let vehicle = Vehicle::init(
-        //high_priority_spawner,
-        //low_priority_spawner,
         imu,
         acc,
         mag,
@@ -201,21 +193,19 @@ async fn main(_low_priority_spawner: Spawner) {
     let high_priority_spawner = EXECUTOR_HIGH.start(interrupt::I2C3_EV);
 
     // Start medium priority executor
-    interrupt::I2C3_EV.set_priority(Priority::P7);
+    interrupt::I2C3_ER.set_priority(Priority::P7);
     let medium_priority_spawner = EXECUTOR_MEDIUM.start(interrupt::I2C3_ER);
-
-    let low_priority_spawner = Spawner::for_current_executor().await;
 
     #[cfg(not(feature="gcs"))]
     {
-        high_priority_spawner.spawn(crate::vehicle::run(vehicle, iwdg)).unwrap();
-        medium_priority_spawner.spawn(crate::can::run(can)).unwrap();
-        medium_priority_spawner.spawn(crate::drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
-        low_priority_spawner.spawn(crate::flash::run(flash)).unwrap();
+        high_priority_spawner.spawn(vehicle::run(vehicle, iwdg)).unwrap();
+        medium_priority_spawner.spawn(can::run(can)).unwrap();
+        medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
+        low_priority_spawner.spawn(flash::run(flash)).unwrap();
     }
 
     #[cfg(feature="gcs")]
-    high_priority_spawner.spawn(crate::gcs::run(gcs, iwdg)).unwrap();
+    high_priority_spawner.spawn(gcs::run(gcs, iwdg)).unwrap();
 }
 
 #[interrupt]

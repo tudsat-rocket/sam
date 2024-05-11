@@ -14,10 +14,10 @@ use embassy_time::{Ticker, Duration};
 
 use defmt::*;
 
+use shared_types::*;
+
 use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::lora::*;
-use crate::settings::*;
-use crate::telemetry::*;
 use crate::usb::*;
 
 // TODO

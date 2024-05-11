@@ -250,7 +250,7 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
         if let Some(freq) = self.current_frequency() {
             self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::ALTERNATE));
             self.block.otyper().modify(|w| w.set_ot(self.pin, vals::Ot::PUSHPULL));
-            self.pwm.set_freq(Hertz::hz(freq as u32));
+            self.pwm.set_frequency(Hertz::hz(freq as u32));
             self.pwm.enable(self.channel);
         } else {
             self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::OUTPUT));
