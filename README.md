@@ -18,7 +18,7 @@ $ cargo run
 (Assuming rust/rustup is already installed)
 
 ```
-$ cargo install --path .
+$ cargo install --path gui
 ````
 
 # Building Web Assembly Version
