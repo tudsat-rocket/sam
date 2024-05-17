@@ -132,8 +132,10 @@ pub fn find_serial_port() -> Option<Vec<String>> {
     serialport::available_ports()
         .ok().unwrap_or_else(| | Vec::new()).iter()
         .for_each(|p| {
-                if let serialport::SerialPortType::UsbPort(_) = p.port_type {
-                    available.push(p.port_name.clone());
+                if let serialport::SerialPortType::UsbPort(info) = p.port_type.clone() {
+                    if info.manufacturer.unwrap_or(String::from("false")) == "TUDSaT" {
+                        available.push(p.port_name.clone());
+                    }
                 }
         });
     if !available.is_empty() {
