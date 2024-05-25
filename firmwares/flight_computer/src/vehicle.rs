@@ -242,7 +242,8 @@ impl Vehicle {
         self.leds.0.set_level((!r).into());
         self.leds.1.set_level((!y).into());
         self.leds.2.set_level((!g).into());
-        self.buzzer.tick(self.time.0);
+
+        self.buzzer.tick(self.time.0, self.power.battery_status());
 
         // Send/store telemetry
         if let Some(msg) = self.next_usb_telem() {

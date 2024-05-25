@@ -9,6 +9,16 @@ const RES: f32 = 0.01;
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
+const LOW_BATTERY_THRESHOLD: u16 = 7000;
+const NO_BATTERY_THRESHOLD: u16 = 5000;
+
+#[derive(PartialEq, Clone, Copy)]
+pub enum BatteryStatus{
+    Low,
+    High,
+    NoBatteryAttached
+}
+
 pub struct PowerMonitor<ADC: Instance, H, L, A> {
     adc: Adc<'static, ADC>,
     vref_sample: u16,
@@ -64,7 +74,7 @@ where
             can_battery_voltage: None,
             can_battery_current: None,
             can_breakwire_open: None,
-            time_last_can_msg: None,
+            time_last_can_msg: None
         }
     }
 
@@ -107,6 +117,15 @@ where
         self.current_can_msg()
             .then(|| self.can_battery_voltage)
             .unwrap_or(self.battery_voltage)
+    }
+    pub fn battery_status(&self) -> Option<BatteryStatus>{
+        self.battery_voltage.map(|n| {
+            match n {
+                LOW_BATTERY_THRESHOLD.. => BatteryStatus::High,
+                NO_BATTERY_THRESHOLD..=LOW_BATTERY_THRESHOLD => BatteryStatus::Low,
+                _ => BatteryStatus::NoBatteryAttached
+            }
+        })
     }
 
     pub fn battery_current(&self) -> Option<i16> {
