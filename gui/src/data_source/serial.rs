@@ -426,11 +426,9 @@ impl DataSource for SerialDataSource {
                 if ui.button(arg.1).clicked(){
                     self.serial_index = arg.0;
                 }
-            })
+            });
+            ui.separator();
         }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        ui.separator();
 
         let (status_color, status_text) = match self.serial_status {
             SerialStatus::Init => (Color32::from_rgb(0x92, 0x83, 0x74), "Not connected".to_string()),
