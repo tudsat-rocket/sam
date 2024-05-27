@@ -12,6 +12,7 @@ use num_traits::Float;
 use shared_types::*;
 
 use Semitone::*;
+use crate::drivers::sensors::BatteryStatus;
 
 #[allow(dead_code)]
 const STARTUP: [Note; 6] = [
@@ -172,6 +173,18 @@ const E1M1: [Note; 56] = [
     Note::note(E, 3, 100), Note::pause(10),
     Note::note(Gs, 3, 500), Note::pause(10),
 ];
+#[allow(dead_code)]
+const WARNING_MELODY: [Note; 4] = [
+    Note::note(C, 5, 500),  Note::pause(200),
+    Note::note(C, 5, 500), Note::pause(9000)];
+
+#[allow(dead_code)]
+const SHORT_WARNING_MELODY: [Note; 2] = [Note::note(C, 5, 500), Note::pause(500)];
+#[allow(dead_code)]
+const NO_BATTERY_ATTACHED_MELODY: [Note; 4] = [
+    Note::note(F, 5, 400), Note::pause(10),
+    Note::note(D, 5, 100), Note::pause(10)
+];
 
 pub struct Buzzer<TIM: 'static> {
     pwm: SimplePwm<'static, TIM>,
@@ -183,7 +196,9 @@ pub struct Buzzer<TIM: 'static> {
     current_melody: Option<&'static [Note]>,
     current_index: usize,
     time_note_change: u32,
-    repeat: bool
+    repeat: bool,
+    is_warning: bool,
+    nba_already_played: bool //no_battery_attached_melody_already_played was too long for my taste
 }
 
 impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
@@ -200,9 +215,10 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
             current_melody: Some(&STARTUP),
             current_index: 0,
             time_note_change: 0,
-            repeat: false
+            repeat: false,
+            is_warning: true,
+            nba_already_played: false
         };
-
         buzzer
     }
 
@@ -217,31 +233,65 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
             .flatten()
     }
 
+    //TODO repair so that warn tone length is changable
     pub fn set_warning_tone(&mut self, frequency: f32, duration: u32) {
         self.warning_note = Note::frequency(frequency, duration);
     }
 
-    pub fn tick(&mut self, time: u32) {
-        if let Some(melody) = self.current_melody {
-            let note = melody.get(self.current_index);
-            if note.map(|n| time.wrapping_sub(self.time_note_change) > n.duration).unwrap_or(false) {
-                self.current_index += 1;
-                self.time_note_change = time;
+    //returns true if just finished playing note
+    fn has_note_just_finished(&mut self, time: u32, note: Option<&Note>) -> bool{
+        if note.is_some(){
+            if time.wrapping_sub(self.time_note_change) > note.unwrap().duration{
+                return true;
+            }
+        }
+        return false;
+    }
 
-                if self.current_index >= melody.len() && self.repeat {
-                    self.current_index = 0;
+    fn increment_melody(&mut self, time: u32, length: usize){
+        self.current_index += 1;
+        self.time_note_change = time;
+
+        if self.current_index >= length && !self.repeat{
+            if self.is_warning{
+                self.is_warning = false;
+            }
+            self.change_melody(time, None);
+        }
+
+        if self.current_index >= length && self.repeat {
+            self.current_index = 0;
+        }
+    }
+
+    pub fn tick(&mut self, time: u32, battery_status: Option<BatteryStatus>) {
+        if let Some(status) = battery_status{
+            match status {
+                BatteryStatus::Low => {
+                    self.change_melody(time,Some(&WARNING_MELODY));
+                    self.nba_already_played = false;
+                    self.is_warning = true;
                 }
-            } else if time != self.time_note_change {
-                return;
+                BatteryStatus::High => {
+                    self.nba_already_played = false;
+                }
+                BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning =>{
+                    self.change_melody(time, Some(&NO_BATTERY_ATTACHED_MELODY));
+                    self.is_warning = true;
+                    self.nba_already_played = true;
+                }
+                _ => {}
             }
         }
 
-        if let Some(note) = &self.current_tone {
-            if time.wrapping_sub(self.time_note_change) > note.duration {
-                self.current_tone = None;
-            } else if time != self.time_note_change {
-                return;
+        if let Some(melody) = self.current_melody {
+            if self.has_note_just_finished(time, melody.get(self.current_index)){
+                self.increment_melody(time, melody.len());
             }
+        }
+
+        if time != self.time_note_change{
+            return;
         }
 
         // We set the buzzer output pin into an open-drain state when not using it to
@@ -260,22 +310,26 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     }
 
     pub fn switch_mode(&mut self, time: u32, mode: FlightMode) {
-        self.current_tone = if mode == FlightMode::RecoveryDrogue || mode == FlightMode::RecoveryMain {
-            Some(self.warning_note.clone())
-        } else {
-            None
-        };
-
-        self.current_melody = match mode {
+        let new_melody:Option<&'static [Note]> = match mode {
+            FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
             FlightMode::HardwareArmed => Some(&HWARMED),
             FlightMode::Armed => Some(&ARMED),
             FlightMode::Landed => Some(&LANDED),
             _ => None
         };
 
-        self.current_index = 0;
-        self.time_note_change = time;
-        self.repeat = mode == FlightMode::Landed;
+        self.change_melody(time, new_melody);
+        if !self.is_warning && mode == FlightMode::Landed{
+            self.repeat = true;
+        }
+    }
+    fn change_melody(&mut self, time: u32, new_melody: Option<&'static [Note]>){
+        if !self.is_warning {
+            self.current_melody = new_melody;
+            self.current_index = 0;
+            self.time_note_change = time;
+            self.repeat = false;
+        }
     }
 }
 
