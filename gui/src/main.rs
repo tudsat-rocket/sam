@@ -103,7 +103,8 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     let (downlink_tx, mut downlink_rx) = channel::<(Instant, DownlinkMessage)>(10);
     let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>(10);
     let (serial_status_tx, mut serial_status_rx) = channel::<(SerialStatus, Option<String>)>(10);
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, 0);
+    let (_serial_status_uplink_tx, serial_status_uplink_rx) = channel::<(SerialStatus, Option<String>)>(10);
+    spawn_downlink_monitor(None, serial_status_tx, serial_status_uplink_rx, downlink_tx, uplink_rx);
 
     loop {
         while let Ok((status, port)) = serial_status_rx.try_recv() {
@@ -182,7 +183,8 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
     let (downlink_tx, mut downlink_rx) = channel::<(Instant, DownlinkMessage)>(10);
     let (uplink_tx, uplink_rx) = channel::<UplinkMessage>(10);
     let (serial_status_tx, _serial_status_rx) = channel::<(SerialStatus, Option<String>)>(10);
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, 0);
+    let (_serial_status_uplink_tx, serial_status_uplink_rx) = channel::<(SerialStatus, Option<String>)>(10);
+    spawn_downlink_monitor(None, serial_status_tx, serial_status_uplink_rx, downlink_tx, uplink_rx);
 
     let flash_size = FLASH_SIZE;
 

@@ -16,7 +16,7 @@ use std::time::Instant;
 use web_time::Instant;
 
 use tokio_serial::SerialStream;
-use futures::future::select;
+use futures::{select, FutureExt};
 use tokio::sync::mpsc::{Sender, Receiver};
 use tokio::sync::mpsc::error::SendError;
 use tokio_serial::SerialPortBuilderExt;
@@ -32,6 +32,7 @@ use crate::data_source::DataSource;
 use crate::settings::AppSettings;
 
 pub const BAUD_RATE: u32 = 115_200;
+
 
 // For Android, the Java wrapper has to handle the actual serial port and
 // we use these questionable methods to pass the data in via JNI
@@ -122,8 +123,9 @@ pub async fn run_port(
     ctx: Option<egui::Context>,
     downlink_tx: &mut Sender<(Instant, DownlinkMessage)>,
     uplink_rx: &mut Receiver<UplinkMessage>,
+    serial_status_rx: &mut Receiver<(SerialStatus, Option<String>)>,
     port_name: String,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<Option<String>, Box<dyn std::error::Error>> {
     // Open the serial port
 
     let mut port = tokio_serial::new(&port_name, BAUD_RATE)
@@ -139,25 +141,43 @@ pub async fn run_port(
     let reader = std::pin::pin!(reader);
     let writer = std::pin::pin!(writer);
 
-    select(
-        pin!(run_downlink(ctx, downlink_tx, reader)),
-        pin!(run_uplink(uplink_rx, writer))
-    ).await;
+    let mut downlink = pin!(run_downlink(ctx, downlink_tx, reader).fuse());
+    let mut uplink = pin!(run_uplink(uplink_rx, writer).fuse());
+    let mut port_selection = pin!(serial_status_rx.recv().fuse());
 
-    info!("Closing {:?}", port_name);
-    Ok(())
+    select!(
+        _ = downlink => Ok(None),
+        _ = uplink => Ok(None),
+        res = port_selection => {
+            if let Some((_, Some(p))) = res {
+                Ok(Some(p))
+            } else {
+                Ok(None)
+            }
+        }
+    )
 }
 
 /// Returns vector containing names of all available USB ports
 pub fn find_serial_ports() -> Vec<String> {
-    tokio_serial::available_ports()
-        .unwrap_or_default()
-        .iter()
+    let mut ports = tokio_serial::available_ports().unwrap_or_default();
+    ports.sort_by_key(|p| {
+        let is_tudsat = if let tokio_serial::SerialPortType::UsbPort(info) = &p.port_type {
+            info.manufacturer
+                .as_ref()
+                .map(|m| m.to_lowercase() == "tudsat")
+                .unwrap_or(false)
+        } else {
+            false
+        };
+
+        (!is_tudsat) as u8
+    });
+
+    ports.iter()
         .filter_map(|p| {
-            if let tokio_serial::SerialPortType::UsbPort(info) = p.port_type.clone() {
-                info.manufacturer.map(|m| m == "TUDSaT")
-                    .unwrap_or(false)
-                    .then_some(p.port_name.clone())
+            if let tokio_serial::SerialPortType::UsbPort(_info) = &p.port_type {
+                Some(p.port_name.clone())
             } else {
                 None
             }
@@ -171,19 +191,46 @@ pub fn find_serial_ports() -> Vec<String> {
 pub async fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
+    mut serial_status_rx: Receiver<(SerialStatus,Option<String>)>,
     mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
-    serial_index: usize
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut selected_port = None;
+
     loop {
         let ports: Vec<_> = find_serial_ports();
-        if ports.len() > 0 {
-            serial_status_tx.send((SerialStatus::Connected, Some(ports[serial_index].clone()))).await?;
-            if let Err(e) = run_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, ports[serial_index].clone()).await {
-                eprintln!("Failed to open {}: {:?}", ports[serial_index], e);
-                serial_status_tx.send((SerialStatus::Error, Some(ports[serial_index].clone()))).await?;
-                if let Some(ctx) = &ctx {
-                    ctx.request_repaint();
+        selected_port = selected_port.clone().or(ports.first().cloned());
+        while let Ok((_, Some(p))) = serial_status_rx.try_recv() {
+            if ports.contains(&p) {
+                selected_port = Some(p);
+            }
+        }
+
+        if let Some(p) = selected_port.as_ref() {
+            serial_status_tx.send((SerialStatus::Connected, Some(p.clone()))).await?;
+
+            info!("Opening port {}", p);
+            let res = run_port(
+                ctx.clone(),
+                &mut downlink_tx,
+                &mut uplink_rx,
+                &mut serial_status_rx,
+                p.clone()
+            ).await;
+
+            match res {
+                Ok(None) => {
+                    continue;
+                }
+                Ok(Some(new_port)) => {
+                    selected_port = Some(new_port)
+                }
+                Err(e) => {
+                    eprintln!("Failed to open {}: {:?}", p, e);
+                    serial_status_tx.send((SerialStatus::Error, Some(p.clone()))).await?;
+                    if let Some(ctx) = &ctx {
+                        ctx.request_repaint();
+                    }
                 }
             }
         }
@@ -197,23 +244,23 @@ pub async fn downlink_monitor(
 pub fn spawn_downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
+    serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
-    serial_index: usize,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-        rt.block_on(downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, serial_index)).unwrap()
+        rt.block_on(downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx)).unwrap()
     })
 }
 
 pub struct SerialDataSource {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
+    serial_status_uplink_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_rx: Receiver<(Instant, DownlinkMessage)>,
     uplink_tx: Sender<UplinkMessage>,
 
     serial_port: Option<String>,
-    serial_index: usize,
     serial_status: SerialStatus,
 
     lora_settings: LoRaSettings,
@@ -235,6 +282,7 @@ impl SerialDataSource {
         let (downlink_tx, downlink_rx) = tokio::sync::mpsc::channel::<(Instant, DownlinkMessage)>(10);
         let (uplink_tx, uplink_rx) = tokio::sync::mpsc::channel::<UplinkMessage>(10);
         let (serial_status_tx, serial_status_rx) = tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
+        let (serial_status_uplink_tx, serial_status_uplink_rx) = tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
 
         let ctx = ctx.clone();
 
@@ -243,14 +291,14 @@ impl SerialDataSource {
 
         // There are no serial ports on wasm, and on android the Java side handles this.
         #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, 0);
+        spawn_downlink_monitor(Some(ctx), serial_status_tx, serial_status_uplink_rx, downlink_tx, uplink_rx);
 
         Self {
             serial_status_rx,
+            serial_status_uplink_tx,
             downlink_rx,
             uplink_tx,
             serial_port: None,
-            serial_index: 0,
             serial_status: SerialStatus::Init,
             lora_settings,
             telemetry_log_path,
@@ -456,9 +504,11 @@ impl DataSource for SerialDataSource {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            find_serial_ports().iter().enumerate().for_each(|arg|{
-                if ui.button(arg.1).clicked(){
-                    self.serial_index = arg.0;
+            find_serial_ports().iter().for_each(|port|{
+                if ui.selectable_label(self.serial_port.as_ref() == Some(port), port).clicked(){
+                    self.serial_port = Some(port.clone());
+                    self.serial_status_uplink_tx.blocking_send((SerialStatus::Init, Some(port.clone()))).unwrap_or_default();
+                    self.reset();
                 }
             });
             ui.separator();
@@ -473,13 +523,12 @@ impl DataSource for SerialDataSource {
         ui.colored_label(status_color, status_text);
         ui.label(self.fc_settings().map(|s| s.identifier.clone()).unwrap_or_default());
 
-        let serial_port = self.serial_port.clone().unwrap_or("".to_string());
         let telemetry_log_info = match self.telemetry_log_file.as_ref() {
             Ok(_) => self.telemetry_log_path.as_os_str().to_string_lossy().to_string(),
             Err(e) => format!("{:?}", e),
         };
 
-        ui.weak(format!("{} {}", serial_port, telemetry_log_info));
+        ui.weak(telemetry_log_info);
     }
 
     fn as_any(&self) -> &dyn Any {
