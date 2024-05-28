@@ -102,7 +102,7 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
     let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>();
     let (serial_status_tx, serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, true);
+    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, true, 0);
 
     loop {
         for (status, port) in serial_status_rx.try_iter() {
@@ -181,7 +181,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
     let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
     let (uplink_tx, uplink_rx) = channel::<UplinkMessage>();
     let (serial_status_tx, _serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, false);
+    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, false, 0);
 
     let flash_size = FLASH_SIZE;
 
@@ -296,7 +296,7 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
 fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
     let path = find_serial_port().ok_or_else(|| Error::new(ErrorKind::NotFound, "Failed to find a serial port."))?;
 
-    let mut port = serialport::new(path, serial::BAUD_RATE)
+    let mut port = serialport::new(path[0].clone(), serial::BAUD_RATE)
         .timeout(std::time::Duration::from_millis(10))
         .open_native()?;
 

@@ -28,6 +28,7 @@ pub const BAUD_RATE: u32 = 115_200;
 pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(500);
 pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
 
+
 // For Android, the Java wrapper has to handle the actual serial port and
 // we use these questionable methods to pass the data in via JNI
 #[cfg(target_os="android")]
@@ -124,19 +125,25 @@ pub fn downlink_port(
     Ok(())
 }
 
-/// Finds the first connected USB serial port
-pub fn find_serial_port() -> Option<String> {
+/// Returns vector containing names of all available USB ports
+pub fn find_serial_port() -> Option<Vec<String>> {
+
+    let mut available : Vec<String> = Vec::new();
     serialport::available_ports()
-        .ok()
-        .and_then(|ports| {
-            ports.iter().find_map(|p| {
-                if let serialport::SerialPortType::UsbPort(_) = p.port_type {
-                    Some(p.port_name.clone())
-                } else {
-                    None
+        .ok().unwrap_or_else(| | Vec::new()).iter()
+        .for_each(|p| {
+                if let serialport::SerialPortType::UsbPort(info) = p.port_type.clone() {
+                    if info.manufacturer.unwrap_or(String::from("false")) == "TUDSaT" {
+                        available.push(p.port_name.clone());
+                    }
                 }
-            })
-        })
+        });
+    if !available.is_empty() {
+        Some(available.clone())
+    }
+    else {
+        None
+    }
 }
 
 /// Continuously monitors for connected USB serial devices and connects to them.
@@ -148,14 +155,15 @@ pub fn downlink_monitor(
     mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
+    serial_index: usize
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         // If a device was connected, start reading messages.
         if let Some(p) = find_serial_port() {
-            serial_status_tx.send((SerialStatus::Connected, Some(p.clone())))?;
-            if let Err(e) = downlink_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, p.clone(), send_heartbeats) {
+            serial_status_tx.send((SerialStatus::Connected, Some(p[serial_index].clone())))?;
+            if let Err(e) = downlink_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, p[serial_index].clone(), send_heartbeats) {
                 eprintln!("{:?}", e);
-                serial_status_tx.send((SerialStatus::Error, Some(p)))?;
+                serial_status_tx.send((SerialStatus::Error, Some(p[serial_index].clone())))?;
                 if let Some(ctx) = &ctx {
                     ctx.request_repaint();
                 }
@@ -174,9 +182,10 @@ pub fn spawn_downlink_monitor(
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
+    serial_index: usize,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, send_heartbeats).unwrap_or_default()
+        downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, send_heartbeats, serial_index).unwrap_or_default()
     })
 }
 
@@ -186,6 +195,7 @@ pub struct SerialDataSource {
     uplink_tx: Sender<UplinkMessage>,
 
     serial_port: Option<String>,
+    serial_index: usize,
     serial_status: SerialStatus,
 
     lora_settings: LoRaSettings,
@@ -208,18 +218,19 @@ impl SerialDataSource {
 
         let ctx = ctx.clone();
 
-        // There are no serial ports on wasm, and on android the Java side handles this.
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true);
-
         let telemetry_log_path = Self::new_telemetry_log_path();
         let telemetry_log_file = File::create(&telemetry_log_path);
+
+        // There are no serial ports on wasm, and on android the Java side handles this.
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true, 0);
 
         Self {
             serial_status_rx,
             downlink_rx,
             uplink_tx,
             serial_port: None,
+            serial_index: 0,
             serial_status: SerialStatus::Init,
             lora_settings,
             telemetry_log_path,
@@ -229,6 +240,7 @@ impl SerialDataSource {
             message_receipt_times: VecDeque::new(),
             last_time: None,
         }
+
     }
 
     /// No telemetry file needed because serial port does not work on
@@ -407,6 +419,16 @@ impl DataSource for SerialDataSource {
 
         #[cfg(not(target_arch = "wasm32"))]
         ui.separator();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(available) = find_serial_port() {
+            available.iter().enumerate().for_each(|arg|{
+                if ui.button(arg.1).clicked(){
+                    self.serial_index = arg.0;
+                }
+            });
+            ui.separator();
+        }
 
         let (status_color, status_text) = match self.serial_status {
             SerialStatus::Init => (Color32::from_rgb(0x92, 0x83, 0x74), "Not connected".to_string()),
