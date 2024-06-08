@@ -19,7 +19,7 @@ const MACH_DRAG_TABLE: [(f32, f32); 8] = [
 ];
 
 pub fn mach_to_m_s(mach_number: f32) -> f32{
-    mach_number * 343
+    mach_number * 343.0
 }
 
 impl Default for DragCoefficient {
@@ -97,7 +97,8 @@ impl egui::Widget for &mut DragCoefficient {
                         .speed(0.001)
                         .clamp_range(0.001..=10.0),
                 )
-            }
+            },
+            DragCoefficient::Variable => { ui.label("placeholder") }
         }
     }
 }
