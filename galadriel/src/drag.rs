@@ -2,21 +2,8 @@
 pub enum DragCoefficient {
     Constant(f32),
     // TODO: adjustable/speed-dependent drag coefficients
-    Variable, // input is speed in m/s
+    Variable(Vec<(f32, f32)>), // input is speed in m/s
 }
-
-// points from which drag coefficient is interpolated. 
-const MACH_DRAG_TABLE: [(f32, f32); 8] = [
-    // (mach_number, drag_coefficient)
-    (0.006, 0.622),
-    (0.018, 0.535),
-    (0.033, 0.497),
-    (0.064, 0.46),
-    (0.14, 0.43),
-    (0.512, 0.461),
-    (0.88, 0.526),
-    (0.941, 0.545),
-];
 
 pub fn mach_to_m_s(mach_number: f32) -> f32{
     mach_number * 343.0
@@ -32,17 +19,18 @@ impl DragCoefficient {
     pub fn at_velocity(&self, _velocity: f32) -> f32 {
         match self {
             Self::Constant(coef) => *coef,
-            Self::Variable => {
+            Self::Variable(coefficients) => {
+                
                 // I assume velocity is given in m/s?
-                self.interpolate_drag(_velocity)
+                self.interpolate_drag(coefficients, _velocity)
             },
         }
     }
 
-    fn interpolate_drag(&self, velocity: f32) -> f32{
-        for i in 0..MACH_DRAG_TABLE.len() - 1{
-            let (mach1, drag1) = MACH_DRAG_TABLE[i];
-            let (mach2, drag2) = MACH_DRAG_TABLE[i+1];
+    fn interpolate_drag(&self, mach_drag_table: &[(f32, f32)], velocity: f32) -> f32{
+        for i in 0..mach_drag_table.len() - 1{
+            let (mach1, drag1) = mach_drag_table[i];
+            let (mach2, drag2) = mach_drag_table[i+1];
             
             if self.mach_to_m_s(mach1) <= velocity && velocity <= self.mach_to_m_s(mach2){
                 return self.interpolate(
@@ -55,8 +43,8 @@ impl DragCoefficient {
         }
 
         // if here then velocity is not in the specified range 
-        let (min_mach, drag_min_mach) = MACH_DRAG_TABLE[0];
-        let (max_mach, drag_max_mach) = MACH_DRAG_TABLE[MACH_DRAG_TABLE.len() - 1];
+        let (min_mach, drag_min_mach) = mach_drag_table[0];
+        let (max_mach, drag_max_mach) = mach_drag_table[mach_drag_table.len() - 1];
         
         if velocity <= self.mach_to_m_s(min_mach) {
             return drag_min_mach;
@@ -67,7 +55,7 @@ impl DragCoefficient {
         }
 
         // something may be wrong
-        panic!("Velocity out of interpolation range");
+        panic!("Velocity for drag interpolation is out of interpolation range or not a number");
     }
 
     // calculate mach to m/s by scaling with 343
@@ -98,7 +86,25 @@ impl egui::Widget for &mut DragCoefficient {
                         .clamp_range(0.001..=10.0),
                 )
             },
-            DragCoefficient::Variable => { ui.label("placeholder") }
+            DragCoefficient::Variable(coefficients) => {
+                let plot_response = egui_plot::Plot::new("drag_coefficient_plot")
+                    .set_margin_fraction(egui::Vec2::new(0.1, 0.3))
+                    .allow_scroll(false)
+                    .allow_drag(false)
+                    .allow_zoom(false)
+                    .allow_boxed_zoom(false)
+                    .show_axes(true)
+                    // plot m/s über draf coefficient
+                    .show(ui, |plot_ui| {
+                        let points: Vec<_> = coefficients.iter()
+                            .map(|(speed, coef)| [*speed as f64, *coef as f64])
+                            .collect();
+                        plot_ui.points(egui_plot::Points::new(points));
+                    });
+
+                // Create a dummy response if no actual response is needed
+                plot_response.response
+            }
         }
     }
 }

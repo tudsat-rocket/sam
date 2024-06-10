@@ -23,7 +23,17 @@ impl Default for RocketSettings {
         let propellant_mass = 0.5;
         Self {
             dry_mass: 14.157 - propellant_mass,
-            drag_coef: DragCoefficient::Variable,
+            drag_coef: DragCoefficient::Variable(vec![
+                // (mach_number, drag_coefficient)
+                (0.006, 0.622),
+                (0.018, 0.535),
+                (0.033, 0.497),
+                (0.064, 0.46),
+                (0.14, 0.43),
+                (0.512, 0.461),
+                (0.88, 0.526),
+                (0.941, 0.545),
+            ]),
             area: 0.018,
             motor: MotorSettings {
                 performance: 0.95,
