@@ -66,6 +66,7 @@ impl StateSimulation for VehicleState {
             accelerometer1: self.accelerometer1,
             accelerometer2: self.accelerometer2,
             magnetometer: self.magnetometer,
+            lp_filtered_pressure: self.pressure_baro,
             pressure: self.pressure_baro,
         }
     }

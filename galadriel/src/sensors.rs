@@ -11,6 +11,9 @@ pub struct SensorSettings {
     pub std_dev_accelerometer2: f32,
     pub std_dev_magnetometer: f32,
     pub std_dev_barometer: f32,
+    /// Used for low-pass filtering barometer values, simulating - for instance - an
+    /// improperly vented avionics bay.
+    pub barometer_iir_alpha: f32,
     // TODO: anomalies?
 }
 
@@ -22,6 +25,7 @@ impl Default for SensorSettings {
             std_dev_accelerometer2: 4.0,
             std_dev_magnetometer: 2.0,
             std_dev_barometer: 1.0,
+            barometer_iir_alpha: 0.995,
         }
     }
 }
@@ -33,6 +37,7 @@ pub struct SensorData {
     pub accelerometer1: Option<Vector3<f32>>,
     pub accelerometer2: Option<Vector3<f32>>,
     pub magnetometer: Option<Vector3<f32>>,
+    pub lp_filtered_pressure: Option<f32>,
     pub pressure: Option<f32>,
 }
 
@@ -49,9 +54,14 @@ impl SensorData {
         )
     }
 
-    pub fn sample(rng: &mut StdRng, state: &SimulationState, settings: &SimulationSettings) -> Self {
-        let alt_asl = state.position.z + settings.environment.launch_altitude + Self::sample_1d(rng, settings.sensors.std_dev_barometer);
-        let pressure = 1013.25 * (1.0 - alt_asl / 44307.694).powf(1.0 / 0.190284);
+    pub fn sample(rng: &mut StdRng, state: &SimulationState, settings: &SimulationSettings, last: Option<&Self>) -> Self {
+        let alt_asl = state.position.z + settings.environment.launch_altitude;
+        let sampled_pressure = 1013.25 * (1.0 - alt_asl / 44307.694).powf(1.0 / 0.190284);
+
+        let last_filtered_pressure = last.and_then(|sd| sd.lp_filtered_pressure).unwrap_or(sampled_pressure);
+        let iir_alpha = 1.0 - settings.sensors.barometer_iir_alpha;
+        let new_filtered_pressure = sampled_pressure * iir_alpha + (1.0 - iir_alpha) * last_filtered_pressure;
+        let pressure = new_filtered_pressure + Self::sample_1d(rng, settings.sensors.std_dev_barometer);
 
         let acc2 = state.orientation.inverse_transform_vector(&(state.acceleration + &Vector3::new(0.0, 0.0, GRAVITY)));
         let acc1 = acc2.inf(&Vector3::new(150.0, 150.0, 150.0)).sup(&Vector3::new(-150.0, -150.0, -150.0));
@@ -65,6 +75,7 @@ impl SensorData {
             accelerometer1: Some(acc1 + Self::sample_3d(rng, settings.sensors.std_dev_accelerometer1)),
             accelerometer2: Some(acc2 + Self::sample_3d(rng, settings.sensors.std_dev_accelerometer2)),
             magnetometer: Some(mag + Self::sample_3d(rng, settings.sensors.std_dev_magnetometer)),
+            lp_filtered_pressure: Some(new_filtered_pressure),
             pressure: Some(pressure),
         }
     }
@@ -125,7 +136,15 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_barometer)
                             .suffix(" m")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .clamp_range(0.001..=10000.0),
+                    );
+                    ui.end_row();
+
+                    ui.label("Barometer IIR α");
+                    ui.add(
+                        egui::DragValue::new(&mut self.barometer_iir_alpha)
+                            .speed(0.0001)
+                            .clamp_range(0.9..=1.0),
                     );
                     ui.end_row();
                 });
