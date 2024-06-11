@@ -30,10 +30,10 @@ impl DragCoefficient {
             let (mach1, drag1) = mach_drag_table[i];
             let (mach2, drag2) = mach_drag_table[i+1];
 
-            if self.mach_to_m_s(mach1) <= velocity && velocity <= self.mach_to_m_s(mach2){
+            if mach_to_m_s(mach1) <= velocity && velocity <= mach_to_m_s(mach2){
                 return self.interpolate(
-                    self.mach_to_m_s(mach1),
-                    self.mach_to_m_s(mach2),
+                    mach_to_m_s(mach1),
+                    mach_to_m_s(mach2),
                     drag1,
                     drag2,
                     velocity);
@@ -44,21 +44,16 @@ impl DragCoefficient {
         let (min_mach, drag_min_mach) = mach_drag_table[0];
         let (max_mach, drag_max_mach) = mach_drag_table[mach_drag_table.len() - 1];
 
-        if velocity <= self.mach_to_m_s(min_mach) {
+        if velocity <= mach_to_m_s(min_mach) {
             return drag_min_mach;
         }
 
-        if velocity >= self.mach_to_m_s(max_mach) {
+        if velocity >= mach_to_m_s(max_mach) {
             return drag_max_mach;
         }
 
         // something may be wrong
         panic!("Velocity for drag interpolation is out of interpolation range or not a number");
-    }
-
-    // calculate mach to m/s by scaling with 343
-    fn mach_to_m_s(&self, mach_number: f32) -> f32{
-        mach_number * 343.0
     }
 
     // create linear function f(x) between given set of points (x1, y1) and (x2,y2) and return y=f(x)
@@ -95,7 +90,7 @@ impl egui::Widget for &mut DragCoefficient {
                     // plot m/s über draf coefficient
                     .show(ui, |plot_ui| {
                         let points: Vec<_> = coefficients.iter()
-                            .map(|(speed, coef)| [*speed as f64, *coef as f64])
+                            .map(|(speed, coef)| [mach_to_m_s(*speed) as f64, *coef as f64])
                             .collect();
                         plot_ui.line(egui_plot::Line::new(points));
                     });
