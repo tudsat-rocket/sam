@@ -4,6 +4,7 @@ use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::unix::raw::ino_t;
 use std::path::PathBuf;
 use std::slice::Iter;
 use std::sync::mpsc::{Receiver, SendError, Sender};
@@ -17,6 +18,7 @@ use web_time::Instant;
 
 use eframe::epaint::Color32;
 use log::*;
+use serde::de::Unexpected::Option;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
@@ -152,12 +154,18 @@ pub fn find_serial_port() -> Option<Vec<String>> {
 pub fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
+    serial_status_rx: Receiver<(SerialStatus,Option<String>)>,
     mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
     serial_index: usize
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
+
+        if let Some(s) = serial_status_rx.recv()?{
+            Ok(()).expect("Error on downlink monitor exit");
+        }
+
         // If a device was connected, start reading messages.
         if let Some(p) = find_serial_port() {
             serial_status_tx.send((SerialStatus::Connected, Some(p[serial_index].clone())))?;
@@ -179,18 +187,20 @@ pub fn downlink_monitor(
 pub fn spawn_downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
+    serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
     send_heartbeats: bool,
     serial_index: usize,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, send_heartbeats, serial_index).unwrap_or_default()
+        downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx, send_heartbeats, serial_index).unwrap_or_default()
     })
 }
 
 pub struct SerialDataSource {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
+    serial_status_uplink_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_rx: Receiver<(Instant, DownlinkMessage)>,
     uplink_tx: Sender<UplinkMessage>,
 
@@ -215,6 +225,7 @@ impl SerialDataSource {
         let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<(Instant, DownlinkMessage)>();
         let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
         let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
+        let (serial_status_uplink_tx, serial_status_uplink_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
 
         let ctx = ctx.clone();
 
@@ -223,10 +234,11 @@ impl SerialDataSource {
 
         // There are no serial ports on wasm, and on android the Java side handles this.
         #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true, 0);
+        spawn_downlink_monitor(Some(ctx), serial_status_tx, serial_status_uplink_rx, downlink_tx, uplink_rx, true, 0);
 
         Self {
             serial_status_rx,
+            serial_status_uplink_tx,
             downlink_rx,
             uplink_tx,
             serial_port: None,
@@ -425,6 +437,7 @@ impl DataSource for SerialDataSource {
             available.iter().enumerate().for_each(|arg|{
                 if ui.button(arg.1).clicked(){
                     self.serial_index = arg.0;
+                    self.serial_status_uplink_tx.send((SerialStatus::Init, Some("Reconnect")))?;
                 }
             });
             ui.separator();
