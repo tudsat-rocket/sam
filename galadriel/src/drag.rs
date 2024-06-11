@@ -1,7 +1,6 @@
 #[derive(Clone, Debug, PartialEq)]
 pub enum DragCoefficient {
     Constant(f32),
-    // TODO: adjustable/speed-dependent drag coefficients
     Variable(Vec<(f32, f32)>), // input is speed in m/s
 }
 
@@ -16,13 +15,12 @@ impl Default for DragCoefficient {
 }
 
 impl DragCoefficient {
-    pub fn at_velocity(&self, _velocity: f32) -> f32 {
+    pub fn at_velocity(&self, velocity: f32) -> f32 {
         match self {
             Self::Constant(coef) => *coef,
             Self::Variable(coefficients) => {
-                
                 // I assume velocity is given in m/s?
-                self.interpolate_drag(coefficients, _velocity)
+                self.interpolate_drag(coefficients, velocity)
             },
         }
     }
@@ -31,21 +29,21 @@ impl DragCoefficient {
         for i in 0..mach_drag_table.len() - 1{
             let (mach1, drag1) = mach_drag_table[i];
             let (mach2, drag2) = mach_drag_table[i+1];
-            
+
             if self.mach_to_m_s(mach1) <= velocity && velocity <= self.mach_to_m_s(mach2){
                 return self.interpolate(
-                    self.mach_to_m_s(mach1), 
-                    self.mach_to_m_s(mach2), 
-                    drag1, 
-                    drag2, 
+                    self.mach_to_m_s(mach1),
+                    self.mach_to_m_s(mach2),
+                    drag1,
+                    drag2,
                     velocity);
-            } 
+            }
         }
 
-        // if here then velocity is not in the specified range 
+        // if here then velocity is not in the specified range
         let (min_mach, drag_min_mach) = mach_drag_table[0];
         let (max_mach, drag_max_mach) = mach_drag_table[mach_drag_table.len() - 1];
-        
+
         if velocity <= self.mach_to_m_s(min_mach) {
             return drag_min_mach;
         }
@@ -93,13 +91,13 @@ impl egui::Widget for &mut DragCoefficient {
                     .allow_drag(false)
                     .allow_zoom(false)
                     .allow_boxed_zoom(false)
-                    .show_axes(true)
+                    .show_axes(false) // these are really big
                     // plot m/s über draf coefficient
                     .show(ui, |plot_ui| {
                         let points: Vec<_> = coefficients.iter()
                             .map(|(speed, coef)| [*speed as f64, *coef as f64])
                             .collect();
-                        plot_ui.points(egui_plot::Points::new(points));
+                        plot_ui.line(egui_plot::Line::new(points));
                     });
 
                 // Create a dummy response if no actual response is needed
