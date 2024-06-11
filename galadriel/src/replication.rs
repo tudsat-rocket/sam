@@ -40,6 +40,7 @@ impl Iterator for Replication {
                 accelerometer1: next.accelerometer1,
                 accelerometer2: next.accelerometer2,
                 magnetometer: next.magnetometer,
+                lp_filtered_pressure: next.pressure,
                 pressure: next.pressure,
             }
         } else {
@@ -52,6 +53,7 @@ impl Iterator for Replication {
                 accelerometer1: last.accelerometer1.zip(next.accelerometer1).map(|(l, n)| l.lerp(&n, t)),
                 accelerometer2: last.accelerometer2.zip(next.accelerometer2).map(|(l, n)| l.lerp(&n, t)),
                 magnetometer: last.magnetometer.zip(next.magnetometer).map(|(l, n)| l.lerp(&n, t)),
+                lp_filtered_pressure: next.pressure,
                 pressure: last.pressure.zip(next.pressure).map(|(l, n)| l + (n - l)*t),
             }
             // TODO: linear interpolation is probably not the best choice here.

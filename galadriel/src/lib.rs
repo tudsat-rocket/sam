@@ -76,6 +76,7 @@ pub struct Simulation {
     settings: SimulationSettings,
     pub rocket: Rocket,
     pub state: SimulationState,
+    last_sensor_values: Option<SensorData>,
 }
 
 impl Simulation {
@@ -100,6 +101,7 @@ impl Simulation {
             settings: settings.clone(),
             rocket,
             state,
+            last_sensor_values: None,
         }
     }
 
@@ -217,7 +219,9 @@ impl Simulation {
     }
 
     pub fn sensors(&mut self) -> SensorData {
-        SensorData::sample(&mut self.rng, &self.state, &self.settings)
+        let new = SensorData::sample(&mut self.rng, &self.state, &self.settings, self.last_sensor_values.as_ref());
+        self.last_sensor_values = Some(new.clone());
+        new
     }
 }
 
