@@ -44,8 +44,8 @@ A tool used to manage different Rust versions and targets (e.g. x86, ARM, etc.).
 Using `rustup`, we can download the target needed for the STM32 and some other tools we need.
 
 Run the following commands (you can skip ones needed for flashing methods you're not interested in):
-- `rustup toolchain install nightly --target thumbv7em-none-eabihf` (nightly ARM toolchain)
-- `rustup component add --toolchain nightly llvm-tools-preview` (Needed for DFU flashing)
+- `rustup toolchain install --target thumbv7em-none-eabihf` (ARM toolchain)
+- `rustup component add --toolchain llvm-tools-preview` (Needed for DFU flashing)
 - `cargo install cargo-embed` (Needed for SWD flashing)
 - `cargo install cargo-binutils` (Needed for DFU flashing)
 - `cargo install cargo-make` (Main task runner)
