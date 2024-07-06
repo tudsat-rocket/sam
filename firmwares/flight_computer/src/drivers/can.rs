@@ -6,14 +6,50 @@ use embedded_hal_async::spi::SpiDevice;
 
 use defmt::*;
 
+use crate::can::CanDataRate;
+
 pub struct MCP2517FD<SPI> {
     spi: SPI,
     fifo_index: u32,
+    seq: u8,
+}
+
+// https://ww1.microchip.com/downloads/en/DeviceDoc/MCP25XXFD-CAN-FD-Controller-Module-Family-Reference-Manual-DS20005678E.pdf (4.3)
+#[derive(Default, Debug)]
+struct TransmitMessageObject {
+    id: u32, // 11 bits for standard ID, 29 bits for extended
+    seq: u8, // 7 bits used by MCP2517FD
+    error_status_indicator: bool,
+    fd_frame: bool,
+    bit_rate_switch: bool,
+    remote_transmission_request: bool,
+    identifier_extension_flag: bool,
+    msg: [u8; 8],
+}
+
+impl TransmitMessageObject {
+    fn serialize(self) -> [u8; 16] {
+        let dlc: u32 = 8;
+        let t1: u32 = ((self.seq as u32) << 9) |
+            ((self.error_status_indicator as u32) << 8) |
+            ((self.fd_frame as u32) << 7) |
+            ((self.bit_rate_switch as u32) << 6) |
+            ((self.remote_transmission_request as u32) << 5) |
+            ((self.identifier_extension_flag as u32) << 4) |
+            (dlc & 0x0f);
+
+        let mut frame = [0x00; 16];
+        frame[..4].copy_from_slice(&self.id.to_le_bytes());
+        frame[4..8].copy_from_slice(&t1.to_le_bytes());
+        frame[8..].copy_from_slice(&self.msg);
+        frame
+    }
 }
 
 #[derive(Debug)]
 pub enum MCP2517Error<SpiError> {
     Initialization,
+    TransmitFiFoFull,
     Spi(SpiError),
 }
 
@@ -24,9 +60,34 @@ impl<SpiError> From<SpiError> for MCP2517Error<SpiError> {
 }
 
 impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
-    pub async fn init(spi: SPI) -> Result<Self, MCP2517Error<SPI::Error>> {
+    fn calculate_nominal_bit_timing_register(data_rate: CanDataRate) -> u32 {
+        const SYSCLK: u32 = 20; // MHz
+        const BUS_LENGTH: u32 = 50; // m
+
+        let nbt = match data_rate {
+            CanDataRate::Kbps125 => 8000,
+            CanDataRate::Kbps250 => 4000,
+            CanDataRate::Kbps500 => 2000,
+            CanDataRate::Kbps1000 => 1000,
+        }; // ns
+
+        let nbrp: u32 = 1;
+        let t_sysclk: u32 = 1_000 / SYSCLK; // ns
+        let ntq = nbrp * t_sysclk;
+
+        let nbt_over_ntq = nbt / ntq;
+        let nsync = 1;
+        let ntseg1 = (nbt_over_ntq as f32 * 0.8) as u32 - 1;
+        let ntseg2 = nbt_over_ntq - nsync - ntseg1;
+        let nsjw = ntseg2; // TODO?
+
+        ((nbrp - 1) << 24) | ((ntseg1 - 1) << 16) | ((ntseg2 - 1) << 8) | (nsjw - 1)
+    }
+
+    pub async fn init(spi: SPI, data_rate: CanDataRate) -> Result<Self, MCP2517Error<SPI::Error>> {
         let mut mcp = Self {
             spi,
+            seq: 0,
             fifo_index: 0,
         };
 
@@ -48,9 +109,9 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         }
 
         // Configure 125000 bitrate
-        mcp.sfr_write(MCP2517FDRegister::C1NBtCfg, 0x007e1f1f).await?;
-        mcp.sfr_write(MCP2517FDRegister::C1DBtCfg, 0x001e0707).await?;
-        mcp.sfr_write(MCP2517FDRegister::C1TDC,    0x00001f00).await?;
+        let nbtcfg = Self::calculate_nominal_bit_timing_register(data_rate);
+        mcp.sfr_write(MCP2517FDRegister::C1NBtCfg, nbtcfg).await?;
+        mcp.sfr_write(MCP2517FDRegister::C1DBtCfg, nbtcfg).await?;
 
         // Set mask 0 to receive everything
         mcp.sfr_write(MCP2517FDRegister::C1Mask0, 0x00000000).await?;
@@ -59,9 +120,13 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         // Enable filter 0 and link it to to FiFo 1
         mcp.sfr_write(MCP2517FDRegister::C1FltCon0, 0x00000081).await?;
 
-        // Configure FiFo1 (8 byte payloads, 8 messages in queue)
+        // Configure FiFo1 for receiving (8 byte payloads, 8 messages in queue)
         mcp.sfr_write(MCP2517FDRegister::C1FiFoCon1, 0x08000000).await?;
+        // Configure FiFo2 for transmitting (8 byte payloads, 8 messages in queue,
+        //  3 retransmission attempts)
+        mcp.sfr_write(MCP2517FDRegister::C1FiFoCon2, 0x08200080).await?;
 
+        c1con |= 0b1 << 16; // restrict retransmission attempts
         c1con &= !(0b111 << 24); // go back to normal mode
         mcp.sfr_write(MCP2517FDRegister::C1Con, c1con).await?;
 
@@ -106,7 +171,7 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
     }
 
     async fn memory_read(&mut self, address: u32) -> Result<[u8; 16], SPI::Error> {
-        let address = (0b0011 << 12) | (address as u16);
+        let address = ((MCP2517FDInstruction::Read as u16) << 12) | (address as u16);
 
         let mut buffer: [u8; 16+2] = [0; 16+2];
         buffer[0..2].copy_from_slice(&address.to_be_bytes());
@@ -118,6 +183,18 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         response.copy_from_slice(&buffer[2..]);
 
         Ok(response)
+    }
+
+    async fn memory_write(&mut self, address: u32, value: [u8; 16]) -> Result<(), SPI::Error> {
+        let address = ((MCP2517FDInstruction::Write as u16) << 12) | (address as u16);
+
+        let mut buffer: [u8; 16+2] = [0; 16+2];
+        buffer[0..2].copy_from_slice(&address.to_be_bytes());
+        buffer[2..].copy_from_slice(&value);
+
+        self.spi.transfer_in_place(&mut buffer).await?;
+
+        Ok(())
     }
 
     pub async fn receive(&mut self) -> Result<Option<(u16, [u8; 8])>, SPI::Error> {
@@ -147,6 +224,49 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
             Ok(None)
         }
     }
+
+    pub async fn transmit(&mut self, id: u16, msg: [u8; 8]) -> Result<(), MCP2517Error<SPI::Error>> {
+        // Check Status register to find out if the FiFo is full
+        let fifo_status = self.sfr_read(MCP2517FDRegister::C1FiFoSta2).await?;
+        if (fifo_status & 0b1) == 0 {
+            warn!("Full transmit FiFo, clearing...");
+            let mut fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon2).await?;
+            fifo_config |= 0b1 << 10; // reset fifo
+            fifo_config &= !(0b1 << 9); // abort transmissions
+            self.sfr_write(MCP2517FDRegister::C1FiFoCon2, fifo_config).await?;
+
+            for _i in 0..10 {
+                fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon2).await?;
+
+                if (fifo_config >> 10) & 0b1 == 0b0 {
+                    break;
+                }
+            }
+
+            if (fifo_config >> 10) & 0b1 > 0 {
+                return Err(MCP2517Error::TransmitFiFoFull);
+            }
+        }
+
+        let address = 0x400 + self.sfr_read(MCP2517FDRegister::C1FiFoUA2).await?;
+
+        self.seq = (self.seq + 1) % 0x7f;
+        let tmq = TransmitMessageObject {
+            id: id.into(),
+            msg,
+            seq: self.seq,
+            ..Default::default()
+        };
+
+        self.memory_write(address, tmq.serialize()).await?;
+
+        let mut fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon2).await?;
+        fifo_config |= 0b1 << 8; // increase FiFo counter
+        fifo_config |= 0b1 << 9; // request transmission
+        self.sfr_write(MCP2517FDRegister::C1FiFoCon2, fifo_config).await?;
+
+        Ok(())
+    }
 }
 
 
@@ -169,6 +289,9 @@ enum MCP2517FDRegister {
     C1FiFoCon1 = 0x05c,
     C1FiFoSta1 = 0x060,
     C1FiFoUA1 = 0x064,
+    C1FiFoCon2 = 0x068,
+    C1FiFoSta2 = 0x06c,
+    C1FiFoUA2 = 0x070,
     C1FltCon0 = 0x1d0,
     C1FltCon1 = 0x1d4,
     C1FltCon2 = 0x1d8,

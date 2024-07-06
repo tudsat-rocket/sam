@@ -133,7 +133,7 @@ async fn main(low_priority_spawner: Spawner) {
     let spi2 = SPI2_SHARED.init(spi2);
 
     let spi2_cs_can = Output::new(p.PB12, Level::High, Speed::VeryHigh);
-    let (can, can_handle) = Can::init(SpiDevice::new(spi2, spi2_cs_can)).await.unwrap();
+    let (can, can_handle) = Can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await.unwrap();
 
     // SPI 3
     let mut spi3_config = embassy_stm32::spi::Config::default();
