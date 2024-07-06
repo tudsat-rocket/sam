@@ -27,8 +27,8 @@ walkers = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
 postcard = { workspace = true }
+crc = { workspace = true }
 serialport = "4"
-crc = "2"
 # misc
 mint = { workspace = true }
 nalgebra = { workspace = true }
