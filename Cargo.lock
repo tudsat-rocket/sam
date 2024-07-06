@@ -4287,6 +4287,7 @@ dependencies = [
 name = "shared_types"
 version = "0.1.0"
 dependencies = [
+ "crc",
  "nalgebra",
  "postcard",
  "serde",

@@ -95,6 +95,24 @@ pub enum FlightMode {
     Landed = 7,
 }
 
+impl TryFrom<u8> for FlightMode {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Idle),
+            1 => Ok(Self::HardwareArmed),
+            2 => Ok(Self::Armed),
+            3 => Ok(Self::Burn),
+            4 => Ok(Self::Coast),
+            5 => Ok(Self::RecoveryDrogue),
+            6 => Ok(Self::RecoveryMain),
+            7 => Ok(Self::Landed),
+            _ => Err(())
+        }
+    }
+}
+
 impl FlightMode {
     pub fn led_state(self, time: u32) -> (bool, bool, bool) {
         match self {
@@ -413,6 +431,7 @@ impl From<VehicleState> for TelemetryMainCompressed {
     }
 }
 
+#[cfg(not(target_os = "none"))]
 impl Into<VehicleState> for TelemetryMainCompressed {
     fn into(self) -> VehicleState {
         let (x, y, z, w) = self.orientation;
@@ -720,6 +739,7 @@ impl DownlinkMessage {
     }
 }
 
+#[cfg(not(target_os = "none"))]
 impl From<DownlinkMessage> for VehicleState {
     fn from(msg: DownlinkMessage) -> VehicleState {
         match msg {

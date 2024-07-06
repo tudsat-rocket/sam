@@ -3,8 +3,11 @@
 #[cfg(target_os = "none")]
 extern crate alloc;
 
-pub mod settings;
-pub mod telemetry;
+pub mod can;
+pub use can::*;
 
+pub mod settings;
 pub use settings::*;
+
+pub mod telemetry;
 pub use telemetry::*;
