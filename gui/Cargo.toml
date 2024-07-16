@@ -38,6 +38,7 @@ colorgrad = "0.6"
 tokio = "1.33"
 futures = { version = "0.3.28", default-features = false }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
+frodo_tracking = { git = "ssh://git@github.com/tudsat-rocket/frodo_tracking", optional = true }
 
 # Used for profiling
 puffin = { version = "0.19", optional = true }
@@ -67,7 +68,9 @@ wasm-bindgen = "0.2.87"
 wasm-logger = "0.2.0"
 
 [features]
+default = ["tracking"]
 profiling = ["dep:puffin", "dep:puffin_egui"]
+tracking = ["dep:frodo_tracking"]
 
 # The following entries are only required for web assembly compilation
 [lib]

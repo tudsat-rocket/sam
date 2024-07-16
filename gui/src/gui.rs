@@ -35,6 +35,8 @@ pub struct Sam {
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
     archive_window: ArchiveWindow,
+    #[cfg(feature = "tracking")]
+    tracking: crate::tracking::TrackingHandle,
 }
 
 impl Sam {
@@ -68,6 +70,9 @@ impl Sam {
             configure_tab,
 
             archive_window: ArchiveWindow::default(),
+
+            #[cfg(feature = "tracking")]
+            tracking: crate::tracking::TrackingHandle::default(),
         }
     }
 
@@ -133,6 +138,9 @@ impl Sam {
         } else {
             None
         };
+
+        #[cfg(feature = "tracking")]
+        self.tracking.process_inputs(ctx);
 
         // Set new flight mode if keyboard shortcut was used
         if let Some(fm) = shortcut_mode {

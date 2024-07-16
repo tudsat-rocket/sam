@@ -18,6 +18,8 @@ mod file;
 mod gui;
 mod settings;
 mod telemetry_ext;
+#[cfg(feature = "tracking")]
+mod tracking;
 
 use crate::data_source::serial::{self, *};
 

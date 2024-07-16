@@ -16,6 +16,9 @@ mod telemetry_ext;
 
 pub use crate::gui::*;
 
+#[cfg(feature = "tracking")]
+mod tracking;
+
 #[cfg(target_arch = "wasm32")]
 use eframe::WebRunner;
 
