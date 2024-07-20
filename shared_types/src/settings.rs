@@ -8,20 +8,6 @@ use serde::{Serialize, Deserialize};
 
 use crate::telemetry::TelemetryDataRate;
 
-/// Enum identifying takeoff detection source
-#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
-pub enum TakeoffDetectionMode {
-    #[default]
-    /// use acceleration threshold only
-    Acceleration,
-    /// use breakwire via CAN only
-    Breakwire,
-    /// require both acceleration AND breakwire to trigger
-    AccelerationAndBreakwire,
-    /// require either acceleration OR breakwire to trigger
-    AccelerationOrBreakwire,
-}
-
 /// Enum identifying main output trigger times
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub enum MainOutputMode {
@@ -90,8 +76,6 @@ pub struct Settings {
     pub std_dev_barometer_transsonic: f32,
     /// process standard deviation for kalman filter
     pub std_dev_process: f32,
-    /// which data source to use for takeoff detection
-    pub takeoff_detection_mode: TakeoffDetectionMode,
     /// minimum vertical acceleration for takeoff detection (m/s^2)
     pub min_takeoff_acc: f32,
     /// time for which min_takeoff_acc has to be exceeded (ms)
@@ -138,8 +122,6 @@ impl Default for Settings {
             std_dev_barometer: 1.0,
             std_dev_barometer_transsonic: 400.0,
             std_dev_process: 0.1,
-            // TODO: unused
-            takeoff_detection_mode: TakeoffDetectionMode::default(),
             min_takeoff_acc: 30.0,
             min_takeoff_acc_time: 50,
             min_time_to_apogee: 5000,

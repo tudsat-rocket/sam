@@ -382,7 +382,7 @@ impl StateEstimator {
     /// flight mode based on sensor data and therefore controls when the important events of the
     /// flight will take place.. Generally, all conditions have to be true for a given
     /// amount of time to avoid spurious decisions in case of weird sensor spikes/glitches.
-    pub fn new_mode(&mut self, arm_voltage: u16, breakwire_open: Option<bool>) -> Option<FlightMode> {
+    pub fn new_mode(&mut self, arm_voltage: u16) -> Option<FlightMode> {
         let t_since_takeoff = self.time_since_takeoff();
         let t_in_mode = self.time_in_mode();
 
@@ -403,15 +403,8 @@ impl StateEstimator {
                 // In the AND mode, we assume the breakwire to be open (pulled-out) when we lose
                 // contact with the power module. This way, if the CAN bus becomes damaged
                 // during/before takeoff, we simply fall back to acceleration-only detection.
-                let acceleration = vertical_accel_vehicle_space > self.settings.min_takeoff_acc;
-                let condition = match self.settings.takeoff_detection_mode {
-                    TakeoffDetectionMode::Acceleration             => acceleration,
-                    TakeoffDetectionMode::Breakwire                => breakwire_open.unwrap_or(false),
-                    TakeoffDetectionMode::AccelerationAndBreakwire => acceleration && breakwire_open.unwrap_or(true),
-                    TakeoffDetectionMode::AccelerationOrBreakwire  => acceleration || breakwire_open.unwrap_or(false),
-                };
-
-                self.true_since(condition, self.settings.min_takeoff_acc_time).then(|| FlightMode::Burn)
+                let acceleration_high = vertical_accel_vehicle_space > self.settings.min_takeoff_acc;
+                self.true_since(acceleration_high, self.settings.min_takeoff_acc_time).then(|| FlightMode::Burn)
             }
             // Wait for motor burnout
             FlightMode::Burn => {

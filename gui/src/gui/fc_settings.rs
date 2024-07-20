@@ -231,31 +231,6 @@ impl FcSettingsUiExt for Settings {
                 });
                 ui.end_row();
 
-                ui.label("Takeoff detection mode");
-                ui.horizontal(|ui| {
-                    ui.selectable_value(
-                        &mut self.takeoff_detection_mode,
-                        TakeoffDetectionMode::Acceleration,
-                        "acceleration",
-                    );
-                    ui.selectable_value(
-                        &mut self.takeoff_detection_mode,
-                        TakeoffDetectionMode::Breakwire,
-                        "CAN breakwire",
-                    );
-                    ui.selectable_value(
-                        &mut self.takeoff_detection_mode,
-                        TakeoffDetectionMode::AccelerationAndBreakwire,
-                        "AND",
-                    );
-                    ui.selectable_value(
-                        &mut self.takeoff_detection_mode,
-                        TakeoffDetectionMode::AccelerationOrBreakwire,
-                        "OR",
-                    );
-                });
-                ui.end_row();
-
                 ui.label("Takeoff detection acceleration");
                 ui.horizontal(|ui| {
                     ui.weak("at least");

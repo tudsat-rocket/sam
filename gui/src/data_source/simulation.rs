@@ -257,7 +257,7 @@ impl SimulationWorker {
             self.current_state.gps.clone(),
         );
 
-        if let Some(mode) = self.state_estimator.new_mode(8400, None) {
+        if let Some(mode) = self.state_estimator.new_mode(8400) {
             self.mode = mode;
             self.current_state.mode = Some(mode);
         }
