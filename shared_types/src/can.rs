@@ -18,14 +18,14 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum IoBoardRole {
     Acs = 1,
     Recovery = 2,
     Payload = 8,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum CanBusMessageId {
     IoBoardCommand(IoBoardRole, u8),
     IoBoardInput(IoBoardRole, u8),
@@ -86,6 +86,10 @@ pub trait CanBusMessage: Sized {
         frame[6..8].copy_from_slice(&checksum.to_le_bytes());
 
         frame
+    }
+
+    fn to_frame(self, id: CanBusMessageId) -> (u16, [u8; 8]) {
+        (id.into(), self.serialize_with_crc())
     }
 
     fn parse(data: [u8; 8]) -> Result<Option<Self>, ()> {
@@ -201,7 +205,7 @@ impl CanBusMessage for TelemetryToPayloadMessage {
 pub struct BatteryTelemetryMessage {
     pub voltage_battery: u16, // mV
     pub voltage_charge: u16, // mV
-    pub current: u16, // mA
+    pub current: i32, // mA
     pub stat0: bool, // TODO: higher type
     pub stat1: bool,
 }
@@ -211,16 +215,17 @@ impl CanBusMessage for BatteryTelemetryMessage {
         let mut msg = [0x00; 6];
         let vb = (self.voltage_battery << 1) | (self.stat0 as u16);
         let vc = (self.voltage_charge << 1) | (self.stat1 as u16);
+        let current = (self.current + 2000) as u16;
         msg[0..2].copy_from_slice(&vb.to_be_bytes());
         msg[2..4].copy_from_slice(&vc.to_be_bytes());
-        msg[4..6].copy_from_slice(&self.current.to_be_bytes());
+        msg[4..6].copy_from_slice(&current.to_be_bytes());
         msg
     }
 
     fn deserialize(data: &[u8]) -> Option<Self> {
         let vb = u16::from_be_bytes([data[0], data[1]]);
         let vc = u16::from_be_bytes([data[2], data[3]]);
-        let current = u16::from_be_bytes([data[4], data[5]]);
+        let current = (u16::from_be_bytes([data[4], data[5]]) as i32) - 2000;
         Some(Self {
             voltage_battery: vb >> 1,
             voltage_charge: vc >> 1,
@@ -229,4 +234,15 @@ impl CanBusMessage for BatteryTelemetryMessage {
             stat1: (vc & 0b1) > 0,
         })
     }
+}
+
+pub enum FcReceivedCanBusMessage {
+    IoBoardSensor(IoBoardRole, u8, IoBoardSensorMessage),
+    // TODO: fin input
+    BatteryTelemetry(u8, BatteryTelemetryMessage),
+    // TODO: payload downlink
+}
+
+pub enum FcTransmittedCanBusMessage {
+    IoBoardCommand(IoBoardRole, u8, IoBoardOutputMessage),
 }

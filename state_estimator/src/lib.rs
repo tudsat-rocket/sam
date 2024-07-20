@@ -9,9 +9,10 @@ use nalgebra::*;
 use ahrs::Ahrs;
 use filter::kalman::kalman_filter::KalmanFilter;
 
+use shared_types::FlightMode;
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use shared_types::telemetry::FlightMode::*;
+use shared_types::FlightMode::*;
 
 const GRAVITY: f32 = 9.80665;
 const GPS_NO_FIX_STD_DEV: f32 = 999_999.0;

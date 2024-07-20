@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use serde::de::DeserializeOwned;
 use siphasher::sip::SipHasher;
 
-use crate::common::*;
+pub use crate::common::FlightMode;
 use crate::settings::*;
 
 pub const LORA_MESSAGE_INTERVAL: u32 = 25;
@@ -245,7 +245,7 @@ pub struct VehicleState {
     pub charge_voltage: Option<u16>,
     pub battery_voltage: Option<u16>,
     pub arm_voltage: Option<u16>,
-    pub current: Option<i16>,
+    pub current: Option<i32>,
 
     // TODO: rename?
     pub lora_rssi: Option<u8>,
@@ -516,7 +516,7 @@ impl From<VehicleState> for TelemetryDiagnostics {
             cpu_utilization: (100.0 * vs.cpu_utilization.unwrap_or_default()) as u8,
             charge_voltage: vs.charge_voltage.unwrap_or_default(),
             battery_voltage: vs.battery_voltage.unwrap_or_default() << 2, // TODO: breakwire
-            current: vs.current.unwrap_or_default(),
+            current: vs.current.unwrap_or_default() as i16,
             lora_rssi: vs.lora_rssi.unwrap_or_default(),
             altitude_ground: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
             transmit_power_and_data_rate: ((vs.data_rate.unwrap_or_default() as u8) << 7) |
@@ -535,7 +535,7 @@ impl Into<VehicleState> for TelemetryDiagnostics {
             altitude_ground_asl: Some((self.altitude_ground as f32 - 1000.0) / 10.0),
             battery_voltage: Some(self.battery_voltage >> 2),
             charge_voltage: Some(self.charge_voltage),
-            current: Some(self.current),
+            current: Some(self.current as i32),
             cpu_utilization: Some(self.cpu_utilization as f32),
             lora_rssi: Some(self.lora_rssi),
             data_rate: Some((self.transmit_power_and_data_rate >> 7).into()),
