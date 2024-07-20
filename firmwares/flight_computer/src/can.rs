@@ -15,16 +15,22 @@ use static_cell::StaticCell;
 
 use defmt::*;
 
-use crate::drivers::can::{MCP2517FD, MCP2517Error};
+use shared_types::can::*;
 
-pub struct Can<SPI> {
-    driver: MCP2517FD<SPI>,
-    sender: Sender<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
+use crate::drivers::can::*;
+
+pub struct CanTx<SPI> {
+    driver: MCP2517FDTx<SPI>,
     receiver: Receiver<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
 }
 
+pub struct CanRx<SPI> {
+    driver: MCP2517FDRx<SPI>,
+    sender: Sender<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>,
+}
+
 pub struct CanHandle {
-    receiver: Receiver<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
+    receiver: Receiver<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>,
     sender: Sender<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
 }
 
@@ -37,18 +43,15 @@ pub enum CanDataRate {
 }
 
 type SpiInst = Spi<'static, SPI2, DMA1_CH4, DMA1_CH3>;
-type CanInst = Can<SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst, Output<'static, PB12>>>;
+type SpiDeviceImplInst = SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst, Output<'static, PB12>>;
+type CanTxInst = CanTx<SpiDeviceImplInst>;
+type CanRxInst = CanRx<SpiDeviceImplInst>;
 
-static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>> = StaticCell::new();
+static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>> = StaticCell::new();
 static OUTGOING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>> = StaticCell::new();
 
-#[embassy_executor::task]
-pub async fn run(mut flash: CanInst) -> ! {
-    flash.run().await
-}
-
 impl CanHandle {
-    pub fn receive(&mut self) -> Option<(u16, [u8; 8])> {
+    pub fn receive(&mut self) -> Option<FcReceivedCanBusMessage> {
         self.receiver.try_receive().ok()
     }
 
@@ -59,51 +62,94 @@ impl CanHandle {
     }
 }
 
-impl<SPI: SpiDevice<u8>> Can<SPI> {
-    pub async fn init(spi: SPI, data_rate: CanDataRate) -> Result<(Can<SPI>, CanHandle), MCP2517Error<SPI::Error>> {
-        let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
-        let outgoing_channel = OUTGOING_CHANNEL.init(Channel::new());
-
-        let mcp = MCP2517FD::init(spi, data_rate).await?;
-
-        let can = Self {
-            driver: mcp,
-            sender: incoming_channel.sender(),
-            receiver: outgoing_channel.receiver(),
-        };
-
-        let handle = CanHandle {
-            receiver: incoming_channel.receiver(),
-            sender: outgoing_channel.sender(),
-        };
-
-        Ok((can, handle))
-    }
-
+impl<SPI: SpiDevice<u8>> CanTx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
-            while let  Ok((id, msg)) = self.receiver.try_receive() {
-                if let Err(e) = self.driver.transmit(id, msg).await {
-                    error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
-                }
+            let (id, msg) = self.receiver.receive().await;
+            if let Err(e) = self.driver.transmit(id, msg).await {
+                error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
             }
+        }
+    }
+}
 
-            let (id, msg) = match self.driver.receive().await {
+impl<SPI: SpiDevice<u8>> CanRx<SPI> {
+    async fn run(&mut self) -> ! {
+        loop {
+            let (id, msg) = match self.driver.try_receive().await {
                 Ok(Some((id, msg))) => (id, msg),
                 Ok(None) => {
-                    Timer::after(Duration::from_micros(1000)).await;
+                    Timer::after(Duration::from_micros(100)).await;
                     continue;
                 }
                 Err(e) => {
                     error!("Failed to receive CAN msg: {:?}", Debug2Format(&e));
-                    Timer::after(Duration::from_micros(1000)).await;
                     continue;
                 }
             };
 
-            if let Err(e) = self.sender.try_send((id, msg)) {
-                error!("Failed to pass received CAN msg along: {:?}", Debug2Format(&e));
-            }
+            let message_id = match CanBusMessageId::try_from(id) {
+                Ok(id) => id,
+                Err(e) => {
+                    error!("Unknown CAN bus message id: {}", e);
+                    continue;
+                }
+            };
+
+            let received_message = match message_id {
+                //CanBusMessageId::IoBoardInput(_role, _id) => {
+                //}
+                //CanBusMessageId::FinBoardInput(_fin, _id) => {
+                //}
+                CanBusMessageId::BatteryBoardInput(id) => {
+                    let Ok(Some(parsed)) = BatteryTelemetryMessage::parse(msg) else {
+                        error!("Malformed battery telemetry message");
+                        continue;
+                    };
+
+                    FcReceivedCanBusMessage::BatteryTelemetry(id, parsed)
+                }
+                m_id => {
+                    error!("Unsupported CAN bus message id: {}", Debug2Format(&m_id));
+                    continue;
+                }
+            };
+
+            self.sender.send(received_message).await;
         }
     }
+}
+
+pub async fn init<SPI: SpiDevice<u8>>(spi: SPI, data_rate: CanDataRate) -> Result<(CanTx<SPI>, CanRx<SPI>, CanHandle), MCP2517Error<SPI::Error>> {
+    let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
+    let outgoing_channel = OUTGOING_CHANNEL.init(Channel::new());
+
+    let (mcp_tx, mcp_rx) = MCP2517FD::init(spi, data_rate).await?;
+
+    let can_tx = CanTx {
+        driver: mcp_tx,
+        receiver: outgoing_channel.receiver(),
+    };
+
+    let can_rx = CanRx {
+        driver: mcp_rx,
+        sender: incoming_channel.sender(),
+    };
+
+    let handle = CanHandle {
+        receiver: incoming_channel.receiver(),
+        sender: outgoing_channel.sender(),
+    };
+
+    Ok((can_tx, can_rx, handle))
+}
+
+#[embassy_executor::task]
+pub async fn run_tx(mut can_tx: CanTxInst) -> ! {
+    can_tx.run().await
+}
+
+#[embassy_executor::task]
+pub async fn run_rx(mut can_rx: CanRxInst) -> ! {
+    can_rx.run().await
 }

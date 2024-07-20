@@ -2,6 +2,10 @@
 //!
 //! Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2517FD-External-CAN-FD-Controller-with-SPI-Interface-20005688B.pdf
 
+use alloc::sync::Arc;
+use embassy_sync::mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+
 use embedded_hal_async::spi::SpiDevice;
 
 use defmt::*;
@@ -12,6 +16,14 @@ pub struct MCP2517FD<SPI> {
     spi: SPI,
     fifo_index: u32,
     seq: u8,
+}
+
+pub struct MCP2517FDTx<SPI> {
+    shared: Arc<Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>>,
+}
+
+pub struct MCP2517FDRx<SPI> {
+    shared: Arc<Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>>,
 }
 
 // https://ww1.microchip.com/downloads/en/DeviceDoc/MCP25XXFD-CAN-FD-Controller-Module-Family-Reference-Manual-DS20005678E.pdf (4.3)
@@ -59,10 +71,21 @@ impl<SpiError> From<SpiError> for MCP2517Error<SpiError> {
     }
 }
 
+impl<SPI: SpiDevice<u8>> MCP2517FDTx<SPI> {
+    pub async fn transmit(&mut self, id: u16, msg: [u8; 8]) -> Result<(), MCP2517Error<SPI::Error>> {
+        self.shared.lock().await.transmit(id, msg).await
+    }
+}
+
+impl<SPI: SpiDevice<u8>> MCP2517FDRx<SPI> {
+    pub async fn try_receive(&mut self) -> Result<Option<(u16, [u8; 8])>, SPI::Error> {
+        self.shared.lock().await.try_receive().await
+    }
+}
+
 impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
     fn calculate_nominal_bit_timing_register(data_rate: CanDataRate) -> u32 {
         const SYSCLK: u32 = 20; // MHz
-        const BUS_LENGTH: u32 = 50; // m
 
         let nbt = match data_rate {
             CanDataRate::Kbps125 => 8000,
@@ -84,7 +107,10 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         ((nbrp - 1) << 24) | ((ntseg1 - 1) << 16) | ((ntseg2 - 1) << 8) | (nsjw - 1)
     }
 
-    pub async fn init(spi: SPI, data_rate: CanDataRate) -> Result<Self, MCP2517Error<SPI::Error>> {
+    pub async fn init(
+        spi: SPI,
+        data_rate: CanDataRate
+    ) -> Result<(MCP2517FDTx<SPI>, MCP2517FDRx<SPI>), MCP2517Error<SPI::Error>> {
         let mut mcp = Self {
             spi,
             seq: 0,
@@ -139,7 +165,12 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
 
         info!("MCP2517FD initalized");
 
-        Ok(mcp)
+        let shared = Arc::new(Mutex::new(mcp));
+
+        let mcp_tx = MCP2517FDTx { shared: shared.clone() };
+        let mcp_rx = MCP2517FDRx { shared };
+
+        Ok((mcp_tx, mcp_rx))
     }
 
     async fn reset(&mut self) -> Result<(), SPI::Error> {
@@ -197,7 +228,7 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         Ok(())
     }
 
-    pub async fn receive(&mut self) -> Result<Option<(u16, [u8; 8])>, SPI::Error> {
+    pub async fn try_receive(&mut self) -> Result<Option<(u16, [u8; 8])>, SPI::Error> {
         // Check Status register to find out whether there is a new message
         let fifo_status = self.sfr_read(MCP2517FDRegister::C1FiFoSta1).await?;
         let fifo_index = (fifo_status >> 8) & 0x1f;

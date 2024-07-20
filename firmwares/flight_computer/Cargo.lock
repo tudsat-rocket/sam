@@ -138,12 +138,27 @@ dependencies = [
 
 [[package]]
 name = "crc"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49fc9a695bca7f35f5f4c15cddc84415f66a74ea78eef08e90c5024f2b540e23"
+dependencies = [
+ "crc-catalog 1.1.1",
+]
+
+[[package]]
+name = "crc"
 version = "3.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "86ec7a15cbe22e59248fc7eadb1907dab5ba09372595da4d73dd805ed4417dfe"
 dependencies = [
- "crc-catalog",
+ "crc-catalog 2.2.0",
 ]
+
+[[package]]
+name = "crc-catalog"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccaeedb56da03b09f598226e25e80088cb4cd25f316e6e4df7d695f0feeb1403"
 
 [[package]]
 name = "crc-catalog"
@@ -710,7 +725,7 @@ dependencies = [
  "alloc-cortex-m",
  "cortex-m",
  "cortex-m-rt",
- "crc",
+ "crc 3.0.1",
  "defmt",
  "defmt-rtt",
  "defmt-test",
@@ -1011,8 +1026,9 @@ dependencies = [
 [[package]]
 name = "shared_types"
 version = "0.1.0"
-source = "git+https://github.com/tudsat-rocket/sam#05ecaff02f479192050d3c1a541fae38befe7e06"
+source = "git+https://github.com/tudsat-rocket/sam#829220cce0b37ae3f85b4da11d0930082a5a2948"
 dependencies = [
+ "crc 2.1.0",
  "nalgebra",
  "postcard",
  "serde",
@@ -1066,7 +1082,7 @@ checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 [[package]]
 name = "state_estimator"
 version = "0.1.0"
-source = "git+https://github.com/tudsat-rocket/sam#05ecaff02f479192050d3c1a541fae38befe7e06"
+source = "git+https://github.com/tudsat-rocket/sam#829220cce0b37ae3f85b4da11d0930082a5a2948"
 dependencies = [
  "ahrs",
  "filter",

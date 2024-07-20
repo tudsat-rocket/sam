@@ -86,7 +86,7 @@ impl GroundControlStation {
         self.leds.0.set_level((!(self.radio.transmit_power >= TransmitPower::P20dBm)).into());
         self.leds.1.set_level((!rssi_led).into());
         self.leds.2.set_level((!true).into());
-        self.buzzer.tick(self.time.0);
+        self.buzzer.tick(self.time.0, None);
 
         if let Some(msg) = uplink_msg {
             self.radio.queue_uplink_message(msg);

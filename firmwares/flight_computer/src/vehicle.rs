@@ -181,12 +181,12 @@ impl Vehicle {
         self.power.tick();
 
         // Handle incoming CAN messages
-        if let Some((id, msg)) = self.can.receive() {
-            match id {
-                0x100 => self.power.handle_battery_can_msg(msg),
-                id => {
-                    info!("Message from unknown CAN id 0x{:04x}", id)
-                }
+        if let Some(msg) = self.can.receive() {
+            match msg {
+                FcReceivedCanBusMessage::BatteryTelemetry(_id, bat_msg) => {
+                    self.power.handle_battery_can_msg(bat_msg)
+                },
+                FcReceivedCanBusMessage::IoBoardSensor(_, _, _) => {}, // TODO
             }
         }
 
@@ -203,14 +203,12 @@ impl Vehicle {
         );
 
         // Switch to new mode if necessary
-        if let Some(fm) = self.state_estimator.new_mode(
-            self.power.arm_voltage().unwrap_or(0),
-            self.power.breakwire_open()
-        ) {
+        let arm_voltage = self.power.arm_voltage().unwrap_or(0);
+        if let Some(fm) = self.state_estimator.new_mode(arm_voltage) {
             self.switch_mode(fm);
         }
 
-        // Process incoming commands
+        // Process incoming commands, both from USB...
         if let Some(msg) = self.usb.next_uplink_message().await {
             match msg {
                 UplinkMessage::Heartbeat => {},
@@ -227,6 +225,7 @@ impl Vehicle {
             }
         }
 
+        // ... and via LoRa
         if let Some(cmd) = self.radio.tick(self.time.0).await {
             self.handle_command(cmd).await;
         }
@@ -245,17 +244,19 @@ impl Vehicle {
 
         self.buzzer.tick(self.time.0, self.power.battery_status());
 
-        // Send/store telemetry
+        // Send telemetry via USB
         if let Some(msg) = self.next_usb_telem() {
             self.usb.send_message(msg).await;
         }
 
+        // Send telemetry via Lora
         if let Some(msg) = self.next_lora_telem() {
             if let Err(e) = self.radio.send(msg).await {
                 error!("Failed to send downlink message: {:?}", Debug2Format(&e));
             }
         }
 
+        // Store data in flash
         self.flash.tick().await;
         if self.mode >= FlightMode::Armed {
             if let Some(msg) = self.next_flash_telem() {

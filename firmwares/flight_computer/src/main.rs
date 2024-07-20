@@ -133,7 +133,7 @@ async fn main(low_priority_spawner: Spawner) {
     let spi2 = SPI2_SHARED.init(spi2);
 
     let spi2_cs_can = Output::new(p.PB12, Level::High, Speed::VeryHigh);
-    let (can, can_handle) = Can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await.unwrap();
+    let (can_tx, can_rx, can_handle) = can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await.unwrap();
 
     // SPI 3
     let mut spi3_config = embassy_stm32::spi::Config::default();
@@ -199,7 +199,8 @@ async fn main(low_priority_spawner: Spawner) {
     #[cfg(not(feature="gcs"))]
     {
         high_priority_spawner.spawn(vehicle::run(vehicle, iwdg)).unwrap();
-        medium_priority_spawner.spawn(can::run(can)).unwrap();
+        medium_priority_spawner.spawn(can::run_tx(can_tx)).unwrap();
+        medium_priority_spawner.spawn(can::run_rx(can_rx)).unwrap();
         medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
         low_priority_spawner.spawn(flash::run(flash)).unwrap();
     }

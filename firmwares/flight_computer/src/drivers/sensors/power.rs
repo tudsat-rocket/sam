@@ -2,12 +2,10 @@ use embassy_stm32::adc::{Adc, Temperature, VrefInt, AdcPin, Instance, SampleTime
 use embassy_stm32::gpio::low_level::Pin;
 use embassy_time::{Timer, Duration, Instant};
 
-use crc::{Crc, CRC_16_IBM_SDLC};
+use shared_types::can::BatteryTelemetryMessage;
 
 const VDIV: f32 = 2.8;
 const RES: f32 = 0.01;
-
-const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
 const LOW_BATTERY_THRESHOLD: u16 = 7000;
 const NO_BATTERY_THRESHOLD: u16 = 5000;
@@ -28,14 +26,11 @@ pub struct PowerMonitor<ADC: Instance, H, L, A> {
     pin_arm: A,
 
     battery_voltage: Option<u16>,
-    battery_current: Option<i16>,
+    battery_current: Option<i32>,
     arm_voltage: Option<u16>,
     temperature: Option<f32>,
 
-    can_charge_voltage: Option<u16>,
-    can_battery_voltage: Option<u16>,
-    can_battery_current: Option<i16>,
-    can_breakwire_open: Option<bool>,
+    last_can_message: Option<BatteryTelemetryMessage>,
     time_last_can_msg: Option<Instant>,
 }
 
@@ -70,10 +65,7 @@ where
             battery_current: None,
             arm_voltage: None,
             temperature: None,
-            can_charge_voltage: None,
-            can_battery_voltage: None,
-            can_battery_current: None,
-            can_breakwire_open: None,
+            last_can_message: None,
             time_last_can_msg: None
         }
     }
@@ -107,7 +99,7 @@ where
         let sample = self.adc.read(&mut self.pin_bat_low);
         let voltage_low = (self.to_millivolts(sample) as f32) * VDIV;
         self.battery_voltage = Some(voltage_high as u16);
-        self.battery_current = Some(((voltage_high - voltage_low) / RES) as i16);
+        self.battery_current = Some(((voltage_high - voltage_low) / RES) as i32);
 
         let sample = self.adc.read(&mut self.pin_arm);
         self.arm_voltage = Some(((self.to_millivolts(sample) as f32) * VDIV) as u16);
@@ -115,8 +107,8 @@ where
 
     pub fn battery_voltage(&self) -> Option<u16> {
         self.current_can_msg()
-            .then(|| self.can_battery_voltage)
-            .unwrap_or(self.battery_voltage)
+            .map(|msg| msg.voltage_battery)
+            .or(self.battery_voltage)
     }
     pub fn battery_status(&self) -> Option<BatteryStatus>{
         self.battery_voltage.map(|n| {
@@ -128,10 +120,10 @@ where
         })
     }
 
-    pub fn battery_current(&self) -> Option<i16> {
+    pub fn battery_current(&self) -> Option<i32> {
         self.current_can_msg()
-            .then(|| self.can_battery_current)
-            .unwrap_or(self.battery_current)
+            .map(|msg| msg.current)
+            .or(self.battery_current)
     }
 
     pub fn arm_voltage(&self) -> Option<u16> {
@@ -147,40 +139,19 @@ where
     }
 
     pub fn charge_voltage(&self) -> Option<u16> {
-        self.current_can_msg()
-            .then(|| self.can_charge_voltage)
-            .flatten()
+        self.current_can_msg().map(|msg| msg.voltage_charge)
     }
 
-    pub fn breakwire_open(&self) -> Option<bool> {
-        self.current_can_msg()
-            .then(|| self.can_breakwire_open)
-            .flatten()
-    }
-
-    pub fn handle_battery_can_msg(&mut self, mut msg: [u8; 8]) {
-        let crc = u16::from_le_bytes([msg[6], msg[7]]);
-        msg[6] = 0;
-        msg[7] = 0;
-
-        if crc != CRC.checksum(&msg) {
-            //defmt::println!("CRC mismatch for power msg: {:04x} vs {:04x}", crc, CRC.checksum(&msg));
-            //return;
-        }
-
-        self.can_charge_voltage = Some(u16::from_le_bytes([msg[0], msg[1] >> 1]));
-        self.can_battery_current = Some(u16::from_le_bytes([msg[2], msg[3] >> 1]) as i16 - 2000);
-        self.can_battery_voltage = Some(u16::from_le_bytes([msg[4], msg[5] >> 2]));
-        self.can_breakwire_open = match msg[5] & 0x03 {
-            0b00 => Some(false),
-            0b01 => Some(true),
-            _ => None
-        };
-
+    pub fn handle_battery_can_msg(&mut self, msg: BatteryTelemetryMessage) {
+        self.last_can_message = Some(msg);
         self.time_last_can_msg = Some(Instant::now());
     }
 
-    fn current_can_msg(&self) -> bool {
-        self.time_last_can_msg.map(|i| i.elapsed().as_millis() < 30).unwrap_or(false)
+    // the time current, not the amperage current
+    fn current_can_msg<'a>(&'a self) -> Option<&'a BatteryTelemetryMessage> {
+        self.time_last_can_msg
+            .map(|i| i.elapsed().as_millis() < 250)?
+            .then_some(self.last_can_message.as_ref())
+            .flatten()
     }
 }
