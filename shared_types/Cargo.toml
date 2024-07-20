@@ -6,8 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nalgebra = { workspace = true }
+nalgebra = { workspace = true, optional = true }
 crc = { workspace = true }
-serde = { workspace = true }
-postcard = { workspace = true }
-siphasher = { workspace = true }
+serde = { workspace = true, optional = true }
+postcard = { workspace = true, optional = true }
+siphasher = { workspace = true, optional = true }
+
+[features]
+default = ["serde"]
+serde = ["dep:nalgebra", "dep:serde", "dep:postcard", "dep:siphasher"]
