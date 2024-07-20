@@ -1,16 +1,16 @@
 use embassy_stm32::gpio::Output;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::Sender};
 use embassy_time::{with_timeout, Duration};
 use embassy_stm32::peripherals::*;
 
 use shared_types::{IoBoardOutputMessage, CanBusMessage};
-
 
 fn set_outputs(
     output1: &mut (Output<'static, PB8>, Output<'static, PB9>),
     output2: &mut (Output<'static, PA0>, Output<'static, PA1>),
     output3: &mut (Output<'static, PC9>, Output<'static, PC8>),
     output4: &mut (Output<'static, PC7>, Output<'static, PC6>),
-    outputs: [bool; 8]
+    outputs: &[bool; 8]
 ) {
     output1.0.set_level(outputs[0].into());
     output1.1.set_level(outputs[1].into());
@@ -45,22 +45,22 @@ pub async fn run_outputs(
     mut subscriber: crate::CanInSubscriper,
     command_id: u16,
     timeout: Option<Duration>,
+    notify_sender: Option<Sender<'static, CriticalSectionRawMutex, ([bool; 8], bool), 5>>,
 ) -> ! {
-    if let Some(timeout) = timeout {
-        loop {
+    loop {
+        let (outputs, failsafe) = if let Some(timeout) = timeout {
             match with_timeout(timeout, receive_output_message(&mut subscriber, command_id)).await {
-                Ok(msg) => {
-                    set_outputs(&mut output1, &mut output2, &mut output3, &mut output4, msg.outputs);
-                },
-                Err(_) => {
-                    set_outputs(&mut output1, &mut output2, &mut output3, &mut output4, [false; 8]);
-                }
+                Ok(msg) => (msg.outputs, false),
+                Err(_) => ([false; 8], true)
             }
-        }
-    } else {
-        loop {
-            let msg = receive_output_message(&mut subscriber, command_id).await;
-            set_outputs(&mut output1, &mut output2, &mut output3, &mut output4, msg.outputs);
+        } else {
+            (receive_output_message(&mut subscriber, command_id).await.outputs, false)
+        };
+
+        set_outputs(&mut output1, &mut output2, &mut output3, &mut output4, &outputs);
+
+        if let Some(sender) = notify_sender {
+            let _ = sender.send((outputs, failsafe)).await;
         }
     }
 }

@@ -29,7 +29,8 @@ impl crate::roles::BoardRole for Recovery {
             io.output4,
             can_in.subscriber().unwrap(),
             CanBusMessageId::IoBoardCommand(Self::ROLE_ID, 0).into(),
-            None // TODO: do we want a timeout for the cameras?
+            None, // TODO: do we want a timeout for the cameras?,
+            None
         );
 
         high_priority_spawner.spawn(output_handle).unwrap();

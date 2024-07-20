@@ -125,6 +125,8 @@ async fn iwdg_task(mut iwdg: IndependentWatchdog<'static, IWDG>) -> ! {
 }
 
 async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spawner: Spawner) {
+    defmt::info!("Running as role {:?}", defmt::Debug2Format(&R::ROLE_ID));
+
     let led_red = Output::new(p.PB12, Level::Low, Speed::Low);
     let led_white = Output::new(p.PB13, Level::Low, Speed::Low);
     let led_yellow = Output::new(p.PB14, Level::Low, Speed::Low);

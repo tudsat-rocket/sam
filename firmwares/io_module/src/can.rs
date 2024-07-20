@@ -60,6 +60,7 @@ async fn run_tx(
 
         let frame = Frame::new_data(sid, data);
         can_tx.write(&frame).await;
+        can_tx.flush_all().await;
     }
 }
 
