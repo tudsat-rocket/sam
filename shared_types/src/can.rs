@@ -16,7 +16,7 @@
 
 use crc::{Crc, CRC_16_IBM_SDLC};
 
-const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC); // TODO: X-25?
+const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
 pub enum IoBoardRole {
     Acs = 1,
@@ -73,6 +73,18 @@ impl TryFrom<u16> for CanBusMessageId {
 pub trait CanBusMessage: Sized {
     fn serialize(self) -> [u8; 6];
     fn deserialize(data: &[u8]) -> Option<Self>;
+
+    fn serialize_with_crc(self) -> [u8; 8] {
+        let mut frame = [0x00; 8];
+
+        let data = self.serialize();
+        let checksum = CRC.checksum(&data);
+
+        frame[0..6].copy_from_slice(&data);
+        frame[6..8].copy_from_slice(&checksum.to_le_bytes());
+
+        frame
+    }
 
     fn parse(data: [u8; 8]) -> Result<Option<Self>, ()> {
         let crc_test = u16::from_le_bytes([data[6], data[7]]);
