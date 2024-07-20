@@ -18,12 +18,14 @@ use crc::{Crc, CRC_16_IBM_SDLC};
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
+#[derive(Clone, Copy)]
 pub enum IoBoardRole {
     Acs = 1,
     Recovery = 2,
     Payload = 8,
 }
 
+#[derive(Clone, Copy)]
 pub enum CanBusMessageId {
     IoBoardCommand(IoBoardRole, u8),
     IoBoardInput(IoBoardRole, u8),
