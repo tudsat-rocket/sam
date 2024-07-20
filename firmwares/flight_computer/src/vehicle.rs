@@ -242,6 +242,10 @@ impl Vehicle {
         self.leds.1.set_level((!y).into());
         self.leds.2.set_level((!g).into());
 
+        // Send valve commands via CAN bus
+        self.transmit_output_commands();
+
+        // Update buzzer
         self.buzzer.tick(self.time.0, self.power.battery_status());
 
         // Send telemetry via USB
@@ -264,6 +268,9 @@ impl Vehicle {
             }
         }
 
+        // Broadcast telemetry to payloads
+        self.broadcast_can_telemetry();
+
         // Increase time for next iteration
         self.time += 1_000 / MAIN_LOOP_FREQUENCY.0;
 
@@ -271,6 +278,26 @@ impl Vehicle {
         self.loop_runtime_history.truncate(RUNTIME_HISTORY_LEN - 1);
         let elapsed = start.elapsed().as_micros();
         self.loop_runtime_history.push_front((elapsed as f32) / (1_000_000.0 / MAIN_LOOP_FREQUENCY.0 as f32));
+    }
+
+    fn transmit_output_commands(&mut self) {
+        if !(self.time.0 % 100 == 0) {
+            return;
+        }
+
+        // TODO: don't hardcode this?
+        let valve_state = self.state_estimator.thruster_valve();
+        let mut outputs: [bool; 8] = [false; 8];
+        outputs[0] = valve_state == ThrusterValveState::OpenPrograde;
+        outputs[1] = valve_state == ThrusterValveState::OpenRetrograde;
+        let msg = IoBoardOutputMessage { outputs };
+        let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardCommand(IoBoardRole::Acs, 0));
+
+        self.can.transmit(id, msg);
+    }
+
+    fn broadcast_can_telemetry(&mut self) {
+        // TODO
     }
 
     async fn handle_command(&mut self, cmd: Command) {
