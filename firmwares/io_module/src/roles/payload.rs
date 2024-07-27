@@ -2,23 +2,25 @@ use defmt::*;
 
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
-use embassy_stm32::can::BxcanInstance;
-use embassy_stm32::can::bxcan::Can;
-use embassy_stm32::can::bxcan::{filter, Fifo, StandardId};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{UartRx, UartTx};
 use embassy_time::{Duration, Ticker};
 
-use shared_types::{CanBusMessageId, IoBoardRole};
+use shared_types::{CanBusMessageId, FlightMode, IoBoardRole};
 
-use crate::{BoardIo, CanInChannel, CanOutChannel, Input1, InputMode};
+use crate::*;
 
 const UART_TO_CAN_TELEMETRY_FREQUENCY_HZ: u64 = 1;
+const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
 
 pub struct Payload {}
 
 impl crate::roles::BoardRole for Payload {
     const ROLE_ID: IoBoardRole = IoBoardRole::Payload;
+
+    fn outputs_on_after_flightmode() -> Option<FlightMode> {
+        Some(FlightMode::ArmedLaunchImminent)
+    }
 
     fn input1_mode() -> InputMode {
         InputMode::Uart(embassy_stm32::usart::Config::default())
@@ -29,7 +31,8 @@ impl crate::roles::BoardRole for Payload {
         high_priority_spawner: SendSpawner,
         low_priority_spawner: Spawner,
         can_in: &'static CanInChannel,
-        can_out: &'static CanOutChannel
+        can_out: &'static CanOutChannel,
+        output_state: &'static OutputStateChannel,
     ) {
         if let Input1::Uart(uart) = io.input1 {
             let (uart_tx, uart_rx) = uart.split();
@@ -38,18 +41,13 @@ impl crate::roles::BoardRole for Payload {
             low_priority_spawner.spawn(run_uart_to_can(can_out.publisher().unwrap(), uart_rx)).unwrap();
         };
 
-        // TODO: report back general temperature and voltages?
-    }
-
-    fn configure_can(can: &mut Can<BxcanInstance<CAN>>) {
-        let telemetry_filter = filter::Mask32::frames_with_std_id(
-            StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-            StandardId::new(0x700).unwrap()
-        );
-
-        can
-            .modify_filters()
-            .enable_bank(0, Fifo::Fifo0, telemetry_filter);
+        // Set the LEDs based on the output state.
+        let led_output_state_sub = output_state.subscriber().unwrap();
+        low_priority_spawner.spawn(run_leds(
+            io.leds,
+            led_output_state_sub,
+            ID_LED_PATTERN,
+        )).unwrap();
     }
 }
 

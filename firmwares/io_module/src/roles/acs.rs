@@ -1,79 +1,79 @@
 use embassy_executor::{SendSpawner, Spawner};
-use embassy_stm32::{gpio::Output, time::Hertz};
 use embassy_stm32::peripherals::*;
-use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, channel::{Channel, Receiver}};
-use embassy_time::{Duration, Ticker};
+use embassy_stm32::{gpio::Output, time::Hertz};
+use embassy_time::Duration;
 use embedded_hal::digital::OutputPin;
 
-use shared_types::{CanBusMessageId, IoBoardRole};
-use static_cell::StaticCell;
+use shared_types::IoBoardRole;
 
-use crate::{BoardIo, CanInChannel, CanOutChannel, InputMode};
+use crate::*;
+use crate::roles::common::*;
 
 const OUTPUT_FAILSAFE_TIMEOUT_MILLIS: u64 = 500;
-
-type OutputStateChannel = Channel::<CriticalSectionRawMutex, ([bool; 8], bool), 5>;
-static OUTPUT_STATE_CHANNEL: StaticCell<OutputStateChannel> = StaticCell::new();
+const SENSOR_SAMPLING_FREQUENCY_HZ: u64 = 10;
 
 pub struct Acs {}
 
 impl crate::roles::BoardRole for Acs {
     const ROLE_ID: IoBoardRole = IoBoardRole::Acs;
 
-    // TODO
+    fn drive_voltage() -> DriveVoltage {
+        DriveVoltage::ChargeBus
+    }
+
+    // We want to turn off the valves if we don't hear anything from
+    // the FC anymore.
+    fn output_failsafe_duration() -> Option<Duration> {
+        Some(Duration::from_millis(OUTPUT_FAILSAFE_TIMEOUT_MILLIS))
+    }
+
+    // Read I2C sensors at COM1
     fn input1_mode() -> InputMode {
-        InputMode::I2c(Hertz::khz(100), embassy_stm32::i2c::Config::default())
+        let mut config = embassy_stm32::i2c::Config::default();
+        config.timeout = Duration::from_millis(10);
+        InputMode::I2c(Hertz::khz(100), config)
+    }
+
+    // Read I2C sensors at COM3
+    fn input3_mode() -> InputMode {
+        let mut config = embassy_stm32::i2c::Config::default();
+        config.timeout = Duration::from_millis(10);
+        InputMode::I2c(Hertz::khz(100), config)
     }
 
     fn spawn(
         io: BoardIo,
-        high_priority_spawner: SendSpawner,
+        _high_priority_spawner: SendSpawner,
         low_priority_spawner: Spawner,
-        can_in: &'static CanInChannel,
-        _can_out: &'static CanOutChannel
+        _can_in: &'static CanInChannel,
+        can_out: &'static CanOutChannel,
+        output_state: &'static OutputStateChannel,
     ) {
-        let output_state_channel = OUTPUT_STATE_CHANNEL.init(Channel::new());
+        // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
+        match (io.input1, io.input3) {
+            (Input1::I2c(i2c2), Input3::I2c(i2c1)) => {
+                low_priority_spawner.spawn(run_i2c_sensors(
+                    Some(i2c2),
+                    Some(i2c1),
+                    can_out.publisher().unwrap(),
+                    Self::ROLE_ID,
+                    Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
+                )).unwrap();
+            },
+            _ => unreachable!(),
+        }
 
-        let output_handle = crate::roles::common::run_outputs(
-            io.output1,
-            io.output2,
-            io.output3,
-            io.output4,
-            can_in.subscriber().unwrap(),
-            CanBusMessageId::IoBoardCommand(Self::ROLE_ID, 0).into(),
-            Some(Duration::from_millis(OUTPUT_FAILSAFE_TIMEOUT_MILLIS)),
-            Some(output_state_channel.sender())
-        );
-
-        //let sensor_handle = run_sensors(
-        //    can_out.publisher().unwrap(),
-        //);
-
-        let led_handle = run_leds(io.leds, output_state_channel.receiver());
-
-        high_priority_spawner.spawn(output_handle).unwrap();
-        low_priority_spawner.spawn(led_handle).unwrap();
-        //low_priority_spawner.spawn(sensor_handle).unwrap();
-
-        // TODO: report back general temperature and voltages?
+        // Set the LEDs based on the output state and whether the failsafe
+        // condition was met;
+        let led_output_state_sub = output_state.subscriber().unwrap();
+        low_priority_spawner.spawn(run_leds(io.leds, led_output_state_sub)).unwrap();
     }
 }
 
 #[embassy_executor::task]
-pub async fn run_sensors(
-    // TODO: input
-    _publisher: crate::CanOutPublisher,
-) -> ! {
-    let mut ticker = Ticker::every(Duration::from_hz(100));
-    loop {
-        ticker.next().await;
-    }
-}
-
-#[embassy_executor::task]
-pub async fn run_leds(
+async fn run_leds(
     leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
-    output_state_receiver: Receiver<'static, CriticalSectionRawMutex, ([bool; 8], bool), 5>
+    mut output_state_subscriber: OutputStateSubscriber,
 ) -> ! {
     let (mut led_red, mut led_white, mut led_yellow) = leds;
     led_red.set_low();
@@ -81,10 +81,9 @@ pub async fn run_leds(
     led_yellow.set_high();
 
     loop {
-        let (outputs, failsafe) = output_state_receiver.receive().await;
-        //defmt::println!("get output report {:?}, {:?}", outputs, failsafe);
+        let (outputs, failsafe) = output_state_subscriber.next_message_pure().await;
         let _ = led_red.set_state((!failsafe).into());
         let _ = led_white.set_state((!outputs[0]).into());
-        let _ = led_yellow.set_state((!outputs[1]).into());
+        let _ = led_yellow.set_state((!outputs[2]).into());
     }
 }

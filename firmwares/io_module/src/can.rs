@@ -34,6 +34,7 @@ pub async fn spawn(
     can.modify_config()
         .set_loopback(false)
         .set_silent(false)
+        .set_automatic_retransmit(false)
         .leave_disabled();
     can.set_bitrate(125_000);
     can.enable().await;
