@@ -313,7 +313,7 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
         let new_melody:Option<&'static [Note]> = match mode {
             FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
             FlightMode::HardwareArmed => Some(&HWARMED),
-            FlightMode::Armed => Some(&ARMED),
+            FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
             FlightMode::Landed => Some(&LANDED),
             _ => None
         };
