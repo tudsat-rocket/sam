@@ -7,11 +7,12 @@ pub enum FlightMode {
     Idle = 0,
     HardwareArmed = 1,
     Armed = 2,
-    Burn = 3,
-    Coast = 4,
-    RecoveryDrogue = 5,
-    RecoveryMain = 6,
-    Landed = 7,
+    ArmedLaunchImminent = 3,
+    Burn = 4,
+    Coast = 5,
+    RecoveryDrogue = 6,
+    RecoveryMain = 7,
+    Landed = 8,
 }
 
 impl TryFrom<u8> for FlightMode {
@@ -22,11 +23,12 @@ impl TryFrom<u8> for FlightMode {
             0 => Ok(Self::Idle),
             1 => Ok(Self::HardwareArmed),
             2 => Ok(Self::Armed),
-            3 => Ok(Self::Burn),
-            4 => Ok(Self::Coast),
-            5 => Ok(Self::RecoveryDrogue),
-            6 => Ok(Self::RecoveryMain),
-            7 => Ok(Self::Landed),
+            3 => Ok(Self::ArmedLaunchImminent),
+            4 => Ok(Self::Burn),
+            5 => Ok(Self::Coast),
+            6 => Ok(Self::RecoveryDrogue),
+            7 => Ok(Self::RecoveryMain),
+            8 => Ok(Self::Landed),
             _ => Err(())
         }
     }
@@ -37,7 +39,7 @@ impl FlightMode {
         match self {
             FlightMode::Idle => (false, false, true),                       // ( ,  , G)
             FlightMode::HardwareArmed => (true, time % 500 < 250, false),   // (R, y,  )
-            FlightMode::Armed => (true, true, false),                       // (R, Y,  )
+            FlightMode::Armed | FlightMode::ArmedLaunchImminent => (true, true, false), // (R, Y,  )
             FlightMode::Burn => (false, time % 200 < 100, false),           // ( , y,  )
             FlightMode::Coast => (false, true, false),                      // ( , Y,  )
             FlightMode::RecoveryDrogue => (false, true, true),              // ( , Y, G)

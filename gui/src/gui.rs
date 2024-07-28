@@ -119,7 +119,12 @@ impl Sam {
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
             Some(FlightMode::HardwareArmed)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            Some(FlightMode::Armed)
+            let current_fm = self.data_source().vehicle_states().rev().find_map(|(_t, vs)| vs.mode).unwrap_or_default();
+            if current_fm == FlightMode::Armed {
+                Some(FlightMode::ArmedLaunchImminent)
+            } else {
+                Some(FlightMode::Armed)
+            }
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
             Some(FlightMode::Burn)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {

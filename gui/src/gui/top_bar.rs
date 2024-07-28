@@ -17,6 +17,7 @@ fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Co
         FlightMode::Idle => ("IDLE", "F4", fg, fm.color()),
         FlightMode::HardwareArmed => ("HWARMD", "F5", fg, fm.color()),
         FlightMode::Armed => ("ARMED", "F6", fg, fm.color()),
+        FlightMode::ArmedLaunchImminent => ("!ARMED!", "F6", fg, fm.color()),
         FlightMode::Burn => ("BURN", "F7", fg, fm.color()),
         FlightMode::Coast => ("COAST", "F8", fg, fm.color()),
         FlightMode::RecoveryDrogue => ("DROGUE", "F9", fg, fm.color()),
@@ -176,6 +177,11 @@ impl TopBarUiExt for egui::Ui {
         current: Option<FlightMode>,
         data_source: &mut dyn DataSource,
     ) {
+        let fm = match (current, fm) {
+            (Some(FlightMode::ArmedLaunchImminent), FlightMode::Armed) => FlightMode::ArmedLaunchImminent,
+            _ => fm,
+        };
+
         let (label, shortcut, fg, bg) = flight_mode_style(fm);
         let is_current = current.map(|c| c == fm).unwrap_or(false);
 

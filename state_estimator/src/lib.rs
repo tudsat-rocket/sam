@@ -287,7 +287,7 @@ impl StateEstimator {
 
         // Only track maximum height during flight
         self.altitude_max = match mode {
-            Idle | HardwareArmed | Armed => self.altitude_asl(),
+            Idle | HardwareArmed | Armed | ArmedLaunchImminent => self.altitude_asl(),
             Burn | Coast | RecoveryDrogue | RecoveryMain => f32::max(self.altitude_max, self.altitude_asl()),
             Landed => self.altitude_max,
         }
@@ -400,7 +400,7 @@ impl StateEstimator {
             FlightMode::Idle => self.true_since(arm_voltage >= 100, 100).then(|| FlightMode::HardwareArmed),
             FlightMode::HardwareArmed => self.true_since(arm_voltage < 10, 100).then(|| FlightMode::Idle),
             // Takeoff detection
-            FlightMode::Armed => {
+            FlightMode::Armed | FlightMode::ArmedLaunchImminent => {
                 // In the AND mode, we assume the breakwire to be open (pulled-out) when we lose
                 // contact with the power module. This way, if the CAN bus becomes damaged
                 // during/before takeoff, we simply fall back to acceleration-only detection.
