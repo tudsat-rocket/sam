@@ -3,13 +3,14 @@
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
+
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use shared_types::telemetry::*;
 
@@ -99,13 +100,13 @@ fn create_file_or_stdout(path: Option<PathBuf>) -> Result<Box<dyn Write>, std::i
 }
 
 fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
-    let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>();
-    let (serial_status_tx, serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, true, 0);
+    let (downlink_tx, mut downlink_rx) = channel::<(Instant, DownlinkMessage)>(10);
+    let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>(10);
+    let (serial_status_tx, mut serial_status_rx) = channel::<(SerialStatus, Option<String>)>(10);
+    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, 0);
 
     loop {
-        for (status, port) in serial_status_rx.try_iter() {
+        while let Ok((status, port)) = serial_status_rx.try_recv() {
             match (status, port) {
                 (SerialStatus::Connected, Some(p)) => {
                     println!("{} to {}.", "Connected".bright_green().bold(), p)
@@ -117,7 +118,7 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        for (_t, msg) in downlink_rx.try_iter() {
+        while let Ok((_t, msg)) = downlink_rx.try_recv() {
             match msg {
                 DownlinkMessage::Log(t, loc, ll, msg) => {
                     let t = (t as f32) / 1_000.0;
@@ -143,17 +144,17 @@ fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
 
 fn read_flash_chunk(
     uplink_tx: &Sender<UplinkMessage>,
-    downlink_rx: &Receiver<(Instant, DownlinkMessage)>,
+    downlink_rx: &mut Receiver<(Instant, DownlinkMessage)>,
     address: u32,
     size: u32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     const TIMEOUT: Duration = Duration::from_millis(100);
 
     let start = Instant::now();
-    uplink_tx.send(UplinkMessage::ReadFlash(address, size))?;
+    uplink_tx.blocking_send(UplinkMessage::ReadFlash(address, size))?;
 
     loop {
-        if let Some((_t, DownlinkMessage::FlashContent(adr, content))) = downlink_rx.iter().next() {
+        while let Ok((_t, DownlinkMessage::FlashContent(adr, content))) = downlink_rx.try_recv() {
             println!("{:02x?} {:?} {:02x?} {:02x?}", address, size, adr, content);
             if address != adr || size != (content.len() as u32) {
                 return Err(Box::new(Error::new(ErrorKind::InvalidData, "Data mismatch.")));
@@ -178,10 +179,10 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
     }
 
     let mut f = File::create(path)?;
-    let (downlink_tx, downlink_rx) = channel::<(Instant, DownlinkMessage)>();
-    let (uplink_tx, uplink_rx) = channel::<UplinkMessage>();
-    let (serial_status_tx, _serial_status_rx) = channel::<(SerialStatus, Option<String>)>();
-    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, false, 0);
+    let (downlink_tx, mut downlink_rx) = channel::<(Instant, DownlinkMessage)>(10);
+    let (uplink_tx, uplink_rx) = channel::<UplinkMessage>(10);
+    let (serial_status_tx, _serial_status_rx) = channel::<(SerialStatus, Option<String>)>(10);
+    spawn_downlink_monitor(None, serial_status_tx, downlink_tx, uplink_rx, 0);
 
     let flash_size = FLASH_SIZE;
 
@@ -202,7 +203,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
 
         let mut attempts = 0;
         loop {
-            match read_flash_chunk(&uplink_tx, &downlink_rx, address, CHUNK_SIZE) {
+            match read_flash_chunk(&uplink_tx, &mut downlink_rx, address, CHUNK_SIZE) {
                 Ok(data) => {
                     if raw {
                         f.write_all(&data)?;
@@ -294,7 +295,7 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn reboot(bootloader: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let path = find_serial_port().ok_or_else(|| Error::new(ErrorKind::NotFound, "Failed to find a serial port."))?;
+    let path = find_serial_ports();
 
     let mut port = serialport::new(path[0].clone(), serial::BAUD_RATE)
         .timeout(std::time::Duration::from_millis(10))

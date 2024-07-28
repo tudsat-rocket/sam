@@ -7,7 +7,6 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::slice::Iter;
-use std::sync::mpsc::SendError;
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -127,14 +126,6 @@ impl DataSource for LogFileDataSource {
 
     fn reset(&mut self) {
         self.vehicle_states.truncate(0);
-    }
-
-    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
-    }
-
-    fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
     }
 
     fn end(&self) -> Option<Instant> {

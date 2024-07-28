@@ -4,7 +4,6 @@ use std::any::Any;
 use std::collections::VecDeque;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
-use std::sync::mpsc::SendError;
 use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 use std::time::Duration;
@@ -380,14 +379,6 @@ impl DataSource for SimulationDataSource {
         self.state_receiver = Some(receiver);
         self.stored_vehicle_states.truncate(0);
         self.playback = None;
-    }
-
-    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
-    }
-
-    fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        Ok(())
     }
 
     fn end(&self) -> Option<Instant> {

@@ -2,13 +2,14 @@
 
 use std::any::Any;
 use std::slice::Iter;
-use std::sync::mpsc::SendError;
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
+
+use tokio::sync::mpsc::error::SendError;
 
 use egui::{Layout, RichText, Slider};
 
@@ -50,9 +51,13 @@ pub trait DataSource {
     fn reset(&mut self);
 
     /// Send an uplink message to the connected device if applicable.
-    fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>>;
+    fn send(&mut self, _msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+        Ok(())
+    }
     /// Send an authenticated uplink command
-    fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>>;
+    fn send_command(&mut self, _cmd: Command) -> Result<(), SendError<UplinkMessage>> {
+        Ok(())
+    }
 
     fn end(&self) -> Option<Instant>;
 

@@ -3,10 +3,10 @@
 use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::PathBuf;
+use std::pin::{pin, Pin};
 use std::slice::Iter;
-use std::sync::mpsc::{Receiver, SendError, Sender};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -14,6 +14,13 @@ use std::time::Duration;
 use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
+
+use tokio_serial::SerialStream;
+use futures::future::select;
+use tokio::sync::mpsc::{Sender, Receiver};
+use tokio::sync::mpsc::error::SendError;
+use tokio_serial::SerialPortBuilderExt;
+use tokio::io::{ReadHalf, AsyncReadExt, AsyncWriteExt, WriteHalf};
 
 use eframe::epaint::Color32;
 use log::*;
@@ -25,9 +32,6 @@ use crate::data_source::DataSource;
 use crate::settings::AppSettings;
 
 pub const BAUD_RATE: u32 = 115_200;
-pub const MESSAGE_TIMEOUT: Duration = Duration::from_millis(500);
-pub const HEARTBEAT_INTERVAL: Duration = Duration::from_millis(500);
-
 
 // For Android, the Java wrapper has to handle the actual serial port and
 // we use these questionable methods to pass the data in via JNI
@@ -46,53 +50,22 @@ pub enum SerialStatus {
     Error,
 }
 
-/// Opens the given serial port, reads downlink messages to `downlink_tx`,
-/// and writes uplink messages from `uplink_rx` to the device.
-///
-/// If `send_heartbeats` is set, regular heartbeat messages will be sent to
-/// the device. If no heartbeats are sent, the device will not send log
-/// messages.
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-pub fn downlink_port(
+pub async fn run_downlink(
     ctx: Option<egui::Context>,
     downlink_tx: &mut Sender<(Instant, DownlinkMessage)>,
-    uplink_rx: &mut Receiver<UplinkMessage>,
-    port: String,
-    send_heartbeats: bool,
+    mut reader: Pin<&mut ReadHalf<SerialStream>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Open the serial port
-    let mut port = serialport::new(port, BAUD_RATE).timeout(std::time::Duration::from_millis(1)).open_native()?;
-
-    // Non-exclusive access only works on Unix
-    #[cfg(target_family = "unix")]
-    port.set_exclusive(false)?;
-
     let mut downlink_buffer: Vec<u8> = Vec::new();
-    let mut now = Instant::now();
-    let mut last_heartbeat = Instant::now() - HEARTBEAT_INTERVAL * 2;
-    let mut last_message = Instant::now();
 
-    // Stop if no messages are sent, even if a connection exists.
-    while now.duration_since(last_message) < MESSAGE_TIMEOUT {
-        // Send pending uplink messages, or heartbeats if necessary.
-        if let Some(msg) = uplink_rx.try_iter().next() {
-            port.write_all(&msg.serialize().unwrap_or_default())?;
-            port.flush()?;
-        } else if now.duration_since(last_heartbeat) > HEARTBEAT_INTERVAL && send_heartbeats {
-            port.write_all(&UplinkMessage::Heartbeat.serialize().unwrap())?;
-            port.flush()?;
-            last_heartbeat = now;
+    loop {
+        let mut buffer = [0u8; 1024];
+        let n = reader.read(&mut buffer).await?;
+        if n == 0 {
+            return Ok(());
         }
 
-        // Read all available bytes from the serial port. Our timeout is really
-        // short (we don't want to block here for too long), so timeouts are
-        // common, and simply ignored, and treated like an empty read.
-        if let Err(e) = port.read_to_end(&mut downlink_buffer) {
-            match e.kind() {
-                std::io::ErrorKind::TimedOut => (),
-                _ => return Err(e.into()),
-            }
-        }
+        downlink_buffer.extend(&buffer[..n]);
 
         // If there exists a zero in our downlink_buffer, that suggests there
         // is a complete COBS-encoded message in there
@@ -112,58 +85,103 @@ pub fn downlink_port(
             };
 
             // If successful, send msg through channel.
-            downlink_tx.send((Instant::now(), msg))?;
-            last_message = now;
+            downlink_tx.send((Instant::now(), msg)).await?;
             if let Some(ctx) = &ctx {
                 ctx.request_repaint();
             }
         }
-
-        now = Instant::now();
     }
+}
 
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+pub async fn run_uplink(
+    uplink_rx: &mut Receiver<UplinkMessage>,
+    mut writer: Pin<&mut WriteHalf<SerialStream>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        let msg = uplink_rx.recv().await.ok_or("".to_string())?;
+        let serialized = msg.serialize()?;
+
+        let mut written = 0;
+        while written < serialized.len() {
+            written += writer.write(&serialized[written..]).await?;
+        }
+
+        writer.flush().await?;
+    }
+}
+
+/// Opens the given serial port, reads downlink messages to `downlink_tx`,
+/// and writes uplink messages from `uplink_rx` to the device.
+///
+/// If `send_heartbeats` is set, regular heartbeat messages will be sent to
+/// the device. If no heartbeats are sent, the device will not send log
+/// messages.
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+pub async fn run_port(
+    ctx: Option<egui::Context>,
+    downlink_tx: &mut Sender<(Instant, DownlinkMessage)>,
+    uplink_rx: &mut Receiver<UplinkMessage>,
+    port_name: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Open the serial port
+
+    let mut port = tokio_serial::new(&port_name, BAUD_RATE)
+        .timeout(std::time::Duration::from_millis(1000))
+        .open_native_async()?;
+
+    // Non-exclusive access only works on Unix
+    #[cfg(target_family = "unix")]
+    port.set_exclusive(false)?;
+
+    let (reader, writer) = tokio::io::split(port);
+
+    let reader = std::pin::pin!(reader);
+    let writer = std::pin::pin!(writer);
+
+    select(
+        pin!(run_downlink(ctx, downlink_tx, reader)),
+        pin!(run_uplink(uplink_rx, writer))
+    ).await;
+
+    info!("Closing {:?}", port_name);
     Ok(())
 }
 
 /// Returns vector containing names of all available USB ports
-pub fn find_serial_port() -> Option<Vec<String>> {
-
-    let mut available : Vec<String> = Vec::new();
-    serialport::available_ports()
-        .ok().unwrap_or_else(| | Vec::new()).iter()
-        .for_each(|p| {
-                if let serialport::SerialPortType::UsbPort(info) = p.port_type.clone() {
-                    if info.manufacturer.unwrap_or(String::from("false")) == "TUDSaT" {
-                        available.push(p.port_name.clone());
-                    }
-                }
-        });
-    if !available.is_empty() {
-        Some(available.clone())
-    }
-    else {
-        None
-    }
+pub fn find_serial_ports() -> Vec<String> {
+    tokio_serial::available_ports()
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|p| {
+            if let tokio_serial::SerialPortType::UsbPort(info) = p.port_type.clone() {
+                info.manufacturer.map(|m| m == "TUDSaT")
+                    .unwrap_or(false)
+                    .then_some(p.port_name.clone())
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 /// Continuously monitors for connected USB serial devices and connects to them.
 /// Run in a separate thread using `spawn_downlink_monitor`.
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-pub fn downlink_monitor(
+pub async fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
-    send_heartbeats: bool,
     serial_index: usize
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        // If a device was connected, start reading messages.
-        if let Some(p) = find_serial_port() {
-            serial_status_tx.send((SerialStatus::Connected, Some(p[serial_index].clone())))?;
-            if let Err(e) = downlink_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, p[serial_index].clone(), send_heartbeats) {
-                eprintln!("{:?}", e);
-                serial_status_tx.send((SerialStatus::Error, Some(p[serial_index].clone())))?;
+        let ports: Vec<_> = find_serial_ports();
+        if ports.len() > 0 {
+            serial_status_tx.send((SerialStatus::Connected, Some(ports[serial_index].clone()))).await?;
+            if let Err(e) = run_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, ports[serial_index].clone()).await {
+                eprintln!("Failed to open {}: {:?}", ports[serial_index], e);
+                serial_status_tx.send((SerialStatus::Error, Some(ports[serial_index].clone()))).await?;
                 if let Some(ctx) = &ctx {
                     ctx.request_repaint();
                 }
@@ -181,11 +199,11 @@ pub fn spawn_downlink_monitor(
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
-    send_heartbeats: bool,
     serial_index: usize,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
-        downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, send_heartbeats, serial_index).unwrap_or_default()
+        let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
+        rt.block_on(downlink_monitor(ctx, serial_status_tx, downlink_tx, uplink_rx, serial_index)).unwrap()
     })
 }
 
@@ -212,9 +230,9 @@ pub struct SerialDataSource {
 impl SerialDataSource {
     /// Create a new serial port data source.
     pub fn new(ctx: &egui::Context, lora_settings: LoRaSettings) -> Self {
-        let (downlink_tx, downlink_rx) = std::sync::mpsc::channel::<(Instant, DownlinkMessage)>();
-        let (uplink_tx, uplink_rx) = std::sync::mpsc::channel::<UplinkMessage>();
-        let (serial_status_tx, serial_status_rx) = std::sync::mpsc::channel::<(SerialStatus, Option<String>)>();
+        let (downlink_tx, downlink_rx) = tokio::sync::mpsc::channel::<(Instant, DownlinkMessage)>(10);
+        let (uplink_tx, uplink_rx) = tokio::sync::mpsc::channel::<UplinkMessage>(10);
+        let (serial_status_tx, serial_status_rx) = tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
 
         let ctx = ctx.clone();
 
@@ -223,7 +241,7 @@ impl SerialDataSource {
 
         // There are no serial ports on wasm, and on android the Java side handles this.
         #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, true, 0);
+        spawn_downlink_monitor(Some(ctx), serial_status_tx, downlink_tx, uplink_rx, 0);
 
         Self {
             serial_status_rx,
@@ -298,7 +316,7 @@ impl DataSource for SerialDataSource {
         }
 
         #[cfg(not(target_os="android"))]
-        for (status, port) in self.serial_status_rx.try_iter().collect::<Vec<_>>().into_iter() {
+        while let Ok((status, port)) = self.serial_status_rx.try_recv() {
             self.serial_status = status;
             self.serial_port = port;
 
@@ -307,8 +325,13 @@ impl DataSource for SerialDataSource {
             }
         }
 
-        #[cfg(not(target_os = "android"))]
-        let msgs: Vec<_> = self.downlink_rx.try_iter().collect();
+        #[cfg(not(target_os="android"))]
+        let mut msgs: Vec<_> = Vec::new();
+        #[cfg(not(target_os="android"))]
+        while let Ok(msg) = self.downlink_rx.try_recv() {
+            msgs.push(msg);
+        }
+
         #[cfg(target_os = "android")]
         let msgs: Vec<_> = unsafe { DOWNLINK_MESSAGE_RECEIVER.as_mut().unwrap().try_iter().collect() };
 
@@ -359,7 +382,7 @@ impl DataSource for SerialDataSource {
 
     #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
-        self.uplink_tx.send(msg)
+        self.uplink_tx.blocking_send(msg)
     }
 
     #[cfg(target_os="android")]
@@ -421,8 +444,8 @@ impl DataSource for SerialDataSource {
         ui.separator();
 
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(available) = find_serial_port() {
-            available.iter().enumerate().for_each(|arg|{
+        {
+            find_serial_ports().iter().enumerate().for_each(|arg|{
                 if ui.button(arg.1).clicked(){
                     self.serial_index = arg.0;
                 }
