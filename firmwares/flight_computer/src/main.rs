@@ -132,7 +132,9 @@ async fn main(low_priority_spawner: Spawner) {
     let spi2 = Mutex::<CriticalSectionRawMutex, _>::new(spi2);
     let spi2 = SPI2_SHARED.init(spi2);
 
+    #[cfg(not(feature="gcs"))]
     let spi2_cs_can = Output::new(p.PB12, Level::High, Speed::VeryHigh);
+    #[cfg(not(feature="gcs"))]
     let (can_tx, can_rx, can_handle) = can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await.unwrap();
 
     // SPI 3
@@ -151,9 +153,9 @@ async fn main(low_priority_spawner: Spawner) {
     let adc = Adc::new(p.ADC1, &mut Delay);
     let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
 
-    let led_red = Output::new(p.PC13, Level::High, Speed::Low);
-    let led_yellow = Output::new(p.PC14, Level::High, Speed::Low);
-    let led_green = Output::new(p.PC15, Level::High, Speed::Low);
+    let led_red = Output::new(p.PC13, Level::Low, Speed::Low);
+    let led_yellow = Output::new(p.PC14, Level::Low, Speed::Low);
+    let led_green = Output::new(p.PC15, Level::Low, Speed::Low);
     let leds = (led_red, led_yellow, led_green);
 
     let gpio_drogue = Output::new(p.PC8, Level::Low, Speed::Low);

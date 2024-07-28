@@ -79,7 +79,7 @@ impl<SPI: SpiDevice<u8>> CanRx<SPI> {
             let (id, msg) = match self.driver.try_receive().await {
                 Ok(Some((id, msg))) => (id, msg),
                 Ok(None) => {
-                    Timer::after(Duration::from_micros(100)).await;
+                    Timer::after(Duration::from_micros(10)).await;
                     continue;
                 }
                 Err(e) => {
@@ -97,13 +97,27 @@ impl<SPI: SpiDevice<u8>> CanRx<SPI> {
             };
 
             let received_message = match message_id {
-                //CanBusMessageId::IoBoardInput(_role, _id) => {
-                //}
+                CanBusMessageId::IoBoardInput(role, 0xf) => {
+                    let Ok(Some(parsed)) = IoBoardPowerMessage::parse(msg) else {
+                        error!("Malformed message");
+                        continue;
+                    };
+
+                    FcReceivedCanBusMessage::IoBoardPower(role, parsed)
+                }
+                CanBusMessageId::IoBoardInput(role, id) => {
+                    let Ok(Some(parsed)) = IoBoardSensorMessage::parse(msg) else {
+                        error!("Malformed message");
+                        continue;
+                    };
+
+                    FcReceivedCanBusMessage::IoBoardSensor(role, id, parsed)
+                }
                 //CanBusMessageId::FinBoardInput(_fin, _id) => {
                 //}
                 CanBusMessageId::BatteryBoardInput(id) => {
                     let Ok(Some(parsed)) = BatteryTelemetryMessage::parse(msg) else {
-                        error!("Malformed battery telemetry message");
+                        error!("Malformed message");
                         continue;
                     };
 

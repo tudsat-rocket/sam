@@ -182,11 +182,15 @@ impl Vehicle {
 
         // Handle incoming CAN messages
         if let Some(msg) = self.can.receive() {
+            self.handle_can_bus_message(&msg);
             match msg {
                 FcReceivedCanBusMessage::BatteryTelemetry(_id, bat_msg) => {
                     self.power.handle_battery_can_msg(bat_msg)
                 },
-                FcReceivedCanBusMessage::IoBoardSensor(_, _, _) => {}, // TODO
+                FcReceivedCanBusMessage::IoBoardSensor(_role, _id, _sensor_msg) => {
+                    // TODO: parse known sensors
+                },
+                FcReceivedCanBusMessage::IoBoardPower(_role, _power_msg) => {},
             }
         }
 
@@ -209,7 +213,7 @@ impl Vehicle {
         }
 
         // Process incoming commands, both from USB...
-        if let Some(msg) = self.usb.next_uplink_message().await {
+        if let Some(msg) = self.usb.next_uplink_message() {
             match msg {
                 UplinkMessage::Heartbeat => {},
                 // TODO: remove bootloader command?
@@ -219,7 +223,7 @@ impl Vehicle {
                     self.handle_command(cmd).await
                 },
                 UplinkMessage::ReadFlash(adress, size) => { let _ = self.flash.read(adress, size); }
-                UplinkMessage::ReadSettings => self.usb.send_message(DownlinkMessage::Settings(self.settings.clone())).await,
+                UplinkMessage::ReadSettings => self.usb.send_message(DownlinkMessage::Settings(self.settings.clone())),
                 UplinkMessage::WriteSettings(settings) => { let _ = self.flash.write_settings(settings); }
                 UplinkMessage::ApplyLoRaSettings(_) => {}
             }
@@ -250,7 +254,7 @@ impl Vehicle {
 
         // Send telemetry via USB
         if let Some(msg) = self.next_usb_telem() {
-            self.usb.send_message(msg).await;
+            self.usb.send_message(msg);
         }
 
         // Send telemetry via Lora
@@ -280,6 +284,19 @@ impl Vehicle {
         self.loop_runtime_history.push_front((elapsed as f32) / (1_000_000.0 / MAIN_LOOP_FREQUENCY.0 as f32));
     }
 
+    fn handle_can_bus_message(&mut self, msg: &FcReceivedCanBusMessage) {
+        let msg = TelemetryCanBusMessage {
+            time: self.time.0,
+            msg: msg.clone(),
+        };
+        let msg = DownlinkMessage::TelemetryCanBusMessage(msg);
+
+        let _ = self.usb.send_message(msg.clone());
+        if self.mode >= FlightMode::Armed {
+            let _ = self.flash.write_message(msg);
+        }
+    }
+
     fn transmit_output_commands(&mut self) {
         if !(self.time.0 % 100 == 0) {
             return;
@@ -289,15 +306,25 @@ impl Vehicle {
         let valve_state = self.state_estimator.thruster_valve();
         let mut outputs: [bool; 8] = [false; 8];
         outputs[0] = valve_state == ThrusterValveState::OpenPrograde;
-        outputs[1] = valve_state == ThrusterValveState::OpenRetrograde;
+        outputs[2] = valve_state == ThrusterValveState::OpenRetrograde;
         let msg = IoBoardOutputMessage { outputs };
         let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardCommand(IoBoardRole::Acs, 0));
-
         self.can.transmit(id, msg);
     }
 
     fn broadcast_can_telemetry(&mut self) {
-        // TODO
+        if self.time.0 % 100 != 0 {
+            return;
+        }
+
+        let msg = TelemetryToPayloadMessage {
+            time: self.time.0,
+            mode: self.mode,
+            altitude: (self.state_estimator.altitude_asl() * 10.0) as u16,
+        };
+
+        let (id, msg) = msg.to_frame(CanBusMessageId::TelemetryBroadcast(0));
+        self.can.transmit(id, msg);
     }
 
     async fn handle_command(&mut self, cmd: Command) {

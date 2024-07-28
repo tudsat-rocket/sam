@@ -97,11 +97,13 @@ impl UsbHandle {
         (usb_handle, flash_usb_handle)
     }
 
-    pub async fn send_message(&mut self, msg: DownlinkMessage) {
-        let _ = self.downlink_sender.try_send(msg);
+    pub fn send_message(&mut self, msg: DownlinkMessage) {
+        if let Err(_e) = self.downlink_sender.try_send(msg) {
+            defmt::error!("Failed to send USB message.");
+        }
     }
 
-    pub async fn next_uplink_message(&mut self) -> Option<UplinkMessage> {
+    pub fn next_uplink_message(&mut self) -> Option<UplinkMessage> {
         self.uplink_receiver.try_receive().ok()
     }
 }
