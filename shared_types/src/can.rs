@@ -14,11 +14,15 @@
 //!
 //! 0x200 - 0x2ff      Internal telemetry (e.g. data shared with payloads)
 
+#[cfg(feature = "serde")]
+use serde::{Serialize, Deserialize};
+
 use crc::{Crc, CRC_16_IBM_SDLC};
 
 const CRC: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum IoBoardRole {
     Acs = 1,
     Recovery = 2,
@@ -37,9 +41,9 @@ pub enum CanBusMessageId {
 impl Into<u16> for CanBusMessageId {
     fn into(self) -> u16 {
         match self {
-            Self::IoBoardCommand(role, id) => 0x000 + (role as u16 & 0x0f) << 4 + (id & 0x0f),
-            Self::IoBoardInput(role, id)   => 0x100 + (role as u16 & 0x0f) << 4 + (id & 0x0f),
-            Self::FinBoardInput(fin, id)   => 0x1f0 + ((fin + 0x0b) as u16 & 0x0f) << 4 + (id & 0x0f),
+            Self::IoBoardCommand(role, id) => 0x000 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
+            Self::IoBoardInput(role, id)   => 0x100 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
+            Self::FinBoardInput(fin, id)   => 0x1f0 + (((fin + 0x0b) as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
             Self::BatteryBoardInput(id)    => 0x1f0 + (id as u16 & 0x0f),
             Self::TelemetryBroadcast(id)   => 0x200 + id as u16,
         }
@@ -116,6 +120,8 @@ impl TryFrom<u8> for IoBoardRole {
     }
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IoBoardOutputMessage {
     pub outputs: [bool; 8],
     // TODO: max high duration, failsafe value?
@@ -149,31 +155,88 @@ impl CanBusMessage for IoBoardOutputMessage {
     }
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct IoBoardSensorMessage {
-    pub sensors: [u16; 3],
+    // Outputs are 4 optional 10-bit raw ADC results.
+    // The additional bool is the alert flag, set if value is out of range
+    pub i2c_sensors: [Option<(u16, bool)>; 4],
 }
 
 impl CanBusMessage for IoBoardSensorMessage {
     fn serialize(self) -> [u8; 6] {
+        let mut sensors_packed: u64 = 0;
+        for i in 0..3 {
+            let sensor_value = self.i2c_sensors[i].map(|(val, _)| val).unwrap_or(0x3ff);
+            let some_flag = self.i2c_sensors[i].is_some() as u16;
+            let alert_flag = self.i2c_sensors[i].map(|(_, alert)| alert).unwrap_or(false) as u16;
+
+            // each sensor gets 12 bits sacc_cccc_cccc (s = is_some, a = alert, c = value)
+            let sensor = (some_flag << 11) | (alert_flag << 10) | sensor_value;
+            sensors_packed |= (sensor as u64) << (52 - (i*12));
+        }
+
         let mut msg = [0x00; 6];
-        msg[0..2].copy_from_slice(&self.sensors[0].to_be_bytes());
-        msg[2..4].copy_from_slice(&self.sensors[1].to_be_bytes());
-        msg[4..6].copy_from_slice(&self.sensors[2].to_be_bytes());
+        msg[0..6].copy_from_slice(&sensors_packed.to_be_bytes()[..6]);
         msg
     }
 
     fn deserialize(data: &[u8]) -> Option<Self> {
+        let sensors_packed = u64::from_be_bytes([data[0], data[1], data[2], data[3], data[4], data[5], 0, 0]);
+
+        let mut i2c_sensors = [None; 4];
+        for i in 0..i2c_sensors.len() {
+            let sensor = (sensors_packed >> (52 - i*12)) & 0xfff;
+            let is_some = (sensor >> 11) > 0;
+            let alert = ((sensor >> 10) & 0b1) > 0;
+            let value = (sensor & 0x3ff) as u16;
+            i2c_sensors[i] = is_some.then_some((value, alert));
+        }
+
         Some(Self {
-            sensors: [
-                u16::from_be_bytes([data[0], data[1]]),
-                u16::from_be_bytes([data[2], data[3]]),
-                u16::from_be_bytes([data[4], data[5]]),
-            ]
+            i2c_sensors,
+        })
+    }
+}
+
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct IoBoardPowerMessage {
+    /// Voltage applied at the outputs in mV. For IO boards outputting 5V,
+    /// battery voltage is measured instead.
+    pub output_voltage: u16,
+    /// Current drawn by the outputs in mA.
+    pub output_current: i16,
+    /// Measured resistance of the NTC resistor in Ohm, B= TODO
+    pub thermistor_resistance: u16,
+}
+
+impl CanBusMessage for IoBoardPowerMessage {
+    fn serialize(self) -> [u8; 6] {
+        let mut msg = [0x00; 6];
+        msg[0..2].copy_from_slice(&self.output_voltage.to_be_bytes());
+        msg[2..4].copy_from_slice(&self.output_current.to_be_bytes());
+        msg[4..6].copy_from_slice(&self.thermistor_resistance.to_be_bytes());
+        msg
+    }
+
+    fn deserialize(data: &[u8]) -> Option<Self> {
+        let output_voltage = u16::from_be_bytes([data[0], data[1]]);
+        let output_current = i16::from_be_bytes([data[2], data[3]]);
+        let thermistor_resistance = u16::from_be_bytes([data[4], data[5]]);
+
+        Some(Self {
+            output_voltage,
+            output_current,
+            thermistor_resistance,
         })
     }
 }
 
 // Format defined in Payload Specification, do not change.
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct TelemetryToPayloadMessage {
     pub time: u32,
     pub mode: crate::FlightMode,
@@ -185,7 +248,7 @@ impl CanBusMessage for TelemetryToPayloadMessage {
         let mut msg = [0x00; 6];
         msg[0..3].copy_from_slice(&self.time.to_le_bytes()[..3]);
         msg[3] = self.mode as u8;
-        msg[4..6].copy_from_slice(&self.altitude.to_be_bytes());
+        msg[4..6].copy_from_slice(&self.altitude.to_le_bytes());
         msg
     }
 
@@ -202,6 +265,8 @@ impl CanBusMessage for TelemetryToPayloadMessage {
     }
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BatteryTelemetryMessage {
     pub voltage_battery: u16, // mV
     pub voltage_charge: u16, // mV
@@ -236,8 +301,11 @@ impl CanBusMessage for BatteryTelemetryMessage {
     }
 }
 
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FcReceivedCanBusMessage {
     IoBoardSensor(IoBoardRole, u8, IoBoardSensorMessage),
+    IoBoardPower(IoBoardRole, IoBoardPowerMessage),
     // TODO: fin input
     BatteryTelemetry(u8, BatteryTelemetryMessage),
     // TODO: payload downlink

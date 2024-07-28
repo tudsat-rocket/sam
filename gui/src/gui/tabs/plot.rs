@@ -15,6 +15,7 @@ use egui::Vec2;
 use egui_tiles::SimplificationOptions;
 
 use shared_types::telemetry::FlightMode;
+use shared_types::IoBoardRole;
 
 use crate::data_source::DataSource;
 use crate::gui::acs::AcsSystemDiagram;
@@ -52,6 +53,7 @@ pub enum PlotCell {
     Kalman,
     Valves,
     Masses,
+    IoSensors,
     Acs,
 }
 
@@ -73,6 +75,7 @@ impl PlotCell {
             PlotCell::Kalman,
             PlotCell::Valves,
             PlotCell::Masses,
+            PlotCell::IoSensors,
             PlotCell::Acs,
         ]
     }
@@ -96,6 +99,7 @@ impl std::fmt::Display for PlotCell {
             PlotCell::Kalman         => write!(f, "Kalman"),
             PlotCell::Valves         => write!(f, "Valves"),
             PlotCell::Masses         => write!(f, "Masses"),
+            PlotCell::IoSensors      => write!(f, "IO Board Sensors"),
             PlotCell::Acs            => write!(f, "ACS"),
         }
     }
@@ -117,6 +121,7 @@ struct TileBehavior<'a> {
     kalman_plot: &'a mut PlotState,
     valve_plot: &'a mut PlotState,
     masses_plot: &'a mut PlotState,
+    raw_sensors_plot: &'a mut PlotState,
     map: &'a mut MapState,
 }
 
@@ -141,6 +146,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Kalman         => ui.plot_telemetry(&self.kalman_plot, self.data_source),
             PlotCell::Valves         => ui.plot_telemetry(&self.valve_plot, self.data_source),
             PlotCell::Masses         => ui.plot_telemetry(&self.masses_plot, self.data_source),
+            PlotCell::IoSensors      => ui.plot_telemetry(&self.raw_sensors_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
             PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
         }
@@ -204,6 +210,7 @@ pub struct PlotTab {
     kalman_plot: PlotState,
     valve_plot: PlotState,
     masses_plot: PlotState,
+    raw_sensors_plot: PlotState,
     map: MapState,
 }
 
@@ -298,6 +305,18 @@ impl PlotTab {
             .line("Motor [kg]", R, |vs| vs.sim.as_ref().and_then(|sim| sim.motor_mass))
             .line("Thruster Propellant [kg]", O1, |vs| vs.sim.as_ref().and_then(|sim| sim.thruster_propellant_mass));
 
+        // TODO: refactor
+        let raw_sensors_plot = PlotState::new("Raw Sensors", (Some(0f32), Some(3300f32)), shared_plot.clone())
+            .line("ACS #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #3 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #4 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #5 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))));
+
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
@@ -319,6 +338,7 @@ impl PlotTab {
             kalman_plot,
             valve_plot,
             masses_plot,
+            raw_sensors_plot,
             map,
         }
     }
@@ -357,6 +377,7 @@ impl PlotTab {
         let right_misc = vec![
             tiles.insert_vertical_tile(raw_sensors),
             tiles.insert_grid_tile(overview),
+            tiles.insert_pane(PlotCell::IoSensors),
         ];
 
         let right = vec![
@@ -380,6 +401,7 @@ impl PlotTab {
             tiles.insert_pane(PlotCell::Acs),
             tiles.insert_pane(PlotCell::Pressures),
             tiles.insert_pane(PlotCell::Valves),
+            tiles.insert_pane(PlotCell::IoSensors),
         ];
         let t2 = vec![
             tiles.insert_pane(PlotCell::Runtime),
@@ -511,6 +533,7 @@ impl PlotTab {
                 kalman_plot: &mut self.kalman_plot,
                 valve_plot: &mut self.valve_plot,
                 masses_plot: &mut self.masses_plot,
+                raw_sensors_plot: &mut self.raw_sensors_plot,
                 map: &mut self.map,
             };
             self.tile_tree.ui(&mut behavior, ui);

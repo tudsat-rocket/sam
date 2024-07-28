@@ -25,7 +25,7 @@ use serde::de::DeserializeOwned;
 use siphasher::sip::SipHasher;
 
 pub use crate::common::FlightMode;
-use crate::settings::*;
+use crate::{settings::*, FcReceivedCanBusMessage, IoBoardRole};
 
 pub const LORA_MESSAGE_INTERVAL: u32 = 25;
 pub const LORA_UPLINK_INTERVAL: u32 = 200;
@@ -264,6 +264,9 @@ pub struct VehicleState {
     pub gcs_lora_rssi: Option<u8>,
     pub gcs_lora_rssi_signal: Option<u8>,
     pub gcs_lora_snr: Option<i8>,
+
+    // TODO: refactor this
+    pub io_board_sensor_data: Option<(IoBoardRole, u8, [Option<(u16, bool)>; 4])>,
 
     // Computed values. These are just calculated from the orientation value, but are cached for
     // performance reasons. Since these are only needed by the ground station, we don't include
@@ -616,7 +619,34 @@ impl Into<VehicleState> for TelemetryGPS {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TelemetryCanBusMessage {
+    pub time: u32,
+    pub msg: FcReceivedCanBusMessage,
+}
+
+impl Into<VehicleState> for TelemetryCanBusMessage {
+    fn into(self) -> VehicleState {
+        #[cfg(not(target_os = "none"))]
+        println!("{:?}", self);
+
+        let mut vs = VehicleState {
+            time: self.time,
+            ..Default::default()
+        };
+
+        match self.msg {
+            FcReceivedCanBusMessage::IoBoardSensor(role, id, msg) => {
+                vs.io_board_sensor_data = Some((role, id, msg.i2c_sensors));
+            }
+            _ => {}
+        }
+
+        vs
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TelemetryGCS {
     pub time: u32,
     pub lora_rssi: u8,
@@ -666,6 +696,7 @@ pub enum DownlinkMessage {
     TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed),
     TelemetryDiagnostics(TelemetryDiagnostics),
     TelemetryGPS(TelemetryGPS),
+    TelemetryCanBusMessage(TelemetryCanBusMessage),
     TelemetryGCS(TelemetryGCS),
     Log(u32, String, LogLevel, String),
     FlashContent(u32, Vec<u8>),
@@ -681,6 +712,7 @@ impl DownlinkMessage {
             DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.time,
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.time,
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
+            DownlinkMessage::TelemetryCanBusMessage(tm) => tm.time,
             DownlinkMessage::TelemetryGCS(tm) => tm.time,
             DownlinkMessage::Log(t, _, _, _) => *t,
             DownlinkMessage::FlashContent(_, _) => 0,
@@ -699,6 +731,7 @@ impl From<DownlinkMessage> for VehicleState {
             DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.into(),
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.into(),
             DownlinkMessage::TelemetryGPS(tm) => tm.into(),
+            DownlinkMessage::TelemetryCanBusMessage(tm) => tm.into(),
             DownlinkMessage::TelemetryGCS(tm) => tm.into(),
             DownlinkMessage::Log(t, ..) => Self {
                 time: t,
