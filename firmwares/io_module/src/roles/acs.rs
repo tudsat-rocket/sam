@@ -21,18 +21,22 @@ impl crate::roles::BoardRole for Acs {
         DriveVoltage::ChargeBus
     }
 
+    fn boost_converter_voltage() -> Option<u16> {
+        Some(12_000)
+    }
+
     // We want to turn off the valves if we don't hear anything from
     // the FC anymore.
     fn output_failsafe_duration() -> Option<Duration> {
         Some(Duration::from_millis(OUTPUT_FAILSAFE_TIMEOUT_MILLIS))
     }
 
-    // Read I2C sensors at COM1
-    fn input1_mode() -> InputMode {
-        let mut config = embassy_stm32::i2c::Config::default();
-        config.timeout = Duration::from_millis(10);
-        InputMode::I2c(Hertz::khz(100), config)
-    }
+    //// Read I2C sensors at COM1
+    //fn input1_mode() -> InputMode {
+    //    let mut config = embassy_stm32::i2c::Config::default();
+    //    config.timeout = Duration::from_millis(10);
+    //    InputMode::I2c(Hertz::khz(100), config)
+    //}
 
     // Read I2C sensors at COM3
     fn input3_mode() -> InputMode {
@@ -60,7 +64,8 @@ impl crate::roles::BoardRole for Acs {
                     Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
                 )).unwrap();
             },
-            _ => unreachable!(),
+            //_ => unreachable!(),
+            _ => {},
         }
 
         // Set the LEDs based on the output state and whether the failsafe
