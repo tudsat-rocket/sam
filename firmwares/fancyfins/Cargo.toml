@@ -29,6 +29,7 @@ static_cell = "2"
 crc = "3"
 
 shared_types = { git = "https://github.com/tudsat-rocket/sam" }
+w25q = "0.2.9"
 
 # cargo build/run
 [profile.dev]
