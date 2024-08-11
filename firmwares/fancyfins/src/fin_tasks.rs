@@ -2,11 +2,11 @@ use embassy_executor;
 use embassy_stm32::adc::{Adc, ADC_MAX};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Duration, Ticker, Timer};
-
-use flash::*;
+use w25q::prelude;
+use w25q::series25::Flash;
 
 #[embassy_executor::task]
-async fn flight_state_led() -> ! {
+pub async fn flight_state_led() -> ! {
     
     // set led outputs
     
@@ -16,10 +16,10 @@ async fn flight_state_led() -> ! {
 }
 
 #[embassy_executor::task]
-async fn strain_gauge() -> ! {
+pub async fn strain_gauge() -> ! {
 
     // 2000 Hz 
-    let mut ticker = Ticker::every(Duration::from_millis(0.5));
+    let mut ticker = Ticker::every(Duration::from_micros(500));
     loop {
         // TODO read strain gauge value and write to flash
         ticker.next().await;

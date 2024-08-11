@@ -14,6 +14,9 @@ use embassy_time::{Duration, Ticker, Timer};
 
 use {defmt_rtt as _, panic_probe as _};
 
+mod fin_tasks;
+mod can;
+
 use fin_tasks::*;
 use can::*;
 
