@@ -2,15 +2,14 @@
 #![no_main]
 
 use embassy_executor::{InterruptExecutor, Spawner};
-use embassy_stm32::Config;
 use embassy_stm32::adc::Adc;
+use embassy_stm32::Config;
 use embassy_stm32::interrupt::{Priority, InterruptExt};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::pubsub::PubSubChannel;
-use embassy_time::{Duration, Ticker, Timer};
+use embassy_time::{Duration, Ticker, Delay, Timer};
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -69,8 +68,11 @@ async fn main(low_priority_spawner: Spawner) {
     // start tasks
     low_priority_spawner.spawn(iwdg_task(iwdg)).unwrap();
 
-    low_priority_spawner.spawn(fin_tasks::flight_state_led()).unwrap();
+    low_priority_spawner.spawn(fin_tasks::flight_state_led(can_in.subscriber().unwrap())).unwrap();
+    
+    let mut adc = Adc::new(p.ADC1, &mut Delay);
+    adc.set_sample_time(embassy_stm32::adc::SampleTime::Cycles239_5);
 
-    low_priority_spawner.spawn(fin_tasks::strain_gauge()).unwrap();
+    low_priority_spawner.spawn(fin_tasks::strain_gauge(adc, p.PC0, p.PC1, p.PC2, p.PC3, can_in.subscriber().unwrap())).unwrap();
     
 }
