@@ -30,6 +30,8 @@ crc = "3"
 
 shared_types = { git = "https://github.com/tudsat-rocket/sam" }
 w25q = "0.2.9"
+smart-leds = "0.4.0"
+ws2812-spi = "0.5.0"
 
 # cargo build/run
 [profile.dev]

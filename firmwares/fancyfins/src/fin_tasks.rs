@@ -1,22 +1,32 @@
 use embassy_executor;
 use embassy_stm32::adc::Adc;
-use embassy_stm32::gpio::low_level::Pin;
+use embassy_stm32::gpio::{Output, Level, Speed};
+use embassy_stm32::spi::{Spi, Config};
+use embassy_stm32::Peripherals;
 use embassy_stm32::peripherals::*;
 use embassy_time::{Duration, Ticker};
 use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
 use w25q::prelude;
 use w25q::series25::Flash;
+use ws2812_spi::Ws2812;
 
 
-#[embassy_executor::task]
+#[embassy_executor::task] 
 pub async fn flight_state_led(
-    mut can_subscriber: crate::can::CanInSubscriper
+    mut can_subscriber: crate::can::CanInSubscriper,
+    spi: SPI3,
+    led_signal_pin: PB5,
+    dma_out: DMA1_CH1,
+    dma_in: DMA1_CH2,
 ) -> ! {
     
     let mut current_fm = FlightMode::default();
 
-    //TODO set led outputs
-    
+    let config = Config::default();
+    let spi_bus = embassy_stm32::spi::Spi::new_txonly_nosck(spi, led_signal_pin, dma_out, dma_in, config);
+
+    let led_driver = Ws2812::new(spi_bus);
+
     loop {
 
         let (sid , data) = can_subscriber.next_message_pure().await; 
@@ -43,7 +53,14 @@ pub async fn strain_gauge(
     mut sg_vout0_pin: PC1,
     mut sg_ref_pin: PC2,
     mut sg_vout1_pin: PC3,
-    mut can_subscriber: crate::can::CanInSubscriper
+    mut can_subscriber: crate::can::CanInSubscriper,
+    spi: SPI2,
+    cs: PC6,
+    sck: PB13,
+    miso: PB14,
+    mosi: PB15,
+    dma_out: DMA2_CH1,
+    dma_in: DMA2_CH2
 ) -> ! {
 
     let mut launch_not_imminent = true;
@@ -62,10 +79,12 @@ pub async fn strain_gauge(
     // 2000 Hz 
     let mut ticker = Ticker::every(Duration::from_micros(500));
 
-    // let spi = SPI2;
-    //let cs = embassy_stm32::peripherals::PC6;
-
-    //let flash = w25q::series25::Flash::init(spi, cs).unwrap();
+    let config = Config::default();
+    let spi_bus = embassy_stm32::spi::Spi::new(spi, sck, mosi, miso, dma_out, dma_in,  config);
+    
+    let out = Output::new(cs, Level::Low, Speed::Low);
+    let flash = Flash::init(spi_bus, out).unwrap();
+    
     loop {
         // TODO read strain gauge value and write to flash
         ticker.next().await;

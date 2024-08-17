@@ -68,11 +68,12 @@ async fn main(low_priority_spawner: Spawner) {
     // start tasks
     low_priority_spawner.spawn(iwdg_task(iwdg)).unwrap();
 
-    low_priority_spawner.spawn(fin_tasks::flight_state_led(can_in.subscriber().unwrap())).unwrap();
+    low_priority_spawner.spawn(fin_tasks::flight_state_led(can_in.subscriber().unwrap(), p.SPI3, p.PB5, p.DMA1_CH1, p.DMA1_CH2)).unwrap();
     
     let mut adc = Adc::new(p.ADC1, &mut Delay);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::Cycles239_5);
 
-    low_priority_spawner.spawn(fin_tasks::strain_gauge(adc, p.PC0, p.PC1, p.PC2, p.PC3, can_in.subscriber().unwrap())).unwrap();
+    low_priority_spawner.spawn(fin_tasks::strain_gauge(adc, p.PC0, p.PC1, p.PC2, p.PC3, can_in.subscriber().unwrap(),
+                                                       p.SPI2, p.PC6, p.PB13, p.PB14, p.PB15, p.DMA2_CH1, p.DMA2_CH2)).unwrap();
     
 }
