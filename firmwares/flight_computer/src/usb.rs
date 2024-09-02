@@ -8,17 +8,16 @@ use embassy_stm32::bind_interrupts;
 use embassy_sync::channel::{self, Channel};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::{Timer, Duration, TimeoutError, with_timeout};
-use embassy_usb::{Builder, UsbDevice};
+use embassy_usb::{driver::EndpointError, Builder, UsbDevice};
 use embassy_usb::class::cdc_acm::{CdcAcmClass, State, Sender, Receiver};
-use embassy_futures::select::{select, Either};
 use static_cell::StaticCell;
 
 use shared_types::*;
 
 static EP_OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static DEVICE_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static CONFIG_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static BOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
+static MSOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
 static CONTROL_BUFFER: StaticCell<[u8; 128]> = StaticCell::new();
 
 static CDC_ACM_STATE: StaticCell<State> = StaticCell::new();
@@ -68,10 +67,9 @@ impl UsbHandle {
         let mut builder = Builder::new(
             driver,
             config,
-            DEVICE_DESCRIPTOR_BUFFER.init([0; 256]),
             CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
             BOS_DESCRIPTOR_BUFFER.init([0; 256]),
-            &mut [],
+            MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
             CONTROL_BUFFER.init([0; 128]),
         );
 
@@ -99,7 +97,7 @@ impl UsbHandle {
 
     pub fn send_message(&mut self, msg: DownlinkMessage) {
         if let Err(_e) = self.downlink_sender.try_send(msg) {
-            defmt::error!("Failed to send USB message.");
+            //defmt::error!("Failed to send USB message.");
         }
     }
 
@@ -119,6 +117,18 @@ async fn run_usb(mut usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>) -> ! 
     usb.run().await
 }
 
+async fn write_message(class: &mut Sender<'static, Driver<'static, USB_OTG_FS>>, serialized: &[u8]) -> Result<(), EndpointError> {
+    for chunk in serialized.chunks(64) {
+        class.write_packet(chunk).await?;
+    }
+
+    if serialized.len() % 64 == 0 {
+        class.write_packet(&[]).await?;
+    }
+
+    Ok(())
+}
+
 #[embassy_executor::task]
 async fn handle_usb_downlink(
     mut class: Sender<'static, Driver<'static, USB_OTG_FS>>,
@@ -128,27 +138,30 @@ async fn handle_usb_downlink(
     loop {
         class.wait_connection().await;
 
-        loop {
-            let msg = match select(downlink_receiver.receive(), flash_downlink_receiver.receive()).await {
-                Either::First(msg) => msg,
-                Either::Second(msg) => msg,
-            };
+        let msg = if let Ok(msg) = downlink_receiver.try_receive() {
+            msg
+        } else if let Ok(msg) = flash_downlink_receiver.try_receive() {
+            msg
+        } else {
+            Timer::after(Duration::from_millis(1)).await;
+            continue;
+        };
 
-            let serialized = msg.serialize().unwrap_or_default();
+        let serialized = msg.serialize().unwrap_or_default();
 
-            let res = with_timeout(Duration::from_millis(5), async {
-                for chunk in serialized.chunks(64) {
-                    let _res = class.write_packet(chunk).await;
-                }
-
-                if serialized.len() % 64 == 0 {
-                    let _res = class.write_packet(&[]).await;
-                }
-            }).await;
-
-            if let Err(TimeoutError) = res {
-                Timer::after(Duration::from_millis(10)).await;
-                break;
+        match with_timeout(Duration::from_millis(10), write_message(&mut class, &serialized)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(EndpointError::BufferOverflow)) => {
+                defmt::error!("buffer overflow");
+            },
+            Ok(Err(EndpointError::Disabled)) => {
+                defmt::error!("disabled");
+            }
+            Err(TimeoutError) => {
+                defmt::error!("timeout");
+                Timer::after(Duration::from_millis(1000)).await;
+                // Clear the queue
+                while let Ok(_) = downlink_receiver.try_receive() {}
             }
         }
     }

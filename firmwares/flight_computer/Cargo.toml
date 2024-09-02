@@ -25,7 +25,7 @@ embassy-executor = { version = "0.5", features = ["task-arena-size-16384", "arch
 embassy-time = { version = "0.3", features = ["tick-hz-1_000_000"] }
 embassy-embedded-hal = "0.1"
 embassy-sync = "0.5"
-embassy-usb = "0.1"
+embassy-usb = "0.2"
 embassy-futures = "0.1"
 
 static_cell = "2"
