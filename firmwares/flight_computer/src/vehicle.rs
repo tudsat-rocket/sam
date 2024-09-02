@@ -64,6 +64,10 @@ pub struct Vehicle {
     loop_runtime_history: VecDeque<f32>,
     settings: Settings,
     data_rate: TelemetryDataRate,
+    // Acs
+    acs_mode: AcsMode,
+    last_manual_thruster_input: Option<(ThrusterValveState, core::num::Wrapping<u32>)>,
+    last_thruster_valve_state: ThrusterValveState,
 }
 
 impl Into<VehicleState> for &mut Vehicle {
@@ -73,11 +77,10 @@ impl Into<VehicleState> for &mut Vehicle {
             mode: Some(self.mode),
             orientation: self.state_estimator.orientation,
             vertical_speed: Some(self.state_estimator.vertical_speed()),
-            vertical_accel: self.state_estimator.acceleration_world_raw().map(|v| v.z),
-            vertical_accel_filtered: Some(self.state_estimator.vertical_acceleration()),
+            vertical_accel: Some(self.state_estimator.vertical_acceleration()),
             altitude_asl: Some(self.state_estimator.altitude_asl()),
             altitude_ground_asl: Some(self.state_estimator.altitude_ground),
-            apogee_asl: Some(self.state_estimator.altitude_max),
+            apogee_asl: self.state_estimator.apogee_asl(),
 
             gyroscope: self.imu.gyroscope(),
             accelerometer1: self.imu.accelerometer(),
@@ -99,6 +102,9 @@ impl Into<VehicleState> for &mut Vehicle {
             flash_pointer: Some(self.flash.pointer),
 
             gps: self.gps.datum(),
+
+            acs_mode: Some(self.acs_mode),
+            thruster_valve_state: Some(self.last_thruster_valve_state),
 
             ..Default::default()
 
@@ -166,6 +172,10 @@ impl Vehicle {
             loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
             settings,
             data_rate,
+
+            acs_mode: AcsMode::Disabled,
+            last_manual_thruster_input: None,
+            last_thruster_valve_state: ThrusterValveState::Closed,
         }
     }
 
@@ -298,15 +308,40 @@ impl Vehicle {
     }
 
     fn transmit_output_commands(&mut self) {
-        if !(self.time.0 % 100 == 0) {
+        if !(self.time.0 % 10 == 0) {
             return;
         }
 
-        // TODO: don't hardcode this?
-        let valve_state = self.state_estimator.thruster_valve();
+        let valve_state = match self.acs_mode {
+            AcsMode::Disabled => ThrusterValveState::Closed,
+            AcsMode::Auto => self.state_estimator.thruster_valve(),
+            AcsMode::Manual => match self.last_manual_thruster_input {
+                Some((state, time)) => {
+                    if (self.time - time).0 < 450 { // TODO
+                        state
+                    } else {
+                        self.last_manual_thruster_input = None;
+                        ThrusterValveState::Closed
+                    }
+                },
+                None => ThrusterValveState::Closed,
+            }
+        };
+
+        self.last_thruster_valve_state = valve_state;
+
+        let (accel, decel) = match valve_state {
+            ThrusterValveState::Closed => (false, false),
+            ThrusterValveState::OpenAccel => (true, false),
+            ThrusterValveState::OpenDecel => (false, true),
+            ThrusterValveState::OpenBoth => (true, true),
+        };
+
         let mut outputs: [bool; 8] = [false; 8];
-        outputs[0] = valve_state == ThrusterValveState::OpenPrograde;
-        outputs[2] = valve_state == ThrusterValveState::OpenRetrograde;
+        outputs[0] = accel;
+        outputs[1] = accel;
+        outputs[2] = decel;
+        outputs[3] = decel;
         let msg = IoBoardOutputMessage { outputs };
         let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardCommand(IoBoardRole::Acs, 0));
         self.can.transmit(id, msg);
@@ -331,11 +366,17 @@ impl Vehicle {
         info!("Received command: {:?}", Debug2Format(&cmd));
         match cmd {
             Command::Reboot => cortex_m::peripheral::SCB::sys_reset(),
+            Command::RebootToBootloader => {},
             Command::SetFlightMode(fm) => self.switch_mode(fm),
             Command::SetTransmitPower(txp) => self.radio.set_transmit_power(txp),
             Command::SetDataRate(dr) => self.data_rate = dr,
+            Command::SetAcsMode(am) => self.acs_mode = am,
+            Command::SetAcsValveState(vs) => if self.acs_mode != AcsMode::Disabled {
+                // We've interferred, set mode to manual.
+                self.acs_mode = AcsMode::Manual;
+                self.last_manual_thruster_input = Some((vs, self.time));
+            },
             Command::EraseFlash => { let _ = self.flash.erase(); },
-            _ => {},
         }
     }
 
@@ -344,9 +385,10 @@ impl Vehicle {
             return;
         }
 
-        // We are going to or beyond Armed, switch to max tx power
+        // We are going to or beyond Armed, switch to max tx power and arm ACS
         if new_mode >= FlightMode::Armed && self.mode < FlightMode::Armed {
             self.radio.set_max_transmit_power();
+            self.acs_mode = AcsMode::Auto;
         }
 
         self.mode = new_mode;
