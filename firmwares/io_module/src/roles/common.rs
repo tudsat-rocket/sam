@@ -167,11 +167,13 @@ pub async fn run_power_report(
     drive_voltage: DriveVoltage,
 ) -> ! {
     let mut vref = adc.enable_vref(&mut Delay);
-    let vref_sample = adc.read(&mut vref).await;
+    let vref_sample = 0;
     const TIMEOUT: Duration = Duration::from_millis(10);
 
     let mut ticker = Ticker::every(Duration::from_millis(200)); // TODO: adjust?
     loop {
+        let vref_sample = with_timeout(TIMEOUT, adc.read(&mut vref)).await.unwrap_or(vref_sample);
+
         let thermistor_sample = with_timeout(TIMEOUT, adc.read(&mut temperature_sense_pin)).await;
         let thermistor_vsense = (to_millivolts(vref_sample, thermistor_sample.unwrap_or_default()) as f32) / 1000.0;
         let thermistor_resistance = (10e3 * (thermistor_vsense / (3.3 - thermistor_vsense))) as u16;

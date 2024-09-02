@@ -10,7 +10,7 @@ use crate::*;
 use crate::roles::common::*;
 
 const OUTPUT_FAILSAFE_TIMEOUT_MILLIS: u64 = 500;
-const SENSOR_SAMPLING_FREQUENCY_HZ: u64 = 10;
+const SENSOR_SAMPLING_FREQUENCY_HZ: u64 = 20;
 
 pub struct Acs {}
 
@@ -18,11 +18,11 @@ impl crate::roles::BoardRole for Acs {
     const ROLE_ID: IoBoardRole = IoBoardRole::Acs;
 
     fn drive_voltage() -> DriveVoltage {
-        DriveVoltage::ChargeBus
+        DriveVoltage::BoostConverter
     }
 
     fn boost_converter_voltage() -> Option<u16> {
-        Some(12_000)
+        Some(24_000)
     }
 
     // We want to turn off the valves if we don't hear anything from
