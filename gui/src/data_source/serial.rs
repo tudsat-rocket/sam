@@ -225,6 +225,8 @@ pub struct SerialDataSource {
     fc_settings: Option<Settings>,
     message_receipt_times: VecDeque<(Instant, u32)>,
     last_time: Option<Instant>,
+
+    last_command: Option<(Command, Instant)>,
 }
 
 impl SerialDataSource {
@@ -257,6 +259,7 @@ impl SerialDataSource {
             fc_settings: None,
             message_receipt_times: VecDeque::new(),
             last_time: None,
+            last_command: None,
         }
 
     }
@@ -382,6 +385,7 @@ impl DataSource for SerialDataSource {
 
     #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
+        log::info!("Sending {:?}", msg);
         self.uplink_tx.blocking_send(msg)
     }
 
@@ -398,6 +402,13 @@ impl DataSource for SerialDataSource {
     }
 
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
+        if let Some((last_cmd, t)) = self.last_command.as_ref() {
+            if last_cmd == &cmd && t.elapsed() < Duration::from_millis(100) {
+                return Ok(());
+            }
+        }
+
+        self.last_command = Some((cmd.clone(), Instant::now()));
         self.send(UplinkMessage::Command(cmd))
     }
 

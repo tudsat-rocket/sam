@@ -460,8 +460,8 @@ impl StateEstimator {
             1.0
         };
         let mut new = match error {
-            _ if error < -threshold => ThrusterValveState::OpenPrograde,
-            _ if error > threshold => ThrusterValveState::OpenRetrograde,
+            _ if error < -threshold => ThrusterValveState::OpenAccel,
+            _ if error > threshold => ThrusterValveState::OpenDecel,
             _ => ThrusterValveState::Closed
         };
 

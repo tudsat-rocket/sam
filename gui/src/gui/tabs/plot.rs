@@ -226,7 +226,6 @@ impl PlotTab {
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
             .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
-            .line("Vertical Accel (Filt.) [m/s²]", O, |vs| vs.vertical_accel_filtered)
             .line("Vario [m/s]", B, |vs| vs.vertical_speed)
             .line("Speed [m/s]", G, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2) + s.kalman_x[5].powi(2)).sqrt()))
             .line("Ground Speed [m/s]", BR, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2)).sqrt()))
@@ -268,10 +267,22 @@ impl PlotTab {
             .line("Baro. Temp. [°C]", C, |vs| vs.temperature_baro);
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Arm Voltage [V]", O, |vs| vs.arm_voltage.map(|v| (v as f32) / 1000.0))
+            //.line("Arm Voltage [V]", O, |vs| vs.arm_voltage.map(|v| (v as f32) / 1000.0))
             .line("Battery Voltage [V]", G, |vs| vs.battery_voltage.map(|v| (v as f32) / 1000.0))
             .line("Current [A]", O1, |vs| vs.current.map(|v| (v as f32) / 1000.0))
-            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0));
+            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0))
+            .line("ACS Board Output Voltage [V]", R, |vs| {
+                vs.io_board_power_data
+                    .as_ref()
+                    .and_then(|(role, msg)| (*role == IoBoardRole::Acs).then_some(msg))
+                    .map(|msg| msg.output_voltage as f32 / 1000.0)
+            })
+            .line("ACS Board Current [A]", O, |vs| {
+                vs.io_board_power_data
+                    .as_ref()
+                    .and_then(|(role, msg)| (*role == IoBoardRole::Acs).then_some(msg))
+                    .map(|msg| msg.output_current as f32 / 1000.0)
+            });
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
             .line("CPU Util. [%]", O, |vs| vs.cpu_utilization);
@@ -298,7 +309,7 @@ impl PlotTab {
             .line("R (pos. X/Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]));
 
         let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
-            .line("Thrusters", B1, |vs| vs.thruster_valve.map(|v| v.into()));
+            .line("Thrusters", B1, |vs| vs.thruster_valve_state.map(|v| v.into()));
 
         let masses_plot = PlotState::new("Masses", (Some(0.0), None), shared_plot.clone())
             .line("Vehicle [kg]", B, |vs| vs.sim.as_ref().and_then(|sim| sim.mass))
@@ -307,15 +318,15 @@ impl PlotTab {
 
         // TODO: refactor
         let raw_sensors_plot = PlotState::new("Raw Sensors", (Some(0f32), Some(3300f32)), shared_plot.clone())
-            .line("ACS #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 0).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #3 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #4 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #5 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Acs && *id == 1).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, s)| (*role == IoBoardRole::Recovery && *id == 0).then_some(s[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))));
+            .line("ACS #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #3 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 1).then_some(msg.i2c_sensors[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #4 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 1).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("ACS #5 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 1).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
+            .line("Recovery #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))));
 
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 

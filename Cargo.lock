@@ -1707,6 +1707,7 @@ dependencies = [
  "nalgebra",
  "rand",
  "rand_distr",
+ "shared_types",
 ]
 
 [[package]]
@@ -2025,6 +2026,7 @@ checksum = "6dd08c532ae367adf81c312a4580bc67f1d0fe8bc9c460520283f4c0ff277888"
 dependencies = [
  "cfg-if",
  "crunchy",
+ "serde",
 ]
 
 [[package]]
@@ -4314,6 +4316,7 @@ name = "shared_types"
 version = "0.1.0"
 dependencies = [
  "crc",
+ "half",
  "nalgebra",
  "postcard",
  "serde",

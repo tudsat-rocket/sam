@@ -25,7 +25,8 @@ use serde::de::DeserializeOwned;
 use siphasher::sip::SipHasher;
 
 pub use crate::common::FlightMode;
-use crate::{settings::*, FcReceivedCanBusMessage, IoBoardRole};
+use crate::settings::*;
+use crate::can::*;
 
 pub const LORA_MESSAGE_INTERVAL: u32 = 25;
 pub const LORA_UPLINK_INTERVAL: u32 = 200;
@@ -199,20 +200,29 @@ pub struct GPSDatum {
     pub num_satellites: u8,
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
+pub enum AcsMode {
+    #[default]
+    Disabled,
+    Auto,
+    Manual
+}
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ThrusterValveState {
     #[default]
     Closed,
-    OpenPrograde,
-    OpenRetrograde,
+    OpenAccel,
+    OpenDecel,
+    OpenBoth,
 }
 
 impl Into<f32> for ThrusterValveState {
     fn into(self) -> f32 {
         match self {
-            Self::Closed => 0.0,
-            Self::OpenPrograde => 1.0,
-            Self::OpenRetrograde => -1.0,
+            Self::OpenAccel => 1.0,
+            Self::OpenDecel => -1.0,
+            _ => 0.0,
         }
     }
 }
@@ -227,7 +237,6 @@ pub struct VehicleState {
     pub acceleration_world: Option<Vector3<f32>>,
     pub vertical_speed: Option<f32>,
     pub vertical_accel: Option<f32>,
-    pub vertical_accel_filtered: Option<f32>,
     pub altitude_asl: Option<f32>,
     pub altitude_ground_asl: Option<f32>,
     pub apogee_asl: Option<f32>,
@@ -257,7 +266,8 @@ pub struct VehicleState {
 
     pub gps: Option<GPSDatum>,
 
-    pub thruster_valve: Option<ThrusterValveState>,
+    pub acs_mode: Option<AcsMode>,
+    pub thruster_valve_state: Option<ThrusterValveState>,
 
     // ground station data, only used by sam to correlate GCS value with vehicle measurements
     // TODO: exclude for firmware?
@@ -266,7 +276,8 @@ pub struct VehicleState {
     pub gcs_lora_snr: Option<i8>,
 
     // TODO: refactor this
-    pub io_board_sensor_data: Option<(IoBoardRole, u8, [Option<(u16, bool)>; 4])>,
+    pub io_board_sensor_data: Option<(IoBoardRole, u8, IoBoardSensorMessage)>,
+    pub io_board_power_data: Option<(IoBoardRole, IoBoardPowerMessage)>,
 
     // Computed values. These are just calculated from the orientation value, but are cached for
     // performance reasons. Since these are only needed by the ground station, we don't include
@@ -287,12 +298,13 @@ pub struct TelemetryMain {
     pub time: u32,
     pub mode: FlightMode,
     pub orientation: Option<UnitQuaternion<f32>>,
-    pub vertical_speed: f32,
-    pub vertical_accel: f32,
-    pub vertical_accel_filtered: f32,
-    pub altitude_baro: f32,
-    pub altitude_max: f32, // TODO: rename apogee
-    pub altitude: f32,
+    pub vertical_speed: half::f16,
+    pub vertical_accel: half::f16,
+    pub altitude_baro: u16,
+    pub apogee_asl: u16,
+    pub altitude_asl: u16,
+    pub acs_mode: AcsMode,
+    pub thruster_valve_state: ThrusterValveState,
 }
 
 impl From<VehicleState> for TelemetryMain {
@@ -301,12 +313,13 @@ impl From<VehicleState> for TelemetryMain {
             time: vs.time,
             mode: vs.mode.unwrap_or_default(),
             orientation: vs.orientation,
-            vertical_speed: vs.vertical_speed.unwrap_or_default(),
-            vertical_accel: vs.vertical_accel.unwrap_or_default(),
-            vertical_accel_filtered: vs.vertical_accel_filtered.unwrap_or_default(),
-            altitude_baro: vs.altitude_baro.unwrap_or_default(),
-            altitude_max: vs.apogee_asl.unwrap_or_default(),
-            altitude: vs.altitude_asl.unwrap_or_default()
+            vertical_speed: half::f16::from_f32(vs.vertical_speed.unwrap_or_default()),
+            vertical_accel: half::f16::from_f32(vs.vertical_accel.unwrap_or_default()),
+            altitude_baro: (vs.altitude_baro.unwrap_or_default() * 10.0) as u16,
+            apogee_asl: (vs.apogee_asl.unwrap_or_default() * 10.0) as u16,
+            altitude_asl: (vs.altitude_asl.unwrap_or_default() * 10.0) as u16,
+            acs_mode: vs.acs_mode.unwrap_or_default(),
+            thruster_valve_state: vs.thruster_valve_state.unwrap_or_default(),
         }
     }
 }
@@ -317,12 +330,13 @@ impl Into<VehicleState> for TelemetryMain {
             time: self.time,
             mode: Some(self.mode),
             orientation: self.orientation,
-            altitude_asl: Some(self.altitude as f32),
-            altitude_baro: Some(self.altitude_baro),
-            apogee_asl: Some(self.altitude_max as f32),
-            vertical_speed: Some(self.vertical_speed),
-            vertical_accel: Some(self.vertical_accel),
-            vertical_accel_filtered: Some(self.vertical_accel_filtered),
+            altitude_asl: Some(self.altitude_asl as f32 / 10.0),
+            altitude_baro: Some(self.altitude_baro as f32 / 10.0),
+            apogee_asl: Some(self.apogee_asl as f32 / 10.0),
+            vertical_speed: Some(self.vertical_speed.to_f32()),
+            vertical_accel: Some(self.vertical_accel.to_f32()),
+            acs_mode: Some(self.acs_mode),
+            thruster_valve_state: Some(self.thruster_valve_state),
 
             #[cfg(not(target_os = "none"))]
             euler_angles: self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
@@ -350,7 +364,6 @@ pub struct TelemetryMainCompressed {
     pub orientation: (u8, u8, u8, u8),
     pub vertical_speed: f8,
     pub vertical_accel: f8,
-    pub vertical_accel_filtered: f8,
     pub altitude_baro: u16,
     pub altitude_max: u16,
     pub altitude: u16,
@@ -376,7 +389,6 @@ impl From<VehicleState> for TelemetryMainCompressed {
             orientation: quat.unwrap_or((127, 127, 127, 127)),
             vertical_speed: vs.vertical_speed.map(|x| x * 10.0).unwrap_or_default().into(),
             vertical_accel: vs.vertical_accel.map(|x| x * 10.0).unwrap_or_default().into(),
-            vertical_accel_filtered: vs.vertical_accel_filtered.map(|x| x * 10.0).unwrap_or_default().into(),
             altitude_baro: (vs.altitude_baro.unwrap_or_default() * 10.0 + 1000.0) as u16, // TODO: this limits us to 6km AMSL
             altitude: (vs.altitude_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
             altitude_max: (vs.apogee_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
@@ -407,7 +419,6 @@ impl Into<VehicleState> for TelemetryMainCompressed {
             apogee_asl: Some((self.altitude_max as f32 - 1000.0) / 10.0),
             vertical_speed: Some(Into::<f32>::into(self.vertical_speed) / 10.0),
             vertical_accel: Some(Into::<f32>::into(self.vertical_accel) / 10.0),
-            vertical_accel_filtered: Some(Into::<f32>::into(self.vertical_accel_filtered) / 10.0),
 
             #[cfg(not(target_os = "none"))]
             euler_angles: orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
@@ -426,21 +437,26 @@ impl Into<VehicleState> for TelemetryMainCompressed {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryRawSensors {
     pub time: u32,
-    pub gyro: Vector3<f32>,
-    pub accelerometer1: Vector3<f32>,
-    pub accelerometer2: Vector3<f32>,
-    pub magnetometer: Vector3<f32>,
+    pub gyro: (half::f16, half::f16, half::f16),
+    pub accelerometer1: (half::f16, half::f16, half::f16),
+    pub accelerometer2: (half::f16, half::f16, half::f16),
+    pub magnetometer: (half::f16, half::f16, half::f16),
     pub pressure_baro: f32,
 }
 
 impl From<VehicleState> for TelemetryRawSensors {
     fn from(vs: VehicleState) -> Self {
+        let gyro = vs.gyroscope.unwrap_or_default();
+        let acc1 = vs.accelerometer1.unwrap_or_default();
+        let acc2 = vs.accelerometer2.unwrap_or_default();
+        let mag = vs.magnetometer.unwrap_or_default();
+
         Self {
             time: vs.time,
-            gyro: vs.gyroscope.unwrap_or_default(),
-            accelerometer1: vs.accelerometer1.unwrap_or_default(),
-            accelerometer2: vs.accelerometer2.unwrap_or_default(),
-            magnetometer: vs.magnetometer.unwrap_or_default(),
+            gyro: (half::f16::from_f32(gyro.x), half::f16::from_f32(gyro.y), half::f16::from_f32(gyro.z)),
+            accelerometer1: (half::f16::from_f32(acc1.x), half::f16::from_f32(acc1.y), half::f16::from_f32(acc1.z)),
+            accelerometer2: (half::f16::from_f32(acc2.x), half::f16::from_f32(acc2.y), half::f16::from_f32(acc2.z)),
+            magnetometer: (half::f16::from_f32(mag.x), half::f16::from_f32(mag.y), half::f16::from_f32(mag.z)),
             pressure_baro: vs.pressure_baro.unwrap_or_default(),
         }
     }
@@ -450,10 +466,10 @@ impl Into<VehicleState> for TelemetryRawSensors {
     fn into(self) -> VehicleState {
         VehicleState {
             time: self.time,
-            gyroscope: Some(self.gyro),
-            accelerometer1: Some(self.accelerometer1),
-            accelerometer2: Some(self.accelerometer2),
-            magnetometer: Some(self.magnetometer),
+            gyroscope: Some(Vector3::new(self.gyro.0.to_f32(), self.gyro.1.to_f32(), self.gyro.2.to_f32())),
+            accelerometer1: Some(Vector3::new(self.accelerometer1.0.to_f32(), self.accelerometer1.1.to_f32(), self.accelerometer1.2.to_f32())),
+            accelerometer2: Some(Vector3::new(self.accelerometer2.0.to_f32(), self.accelerometer2.1.to_f32(), self.accelerometer2.2.to_f32())),
+            magnetometer: Some(Vector3::new(self.magnetometer.0.to_f32(), self.magnetometer.1.to_f32(), self.magnetometer.2.to_f32())),
             pressure_baro: Some(self.pressure_baro),
             ..Default::default()
         }
@@ -637,7 +653,10 @@ impl Into<VehicleState> for TelemetryCanBusMessage {
 
         match self.msg {
             FcReceivedCanBusMessage::IoBoardSensor(role, id, msg) => {
-                vs.io_board_sensor_data = Some((role, id, msg.i2c_sensors));
+                vs.io_board_sensor_data = Some((role, id, msg));
+            }
+            FcReceivedCanBusMessage::IoBoardPower(role, msg) => {
+                vs.io_board_power_data = Some((role, msg));
             }
             _ => {}
         }
@@ -761,6 +780,8 @@ pub enum Command {
     SetFlightMode(FlightMode),
     SetTransmitPower(TransmitPower),
     SetDataRate(TelemetryDataRate),
+    SetAcsMode(AcsMode),
+    SetAcsValveState(ThrusterValveState),
     EraseFlash,
 }
 

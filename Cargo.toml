@@ -25,6 +25,7 @@ log = "0.4"
 env_logger = "0.10"
 # Math
 mint = "0.5.9"
+half = { version = "2.4.1", default-features = false }
 nalgebra = { version = "0.32", default-features = false, features = ["alloc", "macros", "mint", "serde-serialize-no-std"] }
 # egui & friends
 egui = { version = "0.27", default-features = false }

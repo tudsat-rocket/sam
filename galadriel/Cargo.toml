@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+shared_types = { workspace = true }
+
 nalgebra = { workspace = true }
 rand = { workspace = true }
 rand_distr = "0.4.3"

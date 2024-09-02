@@ -28,7 +28,7 @@ impl HeaderPanel {
         let alt_ground = Self::current(data_source, |vs| vs.altitude_ground_asl).unwrap_or(0.0);
         let alt_agl = Self::current(data_source, |vs| vs.altitude_asl.map(|a| a - alt_ground));
         let apogee_agl = Self::current(data_source, |vs| vs.apogee_asl.map(|a| a - alt_ground));
-        let vertical_accel = Self::current(data_source, |vs| vs.vertical_accel_filtered);
+        let vertical_accel = Self::current(data_source, |vs| vs.vertical_accel);
 
         // TODO: also show estimated position?
         let last_gps: Option<GPSDatum> = data_source
@@ -89,6 +89,8 @@ impl HeaderPanel {
 
         let current_data_rate = Self::current(data_source, |vs| vs.data_rate).unwrap_or_default();
         let current_transmit_power = Self::current(data_source, |vs| vs.transmit_power).unwrap_or_default();
+        let current_acs_mode = Self::current(data_source, |vs| vs.acs_mode).unwrap_or_default();
+        let current_valve_state = Self::current(data_source, |vs| vs.thruster_valve_state).unwrap_or_default();
 
         if vertical {
             ui.columns(4, |uis| {
@@ -111,6 +113,26 @@ impl HeaderPanel {
         }
 
         ui.separator();
+
+        if vertical {
+            ui.columns(4, |uis| {
+                uis[0].add_space(3.0);
+                uis[0].label("ACS Mode");
+                uis[1].acs_mode_controls(current_acs_mode, data_source);
+                uis[2].add_space(3.0);
+                uis[2].label("ACS Valves");
+                uis[3].acs_valve_controls(current_valve_state, current_acs_mode, data_source);
+            });
+        } else {
+            ui.vertical(|ui| {
+                ui.add_space(3.0);
+                ui.label("ACS Mode");
+                ui.acs_mode_controls(current_acs_mode, data_source);
+                ui.add_space(3.0);
+                ui.label("ACS Valves");
+                ui.acs_valve_controls(current_valve_state, current_acs_mode, data_source);
+            });
+        }
 
         ui.vertical(|ui| {
             let size = Vec2::new(ui.available_width(), 30.0);

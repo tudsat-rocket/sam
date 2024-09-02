@@ -51,9 +51,7 @@ impl Default for SimulationSettings {
 /// Trait that adds conversion methods between our vehicle state objects and the
 /// measurements expected and produced by galadriel for simulation.
 trait StateSimulation {
-    // TODO: names
     fn measurements(&self) -> galadriel::SensorData;
-    fn from_measurement(sensors: galadriel::SensorData) -> Self;
     fn join_measurement(&mut self, sensors: galadriel::SensorData);
 }
 
@@ -68,12 +66,6 @@ impl StateSimulation for VehicleState {
             lp_filtered_pressure: self.pressure_baro,
             pressure: self.pressure_baro,
         }
-    }
-
-    fn from_measurement(sensors: galadriel::SensorData) -> Self {
-        let mut state = Self::default();
-        state.join_measurement(sensors);
-        state
     }
 
     fn join_measurement(&mut self, sensors: galadriel::SensorData) {
@@ -229,12 +221,7 @@ impl SimulationWorker {
                 });
 
                 if let Some(thrusters) = sim.rocket.thrusters.as_mut() {
-                    // TODO: this is slightly awkward
-                    thrusters.set_valve(match self.state_estimator.thruster_valve() {
-                        ThrusterValveState::Closed => galadriel::thrusters::ValveState::Closed,
-                        ThrusterValveState::OpenPrograde => galadriel::thrusters::ValveState::OpenPrograde,
-                        ThrusterValveState::OpenRetrograde => galadriel::thrusters::ValveState::OpenRetrograde,
-                    });
+                    thrusters.set_valve(self.state_estimator.thruster_valve());
                 }
 
                 // We don't really want to show every single tick in the plot. For simulations,
@@ -267,14 +254,13 @@ impl SimulationWorker {
             self.current_state.elevation = self.state_estimator.orientation.map(|q| q.elevation());
             self.current_state.azimuth = self.state_estimator.orientation.map(|q| q.azimuth());
             self.current_state.vertical_speed = Some(self.state_estimator.vertical_speed());
-            self.current_state.vertical_accel = self.state_estimator.acceleration_world_raw().map(|v| v.z);
-            self.current_state.vertical_accel_filtered = Some(self.state_estimator.vertical_acceleration());
+            self.current_state.vertical_accel = Some(self.state_estimator.vertical_acceleration());
             self.current_state.altitude_asl = Some(self.state_estimator.altitude_asl());
             self.current_state.altitude_ground_asl = Some(self.state_estimator.altitude_ground);
             self.current_state.apogee_asl = self.state_estimator.apogee_asl();
             self.current_state.latitude = self.state_estimator.latitude();
             self.current_state.longitude = self.state_estimator.longitude();
-            self.current_state.thruster_valve = Some(self.state_estimator.thruster_valve());
+            self.current_state.thruster_valve_state = Some(self.state_estimator.thruster_valve());
 
             let mut sim_state = SimulatedState {
                 orientation: None,

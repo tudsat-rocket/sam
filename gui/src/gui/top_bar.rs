@@ -1,6 +1,8 @@
 //! Contains smaller UI functions for the top bar, including text indicators
 //! and flight mode buttons.
 
+use std::time::Duration;
+
 use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
 use egui::{Color32, Label, RichText, SelectableLabel, Stroke, Rect, Vec2};
@@ -40,6 +42,8 @@ pub trait TopBarUiExt {
 
     fn data_rate_controls(&mut self, current: TelemetryDataRate, data_source: &mut dyn DataSource);
     fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource);
+    fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource);
+    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource);
 
     fn battery_bar(&mut self, w: f32, voltage: Option<f32>);
     fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>);
@@ -129,6 +133,54 @@ impl TopBarUiExt for egui::Ui {
             }
             if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P22dBm, "22")).clicked() {
                 data_source.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
+            }
+        });
+    }
+
+    fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource) {
+        use AcsMode::*;
+
+        self.horizontal(|ui| {
+            if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Disabled, "OFF")).clicked() {
+                data_source.send_command(Command::SetAcsMode(AcsMode::Disabled)).unwrap();
+            }
+            if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Auto, "AUTO")).clicked() {
+                data_source.send_command(Command::SetAcsMode(AcsMode::Auto)).unwrap();
+            }
+            if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Manual, "MNL")).clicked() {
+                data_source.send_command(Command::SetAcsMode(AcsMode::Manual)).unwrap();
+            }
+        });
+    }
+
+    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource) {
+        use ThrusterValveState::*;
+
+        let (accel, decel) = match current {
+            ThrusterValveState::Closed => (false, false),
+            ThrusterValveState::OpenAccel => (true, false),
+            ThrusterValveState::OpenDecel => (false, true),
+            ThrusterValveState::OpenBoth => (true, true),
+        };
+
+        self.horizontal(|ui| {
+            ui.set_enabled(current_mode != AcsMode::Disabled);
+
+            let response_accel = ui.add_sized([50.0, 20.0], SelectableLabel::new(accel, "ACCL"));
+            let response_decel = ui.add_sized([50.0, 20.0], SelectableLabel::new(decel, "DECL"));
+
+            if response_accel.is_pointer_button_down_on() || response_accel.dragged() {
+                data_source.send_command(Command::SetAcsValveState(OpenAccel)).unwrap();
+                ui.ctx().request_repaint_after(Duration::from_millis(20));
+            }
+
+            if response_decel.is_pointer_button_down_on() || response_decel.dragged() {
+                data_source.send_command(Command::SetAcsValveState(OpenDecel)).unwrap();
+                ui.ctx().request_repaint_after(Duration::from_millis(20));
+            }
+
+            if response_accel.drag_stopped() || response_decel.drag_stopped() {
+                data_source.send_command(Command::SetAcsValveState(Closed)).unwrap();
             }
         });
     }

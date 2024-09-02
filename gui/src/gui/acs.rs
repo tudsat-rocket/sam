@@ -16,7 +16,7 @@ impl AcsSystemDiagram {
         Self {
             valve_status: data_source.vehicle_states()
                 .rev()
-                .find_map(|(_t, vs)| vs.thruster_valve),
+                .find_map(|(_t, vs)| vs.thruster_valve_state),
             propellant_f: data_source.vehicle_states()
                 .last()
                 .map(|(_t, vs)| vs.sim.as_ref().and_then(|sim| sim.thruster_propellant_mass))
@@ -128,11 +128,18 @@ impl egui::Widget for AcsSystemDiagram {
                 color: theme.foreground_weak
             };
 
+            let (accel, decel) = match self.valve_status.unwrap_or_default() {
+                ThrusterValveState::Closed => (false, false),
+                ThrusterValveState::OpenAccel => (true, false),
+                ThrusterValveState::OpenDecel => (false, true),
+                ThrusterValveState::OpenBoth => (true, true),
+            };
+
             self.draw_tank(painter, pos_tank, tank_w, tank_h, stroke, theme.background_weak, Color32::from_rgb(0x45, 0x85, 0x88));
             self.draw_regulator(painter, pos_regulator, symbol_w, stroke);
             self.draw_valve(painter, pos_tank_valve, symbol_w, false, false, stroke);
-            self.draw_valve(painter, pos_nozzle_valve_up, symbol_w, self.valve_status == Some(ThrusterValveState::OpenRetrograde), true, stroke);
-            self.draw_valve(painter, pos_nozzle_valve_down, symbol_w, self.valve_status == Some(ThrusterValveState::OpenPrograde), true, stroke);
+            self.draw_valve(painter, pos_nozzle_valve_up, symbol_w, decel, true, stroke);
+            self.draw_valve(painter, pos_nozzle_valve_down, symbol_w, accel, true, stroke);
             self.draw_nozzle(painter, pos_nozzle_up, symbol_w, true, stroke);
             self.draw_nozzle(painter, pos_nozzle_down, symbol_w, false, stroke);
 

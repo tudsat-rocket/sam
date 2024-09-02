@@ -1,3 +1,5 @@
+use shared_types::telemetry::ThrusterValveState;
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ThrusterSettings {
     /// Propellant mass (not included in rocket dry mass) [kg]
@@ -13,25 +15,17 @@ impl Default for ThrusterSettings {
     }
 }
 
-#[derive(Clone, Copy, Default, PartialEq)]
-pub enum ValveState {
-    #[default]
-    Closed,
-    OpenPrograde,
-    OpenRetrograde,
-}
-
 pub struct Thrusters {
-    valve_state: ValveState,
-    last_valve_state: ValveState,
+    valve_state: ThrusterValveState,
+    last_valve_state: ThrusterValveState,
     pub propellant_mass: f32,
 }
 
 impl Thrusters {
     pub fn new(settings: &ThrusterSettings) -> Self {
         Self {
-            valve_state: ValveState::Closed,
-            last_valve_state: ValveState::Closed,
+            valve_state: ThrusterValveState::Closed,
+            last_valve_state: ThrusterValveState::Closed,
             propellant_mass: settings.propellant_mass,
         }
     }
@@ -41,7 +35,7 @@ impl Thrusters {
         self.propellant_mass -= lost / 1000.0;
     }
 
-    pub fn set_valve(&mut self, valve_state: ValveState) {
+    pub fn set_valve(&mut self, valve_state: ThrusterValveState) {
         if valve_state != self.valve_state {
             self.last_valve_state = self.valve_state;
             self.valve_state = valve_state;
@@ -56,19 +50,15 @@ impl Thrusters {
     pub fn flow_rate(&self) -> f32 {
         // TODO: delays, curve for opening/closing
         match self.valve_state {
-            ValveState::Closed => 0.0,
+            ThrusterValveState::Closed => 0.0,
             _ => 15.0,
         }
     }
 
     /// Thrust [N]
     pub fn thrust(&self) -> f32 {
-        let s = match self.valve_state {
-            ValveState::Closed => 0.0,
-            ValveState::OpenPrograde => 1.0,
-            ValveState::OpenRetrograde => -1.0,
-        };
-        s * 10.0
+        let direction: f32 = self.valve_state.into();
+        direction * 10.0
     }
 }
 
