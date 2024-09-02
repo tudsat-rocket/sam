@@ -16,6 +16,7 @@ pub struct MCP2517FD<SPI> {
     spi: SPI,
     fifo_index: u32,
     seq: u8,
+    data_rate: CanDataRate,
 }
 
 pub struct MCP2517FDTx<SPI> {
@@ -115,14 +116,28 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
             spi,
             seq: 0,
             fifo_index: 0,
+            data_rate
         };
 
-        mcp.reset().await?;
+        mcp.configure().await?;
+
+        info!("MCP2517FD initalized");
+
+        let shared = Arc::new(Mutex::new(mcp));
+
+        let mcp_tx = MCP2517FDTx { shared: shared.clone() };
+        let mcp_rx = MCP2517FDRx { shared };
+
+        Ok((mcp_tx, mcp_rx))
+    }
+
+    async fn configure(&mut self) -> Result<(), MCP2517Error<SPI::Error>> {
+        self.reset().await?;
 
         // Wait for MCP to transition to Configuration mode
         let mut c1con = 0;
         for _i in 0..10 {
-            c1con = mcp.sfr_read(MCP2517FDRegister::C1Con).await?;
+            c1con = self.sfr_read(MCP2517FDRegister::C1Con).await?;
 
             if (c1con >> 21) & 0b111 == 0b100 {
                 break
@@ -135,42 +150,35 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         }
 
         // Configure 125000 bitrate
-        let nbtcfg = Self::calculate_nominal_bit_timing_register(data_rate);
-        mcp.sfr_write(MCP2517FDRegister::C1NBtCfg, nbtcfg).await?;
-        mcp.sfr_write(MCP2517FDRegister::C1DBtCfg, nbtcfg).await?;
+        let nbtcfg = Self::calculate_nominal_bit_timing_register(self.data_rate);
+        self.sfr_write(MCP2517FDRegister::C1NBtCfg, nbtcfg).await?;
+        self.sfr_write(MCP2517FDRegister::C1DBtCfg, nbtcfg).await?;
 
         // Set mask 0 to receive everything
-        mcp.sfr_write(MCP2517FDRegister::C1Mask0, 0x00000000).await?;
+        self.sfr_write(MCP2517FDRegister::C1Mask0, 0x00000000).await?;
         // Set filter 0 to receive everything
-        mcp.sfr_write(MCP2517FDRegister::C1FltObj0, 0x00000000).await?;
+        self.sfr_write(MCP2517FDRegister::C1FltObj0, 0x00000000).await?;
         // Enable filter 0 and link it to to FiFo 1
-        mcp.sfr_write(MCP2517FDRegister::C1FltCon0, 0x00000081).await?;
+        self.sfr_write(MCP2517FDRegister::C1FltCon0, 0x00000081).await?;
 
         // Configure FiFo1 for receiving (8 byte payloads, 8 messages in queue)
-        mcp.sfr_write(MCP2517FDRegister::C1FiFoCon1, 0x08000000).await?;
+        self.sfr_write(MCP2517FDRegister::C1FiFoCon1, 0x08000000).await?;
         // Configure FiFo2 for transmitting (8 byte payloads, 8 messages in queue,
         //  3 retransmission attempts)
-        mcp.sfr_write(MCP2517FDRegister::C1FiFoCon2, 0x08200080).await?;
+        self.sfr_write(MCP2517FDRegister::C1FiFoCon2, 0x08200080).await?;
 
         c1con |= 0b1 << 16; // restrict retransmission attempts
         c1con &= !(0b111 << 24); // go back to normal mode
-        mcp.sfr_write(MCP2517FDRegister::C1Con, c1con).await?;
+        self.sfr_write(MCP2517FDRegister::C1Con, c1con).await?;
 
         for _in in 0..3 {
-            c1con = mcp.sfr_read(MCP2517FDRegister::C1Con).await?;
+            c1con = self.sfr_read(MCP2517FDRegister::C1Con).await?;
             if (c1con >> 21) & 0b111 == 0b000 {
                 break
             }
         }
 
-        info!("MCP2517FD initalized");
-
-        let shared = Arc::new(Mutex::new(mcp));
-
-        let mcp_tx = MCP2517FDTx { shared: shared.clone() };
-        let mcp_rx = MCP2517FDRx { shared };
-
-        Ok((mcp_tx, mcp_rx))
+        Ok(())
     }
 
     async fn reset(&mut self) -> Result<(), SPI::Error> {
@@ -260,23 +268,9 @@ impl<SPI: SpiDevice<u8>> MCP2517FD<SPI> {
         // Check Status register to find out if the FiFo is full
         let fifo_status = self.sfr_read(MCP2517FDRegister::C1FiFoSta2).await?;
         if (fifo_status & 0b1) == 0 {
-            warn!("Full transmit FiFo, clearing...");
-            let mut fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon2).await?;
-            fifo_config |= 0b1 << 10; // reset fifo
-            fifo_config &= !(0b1 << 9); // abort transmissions
-            self.sfr_write(MCP2517FDRegister::C1FiFoCon2, fifo_config).await?;
-
-            for _i in 0..10 {
-                fifo_config = self.sfr_read(MCP2517FDRegister::C1FiFoCon2).await?;
-
-                if (fifo_config >> 10) & 0b1 == 0b0 {
-                    break;
-                }
-            }
-
-            if (fifo_config >> 10) & 0b1 > 0 {
-                return Err(MCP2517Error::TransmitFiFoFull);
-            }
+            warn!("Full transmit FiFo, resetting...");
+            let _ = self.configure().await;
+            return Err(MCP2517Error::TransmitFiFoFull);
         }
 
         let address = 0x400 + self.sfr_read(MCP2517FDRegister::C1FiFoUA2).await?;

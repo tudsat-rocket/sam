@@ -35,6 +35,7 @@ pub struct CanHandle {
 }
 
 #[allow(dead_code)]
+#[derive(Clone, Copy)]
 pub enum CanDataRate {
     Kbps125,
     Kbps250,
