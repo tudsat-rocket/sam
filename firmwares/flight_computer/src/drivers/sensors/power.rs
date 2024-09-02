@@ -112,6 +112,7 @@ where
     }
     pub fn battery_status(&self) -> Option<BatteryStatus>{
         self.battery_voltage.map(|n| {
+            #[allow(overlapping_range_endpoints)] // we can't use experimental features yet
             match n {
                 LOW_BATTERY_THRESHOLD.. => BatteryStatus::High,
                 NO_BATTERY_THRESHOLD..=LOW_BATTERY_THRESHOLD => BatteryStatus::Low,
