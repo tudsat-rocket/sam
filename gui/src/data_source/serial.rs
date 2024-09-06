@@ -196,9 +196,17 @@ pub async fn downlink_monitor(
     mut uplink_rx: Receiver<UplinkMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut selected_port = None;
+    let mut ports: Vec<_> = Vec::new();
 
     loop {
-        let ports: Vec<_> = find_serial_ports();
+        let new_ports: Vec<_> = find_serial_ports();
+        if new_ports != ports {
+            if let Some(c) = &ctx {
+                c.request_repaint();
+            }
+        }
+        ports = new_ports;
+
         selected_port = selected_port.clone().or(ports.first().cloned());
         while let Ok((_, Some(p))) = serial_status_rx.try_recv() {
             if ports.contains(&p) {
@@ -207,6 +215,11 @@ pub async fn downlink_monitor(
         }
 
         if let Some(p) = selected_port.as_ref() {
+            if !ports.contains(p) {
+                selected_port = None;
+                continue;
+            }
+
             serial_status_tx.send((SerialStatus::Connected, Some(p.clone()))).await?;
 
             info!("Opening port {}", p);
