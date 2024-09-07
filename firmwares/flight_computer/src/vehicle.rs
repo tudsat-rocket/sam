@@ -564,18 +564,18 @@ impl Vehicle {
     // TODO: replace these with a more elegant system
     #[cfg(not(feature = "gcs"))]
     fn next_usb_telem(&mut self) -> Option<DownlinkMessage> {
-        if self.time.0 % 1000 == 0 {
+        /*if self.time.0 % 1000 == 0 {
             let vs: VehicleState = self.into();
             Some(DownlinkMessage::TelemetryGPS(vs.into()))
-        } else if self.time.0 % 200 == 0 {
-            let vs: VehicleState = self.into();
-            Some(DownlinkMessage::TelemetryDiagnostics(vs.into()))
-        } else if self.time.0 % 50 == 0 {
-            let vs: VehicleState = self.into();
-            Some(DownlinkMessage::TelemetryMain(vs.into()))
-        } else if self.time.0 % 50 == 25 {
+        } else */if self.time.0 % 50 == 0 {
             let vs: VehicleState = self.into();
             Some(DownlinkMessage::TelemetryRawSensors(vs.into()))
+        } else if self.time.0 % 50 == 10 {
+            let vs: VehicleState = self.into();
+            Some(DownlinkMessage::TelemetryMain(vs.into()))
+        } else if self.time.0 % 50 == 30 {
+            let vs: VehicleState = self.into();
+            Some(DownlinkMessage::TelemetryDiagnostics(vs.into()))
         } else {
             None
         }

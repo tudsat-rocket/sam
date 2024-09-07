@@ -7,7 +7,7 @@ use num_traits::float::Float;
 
 use defmt::*;
 
-const TEMP_FILTER_LEN: usize = 64;
+const BARO_MEDIAN_FILTER_LENGTH: usize = 20;
 
 struct MS5611CalibrationData {
     pressure_sensitivity: u16,
@@ -40,11 +40,11 @@ pub struct MS5611<SPI: SpiDevice<u8>> {
     spi: SPI,
     calibration_data: Option<MS5611CalibrationData>,
     read_temp: bool,
-    dt_filter: Deque<i32, TEMP_FILTER_LEN>,
     dt: Option<i32>,
     temp: Option<i32>,
     raw_pressure: Option<i32>,
     pressure: Option<i32>,
+    baro_filter: BaroFilter,
 }
 
 impl<SPI: SpiDevice<u8>> MS5611<SPI> {
@@ -53,11 +53,11 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
             spi,
             calibration_data: None,
             read_temp: true,
-            dt_filter: Deque::new(),
             dt: None,
             temp: None,
             raw_pressure: None,
             pressure: None,
+            baro_filter: BaroFilter::new(),
         };
 
         'outer: for _i in 0..3 { // did you know that rust has loop labels?
@@ -117,25 +117,19 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
         let response = self.command(MS5611Command::ReadAdc, 3).await?;
         let value = ((response[0] as i32) << 16) + ((response[1] as i32) << 8) + (response[2] as i32);
-
         let cal = self.calibration_data.as_ref().unwrap();
 
         if self.read_temp {
             let dt = (value as i32) - ((cal.reference_temperature as i32) << 8);
-            while self.dt_filter.len() > TEMP_FILTER_LEN - 1 {
-                let _ = self.dt_filter.pop_back();
-            }
-            let _ = self.dt_filter.push_front(dt);
-            let filtered = self.dt_filter.iter()
-                .map(|dt| *dt as i64)
-                .sum::<i64>() / (self.dt_filter.len() as i64);
-            self.dt = Some(filtered as i32);
+            let filtered = self.baro_filter.filter(dt);
+            self.dt = Some(filtered);
         } else {
             self.raw_pressure = Some(value);
         }
 
         if let Some((dt, raw_pressure)) = self.dt.zip(self.raw_pressure) {
             let mut temp = 2000 + (((dt as i64) * (cal.temp_coef_temperature as i64)) >> 23);
+
             let mut offset =
                 ((cal.pressure_offset as i64) << 16) + ((cal.temp_coef_pressure_offset as i64 * dt as i64) >> 7);
             let mut sens = ((cal.pressure_sensitivity as i64) << 15)
@@ -241,4 +235,44 @@ enum MS5611OSR {
     OSR1024 = 0b010,
     OSR2048 = 0b011,
     OSR4096 = 0b100,
+}
+
+pub struct BaroFilter{
+    previous_raw_values: Deque<i32, BARO_MEDIAN_FILTER_LENGTH>,
+    last_spike_warning_counter: u32,
+}
+
+impl BaroFilter {
+    pub fn new() -> Self{
+        Self{
+            previous_raw_values: Deque::new(),
+            last_spike_warning_counter: 0,
+        }
+    }
+
+    //median filter
+    pub fn filter(&mut self, input_value: i32) -> i32 {
+        const SPIKE_WARNING_THRESHOLD: i32 = 8000000;
+
+        while self.previous_raw_values.len() > (BARO_MEDIAN_FILTER_LENGTH - 1) {
+            let _ = self.previous_raw_values.pop_front();
+        }
+
+        let _ = self.previous_raw_values.push_back(input_value);
+
+        let mut sorted: Vec<_, BARO_MEDIAN_FILTER_LENGTH> = self.previous_raw_values.iter().collect();
+        sorted.sort();
+
+        if self.last_spike_warning_counter <= 100 {
+            self.last_spike_warning_counter += 1;
+        }
+
+        let diff = *sorted.last().unwrap() - *sorted.first().unwrap();
+        if diff > SPIKE_WARNING_THRESHOLD && self.last_spike_warning_counter > 100 {
+            defmt::warn!("Baro temp spike: {}", diff);
+            self.last_spike_warning_counter = 0;
+        }
+
+        *sorted[sorted.len() / 2]
+    }
 }
