@@ -136,6 +136,8 @@ impl Default for Settings {
             // TODO: unused for actual sound duration
             outputs_warning_time: 500,
             outputs_high_time: 2000,
+            outputs_low_time: 0,
+            num_pulses: 1,
             lora: LoRaSettings::default(),
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
