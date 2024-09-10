@@ -94,6 +94,10 @@ pub struct Settings {
     pub outputs_warning_time: u32,
     /// time to enable recovery outputs (after warning tone, ms)
     pub outputs_high_time: u32,
+    /// time delay between recovery output pulses (ms)
+    pub outputs_low_time: u32,
+    /// number of recovery output pulses
+    pub num_pulses: u32,
     /// LoRa settings
     pub lora: LoRaSettings,
     /// Telemetry data rate
