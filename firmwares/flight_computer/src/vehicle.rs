@@ -246,10 +246,16 @@ impl Vehicle {
 
         // Set output according to flight mode
         let elapsed = self.state_estimator.time_in_mode();
-        let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
-        let recovery_high = elapsed > self.settings.outputs_warning_time && elapsed < recovery_duration;
-        self.recovery.0.set_level(((self.mode == FlightMode::RecoveryDrogue) && recovery_high).into());
-        self.recovery.1.set_level(((self.mode == FlightMode::RecoveryMain) && recovery_high).into());
+        let pulses = self.settings.num_pulses;
+        let output_duration = pulses * self.settings.outputs_high_time + (pulses - 1) * self.settings.outputs_low_time;
+        let recovery_duration = self.settings.outputs_warning_time + output_duration;
+        let phase_duration = self.settings.outputs_high_time + self.settings.outputs_low_time;
+        let in_pulse_phase = (elapsed > self.settings.outputs_warning_time
+            && elapsed < revcovery_duration
+            && (elapsed - self.settings.outputs_warning_time) % phase_duration < self.settings.outputs_high_time
+            );
+        self.recovery.0.set_level(((self.mode == FlightMode::RecoveryDrogue) && in_pulse_phase).into());
+        self.recovery.1.set_level(((self.mode == FlightMode::RecoveryMain) && in_pulse_phase).into());
 
         let (r,y,g) = self.mode.led_state(self.time.0);
         self.leds.0.set_level((!r).into());
