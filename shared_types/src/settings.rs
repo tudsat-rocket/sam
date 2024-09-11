@@ -46,6 +46,48 @@ pub enum Orientation {
     ZDown,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct RecoveryOutputSettings {
+    /// time to enable recovery outputs (after warning tone, ms)
+    pub output_high_time: u32,
+    /// time delay between recovery output pulses (ms)
+    pub output_low_time: u32,
+    /// number of recovery output pulses
+    pub num_pulses: u32,
+    // TODO: unused for actual sound duration
+    /// duration of warning tone to play before enabling outputs (ms)
+    pub output_warning_time: u32,
+    /// Warning sound frequency
+    pub output_warning_frequency: f32,
+}
+
+impl RecoveryOutputSettings {
+    pub fn total_duration(&self) -> u32 {
+        self.output_warning_time +
+            self.num_pulses * self.output_high_time +
+            (self.num_pulses - 1) * self.output_low_time
+    }
+
+    pub fn currently_high(&self, time_in_mode: u32) -> bool {
+        let phase_duration = self.output_high_time + self.output_low_time;
+        time_in_mode > self.output_warning_time
+            && time_in_mode < self.total_duration()
+            && (time_in_mode - self.output_warning_time) % phase_duration < self.output_high_time
+    }
+}
+
+impl Default for RecoveryOutputSettings {
+    fn default() -> Self {
+        Self {
+            output_high_time: 500,
+            output_low_time: 0,
+            num_pulses: 1,
+            output_warning_time: 500,
+            output_warning_frequency: 500.0,
+        }
+    }
+}
+
 /// Main Settings struct. Stored in flash using postcard (non-COBS) encoding.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -90,14 +132,10 @@ pub struct Settings {
     pub main_output_mode: MainOutputMode,
     /// altitude below which main parachute is deployed (in mode BelowAltitude, m above ground)
     pub main_output_deployment_altitude: f32,
-    /// duration of warning tone to play before enabling outputs (ms)
-    pub outputs_warning_time: u32,
-    /// time to enable recovery outputs (after warning tone, ms)
-    pub outputs_high_time: u32,
-    /// time delay between recovery output pulses (ms)
-    pub outputs_low_time: u32,
-    /// number of recovery output pulses
-    pub num_pulses: u32,
+    /// output settings for drogue deployment
+    pub drogue_output_settings: RecoveryOutputSettings,
+    /// output settings for main deployment
+    pub main_output_settings: RecoveryOutputSettings,
     /// LoRa settings
     pub lora: LoRaSettings,
     /// Telemetry data rate
@@ -106,8 +144,6 @@ pub struct Settings {
     pub min_time_to_main: u32,
     /// Mounting orientation of the flight computer
     pub orientation: Orientation,
-    /// Warning sound frequency
-    pub outputs_warning_frequency: f32,
 }
 
 impl Default for Settings {
@@ -133,16 +169,12 @@ impl Default for Settings {
             apogee_min_falling_time: 100,
             main_output_mode: MainOutputMode::default(),
             main_output_deployment_altitude: 450.0,
-            // TODO: unused for actual sound duration
-            outputs_warning_time: 500,
-            outputs_high_time: 2000,
-            outputs_low_time: 0,
-            num_pulses: 1,
+            drogue_output_settings: RecoveryOutputSettings::default(),
+            main_output_settings: RecoveryOutputSettings::default(),
             lora: LoRaSettings::default(),
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZUp,
-            outputs_warning_frequency: 500.0,
         }
     }
 }

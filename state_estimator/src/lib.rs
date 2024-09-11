@@ -388,7 +388,8 @@ impl StateEstimator {
         let t_in_mode = self.time_in_mode();
 
         let vertical_accel_vehicle_space = self.acceleration.map(|acc| acc.z).unwrap_or(0.0);
-        let recovery_duration = self.settings.outputs_warning_time + self.settings.outputs_high_time;
+        let drogue_duration = self.settings.drogue_output_settings.total_duration();
+        let main_duration = self.settings.main_output_settings.total_duration();
 
         let gravity_present = self.acceleration
             .map(|acc| (GRAVITY*0.95..GRAVITY*1.05).contains(&acc.magnitude()))
@@ -423,22 +424,22 @@ impl StateEstimator {
             }
             // Main parachute deployment, if required
             FlightMode::RecoveryDrogue => match self.settings.main_output_mode {
-                MainOutputMode::AtApogee => (t_in_mode > recovery_duration).then(|| FlightMode::RecoveryMain),
+                MainOutputMode::AtApogee => (t_in_mode > drogue_duration).then(|| FlightMode::RecoveryMain),
                 MainOutputMode::BelowAltitude => {
                     let condition = self.altitude_agl() < self.settings.main_output_deployment_altitude;
                     let below_alt = self.true_since(condition, 100);
-                    let min_time = u32::max(recovery_duration, self.settings.min_time_to_main);
+                    let min_time = u32::max(drogue_duration, self.settings.min_time_to_main);
                     (t_in_mode > min_time && below_alt).then(|| FlightMode::RecoveryMain)
                 },
                 MainOutputMode::Never => {
                     let landed = self.true_since(condition_landed, 1000);
-                    (t_in_mode > recovery_duration && landed).then(|| FlightMode::Landed)
+                    (t_in_mode > drogue_duration && landed).then(|| FlightMode::Landed)
                 },
             },
             // Landing detection
             FlightMode::RecoveryMain => {
                 let landed = self.true_since(condition_landed, 1000);
-                (t_in_mode > recovery_duration && landed).then(|| FlightMode::Landed)
+                (t_in_mode > main_duration && landed).then(|| FlightMode::Landed)
             },
             // Once in the Landed mode, the vehicle will not do anything by itself
             FlightMode::Landed => None

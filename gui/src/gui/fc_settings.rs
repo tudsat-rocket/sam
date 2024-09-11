@@ -289,17 +289,50 @@ impl FcSettingsUiExt for Settings {
                 });
                 ui.end_row();
 
-                ui.label("Recovery output times");
+                ui.label("Drogue output timing");
                 ui.horizontal(|ui| {
-                    ui.weak("enabled for");
-                    ui.add(DragValue::new(&mut self.outputs_high_time).suffix(" ms").speed(1).clamp_range(0..=10000));
-                    ui.weak("after");
+                    ui.add(DragValue::new(&mut self.drogue_output_settings.num_pulses).speed(1).clamp_range(0..=20));
+                    ui.weak(if self.drogue_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
+                    ui.add(DragValue::new(&mut self.drogue_output_settings.output_high_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                    if self.drogue_output_settings.num_pulses > 1 {
+                        ui.weak("with");
+                        ui.add(DragValue::new(&mut self.drogue_output_settings.output_low_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                        ui.weak("pauses after");
+                    } else {
+                        ui.weak("after");
+                    }
                     ui.add(
-                        DragValue::new(&mut self.outputs_warning_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                        DragValue::new(&mut self.drogue_output_settings.output_warning_time).suffix(" ms").speed(1).clamp_range(0..=10000),
                     );
                     ui.weak("of");
                     ui.add(
-                        DragValue::new(&mut self.outputs_warning_frequency)
+                        DragValue::new(&mut self.drogue_output_settings.output_warning_frequency)
+                            .suffix(" Hz")
+                            .speed(1.0)
+                            .clamp_range(100.0..=10000.0),
+                    );
+                    ui.weak("tone");
+                });
+                ui.end_row();
+
+                ui.label("Main output timing");
+                ui.horizontal(|ui| {
+                    ui.add(DragValue::new(&mut self.main_output_settings.num_pulses).speed(1).clamp_range(0..=20));
+                    ui.weak(if self.main_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
+                    ui.add(DragValue::new(&mut self.main_output_settings.output_high_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                    if self.main_output_settings.num_pulses > 1 {
+                        ui.weak("with");
+                        ui.add(DragValue::new(&mut self.main_output_settings.output_low_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                        ui.weak("pauses after");
+                    } else {
+                        ui.weak("after");
+                    }
+                    ui.add(
+                        DragValue::new(&mut self.main_output_settings.output_warning_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                    );
+                    ui.weak("of");
+                    ui.add(
+                        DragValue::new(&mut self.main_output_settings.output_warning_frequency)
                             .suffix(" Hz")
                             .speed(1.0)
                             .clamp_range(100.0..=10000.0),
