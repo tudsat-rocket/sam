@@ -139,7 +139,7 @@ impl Vehicle {
         recovery: Recovery,
         settings: Settings,
     ) -> Self {
-        buzzer.set_warning_tone(settings.outputs_warning_frequency, settings.outputs_warning_time);
+        buzzer.apply_settings(&settings.drogue_output_settings, &settings.main_output_settings);
         radio.apply_settings(&settings.lora);
         imu.set_offsets(settings.gyro_offset, settings.acc_offset);
         acc.set_offset(settings.acc2_offset);
@@ -246,16 +246,10 @@ impl Vehicle {
 
         // Set output according to flight mode
         let elapsed = self.state_estimator.time_in_mode();
-        let pulses = self.settings.num_pulses;
-        let output_duration = pulses * self.settings.outputs_high_time + (pulses - 1) * self.settings.outputs_low_time;
-        let recovery_duration = self.settings.outputs_warning_time + output_duration;
-        let phase_duration = self.settings.outputs_high_time + self.settings.outputs_low_time;
-        let in_pulse_phase = (elapsed > self.settings.outputs_warning_time
-            && elapsed < revcovery_duration
-            && (elapsed - self.settings.outputs_warning_time) % phase_duration < self.settings.outputs_high_time
-            );
-        self.recovery.0.set_level(((self.mode == FlightMode::RecoveryDrogue) && in_pulse_phase).into());
-        self.recovery.1.set_level(((self.mode == FlightMode::RecoveryMain) && in_pulse_phase).into());
+        let drogue_high = self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed);
+        let main_high = self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed);
+        self.recovery.0.set_level(drogue_high.into());
+        self.recovery.1.set_level(main_high.into());
 
         let (r,y,g) = self.mode.led_state(self.time.0);
         self.leds.0.set_level((!r).into());

@@ -191,7 +191,8 @@ pub struct Buzzer<TIM: 'static> {
     channel: Channel,
     block: Gpio,
     pin: usize,
-    warning_note: Note,
+    drogue_warning_note: Note,
+    main_warning_note: Note,
     current_tone: Option<Note>,
     current_melody: Option<&'static [Note]>,
     current_index: usize,
@@ -210,7 +211,8 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
             channel,
             block,
             pin,
-            warning_note: Note::note(C, 5, 500),
+            drogue_warning_note: Note::note(C, 5, 500),
+            main_warning_note: Note::note(C, 5, 500),
             current_tone: None,
             current_melody: Some(&STARTUP),
             current_index: 0,
@@ -234,8 +236,13 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     }
 
     //TODO repair so that warn tone length is changable
-    pub fn set_warning_tone(&mut self, frequency: f32, duration: u32) {
-        self.warning_note = Note::frequency(frequency, duration);
+    pub fn apply_settings(
+        &mut self,
+        drogue_output_settings: &RecoveryOutputSettings,
+        main_output_settings: &RecoveryOutputSettings
+    ) {
+        self.drogue_warning_note = Note::frequency(drogue_output_settings.output_warning_frequency, drogue_output_settings.output_warning_time);
+        self.main_warning_note = Note::frequency(main_output_settings.output_warning_frequency, main_output_settings.output_warning_time);
     }
 
     //returns true if just finished playing note
