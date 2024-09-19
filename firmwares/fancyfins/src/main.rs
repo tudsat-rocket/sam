@@ -4,6 +4,7 @@
 use embassy_executor::Spawner;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::Config;
+use embassy_stm32::gpio::Input;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
@@ -51,9 +52,14 @@ async fn main(low_priority_spawner: Spawner) {
 
     // Remap CAN to be on PB8/9
     embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(2));
-    embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_spi3_remap(true));
 
-    defmt::info!("Fin startup");
+    let addr0 = Input::new(p.PA8, embassy_stm32::gpio::Pull::Up);
+    let addr1 = Input::new(p.PA9, embassy_stm32::gpio::Pull::Up);
+    let address = (addr0.is_low() as u8) << 1 + (addr1.is_low() as u8);
+    // Fin #1 has a broken jumper, so hardcode this when flashing.
+    //let address = 1;
+
+    defmt::info!("Fin #{} startup", address);
 
     // Start watchdog
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
@@ -79,6 +85,16 @@ async fn main(low_priority_spawner: Spawner) {
     let mut adc = Adc::new(p.ADC1, &mut Delay);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::Cycles239_5);
 
-    low_priority_spawner.spawn(strain_gauge::run(adc, p.PC0, p.PC1, p.PC2, p.PC3, flight_mode.subscriber().unwrap(),
-                                                 p.SPI2, p.PC6, p.PB13, p.PB14, p.PB15, p.DMA1_CH5, p.DMA1_CH4)).unwrap();
+    low_priority_spawner.spawn(
+        strain_gauge::run(
+            address,
+            adc,
+            p.PC0,
+            p.PC1,
+            p.PC2,
+            p.PC3,
+            flight_mode.subscriber().unwrap(),
+            can_out.publisher().unwrap()
+        )
+    ).unwrap();
 }

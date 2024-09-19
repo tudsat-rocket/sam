@@ -9,9 +9,9 @@ use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
 use static_cell::StaticCell;
 
-pub const CAN_QUEUE_SIZE: usize = 5; // TODO
-pub const NUM_CAN_SUBSCRIBERS: usize = 3; // TODO
-pub const NUM_CAN_PUBLISHERS: usize = 5; // TODO
+pub const CAN_QUEUE_SIZE: usize = 3; // TODO
+pub const NUM_CAN_SUBSCRIBERS: usize = 1; // TODO
+pub const NUM_CAN_PUBLISHERS: usize = 1; // TODO
 
 pub type CanFrame = (u16, [u8; 8]);
 pub type CanInChannel = PubSubChannel::<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;

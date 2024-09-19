@@ -64,8 +64,7 @@ pub async fn run(
     boot_animation(&mut leds).await;
 
     loop {
-        if let Some(new_fm) = flight_mode_subscriber.try_next_message_pure() {
-            defmt::println!("{:?}", defmt::Debug2Format(&new_fm));
+        while let Some(new_fm) = flight_mode_subscriber.try_next_message_pure() {
             flight_mode = new_fm;
         }
 
