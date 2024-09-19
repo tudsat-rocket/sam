@@ -43,7 +43,7 @@ impl Into<u16> for CanBusMessageId {
         match self {
             Self::IoBoardCommand(role, id) => 0x000 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
             Self::IoBoardInput(role, id)   => 0x100 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
-            Self::FinBoardInput(fin, id)   => 0x1f0 + (((fin + 0x0b) as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
+            Self::FinBoardInput(fin, id)   => 0x100 + (((fin + 0x0b) as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
             Self::BatteryBoardInput(id)    => 0x1f0 + (id as u16 & 0x0f),
             Self::TelemetryBroadcast(id)   => 0x200 + id as u16,
         }
@@ -303,12 +303,30 @@ impl CanBusMessage for BatteryTelemetryMessage {
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct FinBoardDataMessage {
+    pub data: [u8; 6],
+}
+
+impl CanBusMessage for FinBoardDataMessage {
+    fn serialize(self) -> [u8; 6] {
+        self.data
+    }
+
+    fn deserialize(data: &[u8]) -> Option<Self> {
+        Some(Self {
+            data: data.try_into().unwrap(),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum FcReceivedCanBusMessage {
     IoBoardSensor(IoBoardRole, u8, IoBoardSensorMessage),
     IoBoardPower(IoBoardRole, IoBoardPowerMessage),
+    FinBoardData(u8, u8, FinBoardDataMessage),
     // TODO: fin input
     BatteryTelemetry(u8, BatteryTelemetryMessage),
-    // TODO: payload downlink
 }
 
 pub enum FcTransmittedCanBusMessage {

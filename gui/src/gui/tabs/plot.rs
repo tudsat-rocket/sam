@@ -54,6 +54,7 @@ pub enum PlotCell {
     Valves,
     Masses,
     IoSensors,
+    FinData,
     Acs,
 }
 
@@ -76,6 +77,7 @@ impl PlotCell {
             PlotCell::Valves,
             PlotCell::Masses,
             PlotCell::IoSensors,
+            PlotCell::FinData,
             PlotCell::Acs,
         ]
     }
@@ -100,6 +102,7 @@ impl std::fmt::Display for PlotCell {
             PlotCell::Valves         => write!(f, "Valves"),
             PlotCell::Masses         => write!(f, "Masses"),
             PlotCell::IoSensors      => write!(f, "IO Board Sensors"),
+            PlotCell::FinData        => write!(f, "Fin Data"),
             PlotCell::Acs            => write!(f, "ACS"),
         }
     }
@@ -122,6 +125,7 @@ struct TileBehavior<'a> {
     valve_plot: &'a mut PlotState,
     masses_plot: &'a mut PlotState,
     raw_sensors_plot: &'a mut PlotState,
+    fin_data_plot: &'a mut PlotState,
     map: &'a mut MapState,
 }
 
@@ -147,6 +151,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Valves         => ui.plot_telemetry(&self.valve_plot, self.data_source),
             PlotCell::Masses         => ui.plot_telemetry(&self.masses_plot, self.data_source),
             PlotCell::IoSensors      => ui.plot_telemetry(&self.raw_sensors_plot, self.data_source),
+            PlotCell::FinData        => ui.plot_telemetry(&self.fin_data_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
             PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
         }
@@ -211,6 +216,7 @@ pub struct PlotTab {
     valve_plot: PlotState,
     masses_plot: PlotState,
     raw_sensors_plot: PlotState,
+    fin_data_plot: PlotState,
     map: MapState,
 }
 
@@ -328,6 +334,15 @@ impl PlotTab {
             .line("Recovery #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
             .line("Recovery #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))));
 
+        // TODO: refactor
+        let fin_data_plot = PlotState::new("Fin Data", (None, None), shared_plot.clone())
+            .line("Fin Board #0 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 0 && *id == 0).then_some(msg.data[0] as f32)))
+            .line("Fin Board #0 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 0 && *id == 1).then_some(msg.data[0] as f32)))
+            .line("Fin Board #1 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 1 && *id == 0).then_some(msg.data[0] as f32)))
+            .line("Fin Board #1 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 1 && *id == 1).then_some(msg.data[0] as f32)))
+            .line("Fin Board #2 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 2 && *id == 0).then_some(msg.data[0] as f32)))
+            .line("Fin Board #2 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 2 && *id == 1).then_some(msg.data[0] as f32)));
+
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
         Self {
@@ -350,6 +365,7 @@ impl PlotTab {
             valve_plot,
             masses_plot,
             raw_sensors_plot,
+            fin_data_plot,
             map,
         }
     }
@@ -389,6 +405,7 @@ impl PlotTab {
             tiles.insert_vertical_tile(raw_sensors),
             tiles.insert_grid_tile(overview),
             tiles.insert_pane(PlotCell::IoSensors),
+            tiles.insert_pane(PlotCell::FinData),
         ];
 
         let right = vec![
@@ -413,6 +430,7 @@ impl PlotTab {
             tiles.insert_pane(PlotCell::Pressures),
             tiles.insert_pane(PlotCell::Valves),
             tiles.insert_pane(PlotCell::IoSensors),
+            tiles.insert_pane(PlotCell::FinData),
         ];
         let t2 = vec![
             tiles.insert_pane(PlotCell::Runtime),
@@ -545,6 +563,7 @@ impl PlotTab {
                 valve_plot: &mut self.valve_plot,
                 masses_plot: &mut self.masses_plot,
                 raw_sensors_plot: &mut self.raw_sensors_plot,
+                fin_data_plot: &mut self.fin_data_plot,
                 map: &mut self.map,
             };
             self.tile_tree.ui(&mut behavior, ui);

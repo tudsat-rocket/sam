@@ -278,6 +278,7 @@ pub struct VehicleState {
     // TODO: refactor this
     pub io_board_sensor_data: Option<(IoBoardRole, u8, IoBoardSensorMessage)>,
     pub io_board_power_data: Option<(IoBoardRole, IoBoardPowerMessage)>,
+    pub fin_board_sensor_data: Option<(u8, u8, FinBoardDataMessage)>,
 
     // Computed values. These are just calculated from the orientation value, but are cached for
     // performance reasons. Since these are only needed by the ground station, we don't include
@@ -658,7 +659,10 @@ impl Into<VehicleState> for TelemetryCanBusMessage {
             FcReceivedCanBusMessage::IoBoardPower(role, msg) => {
                 vs.io_board_power_data = Some((role, msg));
             }
-            _ => {}
+            FcReceivedCanBusMessage::FinBoardData(fin, id, msg) => {
+                vs.fin_board_sensor_data = Some((fin, id, msg));
+            }
+            FcReceivedCanBusMessage::BatteryTelemetry(_, _) => {}
         }
 
         vs
