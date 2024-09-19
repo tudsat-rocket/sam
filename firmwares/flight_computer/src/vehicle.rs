@@ -201,6 +201,7 @@ impl Vehicle {
                     // TODO: parse known sensors
                 },
                 FcReceivedCanBusMessage::IoBoardPower(_role, _power_msg) => {},
+                FcReceivedCanBusMessage::FinBoardData(_fin, _id, _data_msg) => {},
             }
         }
 

@@ -114,8 +114,14 @@ impl<SPI: SpiDevice<u8>> CanRx<SPI> {
 
                     FcReceivedCanBusMessage::IoBoardSensor(role, id, parsed)
                 }
-                //CanBusMessageId::FinBoardInput(_fin, _id) => {
-                //}
+                CanBusMessageId::FinBoardInput(fin, id) => {
+                    let Ok(Some(parsed)) = FinBoardDataMessage::parse(msg) else {
+                        error!("Malformed message");
+                        continue;
+                    };
+
+                    FcReceivedCanBusMessage::FinBoardData(fin, id, parsed)
+                }
                 CanBusMessageId::BatteryBoardInput(id) => {
                     let Ok(Some(parsed)) = BatteryTelemetryMessage::parse(msg) else {
                         error!("Malformed message");
