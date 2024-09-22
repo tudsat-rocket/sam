@@ -23,7 +23,7 @@ use embassy_stm32::{interrupt, Config};
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::Delay;
+use embassy_time::{Delay, Duration, Instant, Ticker};
 
 use static_cell::StaticCell;
 
@@ -205,7 +205,8 @@ async fn main(low_priority_spawner: Spawner) {
         medium_priority_spawner.spawn(can::run_tx(can_tx)).unwrap();
         medium_priority_spawner.spawn(can::run_rx(can_rx)).unwrap();
         medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
-        low_priority_spawner.spawn(flash::run(flash)).unwrap();
+        medium_priority_spawner.spawn(flash::run(flash)).unwrap();
+        low_priority_spawner.spawn(guard_task()).unwrap();
     }
 
     #[cfg(feature="gcs")]
@@ -220,4 +221,14 @@ unsafe fn I2C3_EV() {
 #[interrupt]
 unsafe fn I2C3_ER() {
     EXECUTOR_MEDIUM.on_interrupt()
+}
+
+#[embassy_executor::task]
+pub async fn guard_task() -> ! {
+    let mut ticker = Ticker::every(Duration::from_millis(1000));
+    loop {
+        let last = Instant::now();
+        ticker.next().await;
+        defmt::println!("{}", last.elapsed().as_millis());
+    }
 }

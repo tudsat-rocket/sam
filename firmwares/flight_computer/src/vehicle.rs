@@ -113,6 +113,7 @@ impl Into<VehicleState> for &mut Vehicle {
 #[embassy_executor::task]
 pub async fn run(mut vehicle: Vehicle, mut iwdg: IndependentWatchdog<'static, IWDG>) -> ! {
     let mut ticker = Ticker::every(Duration::from_micros(1_000_000 / MAIN_LOOP_FREQUENCY.0 as u64));
+    defmt::info!("Starting main loop.");
     loop {
         vehicle.tick().await;
         iwdg.pet();
@@ -171,13 +172,33 @@ impl Vehicle {
             settings,
             data_rate,
 
+            last_acs_message: None,
+            last_recovery_message: None,
+            last_payload_message: None,
+
             acs_mode: AcsMode::Disabled,
             last_manual_thruster_input: None,
             last_thruster_valve_state: ThrusterValveState::Closed,
+
+            acs_tank_pressure: None,
+            acs_regulator_pressure: None,
+            acs_accel_valve_pressure: None,
+            acs_decel_valve_pressure: None,
+            recovery_pressure: None,
+            main_release_sensor: None,
+
+            camera_state: [false; 3],
+
+            last_fin_message: [None; 3],
         }
     }
 
     async fn tick(&mut self) {
+        if self.time.0 % 5000 == 0 {
+            let alt_baro = self.baro.altitude().unwrap_or_default() * 100.0;
+            defmt::info!("t={}, alt_baro={}cm", self.time.0, alt_baro as u32);
+        }
+
         let start = Instant::now();
 
         // Query core sensors
