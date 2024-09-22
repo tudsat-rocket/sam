@@ -275,7 +275,7 @@ impl Vehicle {
 
         // Store data in flash
         self.flash.tick().await;
-        if self.mode >= FlightMode::Armed {
+        if self.mode >= FlightMode::ArmedLaunchImminent {
             if let Some(msg) = self.next_flash_telem() {
                 let _ = self.flash.write_message(msg);
             }
@@ -299,7 +299,7 @@ impl Vehicle {
         let msg = DownlinkMessage::TelemetryCanBusMessage(msg);
 
         let _ = self.usb.send_message(msg.clone());
-        if self.mode >= FlightMode::Armed {
+        if self.mode >= FlightMode::ArmedLaunchImminent {
             let _ = self.flash.write_message(msg);
         }
     }
