@@ -4,7 +4,7 @@
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::adc::Adc;
 use embassy_stm32::Config;
-use embassy_stm32::gpio::{Input, Level, Output, Speed};
+use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::interrupt::{Priority, InterruptExt};
 use embassy_stm32::interrupt;
@@ -61,6 +61,7 @@ enum InputMode {
     Uart(embassy_stm32::usart::Config),
     I2c(Hertz, embassy_stm32::i2c::Config),
     Adc,
+    Gpio(Pull),
 }
 
 #[allow(dead_code)]
@@ -100,6 +101,7 @@ enum Input3 {
     Disabled,
     Uart, // TODO
     I2c(I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>),
+    Gpio(Input<'static, PB6>, Input<'static, PB7>),
 }
 
 // == J12
@@ -175,6 +177,7 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
     let input3 = match R::input3_mode() { // J4
         InputMode::Uart(_) => todo!(),
         InputMode::I2c(freq, config) => Input3::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config)),
+        InputMode::Gpio(pull) => Input3::Gpio(Input::new(p.PB6, pull), Input::new(p.PB7, pull)),
         _ => Input3::Disabled,
     };
 

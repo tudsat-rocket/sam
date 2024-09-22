@@ -1,4 +1,4 @@
-use embassy_stm32::gpio::Output;
+use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::adc::Adc;
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::peripherals::*;
@@ -107,6 +107,7 @@ async fn read_i2c_amp_value<I2C: embedded_hal_async::i2c::I2c>(
 pub async fn run_i2c_sensors(
     mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
     mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
+    mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
     publisher: crate::CanOutPublisher,
     role: IoBoardRole,
     interval: Duration,
@@ -119,26 +120,26 @@ pub async fn run_i2c_sensors(
         // If we use both busses for sensors, we assume that each I2C bus has
         // two sensors, allowing us to fill all four slots of a single sensor
         // message. If we use just one, we can do up to 3 sensors per bus.
-        let i2c_sensors = match (input1_i2c.as_mut(), input3_i2c.as_mut()) {
-            (Some(i2c2), Some(i2c1)) => [
+        let i2c_sensors = match (input1_i2c.as_mut(), input3_i2c.as_mut(), input3_gpio.as_mut()) {
+            (Some(i2c2), Some(i2c1), _) => [
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[1]).await.ok(),
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[1]).await.ok(),
             ],
-            (Some(i2c2), None) => [
+            (Some(i2c2), None, pins) => [
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[1]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[2]).await.ok(),
-                None,
+                pins.map(|(p0, p1)| (((p0.is_high() as u16) << 1 | (p1.is_high() as u16), false))),
             ],
-            (None, Some(i2c1)) => [
+            (None, Some(i2c1), _) => [
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[1]).await.ok(),
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[2]).await.ok(),
                 None,
             ],
-            (None, None) => unreachable!(),
+            (None, None, _) => unreachable!(),
         };
 
         let msg = IoBoardSensorMessage { i2c_sensors };

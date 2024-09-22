@@ -6,7 +6,7 @@ use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{UartRx, UartTx};
 use embassy_time::{Duration, Ticker};
 
-use shared_types::{CanBusMessageId, FlightMode, IoBoardRole};
+use shared_types::{CanBusMessageId, IoBoardRole};
 
 use crate::*;
 

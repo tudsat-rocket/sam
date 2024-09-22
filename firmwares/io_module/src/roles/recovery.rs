@@ -1,7 +1,7 @@
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_stm32::time::Hertz;
 
-use shared_types::{FlightMode, IoBoardRole};
+use shared_types::IoBoardRole;
 
 use crate::*;
 
@@ -20,6 +20,10 @@ impl crate::roles::BoardRole for Recovery {
         InputMode::I2c(Hertz::khz(100), config)
     }
 
+    fn input3_mode() -> InputMode {
+        InputMode::Gpio(Pull::Down)
+    }
+
     fn spawn(
         io: BoardIo,
         _high_priority_spawner: SendSpawner,
@@ -29,10 +33,11 @@ impl crate::roles::BoardRole for Recovery {
         output_state: &'static OutputStateChannel,
     ) {
         // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
-        if let Input1::I2c(i2c2) = io.input1 {
+        if let (Input1::I2c(i2c2), Input3::Gpio(p0, p1)) = (io.input1, io.input3) {
             low_priority_spawner.spawn(run_i2c_sensors(
                 Some(i2c2),
                 None,
+                Some((p0, p1)),
                 can_out.publisher().unwrap(),
                 Self::ROLE_ID,
                 Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),

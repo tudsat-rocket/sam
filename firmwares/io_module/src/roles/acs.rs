@@ -59,6 +59,7 @@ impl crate::roles::BoardRole for Acs {
                 low_priority_spawner.spawn(run_i2c_sensors(
                     Some(i2c2),
                     Some(i2c1),
+                    None,
                     can_out.publisher().unwrap(),
                     Self::ROLE_ID,
                     Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
