@@ -85,6 +85,26 @@ impl Default for RecoveryOutputSettings {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct PressureSensorCalibrationSettings {
+    pub intercept: f32,
+    pub slope: f32,
+}
+
+impl Default for PressureSensorCalibrationSettings {
+    fn default() -> Self {
+        Self { intercept: 0.0, slope: 1.0 }
+    }
+}
+
+impl PressureSensorCalibrationSettings {
+    pub fn apply(&self, raw_adc_value: Option<(u16, bool)>) -> Option<f32> {
+        let raw_adc = raw_adc_value.and_then(|(v, alert)| (!alert).then_some(v));
+        let mv = raw_adc.map(|adc| (adc as f32) * 3300f32 / 1024f32);
+        mv.map(|mv| (mv - self.intercept) / self.slope)
+    }
+}
+
 /// Main Settings struct. Stored in flash using postcard (non-COBS) encoding.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(default)]
@@ -141,6 +161,12 @@ pub struct Settings {
     pub min_time_to_main: u32,
     /// Mounting orientation of the flight computer
     pub orientation: Orientation,
+    ///
+    pub acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings,
+    pub acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings,
+    pub acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
+    pub acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
+    pub recovery_pressure_sensor_settings: PressureSensorCalibrationSettings,
 }
 
 impl Default for Settings {
@@ -172,6 +198,11 @@ impl Default for Settings {
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZUp,
+            acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
+            acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
+            acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
+            acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
+            recovery_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
         }
     }
 }

@@ -353,6 +353,23 @@ impl FcSettingsUiExt for Settings {
                     ui.selectable_value(&mut self.orientation, Orientation::ZDown, "Z-");
                 });
                 ui.end_row();
+
+                for (sensor_label, sensor_settings) in [
+                    ("ACS Tank (0)", &mut self.acs_tank_pressure_sensor_settings),
+                    ("ACS Regulator (1)", &mut self.acs_regulator_pressure_sensor_settings),
+                    ("ACS Accel. Valve (3)", &mut self.acs_accel_valve_pressure_sensor_settings),
+                    ("ACS Decel. Valve (4)", &mut self.acs_decel_valve_pressure_sensor_settings),
+                    ("Recovery Section (0)", &mut self.recovery_pressure_sensor_settings),
+                ] {
+                    ui.label(format!("{} Pressure Sensor Calib.", sensor_label));
+                    ui.horizontal(|ui| {
+                        ui.add(DragValue::new(&mut sensor_settings.intercept).speed(0.1).clamp_range(0.0..=3300.0));
+                        ui.weak("mV at 0 bar,");
+                        ui.add(DragValue::new(&mut sensor_settings.slope).speed(0.1).clamp_range(-10000.0..=10000.0));
+                        ui.weak("mV/bar");
+                    });
+                    ui.end_row();
+                }
             })
     }
 }
