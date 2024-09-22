@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use clap::{Parser, Subcommand};
-use colored::Colorize;
 use crc::{Crc, CRC_16_IBM_SDLC};
 use log::*;
 
@@ -36,12 +35,6 @@ enum CliCommand {
         log_path: Option<PathBuf>,
         #[clap(long)]
         simulate: Option<Option<String>>,
-    },
-    /// Attach to FC and tail logs
-    /// TODO: embassy rewrite will remove USB logging, so this can be removed
-    Logcat {
-        #[clap(short = 'v')]
-        verbose: bool,
     },
     /// Dump the contents of the FC's flash to a file
     /// TODO: rewrite flash dumping stuff after embassy rewrite
@@ -99,50 +92,6 @@ fn create_file_or_stdout(path: Option<PathBuf>) -> Result<Box<dyn Write>, std::i
     })
 }
 
-fn logcat(verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let (downlink_tx, mut downlink_rx) = channel::<(Instant, DownlinkMessage)>(10);
-    let (_uplink_tx, uplink_rx) = channel::<UplinkMessage>(10);
-    let (serial_status_tx, mut serial_status_rx) = channel::<(SerialStatus, Option<String>)>(10);
-    let (_serial_status_uplink_tx, serial_status_uplink_rx) = channel::<(SerialStatus, Option<String>)>(10);
-    spawn_downlink_monitor(None, serial_status_tx, serial_status_uplink_rx, downlink_tx, uplink_rx);
-
-    loop {
-        while let Ok((status, port)) = serial_status_rx.try_recv() {
-            match (status, port) {
-                (SerialStatus::Connected, Some(p)) => {
-                    println!("{} to {}.", "Connected".bright_green().bold(), p)
-                }
-                (SerialStatus::Error, Some(p)) => {
-                    println!("{} to {}.", "Connection lost".bright_red().bold(), p)
-                }
-                _ => {}
-            }
-        }
-
-        while let Ok((_t, msg)) = downlink_rx.try_recv() {
-            match msg {
-                DownlinkMessage::Log(t, loc, ll, msg) => {
-                    let t = (t as f32) / 1_000.0;
-                    let color = match ll {
-                        LogLevel::Debug => "bright blue",
-                        LogLevel::Info => "bright green",
-                        LogLevel::Warning => "bright yellow",
-                        LogLevel::Error => "bright red",
-                        LogLevel::Critical => "bright purple",
-                    };
-
-                    println!("[{:>8.3}] [{}] [{}] {}", t, ll.to_string().color(color).bold(), loc.white(), msg)
-                }
-                msg => {
-                    if verbose {
-                        println!("{:?}", msg)
-                    }
-                }
-            }
-        }
-    }
-}
-
 fn read_flash_chunk(
     uplink_tx: &Sender<UplinkMessage>,
     downlink_rx: &mut Receiver<(Instant, DownlinkMessage)>,
@@ -161,7 +110,7 @@ fn read_flash_chunk(
                 return Err(Box::new(Error::new(ErrorKind::InvalidData, "Data mismatch.")));
             }
 
-            return Ok(content);
+            return Ok(content.as_slice().to_vec());
         }
 
         if start.elapsed() > TIMEOUT {
@@ -420,7 +369,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Cli::parse();
     match args.command.unwrap_or(CliCommand::Gui { log_path: None, simulate: None }) {
         CliCommand::Gui { log_path, simulate } => gui::main(log_path, simulate),
-        CliCommand::Logcat { verbose } => logcat(verbose),
         CliCommand::DumpFlash {
             path,
             force,

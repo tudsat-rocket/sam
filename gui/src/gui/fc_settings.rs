@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use egui::{Align, DragValue, InnerResponse, Layout, RichText, TextEdit, Ui};
 
 use shared_types::settings::*;
@@ -18,7 +20,9 @@ impl FcSettingsUiExt for Settings {
             .show(ui, |ui| {
                 if !sim {
                     ui.label("Identifier");
-                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.identifier));
+                    let mut ident: String = self.identifier.to_string();
+                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut ident));
+                    self.identifier = heapless::String::from_str(&ident).unwrap_or_default();
                     ui.end_row();
 
                     ui.label("LoRa channel selection (500kHz BW)");
@@ -54,7 +58,9 @@ impl FcSettingsUiExt for Settings {
                             }
                         }
 
-                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut self.lora.binding_phrase));
+                        let mut binding_phrase: String = self.lora.binding_phrase.to_string();
+                        ui.add_sized(ui.available_size(), TextEdit::singleline(&mut binding_phrase));
+                        self.lora.binding_phrase = heapless::String::from_str(&binding_phrase).unwrap_or_default();
                     });
                     ui.end_row();
 

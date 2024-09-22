@@ -1,8 +1,5 @@
 //! Data structures for permanent settings stored in FC flash.
 
-#[cfg(target_os = "none")]
-use alloc::string::String;
-
 use nalgebra::Vector3;
 use serde::{Serialize, Deserialize};
 
@@ -25,7 +22,7 @@ pub struct LoRaSettings {
     /// which of the 14 500kHz LoRa channels from 863-870MHz to use
     pub channels: [bool; 14],
     /// binding phrase, used to generate LoRa FHSS sequence
-    pub binding_phrase: String,
+    pub binding_phrase: heapless::String<64>,
     /// key for uplink authentication
     pub authentication_key: u128
 }
@@ -34,7 +31,7 @@ impl Default for LoRaSettings {
     fn default() -> Self {
         Self {
             channels: [true; 14],
-            binding_phrase: "".into(),
+            binding_phrase: heapless::String::new(),
             authentication_key: 0x00000000000000000000000000000000
         }
     }
@@ -93,7 +90,7 @@ impl Default for RecoveryOutputSettings {
 #[serde(default)]
 pub struct Settings {
     /// unique name for this flight controller
-    pub identifier: String,
+    pub identifier: heapless::String<32>,
     /// calibration offsets for gyroscope (deg/s)
     pub gyro_offset: Vector3<f32>,
     /// calibration offsets for main accelerometer (m/s^2)
@@ -149,7 +146,7 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            identifier: "Sting FC".into(),
+            identifier: "Sting FC".try_into().unwrap(),
             gyro_offset: Vector3::default(),
             acc_offset: Vector3::default(),
             acc2_offset: Vector3::default(),

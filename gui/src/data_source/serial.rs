@@ -411,7 +411,6 @@ impl DataSource for SerialDataSource {
             }
 
             match msg {
-                DownlinkMessage::Log(..) => {}
                 DownlinkMessage::Settings(settings) => {
                     self.fc_settings = Some(settings);
                 }
@@ -534,7 +533,7 @@ impl DataSource for SerialDataSource {
         };
 
         ui.colored_label(status_color, status_text);
-        ui.label(self.fc_settings().map(|s| s.identifier.clone()).unwrap_or_default());
+        ui.label(self.fc_settings().map(|s| s.identifier.to_string()).unwrap_or_default());
 
         let telemetry_log_info = match self.telemetry_log_file.as_ref() {
             Ok(_) => self.telemetry_log_path.as_os_str().to_string_lossy().to_string(),

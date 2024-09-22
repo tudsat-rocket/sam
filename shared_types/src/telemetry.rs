@@ -721,8 +721,7 @@ pub enum DownlinkMessage {
     TelemetryGPS(TelemetryGPS),
     TelemetryCanBusMessage(TelemetryCanBusMessage),
     TelemetryGCS(TelemetryGCS),
-    Log(u32, String, LogLevel, String),
-    FlashContent(u32, Vec<u8>),
+    FlashContent(u32, heapless::Vec<u8, 256>),
     Settings(Settings)
 }
 
@@ -737,7 +736,6 @@ impl DownlinkMessage {
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
             DownlinkMessage::TelemetryCanBusMessage(tm) => tm.time,
             DownlinkMessage::TelemetryGCS(tm) => tm.time,
-            DownlinkMessage::Log(t, _, _, _) => *t,
             DownlinkMessage::FlashContent(_, _) => 0,
             DownlinkMessage::Settings(_) => 0,
         }
@@ -756,10 +754,6 @@ impl From<DownlinkMessage> for VehicleState {
             DownlinkMessage::TelemetryGPS(tm) => tm.into(),
             DownlinkMessage::TelemetryCanBusMessage(tm) => tm.into(),
             DownlinkMessage::TelemetryGCS(tm) => tm.into(),
-            DownlinkMessage::Log(t, ..) => Self {
-                time: t,
-                ..Default::default()
-            },
             DownlinkMessage::FlashContent(..) | DownlinkMessage::Settings(..) => Default::default(),
         }
     }

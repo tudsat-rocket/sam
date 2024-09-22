@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use egui::{Align, Button, Color32, Layout, RichText, TextEdit};
 
 use log::*;
@@ -109,7 +111,9 @@ impl ConfigureTab {
                             .unwrap_or(settings.lora.binding_phrase.clone());
                     }
 
-                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut settings.lora.binding_phrase));
+                    let mut binding_phrase: String = settings.lora.binding_phrase.to_string();
+                    ui.add_sized(ui.available_size(), TextEdit::singleline(&mut binding_phrase));
+                    settings.lora.binding_phrase = heapless::String::from_str(&binding_phrase).unwrap_or_default();
                 });
                 ui.end_row();
 

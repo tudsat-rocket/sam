@@ -13,7 +13,6 @@ state_estimator = { workspace = true }
 clap = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
-colored = "2"
 # egui & friends
 egui = { workspace = true }
 eframe = { workspace = true }
@@ -24,6 +23,7 @@ egui_tiles = "0.8.0"
 transform-gizmo-egui = "0.1.0"
 walkers = "0.22"
 # serialization & communication
+heapless = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 postcard = { workspace = true }
