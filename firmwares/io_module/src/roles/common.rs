@@ -167,13 +167,12 @@ pub async fn run_power_report(
     drive_voltage: DriveVoltage,
 ) -> ! {
     let mut vref = adc.enable_vref(&mut Delay);
-    let vref_sample = 0;
     const TIMEOUT: Duration = Duration::from_millis(10);
 
     let mut ticker = Ticker::every(Duration::from_millis(200)); // TODO: adjust?
-    loop {
-        let vref_sample = with_timeout(TIMEOUT, adc.read(&mut vref)).await.unwrap_or(vref_sample);
+    let vref_sample = with_timeout(TIMEOUT, adc.read(&mut vref)).await.unwrap_or(1490);
 
+    loop {
         let thermistor_sample = with_timeout(TIMEOUT, adc.read(&mut temperature_sense_pin)).await;
         let thermistor_vsense = (to_millivolts(vref_sample, thermistor_sample.unwrap_or_default()) as f32) / 1000.0;
         let thermistor_resistance = (10e3 * (thermistor_vsense / (3.3 - thermistor_vsense))) as u16;
@@ -196,7 +195,7 @@ pub async fn run_power_report(
 
         let current_sense_sample = with_timeout(TIMEOUT, adc.read(&mut current_sense_pin)).await;
         let current_sense_voltage = to_millivolts(vref_sample, current_sense_sample.unwrap_or_default());
-        let output_current = (((current_sense_voltage as f32) - 1650.0) / (50.0 * 0.005)) as i16;
+        let output_current = (((current_sense_voltage as f32) - 1650.0) / (50.0 * 0.005)) as i16 * -1;
 
         let msg = IoBoardPowerMessage {
             output_voltage,
