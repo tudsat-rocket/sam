@@ -8,6 +8,7 @@ use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_sync::mutex::Mutex;
 use embassy_time::{Timer, Duration};
 use embedded_hal_async::spi::SpiDevice;
 
@@ -19,19 +20,19 @@ use shared_types::can::*;
 
 use crate::drivers::can::*;
 
-pub struct CanTx<SPI> {
-    driver: MCP2517FDTx<SPI>,
-    receiver: Receiver<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
+pub struct CanTx<SPI: 'static> {
+    driver: &'static Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>,
+    receiver: Receiver<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 3>,
 }
 
-pub struct CanRx<SPI> {
-    driver: MCP2517FDRx<SPI>,
-    sender: Sender<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>,
+pub struct CanRx<SPI: 'static> {
+    driver: &'static Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>,
+    sender: Sender<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>,
 }
 
 pub struct CanHandle {
-    receiver: Receiver<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>,
-    sender: Sender<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 5>,
+    receiver: Receiver<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>,
+    sender: Sender<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 3>,
 }
 
 #[allow(dead_code)]
@@ -48,8 +49,10 @@ type SpiDeviceImplInst = SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst
 type CanTxInst = CanTx<SpiDeviceImplInst>;
 type CanRxInst = CanRx<SpiDeviceImplInst>;
 
-static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FcReceivedCanBusMessage, 5>> = StaticCell::new();
-static OUTGOING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 5>> = StaticCell::new();
+static DRIVER_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, MCP2517FD<SpiDeviceImplInst>>> = StaticCell::new();
+
+static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>> = StaticCell::new();
+static OUTGOING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 3>> = StaticCell::new();
 
 impl CanHandle {
     pub fn receive(&mut self) -> Option<FcReceivedCanBusMessage> {
@@ -77,10 +80,15 @@ impl<SPI: SpiDevice<u8>> CanTx<SPI> {
 impl<SPI: SpiDevice<u8>> CanRx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
-            let (id, msg) = match self.driver.try_receive().await {
+            let res = {
+                let mut driver = self.driver.lock().await;
+                driver.try_receive().await
+            };
+
+            let (id, msg) = match res {
                 Ok(Some((id, msg))) => (id, msg),
                 Ok(None) => {
-                    Timer::after(Duration::from_micros(10)).await;
+                    Timer::after(Duration::from_micros(100)).await;
                     continue;
                 }
                 Err(e) => {
@@ -141,19 +149,24 @@ impl<SPI: SpiDevice<u8>> CanRx<SPI> {
     }
 }
 
-pub async fn init<SPI: SpiDevice<u8>>(spi: SPI, data_rate: CanDataRate) -> Result<(CanTx<SPI>, CanRx<SPI>, CanHandle), MCP2517Error<SPI::Error>> {
+pub async fn init(
+    spi: SpiDeviceImplInst,
+    data_rate: CanDataRate
+) -> (CanTx<SpiDeviceImplInst>, CanRx<SpiDeviceImplInst>, CanHandle) {
     let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
     let outgoing_channel = OUTGOING_CHANNEL.init(Channel::new());
 
-    let (mcp_tx, mcp_rx) = MCP2517FD::init(spi, data_rate).await?;
+    let mcp = MCP2517FD::init(spi, data_rate).await.unwrap();
+    let mcp = Mutex::new(mcp);
+    let mcp = DRIVER_SHARED.init(mcp);
 
     let can_tx = CanTx {
-        driver: mcp_tx,
+        driver: mcp,
         receiver: outgoing_channel.receiver(),
     };
 
     let can_rx = CanRx {
-        driver: mcp_rx,
+        driver: mcp,
         sender: incoming_channel.sender(),
     };
 
@@ -162,7 +175,7 @@ pub async fn init<SPI: SpiDevice<u8>>(spi: SPI, data_rate: CanDataRate) -> Resul
         sender: outgoing_channel.sender(),
     };
 
-    Ok((can_tx, can_rx, handle))
+    (can_tx, can_rx, handle)
 }
 
 #[embassy_executor::task]

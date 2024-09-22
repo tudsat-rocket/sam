@@ -1,7 +1,7 @@
 //! USB serial link implementation, handling regular telemetry, log messsages
 //! and uplink commands.
 
-use alloc::vec::Vec;
+use heapless::Vec;
 use embassy_executor::Spawner;
 use embassy_stm32::{peripherals::{PA12, PA11, USB_OTG_FS}, usb_otg::Driver};
 use embassy_stm32::bind_interrupts;
@@ -174,7 +174,7 @@ async fn handle_usb_uplink(
 ) -> ! {
     const UPLINK_BUFFER_SIZE: usize = 512;
 
-    let mut uplink_buffer: Vec<u8> = Vec::with_capacity(UPLINK_BUFFER_SIZE);
+    let mut uplink_buffer: Vec<u8, UPLINK_BUFFER_SIZE> = Vec::new();
     let mut packet_buffer: [u8; 64] = [0; 64];
 
     loop {
@@ -182,7 +182,8 @@ async fn handle_usb_uplink(
 
         match class.read_packet(&mut packet_buffer).await {
             Ok(n) => {
-                uplink_buffer.extend(&packet_buffer[..usize::min(n, UPLINK_BUFFER_SIZE - uplink_buffer.len())]);
+                let packet = &packet_buffer[..usize::min(n, UPLINK_BUFFER_SIZE - uplink_buffer.len())];
+                let _ = uplink_buffer.extend_from_slice(packet);
 
                 if uplink_buffer.len() >= UPLINK_BUFFER_SIZE {
                     uplink_buffer.truncate(0);
@@ -190,7 +191,7 @@ async fn handle_usb_uplink(
 
                 match postcard::take_from_bytes_cobs::<UplinkMessage>(&mut uplink_buffer.clone()) {
                     Ok((msg, rest)) => {
-                        uplink_buffer = rest.to_vec();
+                        uplink_buffer = Vec::from_slice(rest).unwrap_or_default();
                         uplink_sender.send(msg).await;
                     },
                     Err(_) => {

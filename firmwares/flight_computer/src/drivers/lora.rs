@@ -4,7 +4,7 @@
 //!
 //! Datasheet: https://www.mouser.com/pdfDocs/DS_LLCC68_V10-2.pdf
 
-use alloc::vec::Vec;
+use heapless::Vec;
 
 use embedded_hal::digital::InputPin;
 use embedded_hal_async::spi::SpiDevice;
@@ -131,7 +131,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
         opcode: LLCC68OpCode,
         params: &[u8],
         response_len: usize,
-    ) -> Result<Vec<u8>, RadioError<SPI::Error>> {
+    ) -> Result<Vec<u8, 64>, RadioError<SPI::Error>> {
         if self.busy.is_high().unwrap_or(false) && !self.ignore_busy {
             return Err(RadioError::Busy);
         }
@@ -139,7 +139,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
         let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
         self.spi.transfer_in_place(&mut payload).await?;
 
-        Ok(payload[(1 + params.len())..].to_vec())
+        Ok(Vec::from_slice(&payload[(1 + params.len())..]).unwrap_or_default())
     }
 
     async fn read_register(&mut self, address: u16) -> Result<u8, RadioError<SPI::Error>> {
@@ -310,7 +310,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> LLCC68<SPI, IRQ, BUSY> {
         Ok(())
     }
 
-    pub async fn receive(&mut self) -> Result<Option<Vec<u8>>, RadioError<SPI::Error>> {
+    pub async fn receive(&mut self) -> Result<Option<Vec<u8, 64>>, RadioError<SPI::Error>> {
         // No RxDone interrupt, do nothing
         if !self.irq.is_high().unwrap() {
             return Ok(None);

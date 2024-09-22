@@ -1,6 +1,5 @@
 //! Main flight logic for flight computer.
 
-use alloc::collections::VecDeque;
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_stm32::gpio::{Output, Input};
@@ -37,7 +36,6 @@ type LEDs = (Output<'static, PC13>, Output<'static, PC14>, Output<'static, PC15>
 type Buzzer = BuzzerDriver<TIM3>;
 type Recovery = (Output<'static, PC8>, Output<'static, PC9>);
 
-const RUNTIME_HISTORY_LEN: usize = 200;
 const MAIN_LOOP_FREQUENCY: Hertz = Hertz::hz(1000);
 
 pub struct Vehicle {
@@ -61,7 +59,7 @@ pub struct Vehicle {
     // vehicle state
     state_estimator: StateEstimator,
     mode: FlightMode,
-    loop_runtime_history: VecDeque<f32>,
+    loop_runtime: f32,
     settings: Settings,
     data_rate: TelemetryDataRate,
     // Acs
@@ -98,7 +96,7 @@ impl Into<VehicleState> for &mut Vehicle {
             transmit_power: Some(self.radio.transmit_power),
             data_rate: Some(self.data_rate),
 
-            cpu_utilization: Some(self.loop_runtime_history.iter().sum::<f32>() / self.loop_runtime_history.len() as f32),
+            cpu_utilization: Some(self.loop_runtime),
             flash_pointer: Some(self.flash.pointer),
 
             gps: self.gps.datum(),
@@ -169,7 +167,7 @@ impl Vehicle {
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQUENCY.0 as f32, settings.clone()),
             mode: FlightMode::Idle,
 
-            loop_runtime_history: VecDeque::with_capacity(RUNTIME_HISTORY_LEN),
+            loop_runtime: 0.0,
             settings,
             data_rate,
 
@@ -290,9 +288,7 @@ impl Vehicle {
         self.time += 1_000 / MAIN_LOOP_FREQUENCY.0;
 
         // get CPU usage
-        self.loop_runtime_history.truncate(RUNTIME_HISTORY_LEN - 1);
-        let elapsed = start.elapsed().as_micros();
-        self.loop_runtime_history.push_front((elapsed as f32) / (1_000_000.0 / MAIN_LOOP_FREQUENCY.0 as f32));
+        self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
     }
 
     fn handle_can_bus_message(&mut self, msg: &FcReceivedCanBusMessage) {

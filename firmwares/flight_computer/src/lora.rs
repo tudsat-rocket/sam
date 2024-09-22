@@ -1,7 +1,6 @@
 use core::hash::Hasher;
 
-use alloc::string::String;
-use alloc::vec::Vec;
+use heapless::{String, Vec};
 
 use embedded_hal::digital::InputPin;
 use embedded_hal_async::spi::SpiDevice;
@@ -79,7 +78,7 @@ pub struct Radio<SPI, IRQ, BUSY> {
     fc_time_offset: i64,
     authentication_key: [u8; 16],
     channels: [bool; CHANNELS.len()],
-    binding_phrase: String,
+    binding_phrase: String<64>,
     sequence: Option<[usize; CHANNELS.len()]>,
 }
 
@@ -101,7 +100,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
             fc_time_offset: 0,
             authentication_key: [0x00; 16],
             channels: [true; CHANNELS.len()],
-            binding_phrase: "".into(),
+            binding_phrase: String::new(),
             sequence: None,
         })
     }
@@ -119,8 +118,8 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
         self.state_time = self.time;
     }
 
-    fn generate_sequence(&mut self, channels: [bool; CHANNELS.len()], binding_phrase: &String) -> Option<[usize; CHANNELS.len()]> {
-        let mut available: Vec<_> = channels.iter()
+    fn generate_sequence(&mut self, channels: [bool; CHANNELS.len()], binding_phrase: &String<64>) -> Option<[usize; CHANNELS.len()]> {
+        let mut available: Vec<_, 16> = channels.iter()
             .enumerate()
             .filter_map(|(i, x)| x.then(|| i))
             .collect();
@@ -137,7 +136,7 @@ impl<SPI: SpiDevice<u8>, IRQ: InputPin, BUSY: InputPin> Radio<SPI, IRQ, BUSY> {
 
         // Fill sequence from available channels. If we disable some channels,
         // we repeat the process until we have enough.
-        let mut sequence = Vec::new();
+        let mut sequence: Vec<usize, 16> = Vec::new();
         while sequence.len() < CHANNELS.len() {
             available.shuffle(&mut rng);
             sequence.extend(available.clone());

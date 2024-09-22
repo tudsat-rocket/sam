@@ -6,8 +6,7 @@
 //! For reading, the flash implementation holds its own handle to the USB connection, which allows
 //! faster reading of flash.
 
-use alloc::vec;
-use alloc::vec::Vec;
+use heapless::Vec;
 
 use embassy_stm32::gpio::Output;
 use embassy_stm32::peripherals::*;
@@ -32,6 +31,7 @@ use crate::usb::FlashUsbHandle;
 const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
 const PAGE_SIZE: usize = 256;
+const BUFFER_SIZE: usize = PAGE_SIZE * 2;
 const SECTOR_SIZE: u32 = 4096;
 
 static REQUEST_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FlashRequest, 3>> = StaticCell::new();
@@ -55,7 +55,7 @@ pub struct Flash<SPI> {
     driver: W25Q<SPI>,
     usb: FlashUsbHandle,
     pointer: u32,
-    write_buffer: Vec<u8>,
+    write_buffer: Vec<u8, BUFFER_SIZE>,
 }
 
 /// Flash handle returned by initialization and used by the rest of the firmware to interact with
@@ -125,7 +125,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
             driver,
             usb,
             pointer: 0,
-            write_buffer: Vec::with_capacity((PAGE_SIZE * 2) as usize),
+            write_buffer: Vec::new(),
         };
 
         flash.determine_pointer().await?;
@@ -174,23 +174,40 @@ impl<SPI: SpiDevice> Flash<SPI> {
     }
 
     async fn flush_page(&mut self) -> Result<(), FlashError<SPI::Error>> {
-        let data: Vec<u8> = self.write_buffer.drain(..(PAGE_SIZE - 3)).collect();
-
         // We're full, do nothing
         if self.pointer >= FLASH_SIZE {
             return Ok(());
         }
 
-        let crc = X25.checksum(&data);
+        let result = {
+            let data = &self.write_buffer[..(PAGE_SIZE - 3)];
+            let crc = X25.checksum(&data);
 
-        let mut page = Vec::with_capacity(PAGE_SIZE);
-        page.push(0x00);
-        page.extend(data);
-        page.push((crc >> 8) as u8);
-        page.push(crc as u8);
+            let mut page = [0x00; PAGE_SIZE];
+            page[1..PAGE_SIZE-2].copy_from_slice(data);
+            page[PAGE_SIZE-2] = (crc >> 8) as u8;
+            page[PAGE_SIZE-1] = crc as u8;
 
-        let result = self.driver.write(self.pointer as usize, &page).await;
-        self.update_pointer(self.pointer + PAGE_SIZE as u32);
+            const CHUNK_SIZE: usize = 32;
+
+            let mut result = Ok(());
+            for i in 0..(PAGE_SIZE/CHUNK_SIZE) {
+                let chunk = &page[(i*CHUNK_SIZE)..((i+1)*CHUNK_SIZE)];
+
+                result = self.driver.write((self.pointer as usize) + (i*CHUNK_SIZE), &chunk).await;
+                if result.is_err() {
+                    break;
+                }
+
+            }
+
+            self.update_pointer(self.pointer + PAGE_SIZE as u32);
+            result
+        };
+
+        let mut new_buffer: Vec<u8, BUFFER_SIZE> = Vec::new();
+        let _ = new_buffer.extend_from_slice(&self.write_buffer[(PAGE_SIZE - 3)..]);
+        self.write_buffer = new_buffer;
 
         result
     }
@@ -211,9 +228,14 @@ impl<SPI: SpiDevice> Flash<SPI> {
     }
 
     pub async fn read_settings(&mut self) -> Result<Settings, FlashError<SPI::Error>> {
-        let page = self.driver.read(0x00, FLASH_SETTINGS_SIZE).await?;
+        const DATA_SIZE: usize = FLASH_SETTINGS_SIZE as usize;
+        let mut settings_data: Vec<u8, DATA_SIZE> = Vec::new();
+        for i in 0..(DATA_SIZE / 256) {
+            let page = self.driver.read((i * 256) as u32, 256).await?;
+            settings_data.extend(page);
+        }
 
-        let (settings, crc) = page.split_at(FLASH_SETTINGS_SIZE as usize - 2);
+        let (settings, crc) = settings_data.split_at(FLASH_SETTINGS_SIZE as usize - 2);
         let crc = u16::from_be_bytes([crc[0], crc[1]]);
 
         if crc != X25.checksum(&settings) {
@@ -293,8 +315,8 @@ impl<SPI: SpiDevice> Flash<SPI> {
 
             let mut sector_needs_erasing = false;
             for address in (next_pointer..(next_pointer + SECTOR_SIZE)).step_by(PAGE_SIZE) {
-                let content = self.driver.read(address, 256).await.unwrap_or(vec![0x00]);
-                if content.iter().any(|b| *b != 0xff) {
+                let content = self.driver.read(address, 256).await.ok();
+                if content.map(|c| c.iter().any(|b| *b != 0xff)).unwrap_or(true) {
                     sector_needs_erasing = true;
                     break;
                 }
@@ -337,7 +359,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
                             // split up the data into smaller chunks for USB transfer
                             const CHUNK_SIZE: usize = 256;
                             for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
-                                let msg = DownlinkMessage::FlashContent(address + (i * CHUNK_SIZE) as u32, chunk.to_vec());
+                                let msg = DownlinkMessage::FlashContent(address + (i * CHUNK_SIZE) as u32, Vec::from_slice(chunk).unwrap_or_default());
                                 self.usb.send_message(msg).await;
                             }
                         },

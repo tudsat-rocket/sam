@@ -1,6 +1,3 @@
-
-use alloc::collections::VecDeque;
-
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Output, Input};

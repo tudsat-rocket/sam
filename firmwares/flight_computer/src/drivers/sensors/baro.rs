@@ -1,5 +1,4 @@
-use alloc::collections::VecDeque;
-use alloc::vec::Vec;
+use heapless::{Vec, Deque};
 
 use embassy_time::{Timer, Duration};
 use embedded_hal_async::spi::SpiDevice;
@@ -10,7 +9,6 @@ use defmt::*;
 
 const TEMP_FILTER_LEN: usize = 64;
 
-#[derive(Debug)]
 struct MS5611CalibrationData {
     pressure_sensitivity: u16,
     pressure_offset: u16,
@@ -42,7 +40,7 @@ pub struct MS5611<SPI: SpiDevice<u8>> {
     spi: SPI,
     calibration_data: Option<MS5611CalibrationData>,
     read_temp: bool,
-    dt_filter: VecDeque<i32>,
+    dt_filter: Deque<i32, TEMP_FILTER_LEN>,
     dt: Option<i32>,
     temp: Option<i32>,
     raw_pressure: Option<i32>,
@@ -55,7 +53,7 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
             spi,
             calibration_data: None,
             read_temp: true,
-            dt_filter: VecDeque::with_capacity(TEMP_FILTER_LEN),
+            dt_filter: Deque::new(),
             dt: None,
             temp: None,
             raw_pressure: None,
@@ -84,10 +82,11 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
         Ok(baro)
     }
 
-    async fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8>, SPI::Error> {
-        let mut payload = [alloc::vec![command.into()], [0x00].repeat(response_len)].concat();
-        self.spi.transfer_in_place(&mut payload).await?;
-        Ok(payload[1..].to_vec())
+    async fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8, 32>, SPI::Error> {
+        let mut payload = [0x00; 32];
+        payload[0] = command.into();
+        self.spi.transfer_in_place(&mut payload[..1+response_len]).await?;
+        Ok(Vec::from_slice(&payload[1..1+response_len]).unwrap_or_default())
     }
 
     async fn reset(&mut self) -> Result<(), SPI::Error> {
@@ -123,8 +122,10 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
 
         if self.read_temp {
             let dt = (value as i32) - ((cal.reference_temperature as i32) << 8);
-            self.dt_filter.truncate(TEMP_FILTER_LEN - 1);
-            self.dt_filter.push_front(dt);
+            while self.dt_filter.len() > TEMP_FILTER_LEN - 1 {
+                let _ = self.dt_filter.pop_back();
+            }
+            let _ = self.dt_filter.push_front(dt);
             let filtered = self.dt_filter.iter()
                 .map(|dt| *dt as i64)
                 .sum::<i64>() / (self.dt_filter.len() as i64);

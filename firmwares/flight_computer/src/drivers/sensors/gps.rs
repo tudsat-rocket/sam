@@ -1,7 +1,5 @@
-use alloc::format;
-use alloc::string::{String, ToString};
+use heapless::{String, Vec};
 
-use alloc::vec::Vec;
 use embassy_embedded_hal::SetConfig;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{Uart, Error};
@@ -22,8 +20,9 @@ bind_interrupts!(struct Irqs {
 
 const DESIRED_BAUD_RATE: u32 = 115_200;
 const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
-//const BAUD_RATE_OPTIONS: [u32; 8] = [115_200, 9600, 460800, 230400, 57600, 38400, 19200, 4800];
-//const MEASUREMENT_RATE_MS: u16 = 100;
+
+// hardcoded to avoid needing alloc::format
+const DESIRED_BAUD_RATE_MESSAGE: &'static str = "$PUBX,41,1,0007,0003,115200,0*18\r\n";
 
 static CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
@@ -72,10 +71,11 @@ impl GPS {
         (gps, handle)
     }
 
-    async fn read_gps_packet(&mut self) -> Result<String, Error> {
-        let mut buffer = [0; 1024];
+    async fn read_gps_packet(&mut self) -> Result<String<128>, Error> {
+        let mut buffer: [u8; 128] = [0x00; 128];
         let n = self.uart.read_until_idle(&mut buffer).await?;
-        Ok(String::from_utf8_lossy(&buffer[..n]).to_string())
+        let buffer: Vec<u8, 128> = Vec::from_slice(&buffer[..n]).unwrap_or_default();
+        Ok(String::from_utf8(buffer).unwrap_or_default())
     }
 
     async fn find_baud_rate(&mut self) -> u32 {
@@ -100,16 +100,17 @@ impl GPS {
         }
     }
 
-    async fn change_gps_baud_rate(&mut self, baud_rate: u32) -> Result<(), Error> {
+    async fn change_gps_baud_rate(&mut self) -> Result<(), Error> {
         info!("Changing baud rate to {:?}", DESIRED_BAUD_RATE);
 
         // Sending this NMEA message won't actually change the baud rate
         // for some reason, but it will allow us to send the UBX message,
         // which will.
-        let payload = format!("PUBX,41,1,0007,0003,{},0", baud_rate);
-        let checksum = payload.chars().fold(0, |a, b| (a as u8) ^ (b as u8));
-        let msg = format!("${}*{:02X}\r\n", payload, checksum);
-        self.uart.write(&msg.into_bytes()).await?;
+        self.uart.write(DESIRED_BAUD_RATE_MESSAGE.as_bytes()).await?;
+        // Message hardcoded to avoid alloc::format, use code below to generate
+        //let payload = format!("PUBX,41,1,0007,0003,{},0", DESIRED_BAUD_RATE);
+        //let checksum = payload.chars().fold(0, |a, b| (a as u8) ^ (b as u8));
+        //let msg = format!("${}*{:02X}\r\n", payload, checksum);
 
         // Now that the RX is listening for UBX, set the baud rate.
         // Message generated using the ublox crate for baud rate 115200, hardcoded to avoid the dependency
@@ -134,7 +135,7 @@ impl GPS {
         self.uart.write(&baud_rate_msg).await?;
 
         let mut uart_config = embassy_stm32::usart::Config::default();
-        uart_config.baudrate = baud_rate;
+        uart_config.baudrate = DESIRED_BAUD_RATE;
         self.uart.set_config(&uart_config).unwrap();
 
         Ok(())
@@ -146,7 +147,7 @@ impl GPS {
             return;
         }
 
-        let segments: Vec<&str> = line.split(',').collect();
+        let segments: Vec<&str, 32> = line.split(',').collect();
         if segments.len() < 15 {
             return;
         }
@@ -189,7 +190,7 @@ impl GPS {
         info!("GPS using baud rate {:?}", current_baud_rate);
 
         if current_baud_rate != DESIRED_BAUD_RATE {
-            self.change_gps_baud_rate(DESIRED_BAUD_RATE).await?;
+            self.change_gps_baud_rate().await?;
         }
 
         info!("Setting measurement frequency");

@@ -4,6 +4,7 @@
 #![no_std]
 #![no_main]
 
+// TODO: some dependency still allocates
 extern crate alloc;
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
@@ -52,7 +53,7 @@ use vehicle::*;
 #[cfg(feature="gcs")]
 use gcs::*;
 
-const HEAP_SIZE: usize = 12384;
+const HEAP_SIZE: usize = 1024;
 static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
 
 #[global_allocator]
@@ -135,7 +136,7 @@ async fn main(low_priority_spawner: Spawner) {
     #[cfg(not(feature="gcs"))]
     let spi2_cs_can = Output::new(p.PB12, Level::High, Speed::VeryHigh);
     #[cfg(not(feature="gcs"))]
-    let (can_tx, can_rx, can_handle) = can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await.unwrap();
+    let (can_tx, can_rx, can_handle) = can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await;
 
     // SPI 3
     let mut spi3_config = embassy_stm32::spi::Config::default();

@@ -4,9 +4,6 @@
 #![no_main]
 
 #[cfg(target_os = "none")]
-extern crate alloc;
-
-#[cfg(target_os = "none")]
 use defmt_rtt as _; // global logger (TODO)
 
 #[cfg(target_os = "none")]

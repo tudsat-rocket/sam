@@ -1,4 +1,4 @@
-use alloc::vec::Vec;
+use heapless::Vec;
 
 use embedded_hal_async::spi::SpiDevice;
 
@@ -37,12 +37,12 @@ impl<SPI: SpiDevice> W25Q<SPI> {
         Ok(w25)
     }
 
-    async fn command(&mut self, opcode: W25OpCode, params: &[u8], response_len: usize) -> Result<Vec<u8>, FlashError<SPI::Error>> {
+    async fn command(&mut self, opcode: W25OpCode, params: &[u8], response_len: usize) -> Result<Vec<u8, 256>, FlashError<SPI::Error>> {
         let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
         self.spi.transfer_in_place(&mut payload).await?;
 
-        Ok(payload[(1 + params.len())..].to_vec())
+        Ok(Vec::from_slice(&payload[(1 + params.len())..]).unwrap_or_default())
     }
 
     pub fn size(&self) -> u32 {
@@ -55,7 +55,7 @@ impl<SPI: SpiDevice> W25Q<SPI> {
         response.map(|resp| resp[0] & 0x01 > 0).unwrap_or(true)
     }
 
-    pub async fn read(&mut self, address: u32, len: u32) -> Result<Vec<u8>, FlashError<SPI::Error>> {
+    pub async fn read(&mut self, address: u32, len: u32) -> Result<Vec<u8, 256>, FlashError<SPI::Error>> {
         if self.is_busy().await {
             return Err(FlashError::Busy);
         }
