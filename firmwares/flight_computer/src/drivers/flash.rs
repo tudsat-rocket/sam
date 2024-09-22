@@ -1,3 +1,4 @@
+use embassy_time::Instant;
 use heapless::Vec;
 
 use embedded_hal_async::spi::SpiDevice;
@@ -72,6 +73,10 @@ impl<SPI: SpiDevice> W25Q<SPI> {
         self.command(W25OpCode::WriteEnable, &[], 0).await?;
         let cmd = [&address.to_be_bytes(), data].concat();
         self.command(W25OpCode::PageProgram4BAddress, &cmd, 0).await?;
+
+        let t = Instant::now();
+        while t.elapsed().as_micros() < 1000 && self.is_busy().await {}
+
         Ok(())
     }
 
