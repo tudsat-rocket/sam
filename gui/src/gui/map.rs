@@ -185,7 +185,9 @@ impl MapState {
                     let pos = Position::from_lat_lon(vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64);
                     let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
                     let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
-                    let variance = vs.sim.as_ref().map(|sim| sim.kalman_P[0]).unwrap_or(0.0);
+                    let variance = vs.sim.as_ref().map(|sim| sim.kalman_P[0])
+                        .or(vs.position_variance)
+                        .unwrap_or(0.0);
                     (pos, alt, att, fm.unwrap_or_default(), variance)
                 });
             let all_gps_positions = data_source.vehicle_states()

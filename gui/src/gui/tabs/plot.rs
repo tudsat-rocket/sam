@@ -116,7 +116,7 @@ struct TileBehavior<'a> {
     gyroscope_plot: &'a mut PlotState,
     accelerometer_plot: &'a mut PlotState,
     magnetometer_plot: &'a mut PlotState,
-    barometer_plot: &'a mut PlotState,
+    pressures_plot: &'a mut PlotState,
     temperature_plot: &'a mut PlotState,
     power_plot: &'a mut PlotState,
     runtime_plot: &'a mut PlotState,
@@ -142,7 +142,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot, self.data_source),
             PlotCell::Accelerometers => ui.plot_telemetry(&self.accelerometer_plot, self.data_source),
             PlotCell::Magnetometer   => ui.plot_telemetry(&self.magnetometer_plot, self.data_source),
-            PlotCell::Pressures      => ui.plot_telemetry(&self.barometer_plot, self.data_source),
+            PlotCell::Pressures      => ui.plot_telemetry(&self.pressures_plot, self.data_source),
             PlotCell::Temperatures   => ui.plot_telemetry(&self.temperature_plot, self.data_source),
             PlotCell::Power          => ui.plot_telemetry(&self.power_plot, self.data_source),
             PlotCell::Runtime        => ui.plot_telemetry(&self.runtime_plot, self.data_source),
@@ -207,7 +207,7 @@ pub struct PlotTab {
     gyroscope_plot: PlotState,
     accelerometer_plot: PlotState,
     magnetometer_plot: PlotState,
-    barometer_plot: PlotState,
+    pressures_plot: PlotState,
     temperature_plot: PlotState,
     power_plot: PlotState,
     runtime_plot: PlotState,
@@ -233,11 +233,11 @@ impl PlotTab {
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
             .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
             .line("Vario [m/s]", B, |vs| vs.vertical_speed)
-            .line("Speed [m/s]", G, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2) + s.kalman_x[5].powi(2)).sqrt()))
-            .line("Ground Speed [m/s]", BR, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2)).sqrt()))
+            //.line("Speed [m/s]", G, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2) + s.kalman_x[5].powi(2)).sqrt()))
+            //.line("Ground Speed [m/s]", BR, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2)).sqrt()))
             .line("True Vertical Accel [m/s²]", G, |vs| vs.sim.as_ref().and_then(|s| s.vertical_accel))
-            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed))
-            .horizontal_line(343.2, R);
+            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed));
+            //.horizontal_line(343.2, R);
 
         // TODO: do AGL plot better (GPS won't work in reality because altitude_ground isn't included)
         let altitude_plot = PlotState::new("Altitude (AGL)", (None, None), shared_plot.clone())
@@ -245,8 +245,8 @@ impl PlotTab {
             .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
             .line("Altitude [m]", B, |vs| vs.altitude_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
             .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default())).flatten())
-            .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude))
-            .horizontal_line(3000.0, G1);
+            .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude));
+            //.horizontal_line(3000.0, G1);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
             .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
@@ -266,29 +266,31 @@ impl PlotTab {
             .line("Mag (Y) [µT]", G, |vs| vs.magnetometer.map(|a| a.y))
             .line("Mag (Z) [µT]", B, |vs| vs.magnetometer.map(|a| a.z));
 
-        let barometer_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
-            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0));
+        let pressures_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
+            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0))
+            .line("ACS Tank [bar]", R, |vs| vs.acs_tank_pressure)
+            .line("ACS Post-Regulator [bar]", G, |vs| vs.acs_regulator_pressure)
+            .line("ACS Accel Valve [bar]", O, |vs| vs.acs_accel_valve_pressure)
+            .line("ACS Decel Valve [bar]", O1, |vs| vs.acs_decel_valve_pressure)
+            .line("Recovery [bar]", B, |vs| vs.recovery_pressure)
+            .line("Main Release Sensor", BR, |vs| vs.main_release_sensor.map(|b| if b { 10.0 } else { 0.0 }));
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Baro. Temp. [°C]", C, |vs| vs.temperature_baro);
+            .line("Barometer [°C]", C, |vs| vs.temperature_baro)
+            .line("ACS [°C]", R, |vs| vs.acs_temperature.flatten().map(|t| (t as f32) / 2.0))
+            .line("Recovery [°C]", B, |vs| vs.recovery_temperature.flatten().map(|t| (t as f32) / 2.0))
+            .line("Payload [°C]", O, |vs| vs.payload_temperature.flatten().map(|t| (t as f32) / 2.0));
 
         let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            //.line("Arm Voltage [V]", O, |vs| vs.arm_voltage.map(|v| (v as f32) / 1000.0))
             .line("Battery Voltage [V]", G, |vs| vs.battery_voltage.map(|v| (v as f32) / 1000.0))
-            .line("Current [A]", O1, |vs| vs.current.map(|v| (v as f32) / 1000.0))
+            .line("Battery Current [A]", O1, |vs| vs.current.map(|v| (v as f32) / 1000.0))
             .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0))
-            .line("ACS Board Output Voltage [V]", R, |vs| {
-                vs.io_board_power_data
-                    .as_ref()
-                    .and_then(|(role, msg)| (*role == IoBoardRole::Acs).then_some(msg))
-                    .map(|msg| msg.output_voltage as f32 / 1000.0)
-            })
-            .line("ACS Board Current [A]", O, |vs| {
-                vs.io_board_power_data
-                    .as_ref()
-                    .and_then(|(role, msg)| (*role == IoBoardRole::Acs).then_some(msg))
-                    .map(|msg| msg.output_current as f32 / 1000.0)
-            });
+            .line("ACS Voltage [V]", G1, |vs| vs.acs_voltage.flatten().map(|v| (v as f32) / 1000.0))
+            .line("ACS Current [A]", O, |vs| vs.acs_current.flatten().map(|v| (v as f32) / 1000.0))
+            .line("Recovery Voltage [V]", C, |vs| vs.recovery_voltage.flatten().map(|v| (v as f32) / 1000.0))
+            .line("Recovery Current [A]", R, |vs| vs.recovery_current.flatten().map(|v| (v as f32) / 1000.0))
+            .line("Payload Voltage [V]", G1, |vs| vs.payload_voltage.flatten().map(|v| (v as f32) / 1000.0))
+            .line("Payload Current [A]", O, |vs| vs.payload_current.flatten().map(|v| (v as f32) / 1000.0));
 
         let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
             .line("CPU Util. [%]", O, |vs| vs.cpu_utilization);
@@ -312,7 +314,13 @@ impl PlotTab {
             .line("P (speed Z) [m/s]", B1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[5]))
             .line("P (accel. Z) [m/s²]", B, |vs| vs.sim.as_ref().map(|s| s.kalman_P[8]))
             .line("R (baro.) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[0]))
-            .line("R (pos. X/Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]));
+            .line("R (pos. X/Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]))
+            .line("X/Y Pos. Variance [m]", R, |vs| vs.position_variance)
+            .line("Altitude Variance [m]", B, |vs| vs.altitude_variance)
+            .line("Vertical Speed Variance [m/s]", O1, |vs| vs.vertical_speed_variance)
+            .line("Barometer Variance [m]", C, |vs| vs.barometer_variance)
+            .line("Accelerometer Variance [m/s²]", O, |vs| vs.accelerometer_variance)
+            .line("GPS Variance [m]", G, |vs| vs.gps_variance);
 
         let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
             .line("Thrusters", B1, |vs| vs.thruster_valve_state.map(|v| v.into()));
@@ -356,7 +364,7 @@ impl PlotTab {
             gyroscope_plot,
             accelerometer_plot,
             magnetometer_plot,
-            barometer_plot,
+            pressures_plot,
             temperature_plot,
             power_plot,
             runtime_plot,
@@ -385,12 +393,17 @@ impl PlotTab {
             tiles.insert_tab_tile(left_misc),
         ];
 
+        let t = vec![
+            tiles.insert_pane(PlotCell::Pressures),
+            tiles.insert_pane(PlotCell::Runtime),
+        ];
+
         let overview = vec![
             tiles.insert_pane(PlotCell::Orientation),
             tiles.insert_pane(PlotCell::Temperatures),
             tiles.insert_pane(PlotCell::Acs),
             tiles.insert_pane(PlotCell::Power),
-            tiles.insert_pane(PlotCell::Runtime),
+            tiles.insert_tab_tile(t),
             tiles.insert_pane(PlotCell::Signal),
         ];
 
@@ -402,8 +415,8 @@ impl PlotTab {
         ];
 
         let right_misc = vec![
-            tiles.insert_vertical_tile(raw_sensors),
             tiles.insert_grid_tile(overview),
+            tiles.insert_vertical_tile(raw_sensors),
             tiles.insert_pane(PlotCell::IoSensors),
             tiles.insert_pane(PlotCell::FinData),
         ];
@@ -554,7 +567,7 @@ impl PlotTab {
                 gyroscope_plot: &mut self.gyroscope_plot,
                 accelerometer_plot: &mut self.accelerometer_plot,
                 magnetometer_plot: &mut self.magnetometer_plot,
-                barometer_plot: &mut self.barometer_plot,
+                pressures_plot: &mut self.pressures_plot,
                 temperature_plot: &mut self.temperature_plot,
                 power_plot: &mut self.power_plot,
                 runtime_plot: &mut self.runtime_plot,

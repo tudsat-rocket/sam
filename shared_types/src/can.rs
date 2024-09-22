@@ -166,7 +166,7 @@ pub struct IoBoardSensorMessage {
 impl CanBusMessage for IoBoardSensorMessage {
     fn serialize(self) -> [u8; 6] {
         let mut sensors_packed: u64 = 0;
-        for i in 0..3 {
+        for i in 0..4 {
             let sensor_value = self.i2c_sensors[i].map(|(val, _)| val).unwrap_or(0x3ff);
             let some_flag = self.i2c_sensors[i].is_some() as u16;
             let alert_flag = self.i2c_sensors[i].map(|(_, alert)| alert).unwrap_or(false) as u16;

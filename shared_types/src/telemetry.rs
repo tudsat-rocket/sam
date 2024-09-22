@@ -203,18 +203,31 @@ pub struct GPSDatum {
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum AcsMode {
     #[default]
-    Disabled,
-    Auto,
-    Manual
+    Disabled = 0b00,
+    Auto = 0b01,
+    Manual = 0b10
+}
+
+impl TryFrom<u8> for AcsMode {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0b00 => Ok(Self::Disabled),
+            0b01 => Ok(Self::Auto),
+            0b10 => Ok(Self::Manual),
+            _ => Err(())
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ThrusterValveState {
     #[default]
-    Closed,
-    OpenAccel,
-    OpenDecel,
-    OpenBoth,
+    Closed = 0b00,
+    OpenAccel = 0b10,
+    OpenDecel = 0b01,
+    OpenBoth = 0b11,
 }
 
 impl Into<f32> for ThrusterValveState {
@@ -227,14 +240,31 @@ impl Into<f32> for ThrusterValveState {
     }
 }
 
+impl TryFrom<u8> for ThrusterValveState {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0b00 => Ok(Self::Closed),
+            0b10 => Ok(Self::OpenAccel),
+            0b01 => Ok(Self::OpenDecel),
+            0b11 => Ok(Self::OpenBoth),
+            _ => Err(())
+        }
+    }
+}
+
+
 // contains everything that might be sent via telemetry or stored
 #[derive(Clone, Default, Debug)]
+#[allow(non_snake_case)]
 pub struct VehicleState {
     pub time: u32,
     pub mode: Option<FlightMode>,
 
     pub orientation: Option<UnitQuaternion<f32>>,
     pub acceleration_world: Option<Vector3<f32>>,
+    pub ground_speed: Option<f32>,
     pub vertical_speed: Option<f32>,
     pub vertical_accel: Option<f32>,
     pub altitude_asl: Option<f32>,
@@ -251,6 +281,13 @@ pub struct VehicleState {
     pub altitude_baro: Option<f32>,
     pub temperature_baro: Option<f32>,
 
+    pub position_variance: Option<f32>,
+    pub altitude_variance: Option<f32>,
+    pub vertical_speed_variance: Option<f32>,
+    pub barometer_variance: Option<f32>,
+    pub accelerometer_variance: Option<f32>,
+    pub gps_variance: Option<f32>,
+
     pub charge_voltage: Option<u16>,
     pub battery_voltage: Option<u16>,
     pub arm_voltage: Option<u16>,
@@ -266,8 +303,29 @@ pub struct VehicleState {
 
     pub gps: Option<GPSDatum>,
 
+    pub acs_voltage: Option<Option<u16>>,
+    pub acs_current: Option<Option<i16>>,
+    pub acs_temperature: Option<Option<i8>>,
+    pub recovery_voltage: Option<Option<u16>>,
+    pub recovery_current: Option<Option<i16>>,
+    pub recovery_temperature: Option<Option<i8>>,
+    pub payload_voltage: Option<Option<u16>>,
+    pub payload_current: Option<Option<i16>>,
+    pub payload_temperature: Option<Option<i8>>,
+    pub fins_present: Option<[bool; 3]>,
+    pub main_release_sensor: Option<bool>,
+
     pub acs_mode: Option<AcsMode>,
     pub thruster_valve_state: Option<ThrusterValveState>,
+
+    pub camera_state: Option<[bool; 3]>,
+
+    // all in bar
+    pub acs_tank_pressure: Option<f32>,
+    pub acs_regulator_pressure: Option<f32>,
+    pub acs_accel_valve_pressure: Option<f32>,
+    pub acs_decel_valve_pressure: Option<f32>,
+    pub recovery_pressure: Option<f32>,
 
     // ground station data, only used by sam to correlate GCS value with vehicle measurements
     // TODO: exclude for firmware?
@@ -359,76 +417,88 @@ impl Into<VehicleState> for TelemetryMain {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryMainCompressed {
-    pub time: u32, // TODO: combine these two?
-    pub mode: FlightMode,
-    pub orientation: (u8, u8, u8, u8),
-    pub vertical_speed: f8,
-    pub vertical_accel: f8,
-    pub altitude_baro: u16,
-    pub altitude_max: u16,
-    pub altitude: u16,
+pub struct TelemetryFastCompressed {
+    pub time: u32,
+    pub flight_mode_and_valve_state: u8,
+    pub azimuth: u8,
+    pub elevation: i8,
+    pub vertical_speed: i16, // could be optimized
+    pub vertical_accel: i8,
+    pub altitude_asl: u16,
+    pub altitude_baro: i8, // offset from altitude_asl
+    pub apogee_asl: u16,
+    pub battery_current: i16,
 }
 
-impl From<VehicleState> for TelemetryMainCompressed {
+#[cfg(not(target_abi="eabi"))]
+impl From<VehicleState> for TelemetryFastCompressed {
     fn from(vs: VehicleState) -> Self {
-        let quat = vs.orientation
-            .clone()
-            .map(|q| q.coords)
+        let mode = vs.mode.unwrap_or_default() as u8;
+        let acs_mode = vs.acs_mode.unwrap_or_default() as u8;
+        let valve_state = vs.thruster_valve_state.unwrap_or_default() as u8;
+        let flight_mode_and_valve_state = (mode << 4) | (acs_mode << 2) | (valve_state & 0b11);
+
+        let azimuth = vs.orientation
             .map(|q| {
-                (
-                    (127.0 + q.x * 127.0) as u8,
-                    (127.0 + q.y * 127.0) as u8,
-                    (127.0 + q.z * 127.0) as u8,
-                    (127.0 + q.w * 127.0) as u8,
-                )
-            });
+                let attitude = q * Vector3::new(0.0, 0.0, 1.0);
+                (90.0 - attitude.y.atan2(attitude.x).to_degrees()) % 360.0
+            })
+            .unwrap_or_default();
+        let azimuth = if azimuth < 0.0 { azimuth + 360.0 } else { azimuth };
+        let azimuth = (azimuth * 256.0 / 360.0) as u8;
+
+        let elevation = vs.orientation
+            .map(|q| {
+                let up = Vector3::new(0.0, 0.0, 1.0);
+                let attitude = q * up;
+                90.0 - up.dot(&attitude).acos().to_degrees()
+            })
+            .unwrap_or_default();
+        let elevation = (elevation * 128.0 / 90.0) as i8;
+
+        let vertical_speed = vs.vertical_speed.map(|x| (x * 20.0) as i16).unwrap_or_default().into();
+        let vertical_accel = vs.vertical_accel.map(|x| (x * 4.0) as i8).unwrap_or_default().into();
+
+        let altitude_asl = (vs.altitude_asl.unwrap_or_default() * 10.0 + 1000.0) as u16; // TODO: this limits us to 6km AMSL
+        let altitude_baro = ((vs.altitude_baro.unwrap_or_default() - vs.altitude_asl.unwrap_or_default()) * 2.0) as i8;
+        let apogee_asl = (vs.apogee_asl.unwrap_or_default() * 10.0 + 1000.0) as u16;
+
+        let battery_current = vs.current.unwrap_or_default() as i16;
 
         Self {
             time: vs.time,
-            mode: vs.mode.unwrap_or_default(),
-            orientation: quat.unwrap_or((127, 127, 127, 127)),
-            vertical_speed: vs.vertical_speed.map(|x| x * 10.0).unwrap_or_default().into(),
-            vertical_accel: vs.vertical_accel.map(|x| x * 10.0).unwrap_or_default().into(),
-            altitude_baro: (vs.altitude_baro.unwrap_or_default() * 10.0 + 1000.0) as u16, // TODO: this limits us to 6km AMSL
-            altitude: (vs.altitude_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
-            altitude_max: (vs.apogee_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
+            flight_mode_and_valve_state,
+            azimuth,
+            elevation,
+            vertical_speed,
+            vertical_accel,
+            altitude_asl,
+            altitude_baro,
+            apogee_asl,
+            battery_current,
         }
     }
 }
 
 #[cfg(not(target_os = "none"))]
-impl Into<VehicleState> for TelemetryMainCompressed {
+impl Into<VehicleState> for TelemetryFastCompressed {
     fn into(self) -> VehicleState {
-        let (x, y, z, w) = self.orientation;
-        let quat_raw = Quaternion {
-            coords: Vector4::new(
-                ((x as f32) - 127.0) / 127.0,
-                ((y as f32) - 127.0) / 127.0,
-                ((z as f32) - 127.0) / 127.0,
-                ((w as f32) - 127.0) / 127.0
-            ),
-        };
-        let orientation = Some(UnitQuaternion::from_quaternion(quat_raw));
+        let altitude_asl = ((self.altitude_asl as f32) - 1000.0) / 10.0;
+        let altitude_baro_asl = altitude_asl + (self.altitude_baro as f32) / 2.0;
 
         VehicleState {
             time: self.time,
-            mode: Some(self.mode),
-            orientation,
-            altitude_asl: Some((self.altitude as f32 - 1000.0) / 10.0),
-            altitude_baro: Some((self.altitude_baro as f32 - 1000.0) / 10.0),
-            apogee_asl: Some((self.altitude_max as f32 - 1000.0) / 10.0),
-            vertical_speed: Some(Into::<f32>::into(self.vertical_speed) / 10.0),
-            vertical_accel: Some(Into::<f32>::into(self.vertical_accel) / 10.0),
-
-            #[cfg(not(target_os = "none"))]
-            euler_angles: orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
-            #[cfg(not(target_os = "none"))]
-            elevation: orientation.map(|q| {
-                let up = Vector3::new(0.0, 0.0, 1.0);
-                let attitude = q * up;
-                90.0 - up.dot(&attitude).acos().to_degrees()
-            }),
+            mode: (self.flight_mode_and_valve_state >> 4).try_into().ok(),
+            acs_mode: ((self.flight_mode_and_valve_state >> 2) & 0b11).try_into().ok(),
+            thruster_valve_state: (self.flight_mode_and_valve_state & 0b11).try_into().ok(),
+            azimuth: Some((self.azimuth as f32) * 360.0 / 256.0),
+            elevation: Some((self.elevation as f32) * 90.0 / 128.0),
+            vertical_speed: Some((self.vertical_speed as f32) / 20.0),
+            vertical_accel: Some((self.vertical_speed as f32) / 4.0),
+            altitude_asl: Some(altitude_asl),
+            altitude_baro: Some(altitude_baro_asl),
+            apogee_asl: Some(((self.apogee_asl as f32) - 1000.0) / 10.0),
+            current: Some(self.battery_current as i32),
 
             ..Default::default()
         }
@@ -478,55 +548,15 @@ impl Into<VehicleState> for TelemetryRawSensors {
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct TelemetryRawSensorsCompressed {
-    pub time: u32,
-    pub gyro: CompressedVector3,
-    pub accelerometer1: CompressedVector3,
-    pub accelerometer2: CompressedVector3,
-    pub magnetometer: CompressedVector3,
-    pub pressure_baro: u16, // TODO: compress this further
-}
-
-impl From<VehicleState> for TelemetryRawSensorsCompressed {
-    fn from(vs: VehicleState) -> Self {
-        Self {
-            time: vs.time,
-            gyro: (vs.gyroscope.unwrap_or_default() * 10.0).into(),
-            accelerometer1: (vs.accelerometer1.unwrap_or_default() * 100.0).into(),
-            accelerometer2: (vs.accelerometer2.unwrap_or_default() * 10.0).into(),
-            magnetometer: (vs.magnetometer.unwrap_or_default() * 10.0).into(),
-            pressure_baro: (vs.pressure_baro.unwrap_or_default() * 10.0) as u16,
-        }
-    }
-}
-
-impl Into<VehicleState> for TelemetryRawSensorsCompressed {
-    fn into(self) -> VehicleState {
-        VehicleState {
-            time: self.time,
-            gyroscope: Some(<_ as Into<Vector3<f32>>>::into(self.gyro) / 10.0),
-            accelerometer1: Some(<_ as Into<Vector3<f32>>>::into(self.accelerometer1) / 100.0),
-            accelerometer2: Some(<_ as Into<Vector3<f32>>>::into(self.accelerometer2) / 10.0),
-            magnetometer: Some(<_ as Into<Vector3<f32>>>::into(self.magnetometer) / 10.0),
-            pressure_baro: Some((self.pressure_baro as f32) / 10.0),
-            ..Default::default()
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryDiagnostics {
     pub time: u32,
     pub cpu_utilization: u8,
     pub charge_voltage: u16,
     pub battery_voltage: u16,
-    pub current: i16,
     pub lora_rssi: u8,
-    pub altitude_ground: u16,
+    pub altitude_ground_asl: u16,
     pub transmit_power_and_data_rate: u8,
     pub temperature_baro: i8,
-    pub recovery_drogue: [u8; 2],
-    pub recovery_main: [u8; 2],
 }
 
 impl From<VehicleState> for TelemetryDiagnostics {
@@ -536,13 +566,11 @@ impl From<VehicleState> for TelemetryDiagnostics {
             cpu_utilization: (100.0 * vs.cpu_utilization.unwrap_or_default()) as u8,
             charge_voltage: vs.charge_voltage.unwrap_or_default(),
             battery_voltage: vs.battery_voltage.unwrap_or_default() << 2, // TODO: breakwire
-            current: vs.current.unwrap_or_default() as i16,
             lora_rssi: vs.lora_rssi.unwrap_or_default(),
-            altitude_ground: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
+            altitude_ground_asl: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
             transmit_power_and_data_rate: ((vs.data_rate.unwrap_or_default() as u8) << 7) |
                 vs.transmit_power.unwrap_or_default() as u8,
             temperature_baro: (vs.temperature_baro.unwrap_or_default() * 2.0) as i8,
-            // TODO: remove recovery
             ..Default::default() // TODO
         }
     }
@@ -552,10 +580,9 @@ impl Into<VehicleState> for TelemetryDiagnostics {
     fn into(self) -> VehicleState {
         VehicleState {
             time: self.time,
-            altitude_ground_asl: Some((self.altitude_ground as f32 - 1000.0) / 10.0),
+            altitude_ground_asl: Some((self.altitude_ground_asl as f32 - 1000.0) / 10.0),
             battery_voltage: Some(self.battery_voltage >> 2),
             charge_voltage: Some(self.charge_voltage),
-            current: Some(self.current as i32),
             cpu_utilization: Some(self.cpu_utilization as f32),
             lora_rssi: Some(self.lora_rssi),
             data_rate: Some((self.transmit_power_and_data_rate >> 7).into()),
@@ -580,21 +607,25 @@ pub struct TelemetryGPS {
 
 impl From<VehicleState> for TelemetryGPS {
     fn from(vs: VehicleState) -> Self {
-        let latitude = vs.gps.as_ref()
-            .and_then(|gps| gps.latitude)
+        let gps_latitude = vs.gps.as_ref().and_then(|gps| gps.latitude);
+        let gps_longitude = vs.gps.as_ref().and_then(|gps| gps.longitude);
+
+        let fix = vs.gps.as_ref().map(|gps| gps.fix).clone().unwrap_or_default();
+        let num_satellites = vs.gps.as_ref().map(|gps| gps.num_satellites).unwrap_or(0);
+        let fix_and_sats = ((fix as u8) << 5) + ((num_satellites as u8) & 0x1f);
+
+        let latitude = if num_satellites >= 6 { gps_latitude } else { vs.latitude };
+        let longitude = if num_satellites >= 6 { gps_longitude } else { vs.longitude };
+
+        let latitude = latitude
             .map(|lat| ((lat.clamp(-90.0, 90.0) + 90.0) * 16777215.0 / 180.0) as u32)
             .map(|lat| [(lat >> 16) as u8, (lat >> 8) as u8, lat as u8])
             .unwrap_or([0, 0, 0]);
-        let longitude = vs.gps.as_ref()
-            .and_then(|gps| gps.longitude)
+        let longitude = longitude
             .map(|lng| ((lng.clamp(-180.0, 180.0) + 180.0) * 16777215.0 / 360.0) as u32)
             .map(|lng| [(lng >> 16) as u8, (lng >> 8) as u8, lng as u8])
             .unwrap_or([0, 0, 0]);
 
-        let fix_and_sats = ((vs.gps.as_ref().map(|gps| gps.fix).clone().unwrap_or_default() as u8) << 5) +
-            ((vs.gps.as_ref().map(|gps| gps.num_satellites).unwrap_or(0) as u8) & 0x1f);
-
-        // TODO
         TelemetryGPS {
             time: vs.time,
             fix_and_sats,
@@ -609,29 +640,220 @@ impl From<VehicleState> for TelemetryGPS {
 
 impl Into<VehicleState> for TelemetryGPS {
     fn into(self) -> VehicleState {
+        let num_satellites = self.fix_and_sats & 0x1f;
+
+        let lat = ((self.latitude[0] as u32) << 16) + ((self.latitude[1] as u32) << 8) + (self.latitude[2] as u32);
+        let latitude = (lat > 0).then(|| lat).map(|lat| (lat as f32) * 180.0 / 16777215.0 - 90.0);
+
+        let lng = ((self.longitude[0] as u32) << 16) + ((self.longitude[1] as u32) << 8) + (self.longitude[2] as u32);
+        let longitude = (lng > 0).then(|| lng).map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0);
+
         let gps = GPSDatum {
             utc_time: None,
             fix: (self.fix_and_sats >> 5).into(),
             num_satellites: self.fix_and_sats & 0x1f,
             hdop: self.hdop,
-            latitude: {
-                let lat =
-                    ((self.latitude[0] as u32) << 16) + ((self.latitude[1] as u32) << 8) + (self.latitude[2] as u32);
-                (lat > 0).then(|| lat).map(|lat| (lat as f32) * 180.0 / 16777215.0 - 90.0)
-            },
-            longitude: {
-                let lng =
-                    ((self.longitude[0] as u32) << 16) + ((self.longitude[1] as u32) << 8) + (self.longitude[2] as u32);
-                (lng > 0).then(|| lng).map(|lng| (lng as f32) * 360.0 / 16777215.0 - 180.0)
-            },
+            latitude: (num_satellites >= 6).then_some(latitude).flatten(),
+            longitude: (num_satellites >= 6).then_some(longitude).flatten(),
             altitude: (self.altitude_asl != u16::MAX).then(|| (self.altitude_asl as f32 - 1000.0) / 10.0),
         };
 
         VehicleState {
             time: self.time,
+            latitude,
+            longitude,
             gps: Some(gps),
             flash_pointer: Some((self.flash_pointer as u32) * 1024),
             ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TelemetryPressures {
+    pub time: u32,
+    pub acs_tank_pressure: Option<u16>,
+    pub acs_regulator_pressure: Option<u16>,
+    pub acs_accel_valve_pressure: Option<u16>,
+    pub acs_decel_valve_pressure: Option<u16>,
+    pub recovery_pressure: Option<u16>,
+}
+
+impl From<VehicleState> for TelemetryPressures {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            acs_tank_pressure: vs.acs_tank_pressure.map(|p| (p * 100.0) as u16),
+            acs_regulator_pressure: vs.acs_regulator_pressure.map(|p| (p * 1000.0) as u16),
+            acs_accel_valve_pressure: vs.acs_accel_valve_pressure.map(|p| (p * 1000.0) as u16),
+            acs_decel_valve_pressure: vs.acs_decel_valve_pressure.map(|p| (p * 1000.0) as u16),
+            recovery_pressure: vs.recovery_pressure.map(|p| (p * 1000.0) as u16),
+        }
+    }
+}
+
+impl Into<VehicleState> for TelemetryPressures {
+    fn into(self) -> VehicleState {
+        VehicleState {
+            time: self.time,
+            acs_tank_pressure: self.acs_tank_pressure.map(|p| (p as f32) / 100.0),
+            acs_regulator_pressure: self.acs_regulator_pressure.map(|p| (p as f32) / 1000.0),
+            acs_accel_valve_pressure: self.acs_accel_valve_pressure.map(|p| (p as f32) / 1000.0),
+            acs_decel_valve_pressure: self.acs_decel_valve_pressure.map(|p| (p as f32) / 1000.0),
+            recovery_pressure: self.recovery_pressure.map(|p| (p as f32) / 1000.0),
+
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TelemetryKalman {
+    pub time: u32,
+    pub ground_speed: u16,
+    pub position_variance: f32,
+    pub altitude_variance: u16,
+    pub vertical_speed_variance: u16,
+    pub barometer_variance: u16,
+    pub gps_variance: f32,
+}
+
+impl From<VehicleState> for TelemetryKalman {
+    fn from(vs: VehicleState) -> Self {
+        Self {
+            time: vs.time,
+            ground_speed: (vs.ground_speed.unwrap_or_default() * 10.0) as u16,
+            position_variance: vs.position_variance.unwrap_or_default(),
+            altitude_variance: (vs.altitude_variance.unwrap_or_default() * 50.0) as u16,
+            vertical_speed_variance: (vs.vertical_speed_variance.unwrap_or_default() * 100.0) as u16,
+            barometer_variance: (vs.barometer_variance.unwrap_or_default() * 10.0) as u16,
+            gps_variance: vs.gps_variance.unwrap_or_default(),
+        }
+    }
+}
+
+impl Into<VehicleState> for TelemetryKalman {
+    fn into(self) -> VehicleState {
+        VehicleState {
+            time: self.time,
+            ground_speed: Some((self.ground_speed as f32) / 10.0),
+            position_variance: Some(self.position_variance),
+            altitude_variance: Some((self.altitude_variance as f32) / 50.0),
+            vertical_speed_variance: Some((self.vertical_speed_variance as f32) / 100.0),
+            barometer_variance: Some((self.barometer_variance as f32) / 10.0),
+            gps_variance: Some(self.gps_variance),
+
+            ..Default::default()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct TelemetryBus {
+    pub time: u32,
+    pub module_presence: u8,
+    pub voltages: [u16; 2],
+    pub currents: [i16; 2],
+    pub temperatures: [i8; 2],
+    pub camera_state: u8,
+}
+
+impl From<VehicleState> for TelemetryBus {
+    fn from(vs: VehicleState) -> Self {
+        let acs_present = vs.acs_voltage.map(|o| o.is_some()).unwrap_or(false);
+        let recovery_present = vs.recovery_voltage.map(|o| o.is_some()).unwrap_or(false);
+        let payload_present = vs.payload_voltage.map(|o| o.is_some()).unwrap_or(false);
+        let fins_present = vs.fins_present.unwrap_or_default();
+
+        let module_presence = ((acs_present as u8) << 7) |
+            ((recovery_present as u8) << 6) |
+            ((payload_present as u8) << 5) |
+            ((fins_present[0] as u8) << 2) |
+            ((fins_present[1] as u8) << 1) |
+            (fins_present[2] as u8);
+
+        let camera_state = vs.camera_state.unwrap_or_default();
+        let camera_state = ((camera_state[0] as u8) << 7) |
+            ((camera_state[1] as u8) << 6) |
+            ((camera_state[2] as u8) << 5) |
+            (vs.main_release_sensor.unwrap_or_default() as u8);
+
+        if payload_present {
+            Self {
+                time: vs.time,
+                module_presence,
+                voltages: [vs.payload_voltage.unwrap_or_default().unwrap_or_default(), 0],
+                currents: [vs.payload_current.unwrap_or_default().unwrap_or_default(), 0],
+                temperatures: [vs.payload_temperature.unwrap_or_default().unwrap_or_default(), 0],
+                camera_state
+            }
+        } else {
+            let voltages = [vs.acs_voltage.unwrap_or_default().unwrap_or_default(), vs.recovery_voltage.unwrap_or_default().unwrap_or_default()];
+            let currents = [vs.acs_current.unwrap_or_default().unwrap_or_default(), vs.recovery_current.unwrap_or_default().unwrap_or_default()];
+            let temperatures = [vs.acs_temperature.unwrap_or_default().unwrap_or_default(), vs.recovery_temperature.unwrap_or_default().unwrap_or_default()];
+
+            Self {
+                time: vs.time,
+                module_presence,
+                voltages,
+                currents,
+                temperatures,
+                camera_state
+            }
+        }
+    }
+}
+
+impl Into<VehicleState> for TelemetryBus {
+    fn into(self) -> VehicleState {
+        let acs_present = (self.module_presence >> 7) > 0;
+        let recovery_present = ((self.module_presence >> 6) & 0b1) > 0;
+        let payload_present = ((self.module_presence >> 5) & 0b1) > 0;
+        let fins_present = [
+            ((self.module_presence >> 2) & 0b1) > 0,
+            ((self.module_presence >> 1) & 0b1) > 0,
+            ((self.module_presence >> 0) & 0b1) > 0
+        ];
+        let camera_state = [
+            ((self.camera_state >> 7) & 0b1) > 0,
+            ((self.camera_state >> 6) & 0b1) > 0,
+            ((self.camera_state >> 5) & 0b1) > 0
+        ];
+        let main_release = recovery_present.then_some((self.camera_state & 0b1) > 0);
+
+        if payload_present {
+            VehicleState {
+                time: self.time,
+                acs_voltage: Some(None),
+                acs_current: Some(None),
+                acs_temperature: Some(None),
+                recovery_voltage: Some(None),
+                recovery_current: Some(None),
+                recovery_temperature: Some(None),
+                payload_voltage: Some(Some(self.voltages[0])),
+                payload_current: Some(Some(self.currents[0])),
+                payload_temperature: Some(Some(self.temperatures[0])),
+                fins_present: Some(fins_present),
+                camera_state: Some(camera_state),
+                ..Default::default()
+            }
+        } else {
+            VehicleState {
+                time: self.time,
+                acs_voltage: Some(acs_present.then_some(self.voltages[0])),
+                acs_current: Some(acs_present.then_some(self.currents[0])),
+                acs_temperature: Some(acs_present.then_some(self.temperatures[0])),
+                recovery_voltage: Some(recovery_present.then_some(self.voltages[1])),
+                recovery_current: Some(recovery_present.then_some(self.currents[1])),
+                recovery_temperature: Some(recovery_present.then_some(self.temperatures[1])),
+                payload_voltage: Some(None),
+                payload_current: Some(None),
+                payload_temperature: Some(None),
+                fins_present: Some(fins_present),
+                camera_state: Some(camera_state),
+                main_release_sensor: main_release,
+                ..Default::default()
+            }
         }
     }
 }
@@ -714,11 +936,13 @@ impl ToString for LogLevel {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownlinkMessage {
     TelemetryMain(TelemetryMain),
-    TelemetryMainCompressed(TelemetryMainCompressed),
+    TelemetryFastCompressed(TelemetryFastCompressed),
     TelemetryRawSensors(TelemetryRawSensors),
-    TelemetryRawSensorsCompressed(TelemetryRawSensorsCompressed),
     TelemetryDiagnostics(TelemetryDiagnostics),
     TelemetryGPS(TelemetryGPS),
+    TelemetryPressures(TelemetryPressures),
+    TelemetryKalman(TelemetryKalman),
+    TelemetryBus(TelemetryBus),
     TelemetryCanBusMessage(TelemetryCanBusMessage),
     TelemetryGCS(TelemetryGCS),
     FlashContent(u32, heapless::Vec<u8, 256>),
@@ -729,11 +953,14 @@ impl DownlinkMessage {
     pub fn time(&self) -> u32 {
         match self {
             DownlinkMessage::TelemetryMain(tm) => tm.time,
-            DownlinkMessage::TelemetryMainCompressed(tm) => tm.time,
+            DownlinkMessage::TelemetryFastCompressed(tm) => tm.time,
             DownlinkMessage::TelemetryRawSensors(tm) => tm.time,
-            DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.time,
+            //DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.time,
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.time,
             DownlinkMessage::TelemetryGPS(tm) => tm.time,
+            DownlinkMessage::TelemetryPressures(tm) => tm.time,
+            DownlinkMessage::TelemetryKalman(tm) => tm.time,
+            DownlinkMessage::TelemetryBus(tm) => tm.time,
             DownlinkMessage::TelemetryCanBusMessage(tm) => tm.time,
             DownlinkMessage::TelemetryGCS(tm) => tm.time,
             DownlinkMessage::FlashContent(_, _) => 0,
@@ -747,11 +974,14 @@ impl From<DownlinkMessage> for VehicleState {
     fn from(msg: DownlinkMessage) -> VehicleState {
         match msg {
             DownlinkMessage::TelemetryMain(tm) => tm.into(),
-            DownlinkMessage::TelemetryMainCompressed(tm) => tm.into(),
+            DownlinkMessage::TelemetryFastCompressed(tm) => tm.into(),
             DownlinkMessage::TelemetryRawSensors(tm) => tm.into(),
-            DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.into(),
+            //DownlinkMessage::TelemetryRawSensorsCompressed(tm) => tm.into(),
             DownlinkMessage::TelemetryDiagnostics(tm) => tm.into(),
             DownlinkMessage::TelemetryGPS(tm) => tm.into(),
+            DownlinkMessage::TelemetryPressures(tm) => tm.into(),
+            DownlinkMessage::TelemetryKalman(tm) => tm.into(),
+            DownlinkMessage::TelemetryBus(tm) => tm.into(),
             DownlinkMessage::TelemetryCanBusMessage(tm) => tm.into(),
             DownlinkMessage::TelemetryGCS(tm) => tm.into(),
             DownlinkMessage::FlashContent(..) | DownlinkMessage::Settings(..) => Default::default(),
@@ -780,6 +1010,7 @@ pub enum Command {
     SetDataRate(TelemetryDataRate),
     SetAcsMode(AcsMode),
     SetAcsValveState(ThrusterValveState),
+    SetIoModuleOutput(IoBoardRole, u8, bool),
     EraseFlash,
 }
 

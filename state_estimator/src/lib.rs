@@ -359,6 +359,10 @@ impl StateEstimator {
         self.apogee_asl().map(|alt| alt - self.altitude_ground)
     }
 
+    pub fn ground_speed(&self) -> f32 {
+        (self.velocity().x.powi(2) + self.velocity().y.powi(2)).sqrt()
+    }
+
     pub fn vertical_speed(&self) -> f32 {
         self.velocity().z
     }
