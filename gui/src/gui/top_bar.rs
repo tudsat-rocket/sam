@@ -7,7 +7,7 @@ use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
 use egui::{Color32, Label, RichText, SelectableLabel, Stroke, Rect, Vec2};
 
-use shared_types::telemetry::*;
+use shared_types::{telemetry::*, IoBoardRole};
 
 use crate::data_source::*;
 use crate::telemetry_ext::*;
@@ -44,6 +44,9 @@ pub trait TopBarUiExt {
     fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource);
     fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource);
     fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource);
+    fn camera_controls(&mut self, current: [bool; 3], data_source: &mut dyn DataSource);
+    fn io_module_indicators(&mut self, acs_present: bool, recovery_present: bool, payload_present: bool);
+    fn fin_indicators(&mut self, fins_present: [bool; 3]);
 
     fn battery_bar(&mut self, w: f32, voltage: Option<f32>);
     fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>);
@@ -182,6 +185,37 @@ impl TopBarUiExt for egui::Ui {
             if response_accel.drag_stopped() || response_decel.drag_stopped() {
                 data_source.send_command(Command::SetAcsValveState(Closed)).unwrap();
             }
+        });
+    }
+
+    // TODO: data structure
+    fn camera_controls(&mut self, current: [bool; 3], data_source: &mut dyn DataSource) {
+        self.horizontal(|ui| {
+            if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[0], "R0")).clicked() {
+                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 0, !current[0])).unwrap();
+            }
+            if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[1], "R1")).clicked() {
+                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 1, !current[1])).unwrap();
+            }
+            if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[2], "P")).clicked() {
+                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Payload, 0, !current[2])).unwrap();
+            }
+        });
+    }
+
+    fn io_module_indicators(&mut self, acs_present: bool, recovery_present: bool, payload_present: bool) {
+        self.horizontal(|ui| {
+            let _ = ui.add_sized([40.0, 20.0], SelectableLabel::new(acs_present, "ACS"));
+            let _ = ui.add_sized([40.0, 20.0], SelectableLabel::new(recovery_present, "REC"));
+            let _ = ui.add_sized([40.0, 20.0], SelectableLabel::new(payload_present, "PAY"));
+        });
+    }
+
+    fn fin_indicators(&mut self, fins_present: [bool; 3]) {
+        self.horizontal(|ui| {
+            let _ = ui.add_sized([20.0, 20.0], SelectableLabel::new(fins_present[0], "0"));
+            let _ = ui.add_sized([20.0, 20.0], SelectableLabel::new(fins_present[1], "1"));
+            let _ = ui.add_sized([20.0, 20.0], SelectableLabel::new(fins_present[2], "2"));
         });
     }
 

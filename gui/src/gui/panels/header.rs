@@ -87,50 +87,75 @@ impl HeaderPanel {
 
         ui.separator();
 
-        let current_data_rate = Self::current(data_source, |vs| vs.data_rate).unwrap_or_default();
         let current_transmit_power = Self::current(data_source, |vs| vs.transmit_power).unwrap_or_default();
         let current_acs_mode = Self::current(data_source, |vs| vs.acs_mode).unwrap_or_default();
         let current_valve_state = Self::current(data_source, |vs| vs.thruster_valve_state).unwrap_or_default();
+        let acs_present = Self::current(data_source, |vs| vs.acs_voltage).map(|o| o.is_some()).unwrap_or_default();
+        let recovery_present = Self::current(data_source, |vs| vs.recovery_voltage).map(|o| o.is_some()).unwrap_or_default();
+        let payload_present = Self::current(data_source, |vs| vs.payload_voltage).map(|o| o.is_some()).unwrap_or_default();
+        let fins_present = Self::current(data_source, |vs| vs.fins_present).unwrap_or_default();
+        let current_camera_state = Self::current(data_source, |vs| vs.camera_state).unwrap_or_default();
 
         if vertical {
             ui.columns(4, |uis| {
                 uis[0].add_space(3.0);
-                uis[0].label("Data Rate [Hz]");
-                uis[1].data_rate_controls(current_data_rate, data_source);
-                uis[2].add_space(3.0);
-                uis[2].label("Transmit Power [dBm]");
-                uis[3].transmit_power_controls(current_transmit_power, data_source);
-            });
-        } else {
-            ui.vertical(|ui| {
-                ui.add_space(3.0);
-                ui.label("Data Rate [Hz]");
-                ui.data_rate_controls(current_data_rate, data_source);
-                ui.add_space(3.0);
-                ui.label("Transmit Power [dBm]");
-                ui.transmit_power_controls(current_transmit_power, data_source);
-            });
-        }
-
-        ui.separator();
-
-        if vertical {
-            ui.columns(4, |uis| {
-                uis[0].add_space(3.0);
-                uis[0].label("ACS Mode");
+                uis[0].weak("ACS Mode");
                 uis[1].acs_mode_controls(current_acs_mode, data_source);
                 uis[2].add_space(3.0);
-                uis[2].label("ACS Valves");
+                uis[2].weak("ACS Valves");
                 uis[3].acs_valve_controls(current_valve_state, current_acs_mode, data_source);
+            });
+
+            ui.separator();
+
+            ui.columns(4, |uis| {
+                uis[0].add_space(3.0);
+                uis[0].weak("Transmit Power [dBm]");
+                uis[1].transmit_power_controls(current_transmit_power, data_source);
+                uis[2].add_space(3.0);
+                uis[2].weak("Cams");
+                uis[3].camera_controls(current_camera_state, data_source);
+            });
+
+            ui.separator();
+
+            ui.columns(4, |uis| {
+                uis[0].add_space(3.0);
+                uis[0].weak("IO Modules");
+                uis[1].io_module_indicators(acs_present, recovery_present, payload_present);
+                uis[2].add_space(3.0);
+                uis[2].weak("Fins");
+                uis[3].fin_indicators(fins_present);
             });
         } else {
             ui.vertical(|ui| {
                 ui.add_space(3.0);
-                ui.label("ACS Mode");
+                ui.weak("Transmit Power [dBm]");
+                ui.transmit_power_controls(current_transmit_power, data_source);
+                ui.add_space(3.0);
+                ui.weak("IO Modules");
+                ui.io_module_indicators(acs_present, recovery_present, payload_present);
+                ui.horizontal(|ui| {
+                    ui.weak("Fins");
+                    ui.add_space(3.0);
+                    ui.fin_indicators(fins_present);
+                });
+            });
+
+            ui.separator();
+
+            ui.vertical(|ui| {
+                ui.add_space(3.0);
+                ui.weak("ACS Mode");
                 ui.acs_mode_controls(current_acs_mode, data_source);
                 ui.add_space(3.0);
-                ui.label("ACS Valves");
+                ui.weak("ACS Valves");
                 ui.acs_valve_controls(current_valve_state, current_acs_mode, data_source);
+                ui.horizontal(|ui| {
+                    ui.weak("Cams");
+                    ui.add_space(3.0);
+                    ui.camera_controls(current_camera_state, data_source);
+                });
             });
         }
 
