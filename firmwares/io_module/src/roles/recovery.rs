@@ -13,10 +13,6 @@ pub struct Recovery {}
 impl crate::roles::BoardRole for Recovery {
     const ROLE_ID: IoBoardRole = IoBoardRole::Recovery;
 
-    fn outputs_on_after_flightmode() -> Option<FlightMode> {
-        Some(FlightMode::ArmedLaunchImminent)
-    }
-
     // Read I2C sensors at COM1
     fn input1_mode() -> InputMode {
         let mut config = embassy_stm32::i2c::Config::default();

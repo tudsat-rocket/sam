@@ -18,10 +18,6 @@ pub struct Payload {}
 impl crate::roles::BoardRole for Payload {
     const ROLE_ID: IoBoardRole = IoBoardRole::Payload;
 
-    fn outputs_on_after_flightmode() -> Option<FlightMode> {
-        Some(FlightMode::ArmedLaunchImminent)
-    }
-
     fn input1_mode() -> InputMode {
         InputMode::Uart(embassy_stm32::usart::Config::default())
     }
