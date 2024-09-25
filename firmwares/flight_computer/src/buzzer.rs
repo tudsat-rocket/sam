@@ -204,6 +204,9 @@ pub struct Buzzer<TIM: 'static> {
 
 impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     pub fn init(mut pwm: SimplePwm<'static, TIM>, channel: Channel, block: Gpio, pin: usize) -> Self {
+        #[cfg(feature="rev1")]
+        pwm.set_duty(Channel::Ch4, pwm.get_max_duty() / 2);
+        #[cfg(not(feature="rev1"))]
         pwm.set_duty(Channel::Ch2, pwm.get_max_duty() / 2);
 
         let buzzer = Self {

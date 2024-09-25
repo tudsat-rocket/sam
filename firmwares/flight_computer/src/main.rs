@@ -105,6 +105,9 @@ async fn main(low_priority_spawner: Spawner) {
     // Shared SPI1 bus
     let mut spi1_config = embassy_stm32::spi::Config::default();
     spi1_config.frequency = Hertz::mhz(10);
+    #[cfg(feature="rev1")]
+    let spi1 = Spi::new(p.SPI1, p.PA5, p.PA7, p.PB4, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
+    #[cfg(not(feature="rev1"))]
     let spi1 = Spi::new(p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
     let spi1 = Mutex::<CriticalSectionRawMutex, _>::new(spi1);
     let spi1 = SPI1_SHARED.init(spi1);
@@ -146,12 +149,16 @@ async fn main(low_priority_spawner: Spawner) {
     let spi3 = SPI3_SHARED.init(spi3);
 
     let spi3_cs_flash = Output::new(p.PD2, Level::High, Speed::VeryHigh);
+    #[cfg(not(feature="gcs"))]
     let (flash, flash_handle, settings) = Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
 
     // Initialize GPS
+    #[cfg(not(feature="gcs"))]
     let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);
 
+    #[cfg(not(feature="gcs"))]
     let adc = Adc::new(p.ADC1, &mut Delay);
+    #[cfg(not(feature="gcs"))]
     let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
 
     let led_red = Output::new(p.PC13, Level::Low, Speed::Low);
@@ -159,14 +166,28 @@ async fn main(low_priority_spawner: Spawner) {
     let led_green = Output::new(p.PC15, Level::Low, Speed::Low);
     let leds = (led_red, led_yellow, led_green);
 
+    #[cfg(not(feature="gcs"))]
     let gpio_drogue = Output::new(p.PC8, Level::Low, Speed::Low);
+    #[cfg(not(feature="gcs"))]
     let gpio_main = Output::new(p.PC9, Level::Low, Speed::Low);
+    #[cfg(not(feature="gcs"))]
     let recovery = (gpio_drogue, gpio_main);
 
-    let gpioc_block = p.PC7.block();
-    let pwm_pin = PwmPin::new_ch2(p.PC7, OutputType::PushPull);
-    let pwm = SimplePwm::new(p.TIM3, None, Some(pwm_pin), None, None, Hertz::hz(440), Default::default());
-    let buzzer = Buzzer::init(pwm, Channel::Ch2, gpioc_block, 7);
+    #[cfg(feature="rev1")]
+    let buzzer = {
+        let gpiob_block = p.PB9.block();
+        let pwm_pin = PwmPin::new_ch4(p.PB9, OutputType::PushPull);
+        let pwm = SimplePwm::new(p.TIM4, None, None, None, Some(pwm_pin), Hertz::hz(440), Default::default());
+        Buzzer::init(pwm, Channel::Ch4, gpiob_block, 9)
+    };
+
+    #[cfg(not(feature="rev1"))]
+    let buzzer = {
+        let gpioc_block = p.PC7.block();
+        let pwm_pin = PwmPin::new_ch2(p.PC7, OutputType::PushPull);
+        let pwm = SimplePwm::new(p.TIM3, None, Some(pwm_pin), None, None, Hertz::hz(440), Default::default());
+        Buzzer::init(pwm, Channel::Ch2, gpioc_block, 7)
+    };
 
     iwdg.unleash();
 
@@ -206,11 +227,12 @@ async fn main(low_priority_spawner: Spawner) {
         medium_priority_spawner.spawn(can::run_rx(can_rx)).unwrap();
         medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
         medium_priority_spawner.spawn(flash::run(flash)).unwrap();
-        low_priority_spawner.spawn(guard_task()).unwrap();
     }
 
     #[cfg(feature="gcs")]
     high_priority_spawner.spawn(gcs::run(gcs, iwdg)).unwrap();
+
+    low_priority_spawner.spawn(guard_task()).unwrap();
 }
 
 #[interrupt]

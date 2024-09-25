@@ -22,6 +22,9 @@ type RadioHandle = Radio<SpiDevice<'static, CriticalSectionRawMutex, Spi<'static
 
 type LEDs = (Output<'static, PC13>, Output<'static, PC14>, Output<'static, PC15>);
 // TODO
+#[cfg(feature="rev1")]
+type Buzzer = BuzzerDriver<TIM4>;
+#[cfg(not(feature="rev1"))]
 type Buzzer = BuzzerDriver<TIM3>;
 
 const MAIN_LOOP_FREQUENCY: Hertz = Hertz::hz(1000);

@@ -66,17 +66,19 @@ impl CanHandle {
     }
 }
 
+#[cfg(not(feature="gcs"))]
 impl<SPI: SpiDevice<u8>> CanTx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
             let (id, msg) = self.receiver.receive().await;
-            if let Err(e) = self.driver.transmit(id, msg).await {
+            if let Err(e) = self.driver.lock().await.transmit(id, msg).await {
                 error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
             }
         }
     }
 }
 
+#[cfg(not(feature="gcs"))]
 impl<SPI: SpiDevice<u8>> CanRx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
@@ -178,11 +180,13 @@ pub async fn init(
     (can_tx, can_rx, handle)
 }
 
+#[cfg(not(feature="gcs"))]
 #[embassy_executor::task]
 pub async fn run_tx(mut can_tx: CanTxInst) -> ! {
     can_tx.run().await
 }
 
+#[cfg(not(feature="gcs"))]
 #[embassy_executor::task]
 pub async fn run_rx(mut can_rx: CanRxInst) -> ! {
     can_rx.run().await

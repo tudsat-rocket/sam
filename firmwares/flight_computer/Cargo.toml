@@ -47,6 +47,7 @@ defmt-test = "0.3"
 
 [features]
 gcs = []
+rev1 = []
 
 # cargo build/run
 [profile.dev]
