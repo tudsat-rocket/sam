@@ -18,11 +18,7 @@ impl crate::roles::BoardRole for Acs {
     const ROLE_ID: IoBoardRole = IoBoardRole::Acs;
 
     fn drive_voltage() -> DriveVoltage {
-        DriveVoltage::BoostConverter
-    }
-
-    fn boost_converter_voltage() -> Option<u16> {
-        Some(24_000)
+        DriveVoltage::ChargeBus
     }
 
     // We want to turn off the valves if we don't hear anything from
@@ -31,12 +27,12 @@ impl crate::roles::BoardRole for Acs {
         Some(Duration::from_millis(OUTPUT_FAILSAFE_TIMEOUT_MILLIS))
     }
 
-    //// Read I2C sensors at COM1
-    //fn input1_mode() -> InputMode {
-    //    let mut config = embassy_stm32::i2c::Config::default();
-    //    config.timeout = Duration::from_millis(10);
-    //    InputMode::I2c(Hertz::khz(100), config)
-    //}
+    // Read I2C sensors at COM1
+    fn input1_mode() -> InputMode {
+        let mut config = embassy_stm32::i2c::Config::default();
+        config.timeout = Duration::from_millis(10);
+        InputMode::I2c(Hertz::khz(100), config)
+    }
 
     // Read I2C sensors at COM3
     fn input3_mode() -> InputMode {
