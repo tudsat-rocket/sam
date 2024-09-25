@@ -299,10 +299,8 @@ impl Vehicle {
                         (IoBoardRole::Acs, 0) => {
                             self.acs_tank_pressure = self.settings.acs_tank_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[0]).map(|v| (self.time, v));
                             self.acs_regulator_pressure = self.settings.acs_regulator_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[1]).map(|v| (self.time, v));
-                        },
-                        (IoBoardRole::Acs, 1) => {
-                            self.acs_accel_valve_pressure = self.settings.acs_accel_valve_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[0]).map(|v| (self.time, v));
-                            self.acs_decel_valve_pressure = self.settings.acs_decel_valve_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[1]).map(|v| (self.time, v));
+                            self.acs_accel_valve_pressure = self.settings.acs_accel_valve_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[2]).map(|v| (self.time, v));
+                            self.acs_decel_valve_pressure = self.settings.acs_decel_valve_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[3]).map(|v| (self.time, v));
                         },
                         (IoBoardRole::Recovery, 0) => {
                             self.recovery_pressure = self.settings.recovery_pressure_sensor_settings.apply(sensor_msg.i2c_sensors[0]).map(|v| (self.time, v));
