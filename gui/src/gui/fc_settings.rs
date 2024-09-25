@@ -357,8 +357,8 @@ impl FcSettingsUiExt for Settings {
                 for (sensor_label, sensor_settings) in [
                     ("ACS Tank (0)", &mut self.acs_tank_pressure_sensor_settings),
                     ("ACS Regulator (1)", &mut self.acs_regulator_pressure_sensor_settings),
-                    ("ACS Accel. Valve (3)", &mut self.acs_accel_valve_pressure_sensor_settings),
-                    ("ACS Decel. Valve (4)", &mut self.acs_decel_valve_pressure_sensor_settings),
+                    ("ACS Accel. Valve (2)", &mut self.acs_accel_valve_pressure_sensor_settings),
+                    ("ACS Decel. Valve (3)", &mut self.acs_decel_valve_pressure_sensor_settings),
                     ("Recovery Section (0)", &mut self.recovery_pressure_sensor_settings),
                 ] {
                     ui.label(format!("{} Pressure Sensor Calib.", sensor_label));
