@@ -155,8 +155,9 @@ impl<SPI: SpiDevice> Flash<SPI> {
     async fn determine_pointer(&mut self) -> Result<(), FlashError<SPI::Error>> {
         // Determine first unwritten page by binary search
         let (mut a, mut b) = (FLASH_HEADER_SIZE, self.driver.size());
-        while b - a > PAGE_SIZE as u32 {
+        while b - a > 2*PAGE_SIZE as u32 {
             let mid = (a + b) / 2;
+            let mid = mid - (mid % PAGE_SIZE as u32);
             if self.driver.read(mid, 1).await?[0] == 0xff {
                 b = mid;
             } else {
@@ -165,6 +166,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
         }
 
         self.pointer = u32::max(b, FLASH_HEADER_SIZE);
+        defmt::info!("Flash pointer: 0x{:02x}", self.pointer);
         Ok(())
     }
 
@@ -194,11 +196,25 @@ impl<SPI: SpiDevice> Flash<SPI> {
             for i in 0..(PAGE_SIZE/CHUNK_SIZE) {
                 let chunk = &page[(i*CHUNK_SIZE)..((i+1)*CHUNK_SIZE)];
 
-                result = self.driver.write((self.pointer as usize) + (i*CHUNK_SIZE), &chunk).await;
+                for attempt in 0..3 {
+                    result = self.driver.write((self.pointer as usize) + (i*CHUNK_SIZE), &chunk).await;
+                    if result.is_err() {
+                        continue;
+                    }
+
+                    let read_back = self.driver.read(self.pointer + (i*CHUNK_SIZE) as u32, CHUNK_SIZE as u32).await;
+                    if read_back.map(|b| b == chunk).unwrap_or(false) {
+                        break;
+                    }
+
+                    Timer::after(Duration::from_micros(100)).await;
+
+                    defmt::warn!("Chunk write 0x{:02x}+0x{} failed. ({}/{})", self.pointer, i*CHUNK_SIZE, attempt+1, 3);
+                }
+
                 if result.is_err() {
                     break;
                 }
-
             }
 
             self.update_pointer(self.pointer + PAGE_SIZE as u32);
