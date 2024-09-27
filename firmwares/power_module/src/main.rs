@@ -80,7 +80,7 @@ async fn main(_spawner: Spawner) {
         let voltage_charge = (to_millivolts(vref_sample, adc.read(&mut vsense_charge).await) as f32 * (6.1 / 1.0)) as u16;
         let voltage_battery = (to_millivolts(vref_sample, adc.read(&mut vsense_batt).await) as f32 * (2.8 / 1.0)) as u16;
         let current_raw = (to_millivolts(vref_sample, adc.read(&mut isense).await) as i16) - 1650;
-        let current = ((((current_raw as f32) / (50.0 * 0.005)) as i16) + 2000) as u16;
+        let current = ((current_raw as f32) / (50.0 * 0.005)) as i32;
 
         info!("{}, {}, {}", voltage_charge, voltage_battery, current);
 
