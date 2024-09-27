@@ -665,7 +665,7 @@ impl Into<VehicleState> for TelemetryGPS {
             time: self.time,
             latitude,
             longitude,
-            gps: Some(gps),
+            gps: (self.hdop < u16::MAX).then_some(gps),
             flash_pointer: Some((self.flash_pointer as u32) * 1024),
             ..Default::default()
         }
