@@ -226,10 +226,10 @@ impl GPSHandle {
             self.new_datum = true;
         }
 
-        // we discard our last value after 200ms to avoid reporting stale values
+        // we discard our last value after 1200ms to avoid reporting stale values
         let value_expired = self.last_datum
             .as_ref()
-            .map(|(_d, t)| t.elapsed() > Duration::from_millis(200))
+            .map(|(_d, t)| t.elapsed() > Duration::from_millis(1200))
             .unwrap_or(false);
         if value_expired {
             self.last_datum = None;
