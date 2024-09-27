@@ -451,6 +451,10 @@ impl StateEstimator {
     }
 
     pub fn thruster_valve(&mut self) -> ThrusterValveState {
+        if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain) && self.time_in_mode() > 10_000 {
+            return ThrusterValveState::OpenBoth;
+        }
+
         if self.mode != FlightMode::Coast || self.altitude_agl() < 1500.0 || self.vertical_speed().abs() < 10.0 {
             self.last_valve_state = ThrusterValveState::Closed;
             self.last_valve_state_change = self.time;
