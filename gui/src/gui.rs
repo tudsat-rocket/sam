@@ -144,14 +144,15 @@ impl Sam {
             self.data_source_mut().send_command(Command::SetFlightMode(fm)).unwrap();
         }
 
+        let alt = ctx.input(|i| i.modifiers) == Modifiers::ALT;
         let key_accel = ctx.input_mut(|i| i.key_down(Key::Plus));
         let key_decel = ctx.input_mut(|i| i.key_down(Key::Minus));
 
-        let thruster_state = if key_accel && key_decel {
+        let thruster_state = if alt && key_accel && key_decel {
             Some(ThrusterValveState::OpenBoth)
-        } else if key_accel {
+        } else if alt && key_accel {
             Some(ThrusterValveState::OpenAccel)
-        } else if key_decel {
+        } else if alt && key_decel {
             Some(ThrusterValveState::OpenDecel)
         } else if (ctx.input_mut(|i| i.key_released(Key::Plus) || i.key_released(Key::Minus))) && !key_accel && !key_decel {
             Some(ThrusterValveState::Closed)
