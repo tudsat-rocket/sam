@@ -489,13 +489,19 @@ impl Into<VehicleState> for TelemetryFastCompressed {
         let altitude_asl = ((self.altitude_asl as f32) - 1000.0) / 10.0;
         let altitude_baro_asl = altitude_asl + (self.altitude_baro as f32) / 2.0;
 
+        let azimuth = (self.azimuth as f32) * 360.0 / 256.0;
+        let elevation = (self.elevation as f32) * 90.0 / 128.0;
+        let direction = Vector3::new(azimuth.to_radians().cos(), -azimuth.to_radians().sin(), -elevation.to_radians().sin());
+        let orientation = UnitQuaternion::face_towards(&direction, &Vector3::new(0.01, 0.01, 1.0));
+
         VehicleState {
             time: self.time,
             mode: (self.flight_mode_and_valve_state >> 4).try_into().ok(),
             acs_mode: ((self.flight_mode_and_valve_state >> 2) & 0b11).try_into().ok(),
             thruster_valve_state: (self.flight_mode_and_valve_state & 0b11).try_into().ok(),
-            azimuth: Some((self.azimuth as f32) * 360.0 / 256.0),
-            elevation: Some((self.elevation as f32) * 90.0 / 128.0),
+            azimuth: Some(azimuth),
+            elevation: Some(elevation),
+            orientation: Some(orientation),
             vertical_speed: Some((self.vertical_speed as f32) / 20.0),
             vertical_accel: Some((self.vertical_speed as f32) / 4.0),
             altitude_asl: Some(altitude_asl),
