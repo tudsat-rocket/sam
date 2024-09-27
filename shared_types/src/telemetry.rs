@@ -364,6 +364,7 @@ pub struct TelemetryMain {
     pub altitude_asl: u16,
     pub acs_mode: AcsMode,
     pub thruster_valve_state: ThrusterValveState,
+    pub battery_current: i16,
 }
 
 impl From<VehicleState> for TelemetryMain {
@@ -379,6 +380,7 @@ impl From<VehicleState> for TelemetryMain {
             altitude_asl: (vs.altitude_asl.unwrap_or_default() * 10.0) as u16,
             acs_mode: vs.acs_mode.unwrap_or_default(),
             thruster_valve_state: vs.thruster_valve_state.unwrap_or_default(),
+            battery_current: vs.current.unwrap_or_default() as i16,
         }
     }
 }
@@ -396,6 +398,7 @@ impl Into<VehicleState> for TelemetryMain {
             vertical_accel: Some(self.vertical_accel.to_f32()),
             acs_mode: Some(self.acs_mode),
             thruster_valve_state: Some(self.thruster_valve_state),
+            current: Some(self.battery_current as i32),
 
             #[cfg(not(target_os = "none"))]
             euler_angles: self.orientation.map(|q| q.euler_angles()).map(|(r, p, y)| Vector3::new(r, p, y) * 180.0 / PI),
