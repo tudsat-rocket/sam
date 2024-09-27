@@ -249,8 +249,13 @@ unsafe fn I2C3_ER() {
 pub async fn guard_task() -> ! {
     let mut ticker = Ticker::every(Duration::from_millis(1000));
     loop {
-        let last = Instant::now();
-        ticker.next().await;
-        defmt::println!("{}", last.elapsed().as_millis());
+        let mut s: i64 = 0;
+        for _i in 0..10 {
+            let last = Instant::now();
+            ticker.next().await;
+            let millis = last.elapsed().as_millis() as i64;
+            s += (1000 - millis).abs();
+        }
+        defmt::info!("GT: {}", s);
     }
 }
