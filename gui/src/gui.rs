@@ -18,6 +18,7 @@ mod plot;
 pub mod tabs;
 mod theme;
 mod top_bar;
+mod model_3d;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::data_source::*;

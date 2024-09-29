@@ -22,6 +22,7 @@ use crate::gui::acs::AcsSystemDiagram;
 use crate::settings::AppSettings;
 
 use crate::gui::map::*;
+use crate::gui::model_3d::*;
 use crate::gui::plot::*;
 
 const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
@@ -56,6 +57,7 @@ pub enum PlotCell {
     IoSensors,
     FinData,
     Acs,
+    Model3D,
 }
 
 impl PlotCell {
@@ -79,6 +81,7 @@ impl PlotCell {
             PlotCell::IoSensors,
             PlotCell::FinData,
             PlotCell::Acs,
+            PlotCell::Model3D,
         ]
     }
 }
@@ -104,6 +107,7 @@ impl std::fmt::Display for PlotCell {
             PlotCell::IoSensors      => write!(f, "IO Board Sensors"),
             PlotCell::FinData        => write!(f, "Fin Data"),
             PlotCell::Acs            => write!(f, "ACS"),
+            PlotCell::Model3D        => write!(f, "3D Model")
         }
     }
 }
@@ -127,6 +131,7 @@ struct TileBehavior<'a> {
     raw_sensors_plot: &'a mut PlotState,
     fin_data_plot: &'a mut PlotState,
     map: &'a mut MapState,
+    model3d: &'a mut Model3DState,
 }
 
 impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
@@ -154,6 +159,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::FinData        => ui.plot_telemetry(&self.fin_data_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
             PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
+            PlotCell::Model3D        => { ui.add(Model3DPlot::new(&mut self.model3d, self.data_source)); },
         }
 
         egui_tiles::UiResponse::None
@@ -218,6 +224,7 @@ pub struct PlotTab {
     raw_sensors_plot: PlotState,
     fin_data_plot: PlotState,
     map: MapState,
+    model3d: Model3DState,
 }
 
 impl PlotTab {
@@ -351,6 +358,9 @@ impl PlotTab {
 
         let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
 
+        let mut model3d = Model3DState::default();
+        model3d.set_model(ShapeObj::from_shape(Shape::from_obj("gui/assets/frodo_J.obj")).scale(transform_gizmo_egui::math::DVec3::ONE,2.0).rotate(transform_gizmo_egui::math::DQuat::from_axis_angle(transform_gizmo_egui::math::DVec3::X,std::f64::consts::FRAC_PI_2)).apply_permanent());
+
         Self {
             tile_tree: Self::tree_launch(),
             show_view_settings: false,
@@ -373,6 +383,7 @@ impl PlotTab {
             raw_sensors_plot,
             fin_data_plot,
             map,
+            model3d,
         }
     }
 
@@ -417,6 +428,7 @@ impl PlotTab {
             tiles.insert_vertical_tile(raw_sensors),
             tiles.insert_pane(PlotCell::IoSensors),
             tiles.insert_pane(PlotCell::FinData),
+            tiles.insert_pane(PlotCell::Model3D),
         ];
 
         let right = vec![
@@ -576,6 +588,7 @@ impl PlotTab {
                 raw_sensors_plot: &mut self.raw_sensors_plot,
                 fin_data_plot: &mut self.fin_data_plot,
                 map: &mut self.map,
+                model3d: &mut self.model3d,
             };
             self.tile_tree.ui(&mut behavior, ui);
         });
