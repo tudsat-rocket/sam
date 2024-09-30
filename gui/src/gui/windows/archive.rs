@@ -105,22 +105,28 @@ impl ArchiveWindow {
 
     pub fn show_if_open(&mut self, ctx: &egui::Context) -> Option<LogFileDataSource> {
         if let Some(receiver) = self.progress_receiver.as_ref() {
-            match receiver.try_recv() {
-                Ok(ArchiveLoadProgress::Progress(progress)) => {
+            let mut progress = None;
+
+            while let Ok(p) = receiver.try_recv() {
+                progress = Some(p);
+            }
+
+            match progress {
+                Some(ArchiveLoadProgress::Progress(progress)) => {
                     self.progress = Some(progress);
                 }
-                Ok(ArchiveLoadProgress::Complete(bytes)) => {
-                    self.open = false;
+                Some(ArchiveLoadProgress::Complete(bytes)) => {
                     self.progress_receiver = None;
                     self.progress = None;
+                    self.open = false;
                     return Some(LogFileDataSource::from_bytes(bytes));
                 }
-                Ok(ArchiveLoadProgress::Error(e)) => {
+                Some(ArchiveLoadProgress::Error(e)) => {
                     error!("{:?}", e); // TODO: show this visually
                     self.progress_receiver = None;
                     self.progress = None;
-                }
-                _ => {}
+                },
+                None => {}
             }
         }
 
