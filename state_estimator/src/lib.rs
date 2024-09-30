@@ -237,7 +237,7 @@ impl StateEstimator {
                     .ahrs
                     .update(&(gyro * 3.14159 / 180.0), &acc, &mag)
                     .ok()
-                    .map(|q| UnitQuaternion::from_euler_angles(0., 0., 90.) * *q);
+                    .cloned();
             }
 
             // Rotate acceleration vector to get world-space acceleration

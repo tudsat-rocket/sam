@@ -492,7 +492,7 @@ impl Into<VehicleState> for TelemetryFastCompressed {
 
         let azimuth = (self.azimuth as f32) * 360.0 / 256.0;
         let elevation = (self.elevation as f32) * 90.0 / 128.0;
-        let direction = Vector3::new(azimuth.to_radians().cos(), -azimuth.to_radians().sin(), -elevation.to_radians().sin());
+        let direction = Vector3::new(azimuth.to_radians().sin(), azimuth.to_radians().cos(), -elevation.to_radians().sin());
         let orientation = UnitQuaternion::face_towards(&direction, &Vector3::new(0.01, 0.01, 1.0));
 
         VehicleState {
