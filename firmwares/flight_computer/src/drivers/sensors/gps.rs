@@ -71,10 +71,10 @@ impl GPS {
         (gps, handle)
     }
 
-    async fn read_gps_packet(&mut self) -> Result<String<128>, Error> {
-        let mut buffer: [u8; 128] = [0x00; 128];
+    async fn read_gps_packet(&mut self) -> Result<String<512>, Error> {
+        let mut buffer: [u8; 512] = [0x00; 512];
         let n = self.uart.read_until_idle(&mut buffer).await?;
-        let buffer: Vec<u8, 128> = Vec::from_slice(&buffer[..n]).unwrap_or_default();
+        let buffer: Vec<u8, 512> = Vec::from_slice(&buffer[..n]).unwrap_or_default();
         Ok(String::from_utf8(buffer).unwrap_or_default())
     }
 
