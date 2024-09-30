@@ -1,17 +1,17 @@
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum KnownMotors {
     #[default]
-    CesaroniPro988088M1790P
+    CesaroniPro758187M1545P
 }
 
 impl KnownMotors {
     pub fn all() -> impl Iterator<Item=KnownMotors> {
-        vec![Self::CesaroniPro988088M1790P].into_iter()
+        vec![Self::CesaroniPro758187M1545P].into_iter()
     }
 
     pub fn name(&self) -> &'static str {
         match self {
-            Self::CesaroniPro988088M1790P => "Cesaroni Pro98 8088M1790-P",
+            Self::CesaroniPro758187M1545P => "Cesaroni Pro75 8187M1545-P",
         }
     }
 }
@@ -20,28 +20,47 @@ impl KnownMotors {
 impl Into<MotorSettings> for KnownMotors {
     fn into(self) -> MotorSettings {
         match self {
-            Self::CesaroniPro988088M1790P => MotorSettings {
+            Self::CesaroniPro758187M1545P => MotorSettings {
                 selected_motor: self,
-                dry_mass: 8.273 - 4.706,
-                wet_mass: 8.273,
+                dry_mass: 7.878 - 4.835,
+                wet_mass: 7.878,
                 thrust_curve: vec![
                     (0.0, 0.0),
-                    (0.059, 1791.514),
-                    (0.199, 1596.375),
-                    (0.6, 1782.109),
-                    (1.215, 1913.769),
-                    (1.973, 2021.918),
-                    (2.742, 1970.195),
-                    (3.387, 1833.833),
-                    (3.812, 1652.801),
-                    (4.28, 1556.407),
-                    (4.385, 1295.438),
-                    (4.476, 355.011),
-                    (4.541, 91.692),
-                    (4.597, 0.0),
+                    (0.038, 1517.15),
+                    (0.063, 1076.52),
+                    (0.068, 1282.32),
+                    (0.076, 1509.23),
+                    (0.144, 1741.42),
+                    (0.207, 1765.17),
+                    (0.334, 1749.34),
+                    (0.537, 1791.56),
+                    (0.753, 1794.19),
+                    (1.053, 1775.73),
+                    (1.383, 1788.92),
+                    (1.704, 1820.58),
+                    (1.856, 1828.5),
+                    (2.013, 1799.47),
+                    (2.601, 1686.02),
+                    (2.905, 1641.16),
+                    (3.188, 1617.41),
+                    (3.472, 1598.94),
+                    (3.738, 1583.11),
+                    (3.958, 1564.64),
+                    (4.14, 1543.54),
+                    (4.216, 1543.54),
+                    (4.33, 1482.85),
+                    (4.453, 1358.84),
+                    (4.55, 1187.34),
+                    (4.723, 1052.77),
+                    (4.876, 891.821),
+                    (4.969, 783.641),
+                    (5.028, 643.799),
+                    (5.231, 184.697),
+                    (5.303, 68.602),
+                    (5.396, 0.0),
                 ],
-                impulse: 8088.9,
-                performance: 1.0, 
+                impulse: 8181.8,
+                performance: 1.0,
             }
         }
     }

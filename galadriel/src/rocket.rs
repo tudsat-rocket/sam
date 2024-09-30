@@ -22,7 +22,7 @@ impl Default for RocketSettings {
     fn default() -> Self {
         let propellant_mass = 0.5;
         Self {
-            dry_mass: 14.157 - propellant_mass,
+            dry_mass: 17.037 - propellant_mass,
             drag_coef: DragCoefficient::Variable(vec![
                 // (mach_number, drag_coefficient)
                 (0.006, 0.622),
@@ -35,12 +35,10 @@ impl Default for RocketSettings {
                 (0.941, 0.545),
             ]),
             area: 0.018,
-            motor: MotorSettings {
-                performance: 0.95,
-                ..Default::default()
-            },
+            motor: MotorSettings::default(),
             thrusters: Some(ThrusterSettings {
-                propellant_mass
+                propellant_mass,
+                ..Default::default()
             }),
             parachutes: vec![
                 ParachuteSettings {
@@ -49,7 +47,7 @@ impl Default for RocketSettings {
                 },
                 ParachuteSettings {
                     area: PI * (2.44/2.0f32).powi(2),
-                    trigger: ParachuteTrigger::BelowAltitude(300.0),
+                    trigger: ParachuteTrigger::BelowAltitude(450.0),
                     ..Default::default()
                 },
             ],
