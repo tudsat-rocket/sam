@@ -370,6 +370,25 @@ impl FcSettingsUiExt for Settings {
                     });
                     ui.end_row();
                 }
+
+                ui.label("ACS Accelerations");
+                ui.horizontal(|ui| {
+                    ui.add(
+                        DragValue::new(&mut self.acs_acceleration_accel)
+                            .suffix(" m/s²")
+                            .speed(0.001)
+                            .clamp_range(0.0..=1000.0),
+                    );
+                    ui.weak("acceleration, ");
+                    ui.add(
+                        DragValue::new(&mut self.acs_acceleration_decel)
+                            .suffix(" m/s²")
+                            .speed(0.001)
+                            .clamp_range(0.0..=1000.0),
+                    );
+                    ui.weak("deceleration");
+                });
+                ui.end_row();
             })
     }
 }

@@ -49,8 +49,10 @@ pub struct StateEstimator {
     // TODO: move altitude_ground into here?
     gps_origin: Option<Vector3<f32>>,
     last_covariance_update: Wrapping<u32>,
-    last_valve_state: ThrusterValveState,
+    pub last_valve_state: ThrusterValveState,
     last_valve_state_change: Wrapping<u32>,
+    #[cfg(not(target_os = "none"))]
+    pub last_apogee_error: f32,
 }
 
 impl StateEstimator {
@@ -142,6 +144,8 @@ impl StateEstimator {
             last_covariance_update: Wrapping(0),
             last_valve_state: ThrusterValveState::Closed,
             last_valve_state_change: Wrapping(0),
+            #[cfg(not(target_os = "none"))]
+            last_apogee_error: 0.0,
         }
     }
 
@@ -338,9 +342,17 @@ impl StateEstimator {
     pub fn apogee_asl(&self) -> Option<f32> {
         match self.mode {
             FlightMode::Coast => {
+                let estimated_thruster_acc = match self.last_valve_state {
+                    ThrusterValveState::OpenAccel => self.settings.acs_acceleration_accel,
+                    ThrusterValveState::OpenDecel => -self.settings.acs_acceleration_decel,
+                    _ => 0.0
+                };
+                let orientation = self.orientation.unwrap_or_default();
+                let thrust = orientation * Vector3::new(0., 0., estimated_thruster_acc);
+
                 // First, figure out the current drag force
-                //let vehicle_mass = 13.657 + 3.567;
-                let drag = self.acceleration_world() + Vector3::new(0.0, 0.0, GRAVITY);
+                let drag = self.acceleration_world() - thrust + Vector3::new(0.0, 0.0, GRAVITY);
+
                 // This gives 0.5 * air density * drag coefficient * area
                 let drag_over_vel_squared = drag.magnitude() / self.velocity().magnitude_squared();
 
@@ -463,6 +475,12 @@ impl StateEstimator {
 
         // TODO: configuration, etc.
         let error = self.apogee_agl().unwrap_or_default() - 3000.0;
+
+        #[cfg(not(target_os = "none"))]
+        {
+            self.last_apogee_error = error;
+        }
+
         let threshold = if self.last_valve_state == ThrusterValveState::Closed {
             2.0
         } else {

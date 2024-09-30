@@ -167,6 +167,8 @@ pub struct Settings {
     pub acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub recovery_pressure_sensor_settings: PressureSensorCalibrationSettings,
+    pub acs_acceleration_accel: f32,
+    pub acs_acceleration_decel: f32,
 }
 
 impl Default for Settings {
@@ -203,6 +205,8 @@ impl Default for Settings {
             acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
             acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
             recovery_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
+            acs_acceleration_accel: 1.0,
+            acs_acceleration_decel: 1.0,
         }
     }
 }

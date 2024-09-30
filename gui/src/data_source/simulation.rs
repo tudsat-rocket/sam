@@ -260,7 +260,7 @@ impl SimulationWorker {
             self.current_state.apogee_asl = self.state_estimator.apogee_asl();
             self.current_state.latitude = self.state_estimator.latitude();
             self.current_state.longitude = self.state_estimator.longitude();
-            self.current_state.thruster_valve_state = Some(self.state_estimator.thruster_valve());
+            self.current_state.thruster_valve_state = Some(self.state_estimator.last_valve_state);
 
             let mut sim_state = SimulatedState {
                 orientation: None,
@@ -272,6 +272,7 @@ impl SimulationWorker {
                 kalman_x: self.state_estimator.kalman.x,
                 kalman_P: self.state_estimator.kalman.P.diagonal(),
                 kalman_R: self.state_estimator.kalman.R.diagonal(),
+                apogee_error: Some(self.state_estimator.last_apogee_error),
                 ..Default::default()
             };
 
