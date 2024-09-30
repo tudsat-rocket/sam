@@ -231,22 +231,17 @@ impl PlotTab {
             .line("True Azimuth [°]", R1, |vs| vs.sim.as_ref().and_then(|s| s.azimuth));
 
         let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
-            .line("Vertical Accel [m/s²]", O1, |vs| vs.vertical_accel)
+            .line("Vertical Accel [m/s²]", O, |vs| vs.vertical_accel)
             .line("Vario [m/s]", B, |vs| vs.vertical_speed)
-            //.line("Speed [m/s]", G, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2) + s.kalman_x[5].powi(2)).sqrt()))
-            //.line("Ground Speed [m/s]", BR, |vs| vs.sim.as_ref().map(|s| (s.kalman_x[3].powi(2) + s.kalman_x[4].powi(2)).sqrt()))
             .line("True Vertical Accel [m/s²]", G, |vs| vs.sim.as_ref().and_then(|s| s.vertical_accel))
             .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed));
-            //.horizontal_line(343.2, R);
 
-        // TODO: do AGL plot better (GPS won't work in reality because altitude_ground isn't included)
-        let altitude_plot = PlotState::new("Altitude (AGL)", (None, None), shared_plot.clone())
-            .line("Sea Level [m]", C, |vs| vs.altitude_ground_asl.map(|alt| -alt))
-            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
-            .line("Altitude [m]", B, |vs| vs.altitude_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default()))
-            .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl.map(|alt| alt - vs.altitude_ground_asl.unwrap_or_default())).flatten())
+        let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
+            .line("Ground [m]", BR, |vs| vs.altitude_ground_asl)
+            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
+            .line("Altitude [m]", B, |vs| vs.altitude_asl)
+            .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl).flatten())
             .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude));
-            //.horizontal_line(3000.0, G1);
 
         let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
             .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))

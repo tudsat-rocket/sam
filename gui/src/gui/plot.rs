@@ -378,6 +378,7 @@ impl PlotState {
         self
     }
 
+    #[allow(dead_code)]
     pub fn horizontal_line(mut self, y: f64, color: Color32) -> Self {
         self.horizontal_lines.push((y, color));
         self

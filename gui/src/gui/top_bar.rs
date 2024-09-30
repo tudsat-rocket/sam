@@ -40,7 +40,6 @@ pub trait TopBarUiExt {
         nominal_max: f32,
     );
 
-    fn data_rate_controls(&mut self, current: TelemetryDataRate, data_source: &mut dyn DataSource);
     fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource);
     fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource);
     fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource);
@@ -105,19 +104,6 @@ impl TopBarUiExt for egui::Ui {
                     ui.label(value_text.color(Color32::from_rgb(0xfa, 0xbd, 0x2f)));
                 }
             });
-        });
-    }
-
-    fn data_rate_controls(&mut self, current: TelemetryDataRate, data_source: &mut dyn DataSource) {
-        use TelemetryDataRate::*;
-
-        self.horizontal(|ui| {
-            if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == Low, "20")).clicked() {
-                data_source.send_command(Command::SetDataRate(TelemetryDataRate::Low)).unwrap();
-            }
-            if ui.add_sized([50.0, 20.0], SelectableLabel::new(current == High, "40")).clicked() {
-                data_source.send_command(Command::SetDataRate(TelemetryDataRate::High)).unwrap();
-            }
         });
     }
 
