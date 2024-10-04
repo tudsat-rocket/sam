@@ -211,13 +211,28 @@ impl Default for Settings {
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZDown,
-            acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
-            acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
-            acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
-            acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
-            recovery_pressure_sensor_settings: PressureSensorCalibrationSettings::default(),
-            acs_acceleration_accel: 1.0,
-            acs_acceleration_decel: 1.0,
+            acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings {
+                intercept: 2293.1,
+                slope: -6.24,
+            },
+            acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings {
+                intercept: 1495.7,
+                slope: 24.43
+            },
+            acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings {
+                intercept: 404.5,
+                slope: 25.09
+            },
+            acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings {
+                intercept: 296.2,
+                slope: 24.56,
+            },
+            recovery_pressure_sensor_settings: PressureSensorCalibrationSettings {
+                intercept: 2425.8,
+                slope: 9.11,
+            },
+            acs_acceleration_accel: 13.0 / 20.0,
+            acs_acceleration_decel: 13.0 / 20.0,
         }
     }
 }
