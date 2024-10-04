@@ -98,7 +98,7 @@ fn read_flash_chunk(
     address: u32,
     size: u32,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    const TIMEOUT: Duration = Duration::from_millis(100);
+    const TIMEOUT: Duration = Duration::from_millis(2000);
 
     let start = Instant::now();
     uplink_tx.blocking_send(UplinkMessage::ReadFlash(address, size))?;
@@ -120,7 +120,7 @@ fn read_flash_chunk(
 }
 
 fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Result<(), Box<dyn std::error::Error>> {
-    const NUM_ATTEMPTS: u32 = 10;
+    const NUM_ATTEMPTS: u32 = 20;
     const CHUNK_SIZE: u32 = 256;
     const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
@@ -154,6 +154,7 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
 
         let mut attempts = 0;
         loop {
+            std::thread::sleep(Duration::from_millis(10));
             match read_flash_chunk(&uplink_tx, &mut downlink_rx, address, CHUNK_SIZE) {
                 Ok(data) => {
                     if raw {
