@@ -496,6 +496,8 @@ impl Vehicle {
             let mut outputs: [bool; 8] = [false; 8];
             outputs[0] = self.camera_state[2];
             outputs[1] = self.camera_state[2];
+            outputs[2] = self.camera_state[2];
+            outputs[3] = self.camera_state[2];
             let msg = IoBoardOutputMessage { outputs };
             let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardCommand(IoBoardRole::Payload, 0));
             self.can.transmit(id, msg);
