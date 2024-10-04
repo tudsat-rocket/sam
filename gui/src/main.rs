@@ -208,11 +208,12 @@ fn dump_flash(path: PathBuf, force: bool, raw: bool, start: Option<u32>) -> Resu
 fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
     const X25: Crc<u16> = Crc::<u16>::new(&CRC_16_IBM_SDLC);
 
-    let mut f = File::open(path)?;
+    let mut f = File::open(&path)?;
     f.seek(SeekFrom::Start(FLASH_HEADER_SIZE as u64))?;
 
     let mut chunk_buffer: [u8; 256] = [0x00; 256];
     let mut address = FLASH_HEADER_SIZE;
+    let mut buffer: Vec<u8> = Vec::new();
     loop {
         if let Err(e) = f.read_exact(&mut chunk_buffer) {
             if e.kind() == ErrorKind::BrokenPipe || e.kind() == ErrorKind::UnexpectedEof {
@@ -235,12 +236,43 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         };
 
         if contents.map(|(data, crc)| X25.checksum(data) == crc).unwrap_or(false) {
-            std::io::stdout().write_all(contents.unwrap().0)?;
+            buffer.extend(contents.unwrap().0);
         } else {
             warn!("No valid data found for page {:02x?}, skipping page: {:02x?}", address, chunk_buffer);
         }
 
         address += 256;
+    }
+
+    let messages_with_flight_id: Vec<_> = buffer
+        .split_mut(|b| *b == 0x00)
+        .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
+        .scan((0, 1), |(time, flight_id), msg| {
+            if msg.time() < *time {
+                *flight_id += 1;
+            }
+
+            *time = msg.time();
+
+            Some((*flight_id, msg))
+        })
+        .collect();
+
+    for flight in messages_with_flight_id.chunk_by(|(a_id, _), (b_id, _)| a_id == b_id) {
+        let flight_id = flight[0].0;
+
+        let file_stem = path.file_stem().unwrap().to_str().unwrap();
+        let output_path = path.with_file_name(format!("{}_flight_{}.json", file_stem, flight_id));
+
+        let serialized: Vec<_> = flight
+            .into_iter()
+            .map(|(_flight_id, msg)| serde_json::to_string(&msg).unwrap())
+            .collect();
+
+        let mut output = File::create(output_path)?;
+        output.write_all(b"[\n")?;
+        output.write_all(&serialized.join(",\n").into_bytes())?;
+        output.write_all(b"\n]\n")?;
     }
 
     Ok(())
