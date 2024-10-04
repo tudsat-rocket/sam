@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use egui::{Align, Button, Color32, Layout, RichText, TextEdit};
+use egui::{Align, Button, Layout, RichText, TextEdit};
 
 use log::*;
 
@@ -140,7 +140,7 @@ impl ConfigureTab {
 
         ui.add_space(20.0);
 
-        ui.horizontal_centered(|ui| {
+        ui.horizontal(|ui| {
             ui.set_width(ui.available_width());
 
             if ui.button("🔃Reload").clicked() {
@@ -165,7 +165,8 @@ impl ConfigureTab {
         if let Some(fc_settings) = data_source.fc_settings_mut() {
             fc_settings.ui(ui, Some(settings), false);
         } else {
-            ui.colored_label(Color32::GRAY, "Not connected.");
+            ui.weak("Not connected.");
+            return;
         }
 
         ui.add_space(20.0);
@@ -193,8 +194,12 @@ impl ConfigureTab {
                 }
             }
 
-            if ui.button("🔃Reload").clicked() {
+            if ui.button("🔃Reload from FC").clicked() {
                 data_source.send(UplinkMessage::ReadSettings).unwrap();
+            }
+
+            if ui.button("⏮ Reset to Defaults").clicked() {
+                *data_source.fc_settings_mut().unwrap() = Default::default();
             }
         });
     }
@@ -204,25 +209,25 @@ impl ConfigureTab {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.set_enabled(enabled);
-            ui.horizontal(|ui| {
-                ui.set_width(ui.available_width());
-                ui.set_height(ui.available_height());
 
-                ui.vertical(|ui| {
-                    ui.set_width(ui.available_width() / 2.0);
-                    ui.set_height(ui.available_height());
-
-                    changed = self.app_settings_ui(ui, data_source, settings);
+            if ctx.screen_rect().width() > 1400.0 {
+                ui.columns(2, |cols| {
+                    egui::ScrollArea::vertical().id_source("app_settings").show(&mut cols[0], |ui| {
+                        changed = self.app_settings_ui(ui, data_source, settings);
+                    });
+                    egui::ScrollArea::vertical().id_source("fc_settings").show(&mut cols[1], |ui| {
+                        self.fc_settings_ui(ui, data_source, settings);
+                    });
                 });
-
-                ui.separator();
-
-                ui.vertical(|ui| {
+            } else {
+                egui::ScrollArea::vertical().id_source("settings").show(ui, |ui| {
                     ui.set_width(ui.available_width());
-
+                    changed = self.app_settings_ui(ui, data_source, settings);
+                    ui.add_space(20.0);
+                    ui.separator();
                     self.fc_settings_ui(ui, data_source, settings);
                 });
-            });
+            }
         });
 
         changed
