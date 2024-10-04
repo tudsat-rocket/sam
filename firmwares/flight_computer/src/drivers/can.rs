@@ -239,7 +239,7 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
         // Check Status register to find out if the FiFo is full
         let fifo_status = self.sfr_read(MCP2517FDRegister::C1FiFoSta2).await?;
         if (fifo_status & 0b1) == 0 {
-            warn!("Full transmit FiFo, resetting...");
+            //warn!("Full transmit FiFo, resetting...");
             let _ = self.configure().await;
             return Err(MCP2517Error::TransmitFiFoFull);
         }

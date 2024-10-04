@@ -71,8 +71,8 @@ impl<SPI: SpiDevice<u8>> CanTx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
             let (id, msg) = self.receiver.receive().await;
-            if let Err(e) = self.driver.lock().await.transmit(id, msg).await {
-                error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
+            if let Err(_e) = self.driver.lock().await.transmit(id, msg).await {
+                //error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
             }
         }
     }
