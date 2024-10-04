@@ -10,6 +10,7 @@ pub struct AppSettings {
     pub mapbox_access_token: String,
     pub lora: LoRaSettings,
     pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::gui::tabs::plot::PlotCell>>>,
+    pub lora_bookmarks: Option<Vec<LoRaSettings>>,
 }
 
 impl AppSettings {

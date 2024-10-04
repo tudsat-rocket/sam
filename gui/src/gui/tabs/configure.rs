@@ -141,6 +141,37 @@ impl ConfigureTab {
         ui.add_space(20.0);
 
         ui.horizontal(|ui| {
+            ui.label("LoRa bookmarks:");
+
+            settings.lora_bookmarks.get_or_insert(Vec::new());
+            let Some(lora_bookmarks) = settings.lora_bookmarks.as_mut() else {
+                unreachable!();
+            };
+
+            for bookmark in lora_bookmarks.iter() {
+                if ui.selectable_label(*bookmark == settings.lora, bookmark.binding_phrase.to_string()).clicked() {
+                    settings.lora = bookmark.clone();
+                }
+            }
+
+            let selected = lora_bookmarks.iter().find(|b| settings.lora == **b).cloned();
+
+            ui.add_enabled_ui(selected.is_none(), |ui| {
+                if ui.button("➕Add").clicked() {
+                    lora_bookmarks.push(settings.lora.clone());
+                }
+            });
+
+            ui.add_enabled_ui(selected.is_some(), |ui| {
+                if ui.button("🗑 Remove").clicked() {
+                    lora_bookmarks.remove(lora_bookmarks.iter().position(|b| settings.lora == *b).unwrap());
+                }
+            });
+        });
+
+        ui.add_space(20.0);
+
+        ui.horizontal(|ui| {
             ui.set_width(ui.available_width());
 
             if ui.button("🔃Reload").clicked() {
