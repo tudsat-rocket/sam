@@ -11,6 +11,7 @@ pub struct AppSettings {
     pub lora: LoRaSettings,
     pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::gui::tabs::plot::PlotCell>>>,
     pub lora_bookmarks: Option<Vec<LoRaSettings>>,
+    pub ground_station_position: Option<(f64, f64)>,
 }
 
 impl AppSettings {
@@ -28,7 +29,12 @@ impl AppSettings {
         }
 
         let f = File::open(config_dir.join("config.json"))?;
-        let config = serde_json::from_reader(f)?;
+        let mut config: Self = serde_json::from_reader(f)?;
+
+        if config.ground_station_position.is_none() {
+            config.ground_station_position = Some((39.394602516358944, -8.292601298676217));
+        }
+
         Ok(config)
     }
 

@@ -110,6 +110,7 @@ impl std::fmt::Display for PlotCell {
 
 struct TileBehavior<'a> {
     data_source: &'a mut dyn DataSource,
+    settings: &'a AppSettings,
     orientation_plot: &'a mut PlotState,
     vertical_speed_plot: &'a mut PlotState,
     altitude_plot: &'a mut PlotState,
@@ -152,7 +153,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::Masses         => ui.plot_telemetry(&self.masses_plot, self.data_source),
             PlotCell::IoSensors      => ui.plot_telemetry(&self.raw_sensors_plot, self.data_source),
             PlotCell::FinData        => ui.plot_telemetry(&self.fin_data_plot, self.data_source),
-            PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source)); },
+            PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source, self.settings)); },
             PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
         }
 
@@ -572,6 +573,7 @@ impl PlotTab {
                 raw_sensors_plot: &mut self.raw_sensors_plot,
                 fin_data_plot: &mut self.fin_data_plot,
                 map: &mut self.map,
+                settings,
             };
             self.tile_tree.ui(&mut behavior, ui);
         });

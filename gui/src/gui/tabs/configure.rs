@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use egui::{Align, Button, Layout, RichText, TextEdit};
+use egui::{Align, Button, Layout, RichText, TextEdit, DragValue};
 
 use log::*;
 
@@ -134,6 +134,21 @@ impl ConfigureTab {
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         ui.monospace(format!("{:032x}", settings.lora.authentication_key));
                     })
+                });
+                ui.end_row();
+
+                ui.label("GCS Pos.:");
+                ui.horizontal(|ui| {
+                    ui.weak("Lat");
+                    ui.add_sized(
+                        [100.0, ui.available_height()],
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().0).suffix(" °").speed(0.0001).clamp_range(-90.0..=90.0),
+                    );
+                    ui.weak("Lng");
+                    ui.add_sized(
+                        [100.0, ui.available_height()],
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().1).suffix(" °").speed(0.0001).clamp_range(-180.0..=180.0),
+                    );
                 });
                 ui.end_row();
             });

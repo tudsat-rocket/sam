@@ -18,6 +18,7 @@ use shared_types::telemetry::FlightMode;
 
 use crate::data_source::DataSource;
 use crate::telemetry_ext::ColorExt;
+use crate::settings::AppSettings;
 
 const GRADIENT_MAX_ALT: f64 = 10000.0;
 
@@ -261,10 +262,11 @@ pub struct Map<'a> {
     vehicle_position: Option<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     vehicle_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     orientation: Option<UnitQuaternion<f32>>,
+    settings: &'a AppSettings,
 }
 
 impl<'a> Map<'a> {
-    pub fn new(state: &'a mut MapState, data_source: &mut dyn DataSource) -> Self {
+    pub fn new(state: &'a mut MapState, data_source: &mut dyn DataSource, settings: &'a AppSettings) -> Self {
         let vehicle_positions = state.vehicle_positions(data_source);
         let vehicle_position = state.last_position();
         let orientation = data_source.vehicle_states().rev().find_map(|(_t, vs)| vs.orientation);
@@ -274,6 +276,7 @@ impl<'a> Map<'a> {
             vehicle_position,
             vehicle_positions,
             orientation,
+            settings,
         }
     }
 }
@@ -357,6 +360,28 @@ impl<'a> Widget for Map<'a> {
                 ]));
             }
         }
+
+        let (gcs_lat, gcs_lon) = self.settings.ground_station_position.unwrap();
+        let gcs_position = Position::from_lat_lon(gcs_lat, gcs_lon);
+        let attitude_text = if let Some((position, (alt_agl, _att, _fm, _hdop))) = self.vehicle_positions.last().as_ref().copied() {
+            let (rel_lat, rel_lng) = (position.lat() - gcs_position.lat(), position.lon() - gcs_position.lon());
+            let (rel_x, rel_y) = (rel_lng * 111_111.0 * gcs_position.lat().to_radians().cos(), rel_lat * 111_111.0);
+            let ground_dist = (rel_x.powi(2) + rel_y.powi(2)).sqrt();
+            let azimuth = rel_x.atan2(rel_y).to_degrees();
+            let elevation = alt_agl.atan2(ground_dist).to_degrees();
+            Some(format!("\nAzim.: {:.1}°\nElev.: {:.1}°", azimuth, elevation))
+        } else {
+            None
+        };
+
+        map = map.with_plugin(Places::new(vec![
+            Place {
+                position: gcs_position,
+                label: format!("GCS{}", attitude_text.unwrap_or_default()),
+                symbol: '📡',
+                style: Style::default(),
+            },
+        ]));
 
         let response = ui.add(map);
 
