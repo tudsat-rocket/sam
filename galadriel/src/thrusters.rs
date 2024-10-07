@@ -4,24 +4,27 @@ use shared_types::telemetry::ThrusterValveState;
 pub struct ThrusterSettings {
     /// Propellant mass (not included in rocket dry mass) [kg]
     pub propellant_mass: f32,
+    /// Propellant density [kg/m^3]
+    pub propellant_density: f32,
     /// Tank volume [L]
     pub tank_volume: f32,
     /// Thrust at nominal nozzle pressure [N]
     pub nominal_thrust: f32,
-    /// Nominal nozzle_pressure [bar]
-    pub nominal_nozzle_pressure: f32,
-    /// Influence of nozzle pressure no thrust [N / bar]
+    /// Nominal tank pressure [bar]
+    pub nominal_tank_pressure: f32,
+    /// Influence of tank pressure no thrust [N / bar]
     pub thrust_pressure_slope: f32,
 }
 
 impl Default for ThrusterSettings {
     fn default() -> Self {
         Self {
-            propellant_mass: 1.0,
-            tank_volume: 1.5,
-            nominal_thrust: 10.0,
-            nominal_nozzle_pressure: 30.0,
-            thrust_pressure_slope: 0.0, // TODO
+            propellant_mass: 0.4,
+            propellant_density: 1.2,
+            tank_volume: 1.1,
+            nominal_thrust: 12.0,
+            nominal_tank_pressure: 183.0,
+            thrust_pressure_slope: 0.089,
         }
     }
 }
@@ -56,22 +59,28 @@ impl Thrusters {
     }
 
     pub fn tank_pressure(&self) -> f32 {
-        todo!()
+        let dens = self.settings.propellant_density / 1000.0;
+        (self.propellant_mass / dens) / self.settings.tank_volume - 1.0
     }
 
     /// Current flow rate [g/s]
     pub fn flow_rate(&self) -> f32 {
         // TODO: delays, curve for opening/closing
-        match self.valve_state {
+        let coef = match self.valve_state {
             ThrusterValveState::Closed => 0.0,
-            _ => 15.0,
-        }
+            ThrusterValveState::OpenBoth => 1.4, // probably not correct
+            _ => 1.0,
+        };
+
+        (self.tank_pressure() / 300.0) * 60.0 * coef
     }
 
     /// Thrust [N]
     pub fn thrust(&self) -> f32 {
         let direction: f32 = self.valve_state.into();
-        direction * self.settings.nominal_thrust
+        let pressure_offset = f32::min(0.0, self.tank_pressure() - self.settings.nominal_tank_pressure);
+        let thrust = self.settings.nominal_thrust + pressure_offset * self.settings.thrust_pressure_slope;
+        direction * f32::max(0.0, thrust)
     }
 }
 
@@ -95,6 +104,13 @@ impl egui::Widget for &mut ThrusterSettings {
                                 .speed(0.001)
                                 .clamp_range(0.0..=200.0),
                         );
+                        ui.weak(" with ");
+                        ui.add(
+                            egui::DragValue::new(&mut self.propellant_density)
+                                .suffix(" kg/^3")
+                                .speed(0.001)
+                                .clamp_range(0.0..=200.0),
+                        );
                         ui.weak(" in ");
                         ui.add(
                             egui::DragValue::new(&mut self.tank_volume)
@@ -105,9 +121,9 @@ impl egui::Widget for &mut ThrusterSettings {
                     });
                     ui.end_row();
 
-                    ui.label("Nozzle pressure");
+                    ui.label("Nominal tank pressure");
                     ui.add(
-                        egui::DragValue::new(&mut self.nominal_nozzle_pressure)
+                        egui::DragValue::new(&mut self.nominal_tank_pressure)
                             .suffix(" bar")
                             .speed(0.1)
                             .clamp_range(0.0..=1000.0),
@@ -122,7 +138,7 @@ impl egui::Widget for &mut ThrusterSettings {
                                 .speed(0.01)
                                 .clamp_range(0.0..=1000.0),
                         );
-                        ui.weak(format!(" @ {}bar, ", self.nominal_nozzle_pressure));
+                        ui.weak(format!(" @ {}bar, ", self.nominal_tank_pressure));
                         ui.add(
                             egui::DragValue::new(&mut self.thrust_pressure_slope)
                                 .suffix(" N/bar")

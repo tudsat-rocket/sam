@@ -389,6 +389,14 @@ impl FcSettingsUiExt for Settings {
                     ui.weak("deceleration");
                 });
                 ui.end_row();
+
+                ui.label("Apogee prediction drag red.");
+                ui.add(
+                    DragValue::new(&mut self.drag_reduction_factor)
+                        .speed(0.001)
+                        .clamp_range(0.0..=10.0),
+                );
+                ui.end_row();
             })
     }
 }

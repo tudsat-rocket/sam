@@ -353,8 +353,12 @@ impl StateEstimator {
                 // First, figure out the current drag force
                 let drag = self.acceleration_world() - thrust + Vector3::new(0.0, 0.0, GRAVITY);
 
+                // By how much should we reduce our drag estimate to roughly match the
+                // average over the remaining flight?
+                let reduction = 1.0 + self.settings.drag_reduction_factor * self.mach().sqrt();
+
                 // This gives 0.5 * air density * drag coefficient * area
-                let drag_over_vel_squared = drag.magnitude() / self.velocity().magnitude_squared();
+                let drag_over_vel_squared = (drag.magnitude() / self.velocity().magnitude_squared()) / reduction;
 
                 // Calculate terminal velocity and remaining vertical distance
                 let terminal_vel_squared = GRAVITY / drag_over_vel_squared;
@@ -464,6 +468,7 @@ impl StateEstimator {
 
     pub fn thruster_valve(&mut self) -> ThrusterValveState {
         if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain) && self.time_in_mode() > 10_000 {
+            self.last_valve_state = ThrusterValveState::OpenBoth;
             return ThrusterValveState::OpenBoth;
         }
 

@@ -224,6 +224,8 @@ impl SimulationWorker {
                     thrusters.set_valve(self.state_estimator.thruster_valve());
                 }
 
+                self.current_state.acs_tank_pressure = sim.rocket.thrusters.as_ref().map(|t| t.tank_pressure());
+
                 // We don't really want to show every single tick in the plot. For simulations,
                 // we plot 100Hz, so every 50th simulated state.
                 self.settings.galadriel.delta_time >= 50 ||

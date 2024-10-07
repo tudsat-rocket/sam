@@ -169,6 +169,7 @@ pub struct Settings {
     pub recovery_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_acceleration_accel: f32,
     pub acs_acceleration_decel: f32,
+    pub drag_reduction_factor: f32,
 }
 
 impl Default for Settings {
@@ -233,6 +234,7 @@ impl Default for Settings {
             },
             acs_acceleration_accel: 13.0 / 20.0,
             acs_acceleration_decel: 13.0 / 20.0,
+            drag_reduction_factor: 0.5,
         }
     }
 }

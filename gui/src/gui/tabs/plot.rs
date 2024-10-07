@@ -319,7 +319,8 @@ impl PlotTab {
             .line("GPS Variance [m]", G, |vs| vs.gps_variance);
 
         let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
-            .line("Thrusters", B1, |vs| vs.thruster_valve_state.map(|v| v.into()))
+            .line("Thruster State", B1, |vs| vs.thruster_valve_state.map(|v| v.into()))
+            .line("Thrust [N]", B, |vs| vs.sim.as_ref().map(|sim| sim.force_thrust.unwrap_or_default().z))
             .line("Apogee Error", R, |vs| vs.sim.as_ref().and_then(|s| s.apogee_error));
 
         let masses_plot = PlotState::new("Masses", (Some(0.0), None), shared_plot.clone())

@@ -20,7 +20,7 @@ pub struct RocketSettings {
 
 impl Default for RocketSettings {
     fn default() -> Self {
-        let propellant_mass = 0.5;
+        let propellant_mass = 0.4;
         Self {
             dry_mass: 17.037 - propellant_mass,
             drag_coef: DragCoefficient::Variable(vec![
