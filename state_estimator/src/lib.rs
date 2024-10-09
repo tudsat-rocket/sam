@@ -339,12 +339,17 @@ impl StateEstimator {
         self.altitude_asl() - self.altitude_ground
     }
 
-    pub fn apogee_asl(&self) -> Option<f32> {
+    pub fn apogee_asl(&self, acs_tank_pressure: f32) -> Option<f32> {
         match self.mode {
             FlightMode::Coast => {
+                let direction: f32 = self.last_valve_state.into();
+                let pressure_offset = f32::min(0.0, acs_tank_pressure - self.settings.acs_nominal_tank_pressure);
+                let thrust = self.settings.acs_nominal_acceleration + pressure_offset * self.settings.acs_acceleration_pressure_slope;
+                let estimated_thruster_acceleration = direction * f32::max(0.0, thrust);
+
                 let estimated_thruster_acc = match self.last_valve_state {
-                    ThrusterValveState::OpenAccel => self.settings.acs_acceleration_accel,
-                    ThrusterValveState::OpenDecel => -self.settings.acs_acceleration_decel,
+                    ThrusterValveState::OpenAccel => estimated_thruster_acceleration,
+                    ThrusterValveState::OpenDecel => -estimated_thruster_acceleration,
                     _ => 0.0
                 };
                 let orientation = self.orientation.unwrap_or_default();
@@ -355,7 +360,7 @@ impl StateEstimator {
 
                 // By how much should we reduce our drag estimate to roughly match the
                 // average over the remaining flight?
-                let reduction = 1.0 + self.settings.drag_reduction_factor * self.mach().sqrt();
+                let reduction = 1.0 + self.settings.drag_reduction_factor * self.mach().powf(self.settings.drag_reduction_exp);
 
                 // This gives 0.5 * air density * drag coefficient * area
                 let drag_over_vel_squared = (drag.magnitude() / self.velocity().magnitude_squared()) / reduction;
@@ -371,8 +376,8 @@ impl StateEstimator {
         }
     }
 
-    pub fn apogee_agl(&self) -> Option<f32> {
-        self.apogee_asl().map(|alt| alt - self.altitude_ground)
+    pub fn apogee_agl(&self, acs_tank_pressure: f32) -> Option<f32> {
+        self.apogee_asl(acs_tank_pressure).map(|alt| alt - self.altitude_ground)
     }
 
     pub fn ground_speed(&self) -> f32 {
@@ -466,7 +471,7 @@ impl StateEstimator {
         }
     }
 
-    pub fn thruster_valve(&mut self) -> ThrusterValveState {
+    pub fn thruster_valve(&mut self, acs_tank_pressure: f32) -> ThrusterValveState {
         if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain) && self.time_in_mode() > 10_000 {
             self.last_valve_state = ThrusterValveState::OpenBoth;
             return ThrusterValveState::OpenBoth;
@@ -479,7 +484,7 @@ impl StateEstimator {
         }
 
         // TODO: configuration, etc.
-        let error = self.apogee_agl().unwrap_or_default() - 3000.0;
+        let error = (self.apogee_agl(acs_tank_pressure).unwrap_or_default() - 3000.0) + self.settings.apogee_error_offset;
 
         #[cfg(not(target_os = "none"))]
         {

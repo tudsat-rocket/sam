@@ -167,9 +167,12 @@ pub struct Settings {
     pub acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub recovery_pressure_sensor_settings: PressureSensorCalibrationSettings,
-    pub acs_acceleration_accel: f32,
-    pub acs_acceleration_decel: f32,
+    pub acs_nominal_acceleration: f32,
+    pub acs_nominal_tank_pressure: f32,
+    pub acs_acceleration_pressure_slope: f32,
     pub drag_reduction_factor: f32,
+    pub drag_reduction_exp: f32,
+    pub apogee_error_offset: f32,
 }
 
 impl Default for Settings {
@@ -232,9 +235,11 @@ impl Default for Settings {
                 intercept: 2425.8,
                 slope: 9.11,
             },
-            acs_acceleration_accel: 13.0 / 20.0,
-            acs_acceleration_decel: 13.0 / 20.0,
-            drag_reduction_factor: 0.5,
-        }
-    }
+            acs_nominal_acceleration: 15.5 / 20.0,
+            acs_nominal_tank_pressure: 183.0,
+            acs_acceleration_pressure_slope: 0.089 / 20.0,
+            drag_reduction_factor: 0.8,
+            drag_reduction_exp: 0.5,
+            apogee_error_offset: 10.0,
+        } }
 }

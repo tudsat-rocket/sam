@@ -221,10 +221,9 @@ impl SimulationWorker {
                 });
 
                 if let Some(thrusters) = sim.rocket.thrusters.as_mut() {
-                    thrusters.set_valve(self.state_estimator.thruster_valve());
+                    self.current_state.acs_tank_pressure = Some(thrusters.tank_pressure());
+                    thrusters.set_valve(self.state_estimator.thruster_valve(thrusters.tank_pressure()));
                 }
-
-                self.current_state.acs_tank_pressure = sim.rocket.thrusters.as_ref().map(|t| t.tank_pressure());
 
                 // We don't really want to show every single tick in the plot. For simulations,
                 // we plot 100Hz, so every 50th simulated state.
@@ -259,7 +258,7 @@ impl SimulationWorker {
             self.current_state.vertical_accel = Some(self.state_estimator.vertical_acceleration());
             self.current_state.altitude_asl = Some(self.state_estimator.altitude_asl());
             self.current_state.altitude_ground_asl = Some(self.state_estimator.altitude_ground);
-            self.current_state.apogee_asl = self.state_estimator.apogee_asl();
+            self.current_state.apogee_asl = self.state_estimator.apogee_asl(self.current_state.acs_tank_pressure.unwrap_or_default());
             self.current_state.latitude = self.state_estimator.latitude();
             self.current_state.longitude = self.state_estimator.longitude();
             self.current_state.thruster_valve_state = Some(self.state_estimator.last_valve_state);

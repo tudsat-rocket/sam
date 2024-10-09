@@ -371,30 +371,44 @@ impl FcSettingsUiExt for Settings {
                     ui.end_row();
                 }
 
-                ui.label("ACS Accelerations");
+                ui.label("ACS Acceleration");
                 ui.horizontal(|ui| {
                     ui.add(
-                        DragValue::new(&mut self.acs_acceleration_accel)
+                        DragValue::new(&mut self.acs_nominal_acceleration)
                             .suffix(" m/s²")
                             .speed(0.001)
                             .clamp_range(0.0..=1000.0),
                     );
-                    ui.weak("acceleration, ");
+                    ui.weak(" @ ");
                     ui.add(
-                        DragValue::new(&mut self.acs_acceleration_decel)
-                            .suffix(" m/s²")
+                        DragValue::new(&mut self.acs_nominal_tank_pressure)
+                            .suffix(" bar")
                             .speed(0.001)
                             .clamp_range(0.0..=1000.0),
                     );
-                    ui.weak("deceleration");
+                    ui.weak(" with ");
+                    ui.add(
+                        DragValue::new(&mut self.acs_acceleration_pressure_slope)
+                            .suffix(" (m/s^3)/bar")
+                            .speed(0.0001)
+                            .clamp_range(0.0..=50.0),
+                    );
                 });
                 ui.end_row();
 
-                ui.label("Apogee prediction drag red.");
+                ui.label("Apogee prediction drag red. factor");
                 ui.add(
                     DragValue::new(&mut self.drag_reduction_factor)
-                        .speed(0.001)
-                        .clamp_range(0.0..=10.0),
+                        .speed(0.00001)
+                        .clamp_range(0.0..=1000.0),
+                );
+                ui.end_row();
+
+                ui.label("Apogee error offset");
+                ui.add(
+                    DragValue::new(&mut self.apogee_error_offset)
+                        .speed(0.1)
+                        .clamp_range(-500.0..=500.0),
                 );
                 ui.end_row();
             })
