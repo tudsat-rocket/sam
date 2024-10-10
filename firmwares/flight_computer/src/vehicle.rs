@@ -114,6 +114,8 @@ impl Into<VehicleState> for &mut Vehicle {
             self.main_release_sensor = None;
         }
 
+        let acs_tank_pressure = self.acs_tank_pressure.map(|(_t, v)| v);
+
         VehicleState {
             time: self.time.0,
             mode: Some(self.mode),
@@ -122,7 +124,7 @@ impl Into<VehicleState> for &mut Vehicle {
             vertical_accel: Some(self.state_estimator.vertical_acceleration()),
             altitude_asl: Some(self.state_estimator.altitude_asl()),
             altitude_ground_asl: Some(self.state_estimator.altitude_ground),
-            apogee_asl: self.state_estimator.apogee_asl(),
+            apogee_asl: self.state_estimator.apogee_asl(acs_tank_pressure.unwrap_or(300.0)),
             latitude: self.state_estimator.latitude(),
             longitude: self.state_estimator.longitude(),
 
@@ -167,7 +169,7 @@ impl Into<VehicleState> for &mut Vehicle {
 
             camera_state: Some(self.camera_state),
 
-            acs_tank_pressure: self.acs_tank_pressure.map(|(_t, v)| v),
+            acs_tank_pressure,
             acs_regulator_pressure: self.acs_regulator_pressure.map(|(_t, v)| v),
             acs_accel_valve_pressure: self.acs_accel_valve_pressure.map(|(_t, v)| v),
             acs_decel_valve_pressure: self.acs_decel_valve_pressure.map(|(_t, v)| v),
@@ -446,7 +448,7 @@ impl Vehicle {
         if self.time.0 % 20 == 0 {
             let valve_state = match self.acs_mode {
                 AcsMode::Disabled => ThrusterValveState::Closed,
-                AcsMode::Auto => self.state_estimator.thruster_valve(),
+                AcsMode::Auto => self.state_estimator.thruster_valve(self.acs_tank_pressure.map(|(_t, v)| v).unwrap_or(300.0)),
                 AcsMode::Manual => match self.last_manual_thruster_input {
                     Some((time, state)) => {
                         if (self.time - time).0 < 450 { // TODO
