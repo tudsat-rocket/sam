@@ -58,7 +58,7 @@ const EUROC: LaunchSite = LaunchSite {
     elevation: None,
 };
 
-pub const ARCHIVED_LOGS: [ArchivedLog; 5] = [
+pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
     ArchivedLog {
         id: "zuelpich22-1",
         fc_serial: "1A",
@@ -165,6 +165,44 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 5] = [
     //    fc_settings_bytes: Some(include_bytes!("../assets/zuelpich_gosa_settings.json").as_slice()),
     //    apogee_agl: 246.5,
     //},
+    ArchivedLog {
+        id: "euroc24-primary",
+        fc_serial: "2B",
+        vehicle: "FRoDO-M",
+        site: EUROC,
+        #[allow(deprecated)] // the replacement is not const yet
+        date: chrono::NaiveDate::from_ymd(2024, 10, 12),
+        name: "Primary",
+        description: "",
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_telemetry.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_flash.json"),
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        flash_log_bytes: Some(include_bytes!("../assets/euroc_2024_primary_flash.json").as_slice()),
+        //#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        //fc_settings_bytes: Some(include_bytes!("../assets/euroc_2023_settings.json").as_slice()),
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        fc_settings_bytes: None,
+        apogee_agl: 3049.6,
+    },
+    ArchivedLog {
+        id: "euroc24-secondary",
+        fc_serial: "2D",
+        vehicle: "FRoDO-M",
+        site: EUROC,
+        #[allow(deprecated)] // the replacement is not const yet
+        date: chrono::NaiveDate::from_ymd(2024, 10, 12),
+        name: "Secondary",
+        description: "",
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_telemetry.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_flash.json"),
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        flash_log_bytes: Some(include_bytes!("../assets/euroc_2024_secondary_flash.json").as_slice()),
+        //#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        //fc_settings_bytes: Some(include_bytes!("../assets/euroc_2023_settings.json").as_slice()),
+        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
+        fc_settings_bytes: None,
+        apogee_agl: 3052.0,
+    },
 ];
 
 impl ArchivedLog {
