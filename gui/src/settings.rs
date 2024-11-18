@@ -28,7 +28,13 @@ impl AppSettings {
             std::fs::create_dir_all(config_dir)?;
         }
 
+        if !config_dir.join("config.json").exists() {
+            let f = File::create(config_dir.join("config.json"))?;
+            serde_json::to_writer_pretty(f, &AppSettings::default())?;
+        }
+
         let f = File::open(config_dir.join("config.json"))?;
+        
         let mut config: Self = serde_json::from_reader(f)?;
 
         if config.ground_station_position.is_none() {
