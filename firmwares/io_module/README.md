@@ -42,28 +42,16 @@ The frimware for the IO-board is written in rust, uses [embassy](https://github.
 - **Rust**
   
   - Using `rustup`, we can download the target needed for the STM32 and some other tools we need.
-  
-  - Run the following commands (you can skip ones needed for flashing methods you're not interested in):
     
-    - `rustup toolchain install --target thumbv7em-none-eabihf` (ARM toolchain)
+    - ``rustup target add thumbv7em-none-eabihf` (Add ARM toolchain)
     
-    - `rustup component add --toolchain llvm-tools-preview` (Needed for DFU flashing)
-    
-    - `cargo install cargo-embed` (Needed for SWD flashing)
-    
-    - `cargo install cargo-binutils` (Needed for DFU flashing)
+    - `cargo install probe-rs-tools`
     
     - `cargo install cargo-make` (Main task runner)
     
     - `cargo install probe-run` (Needed for cargo run)
     
     - `cargo install flip-link` (Needed for cargo run)
-
-- install **probe-rs** for flashing the stm    
-  
-  - to install the latest release run `cargo install probe-rs-tools --locked`
-  
-  - see official docu: [probe-rs - Installation](https://probe.rs/docs/getting-started/installation/#installation)
 
 - **Compiling & Flashing**
   
