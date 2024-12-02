@@ -23,8 +23,6 @@ The frimware for the IO-board is written in rust, uses [embassy](https://github.
 
 - clone the repository
 
-- 
-
 - install STLink drivers
   
   - **Linux**: Install via package manager if possible, e.g. `pacman -S stlink`
