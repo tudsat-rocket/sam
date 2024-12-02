@@ -63,7 +63,7 @@ The frimware for the IO-board is written in rust, uses [embassy](https://github.
   
   - to install the latest release run `cargo install probe-rs-tools --locked`
   
-  - see offcial docu: [probe-rs - Installation](https://probe.rs/docs/getting-started/installation/#installation)
+  - see official docu: [probe-rs - Installation](https://probe.rs/docs/getting-started/installation/#installation)
 
 - **Compiling & Flashing**
   
