@@ -19,8 +19,54 @@ The outputs of the I/O module can be powered straight from the FC battery, a 5v 
 
 The frimware for the IO-board is written in rust, uses [embassy](https://github.com/embassy-rs/embassy) and can be found in the `frimware` folder. 
 
-
 ## Getting started
 
-- clone the repository and run cargo build?
-- flash the firmware to the module
+- clone the repository
+
+- 
+
+- install STLink drivers
+  
+  - **Linux**: Install via package manager if possible, e.g. `pacman -S stlink`
+  
+  - **Windows**:
+    
+    - Download drivers from [ST's website](https://www.st.com/en/development-tools/stsw-link009.html) (requires account)
+    - Extract .zip and run `dpinst_amd64.exe` for 64-bit systems, and `dpinst_x86.exe` on 32-bit systems.
+    
+    After installation, it *may* be necessary to unplug the STLink and plug it back in, or even reboot (or reload udev rules on Linux).
+
+- install **Rustup**
+  
+  - A tool used to manage different Rust versions and targets (e.g. x86, ARM,
+     etc.). Download and run installer: follow the instructions on [https://rustup.rs/](https://rustup.rs/) (Use rustup-init.exe for Windows, defaults are fine)
+
+- **Rust**
+  
+  - Using `rustup`, we can download the target needed for the STM32 and some other tools we need.
+  
+  - Run the following commands (you can skip ones needed for flashing methods you're not interested in):
+    
+    - `rustup toolchain install --target thumbv7em-none-eabihf` (ARM toolchain)
+    
+    - `rustup component add --toolchain llvm-tools-preview` (Needed for DFU flashing)
+    
+    - `cargo install cargo-embed` (Needed for SWD flashing)
+    
+    - `cargo install cargo-binutils` (Needed for DFU flashing)
+    
+    - `cargo install cargo-make` (Main task runner)
+    
+    - `cargo install probe-run` (Needed for cargo run)
+    
+    - `cargo install flip-link` (Needed for cargo run)
+
+- install **probe-rs** for flashing the stm    
+  
+  - to install the latest release run `cargo install probe-rs-tools --locked`
+  
+  - see offcial docu: [probe-rs - Installation](https://probe.rs/docs/getting-started/installation/#installation)
+
+- **Compiling & Flashing**
+  
+  - run `cargo run`
