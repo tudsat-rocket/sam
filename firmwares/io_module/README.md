@@ -17,7 +17,7 @@ The outputs of the I/O module can be powered straight from the FC battery, a 5v 
 
 ## Firmware
 
-The frimware for the IO-board is written in rust, uses [embassy](https://github.com/embassy-rs/embassy) and can be found in the `frimware` folder. 
+The firmware for the IO-board is written in rust, uses [embassy](https://github.com/embassy-rs/embassy) and can be found in the `frimware` folder. 
 
 ## Getting started
 
@@ -43,16 +43,12 @@ The frimware for the IO-board is written in rust, uses [embassy](https://github.
   
   - Using `rustup`, we can download the target needed for the STM32 and some other tools we need.
     
-    - ``rustup target add thumbv7em-none-eabihf` (Add ARM toolchain)
+    - `rustup target add thumbv7em-none-eabi` (Add ARM toolchain)
     
-    - `cargo install probe-rs-tools`
-    
-    - `cargo install cargo-make` (Main task runner)
-    
-    - `cargo install probe-run` (Needed for cargo run)
+    - `cargo install probe-rs-tools --locked`
     
     - `cargo install flip-link` (Needed for cargo run)
 
 - **Compiling & Flashing**
   
-  - run `cargo run`
+  - run `cargo run --release`
