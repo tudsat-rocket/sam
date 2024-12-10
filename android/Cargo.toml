@@ -35,4 +35,4 @@ shared_types = { workspace = true }
 #mithril = { git = "https://github.com/tudsat-rocket/mithril.git", default-features = false }
 
 [lib]
-crate_type=["cdylib"]
+crate-type=["cdylib"]
