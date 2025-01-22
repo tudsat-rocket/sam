@@ -239,23 +239,37 @@ impl PlotTab {
 
         let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
             .line("Ground [m]", BR, |vs| vs.altitude_ground_asl)
-            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
+            .line("Altitude (Baro 1) [m]", B1, |vs| vs.altitude_baro1)
+            .line("Altitude (Baro 2) [m]", B1, |vs| vs.altitude_baro2)
+            .line("Altitude (Baro 3) [m]", B1, |vs| vs.altitude_baro3)
             .line("Altitude [m]", B, |vs| vs.altitude_asl)
             .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl).flatten())
             .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude));
 
         let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
-            .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
-            .line("Gyro (Y) [°/s]", G, |vs| vs.gyroscope.map(|a| a.y))
-            .line("Gyro (Z) [°/s]", B, |vs| vs.gyroscope.map(|a| a.z));
+            .line("Gyro 1 (LSM6, X) [°/s]", R, |vs| vs.gyroscope1.map(|a| a.x))
+            .line("Gyro 1 (LSM6, Y) [°/s]", G, |vs| vs.gyroscope1.map(|a| a.y))
+            .line("Gyro 1 (LSM6, Z) [°/s]", B, |vs| vs.gyroscope1.map(|a| a.z))
+            .line("Gyro 2 (ICM-42688-P X) [°/s]", R1, |vs| vs.gyroscope2.map(|a| a.x))
+            .line("Gyro 2 (ICM-42688-P Y) [°/s]", G1, |vs| vs.gyroscope2.map(|a| a.y))
+            .line("Gyro 2 (ICM-42688-P Z) [°/s]", B1, |vs| vs.gyroscope2.map(|a| a.z))
+            .line("Gyro 3 (ICM-42670-P X) [°/s]", R, |vs| vs.gyroscope3.map(|a| a.x))
+            .line("Gyro 3 (ICM-42670-P Y) [°/s]", G, |vs| vs.gyroscope3.map(|a| a.y))
+            .line("Gyro 3 (ICM-42670-P Z) [°/s]", B, |vs| vs.gyroscope3.map(|a| a.z));
 
         let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", R1, |vs| vs.accelerometer2.map(|a| a.x))
-            .line("Accel 2 (Y) [m/s²]", G1, |vs| vs.accelerometer2.map(|a| a.y))
-            .line("Accel 2 (Z) [m/s²]", B1, |vs| vs.accelerometer2.map(|a| a.z))
-            .line("Accel 1 (X) [m/s²]", R, |vs| vs.accelerometer1.map(|a| a.x))
-            .line("Accel 1 (Y) [m/s²]", G, |vs| vs.accelerometer1.map(|a| a.y))
-            .line("Accel 1 (Z) [m/s²]", B, |vs| vs.accelerometer1.map(|a| a.z));
+            .line("Accel (high-G, X) [m/s²]", R1, |vs| vs.accelerometer_highg.map(|a| a.x))
+            .line("Accel (high-G, Y) [m/s²]", G1, |vs| vs.accelerometer_highg.map(|a| a.y))
+            .line("Accel (high-G, Z) [m/s²]", B1, |vs| vs.accelerometer_highg.map(|a| a.z))
+            .line("Accel 1 (LSM6, X) [m/s²]", R, |vs| vs.accelerometer1.map(|a| a.x))
+            .line("Accel 1 (LSM6, Y) [m/s²]", G, |vs| vs.accelerometer1.map(|a| a.y))
+            .line("Accel 1 (LSM6, Z) [m/s²]", B, |vs| vs.accelerometer1.map(|a| a.z))
+            .line("Accel 2 (ICM-42688-P, X) [m/s²]", R1, |vs| vs.accelerometer2.map(|a| a.x))
+            .line("Accel 2 (ICM-42688-P, Y) [m/s²]", G1, |vs| vs.accelerometer2.map(|a| a.y))
+            .line("Accel 2 (ICM-42688-P, Z) [m/s²]", B1, |vs| vs.accelerometer2.map(|a| a.z))
+            .line("Accel 3 (ICM-42670-P, X) [m/s²]", R, |vs| vs.accelerometer3.map(|a| a.x))
+            .line("Accel 3 (ICM-42670-P, Y) [m/s²]", G, |vs| vs.accelerometer3.map(|a| a.y))
+            .line("Accel 3 (ICM-42670-P, Z) [m/s²]", B, |vs| vs.accelerometer3.map(|a| a.z));
 
         let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
             .line("Mag (X) [µT]", R, |vs| vs.magnetometer.map(|a| a.x))
@@ -263,7 +277,9 @@ impl PlotTab {
             .line("Mag (Z) [µT]", B, |vs| vs.magnetometer.map(|a| a.z));
 
         let pressures_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
-            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0))
+            .line("Barometer 1 (MS5607) [bar]", C, |vs| vs.pressure_baro1.map(|p| p / 1000.0))
+            .line("Barometer 2 (LPS22) [bar]", B, |vs| vs.pressure_baro2.map(|p| p / 1000.0))
+            .line("Barometer 3 (BMP580) [bar]", G, |vs| vs.pressure_baro3.map(|p| p / 1000.0))
             .line("ACS Tank [bar]", R, |vs| vs.acs_tank_pressure)
             .line("ACS Post-Regulator [bar]", G, |vs| vs.acs_regulator_pressure)
             .line("ACS Accel Valve [bar]", O, |vs| vs.acs_accel_valve_pressure)
@@ -272,7 +288,9 @@ impl PlotTab {
             .line("Main Release Sensor", BR, |vs| vs.main_release_sensor.map(|b| if b { 10.0 } else { 0.0 }));
 
         let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Barometer [°C]", C, |vs| vs.temperature_baro)
+            .line("Barometer 1 (MS5607) [°C]", C, |vs| vs.temperature_baro1)
+            .line("Barometer 2 (LPS22) [°C]", B, |vs| vs.temperature_baro2)
+            .line("Barometer 3 (BMP580) [°C]", G, |vs| vs.temperature_baro3)
             .line("ACS [°C]", R, |vs| vs.acs_temperature.flatten().map(|t| (t as f32) / 2.0))
             .line("Recovery [°C]", B, |vs| vs.recovery_temperature.flatten().map(|t| (t as f32) / 2.0))
             .line("Payload [°C]", O, |vs| vs.payload_temperature.flatten().map(|t| (t as f32) / 2.0));

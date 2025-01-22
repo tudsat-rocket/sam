@@ -274,13 +274,23 @@ pub struct VehicleState {
     pub latitude: Option<f32>,
     pub longitude: Option<f32>,
 
-    pub gyroscope: Option<Vector3<f32>>,
+    pub gyroscope1: Option<Vector3<f32>>,
+    pub gyroscope2: Option<Vector3<f32>>,
+    pub gyroscope3: Option<Vector3<f32>>,
     pub accelerometer1: Option<Vector3<f32>>,
     pub accelerometer2: Option<Vector3<f32>>,
+    pub accelerometer3: Option<Vector3<f32>>,
+    pub accelerometer_highg: Option<Vector3<f32>>,
     pub magnetometer: Option<Vector3<f32>>,
-    pub pressure_baro: Option<f32>,
-    pub altitude_baro: Option<f32>,
-    pub temperature_baro: Option<f32>,
+    pub pressure_baro1: Option<f32>,
+    pub pressure_baro2: Option<f32>,
+    pub pressure_baro3: Option<f32>,
+    pub altitude_baro1: Option<f32>,
+    pub altitude_baro2: Option<f32>,
+    pub altitude_baro3: Option<f32>,
+    pub temperature_baro1: Option<f32>,
+    pub temperature_baro2: Option<f32>,
+    pub temperature_baro3: Option<f32>,
 
     pub position_variance: Option<f32>,
     pub altitude_variance: Option<f32>,
@@ -360,7 +370,9 @@ pub struct TelemetryMain {
     pub orientation: Option<UnitQuaternion<f32>>,
     pub vertical_speed: half::f16,
     pub vertical_accel: half::f16,
-    pub altitude_baro: u16,
+    pub altitude_baro1: u16,
+    pub altitude_baro2: u16,
+    pub altitude_baro3: u16,
     pub apogee_asl: u16,
     pub altitude_asl: u16,
     pub acs_mode: AcsMode,
@@ -376,7 +388,9 @@ impl From<VehicleState> for TelemetryMain {
             orientation: vs.orientation,
             vertical_speed: half::f16::from_f32(vs.vertical_speed.unwrap_or_default()),
             vertical_accel: half::f16::from_f32(vs.vertical_accel.unwrap_or_default()),
-            altitude_baro: (vs.altitude_baro.unwrap_or_default() * 10.0) as u16,
+            altitude_baro1: (vs.altitude_baro1.unwrap_or_default() * 10.0) as u16,
+            altitude_baro2: (vs.altitude_baro2.unwrap_or_default() * 10.0) as u16,
+            altitude_baro3: (vs.altitude_baro3.unwrap_or_default() * 10.0) as u16,
             apogee_asl: (vs.apogee_asl.unwrap_or_default() * 10.0) as u16,
             altitude_asl: (vs.altitude_asl.unwrap_or_default() * 10.0) as u16,
             acs_mode: vs.acs_mode.unwrap_or_default(),
@@ -393,7 +407,9 @@ impl Into<VehicleState> for TelemetryMain {
             mode: Some(self.mode),
             orientation: self.orientation,
             altitude_asl: Some(self.altitude_asl as f32 / 10.0),
-            altitude_baro: Some(self.altitude_baro as f32 / 10.0),
+            altitude_baro1: Some(self.altitude_baro1 as f32 / 10.0),
+            altitude_baro2: Some(self.altitude_baro2 as f32 / 10.0),
+            altitude_baro3: Some(self.altitude_baro3 as f32 / 10.0),
             apogee_asl: Some(self.apogee_asl as f32 / 10.0),
             vertical_speed: Some(self.vertical_speed.to_f32()),
             vertical_accel: Some(self.vertical_accel.to_f32()),
@@ -464,7 +480,7 @@ impl From<VehicleState> for TelemetryFastCompressed {
         let vertical_accel = vs.vertical_accel.map(|x| (x * 4.0) as i8).unwrap_or_default().into();
 
         let altitude_asl = (vs.altitude_asl.unwrap_or_default() * 10.0 + 1000.0) as u16; // TODO: this limits us to 6km AMSL
-        let altitude_baro = ((vs.altitude_baro.unwrap_or_default() - vs.altitude_asl.unwrap_or_default()) * 2.0) as i8;
+        let altitude_baro = ((vs.altitude_baro1.unwrap_or_default() - vs.altitude_asl.unwrap_or_default()) * 2.0) as i8;
         let apogee_asl = (vs.apogee_asl.unwrap_or_default() * 10.0 + 1000.0) as u16;
 
         let battery_current = vs.current.unwrap_or_default() as i16;
@@ -506,7 +522,7 @@ impl Into<VehicleState> for TelemetryFastCompressed {
             vertical_speed: Some((self.vertical_speed as f32) / 20.0),
             vertical_accel: Some((self.vertical_speed as f32) / 4.0),
             altitude_asl: Some(altitude_asl),
-            altitude_baro: Some(altitude_baro_asl),
+            altitude_baro1: Some(altitude_baro_asl),
             apogee_asl: Some(((self.apogee_asl as f32) - 1000.0) / 10.0),
             current: Some(self.battery_current as i32),
 
@@ -518,27 +534,43 @@ impl Into<VehicleState> for TelemetryFastCompressed {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TelemetryRawSensors {
     pub time: u32,
-    pub gyro: (half::f16, half::f16, half::f16),
+    pub gyro1: (half::f16, half::f16, half::f16),
+    pub gyro2: (half::f16, half::f16, half::f16),
+    pub gyro3: (half::f16, half::f16, half::f16),
     pub accelerometer1: (half::f16, half::f16, half::f16),
     pub accelerometer2: (half::f16, half::f16, half::f16),
+    pub accelerometer3: (half::f16, half::f16, half::f16),
+    pub accelerometer_highg: (half::f16, half::f16, half::f16),
     pub magnetometer: (half::f16, half::f16, half::f16),
-    pub pressure_baro: f32,
+    pub pressure_baro1: f32,
+    pub pressure_baro2: f32,
+    pub pressure_baro3: f32,
 }
 
 impl From<VehicleState> for TelemetryRawSensors {
     fn from(vs: VehicleState) -> Self {
-        let gyro = vs.gyroscope.unwrap_or_default();
+        let gyro1 = vs.gyroscope1.unwrap_or_default();
+        let gyro2 = vs.gyroscope2.unwrap_or_default();
+        let gyro3 = vs.gyroscope3.unwrap_or_default();
         let acc1 = vs.accelerometer1.unwrap_or_default();
         let acc2 = vs.accelerometer2.unwrap_or_default();
+        let acc3 = vs.accelerometer3.unwrap_or_default();
+        let acc_high = vs.accelerometer_highg.unwrap_or_default();
         let mag = vs.magnetometer.unwrap_or_default();
 
         Self {
             time: vs.time,
-            gyro: (half::f16::from_f32(gyro.x), half::f16::from_f32(gyro.y), half::f16::from_f32(gyro.z)),
+            gyro1: (half::f16::from_f32(gyro1.x), half::f16::from_f32(gyro1.y), half::f16::from_f32(gyro1.z)),
+            gyro2: (half::f16::from_f32(gyro2.x), half::f16::from_f32(gyro2.y), half::f16::from_f32(gyro2.z)),
+            gyro3: (half::f16::from_f32(gyro3.x), half::f16::from_f32(gyro3.y), half::f16::from_f32(gyro3.z)),
             accelerometer1: (half::f16::from_f32(acc1.x), half::f16::from_f32(acc1.y), half::f16::from_f32(acc1.z)),
             accelerometer2: (half::f16::from_f32(acc2.x), half::f16::from_f32(acc2.y), half::f16::from_f32(acc2.z)),
+            accelerometer3: (half::f16::from_f32(acc3.x), half::f16::from_f32(acc3.y), half::f16::from_f32(acc3.z)),
+            accelerometer_highg: (half::f16::from_f32(acc_high.x), half::f16::from_f32(acc_high.y), half::f16::from_f32(acc_high.z)),
             magnetometer: (half::f16::from_f32(mag.x), half::f16::from_f32(mag.y), half::f16::from_f32(mag.z)),
-            pressure_baro: vs.pressure_baro.unwrap_or_default(),
+            pressure_baro1: vs.pressure_baro1.unwrap_or_default(),
+            pressure_baro2: vs.pressure_baro2.unwrap_or_default(),
+            pressure_baro3: vs.pressure_baro3.unwrap_or_default(),
         }
     }
 }
@@ -547,11 +579,17 @@ impl Into<VehicleState> for TelemetryRawSensors {
     fn into(self) -> VehicleState {
         VehicleState {
             time: self.time,
-            gyroscope: Some(Vector3::new(self.gyro.0.to_f32(), self.gyro.1.to_f32(), self.gyro.2.to_f32())),
+            gyroscope1: Some(Vector3::new(self.gyro1.0.to_f32(), self.gyro1.1.to_f32(), self.gyro1.2.to_f32())),
+            gyroscope2: Some(Vector3::new(self.gyro2.0.to_f32(), self.gyro2.1.to_f32(), self.gyro2.2.to_f32())),
+            gyroscope3: Some(Vector3::new(self.gyro3.0.to_f32(), self.gyro3.1.to_f32(), self.gyro3.2.to_f32())),
             accelerometer1: Some(Vector3::new(self.accelerometer1.0.to_f32(), self.accelerometer1.1.to_f32(), self.accelerometer1.2.to_f32())),
             accelerometer2: Some(Vector3::new(self.accelerometer2.0.to_f32(), self.accelerometer2.1.to_f32(), self.accelerometer2.2.to_f32())),
+            accelerometer3: Some(Vector3::new(self.accelerometer3.0.to_f32(), self.accelerometer3.1.to_f32(), self.accelerometer3.2.to_f32())),
+            accelerometer_highg: Some(Vector3::new(self.accelerometer_highg.0.to_f32(), self.accelerometer_highg.1.to_f32(), self.accelerometer_highg.2.to_f32())),
             magnetometer: Some(Vector3::new(self.magnetometer.0.to_f32(), self.magnetometer.1.to_f32(), self.magnetometer.2.to_f32())),
-            pressure_baro: Some(self.pressure_baro),
+            pressure_baro1: Some(self.pressure_baro1),
+            pressure_baro2: Some(self.pressure_baro2),
+            pressure_baro3: Some(self.pressure_baro3),
             ..Default::default()
         }
     }
@@ -566,7 +604,9 @@ pub struct TelemetryDiagnostics {
     pub lora_rssi: u8,
     pub altitude_ground_asl: u16,
     pub transmit_power_and_data_rate: u8,
-    pub temperature_baro: i8,
+    pub temperature_baro1: i8,
+    pub temperature_baro2: i8,
+    pub temperature_baro3: i8,
 }
 
 impl From<VehicleState> for TelemetryDiagnostics {
@@ -580,7 +620,9 @@ impl From<VehicleState> for TelemetryDiagnostics {
             altitude_ground_asl: (vs.altitude_ground_asl.unwrap_or_default() * 10.0 + 1000.0) as u16,
             transmit_power_and_data_rate: ((vs.data_rate.unwrap_or_default() as u8) << 7) |
                 vs.transmit_power.unwrap_or_default() as u8,
-            temperature_baro: (vs.temperature_baro.unwrap_or_default() * 2.0) as i8,
+            temperature_baro1: (vs.temperature_baro1.unwrap_or_default() * 2.0) as i8,
+            temperature_baro2: (vs.temperature_baro2.unwrap_or_default() * 2.0) as i8,
+            temperature_baro3: (vs.temperature_baro3.unwrap_or_default() * 2.0) as i8,
             ..Default::default() // TODO
         }
     }
@@ -597,7 +639,9 @@ impl Into<VehicleState> for TelemetryDiagnostics {
             lora_rssi: Some(self.lora_rssi),
             data_rate: Some((self.transmit_power_and_data_rate >> 7).into()),
             transmit_power: Some((self.transmit_power_and_data_rate & 0x7f).into()),
-            temperature_baro: Some((self.temperature_baro as f32) / 2.0),
+            temperature_baro1: Some((self.temperature_baro1 as f32) / 2.0),
+            temperature_baro2: Some((self.temperature_baro2 as f32) / 2.0),
+            temperature_baro3: Some((self.temperature_baro3 as f32) / 2.0),
             ..Default::default()
         }
     }

@@ -59,23 +59,23 @@ impl StateSimulation for VehicleState {
     fn measurements(&self) -> galadriel::SensorData {
         galadriel::SensorData {
             time: self.time,
-            gyroscope: self.gyroscope,
+            gyroscope: self.gyroscope1,
             accelerometer1: self.accelerometer1,
-            accelerometer2: self.accelerometer2,
+            accelerometer2: self.accelerometer_highg,
             magnetometer: self.magnetometer,
-            lp_filtered_pressure: self.pressure_baro,
-            pressure: self.pressure_baro,
+            lp_filtered_pressure: self.pressure_baro1,
+            pressure: self.pressure_baro1,
         }
     }
 
     fn join_measurement(&mut self, sensors: galadriel::SensorData) {
-        self.gyroscope = sensors.gyroscope;
+        self.gyroscope1 = sensors.gyroscope;
         self.accelerometer1 = sensors.accelerometer1;
-        self.accelerometer2 = sensors.accelerometer2;
+        self.accelerometer_highg = sensors.accelerometer2;
         self.magnetometer = sensors.magnetometer;
-        self.pressure_baro = sensors.pressure;
+        self.pressure_baro1 = sensors.pressure;
         // TODO: move to state estimator?
-        self.altitude_baro = self.pressure_baro.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
+        self.altitude_baro1 = self.pressure_baro1.map(|p| 44307.694 * (1.0 - (p / 1013.25).powf(0.190284)));
     }
 }
 
@@ -113,7 +113,7 @@ impl SimulationWorker {
 
             let mut states: VecDeque<VehicleState> = log.flash_states().unwrap().into_iter().collect();
             let measurements = states.iter()
-                .filter(|vs| vs.pressure_baro.is_some())
+                .filter(|vs| vs.pressure_baro1.is_some())
                 .map(|state| state.measurements())
                 .collect();
             let initial_orientation = states.iter().find_map(|vs| vs.orientation).unwrap();
@@ -236,11 +236,11 @@ impl SimulationWorker {
         self.state_estimator.update(
             std::num::Wrapping(self.current_state.time),
             self.mode,
-            self.current_state.gyroscope,
+            self.current_state.gyroscope1,
             self.current_state.accelerometer1,
-            self.current_state.accelerometer2,
+            self.current_state.accelerometer_highg,
             self.current_state.magnetometer,
-            self.current_state.altitude_baro,
+            self.current_state.altitude_baro1,
             self.current_state.gps.clone(),
         );
 

@@ -46,7 +46,7 @@ impl HeaderPanel {
             ui.add_space(spacing);
             ui.telemetry_value("🕐", "Time [s]", time);
             ui.telemetry_value("🏷", "Mode", mode);
-            ui.nominal_value("🔥", "Baro Temp. [°C]", Self::current(data_source, |vs| vs.temperature_baro), 1, 0.0, 60.0);
+            ui.nominal_value("🔥", "Baro Temp. [°C]", Self::current(data_source, |vs| vs.temperature_baro1), 1, 0.0, 60.0);
             ui.nominal_value("📡", "RSSI [dBm]", rssi, 1, -50.0, 0.0);
             ui.nominal_value("📶", "Link Quality [%]", data_source.link_quality(), 1, 90.0, 101.0);
             ui.add_space(ui.spacing().item_spacing.y);
@@ -57,7 +57,7 @@ impl HeaderPanel {
             ui.add_space(spacing);
             ui.nominal_value("📈", "Altitude (AGL) [m]", alt_agl, 1, -1.0, 10000.0);
             ui.nominal_value("📈", "Apogee (AGL) [m]", apogee_agl, 1, -1.0, 10000.0);
-            ui.nominal_value("☁", "Baro. Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_baro), 1, -100.0, 10000.0);
+            ui.nominal_value("☁", "Baro. Alt. (ASL) [m]", Self::current(data_source, |vs| vs.altitude_baro1), 1, -100.0, 10000.0);
             ui.nominal_value("⏱", "Vertical Speed [m/s]", Self::current(data_source, |vs| vs.vertical_speed), 2, -1.0, 1.0);
             ui.nominal_value("⬆", "Vertical Accel. [m/s²]", vertical_accel, 1, -1.0, 1.0);
         });
