@@ -164,7 +164,7 @@ impl egui::Widget for &mut MotorSettings {
                 .show(ui, |ui| {
                     ui.label("");
                     ui.horizontal(|ui| {
-                        egui::ComboBox::from_id_source("galadriel_known_motor")
+                        egui::ComboBox::from_id_salt("galadriel_known_motor")
                             .selected_text(self.selected_motor.name())
                             .show_ui(ui, |ui| {
                                 for m in KnownMotors::all() {

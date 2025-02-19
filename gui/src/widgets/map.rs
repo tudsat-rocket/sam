@@ -7,7 +7,7 @@ use web_time::Instant;
 
 use directories::ProjectDirs;
 use eframe::egui;
-use egui::{Color32, Vec2, Widget, Frame, Rect, Stroke, Layout};
+use egui::{Color32, Frame, Layout, Rect, Stroke, Ui, Vec2, Widget};
 use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
 use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 use walkers::extras::{Places, Place, Style};
@@ -27,16 +27,16 @@ pub struct CrosshairPlugin {
 }
 
 impl Plugin for CrosshairPlugin {
-    fn run(&mut self, _response: &egui::Response, painter: egui::Painter, _projector: &walkers::Projector) {
-        let rect = painter.clip_rect();
+    fn run(self: Box<Self>, ui: &mut Ui, _response: &egui::Response, _projector: &walkers::Projector) {
+        let rect = ui.painter().clip_rect();
         let crosshair_stroke = Stroke {
             width: 1.0,
             color: Color32::GRAY.gamma_multiply(0.8)
         };
 
         if self.render_crosshair {
-            painter.line_segment([rect.center_top(), rect.center_bottom()], crosshair_stroke);
-            painter.line_segment([rect.left_center(), rect.right_center()], crosshair_stroke);
+            ui.painter().line_segment([rect.center_top(), rect.center_bottom()], crosshair_stroke);
+            ui.painter().line_segment([rect.left_center(), rect.right_center()], crosshair_stroke);
         }
     }
 }
@@ -57,13 +57,13 @@ impl<'a, T> PathPlugin<'a, T> {
 }
 
 impl<'a, T> Plugin for PathPlugin<'a, T> {
-    fn run(&mut self, _response: &egui::Response, painter: egui::Painter, projector: &walkers::Projector) {
+    fn run(self: Box<Self>, ui: &mut Ui, _response: &egui::Response, projector: &walkers::Projector) {
         for p in &self.paths {
             let screen_positions: Vec<_> = p.values.iter()
                 .map(|(p, val)| (projector.project(*p).to_pos2(), val))
                 .collect();
             for segment in screen_positions.windows(2) {
-                painter.line_segment([segment[0].0, segment[1].0], (p.stroke_callback)(segment[0].1));
+                ui.painter().line_segment([segment[0].0, segment[1].0], (p.stroke_callback)(segment[0].1));
             }
         }
     }

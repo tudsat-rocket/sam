@@ -33,7 +33,7 @@ impl SimulationPanel {
                             .striped(true)
                             .show(ui, |ui| {
                                 ui.label("Replication Log");
-                                egui::ComboBox::from_id_source("replication_log")
+                                egui::ComboBox::from_id_salt("replication_log")
                                     .selected_text(data_source.settings.replicated_log_id.as_ref().and_then(|id| ArchivedLog::find(&id).map(|log| log.to_string())).unwrap_or("None".into()))
                                     .show_ui(ui, |ui| {
                                         ui.selectable_value(&mut data_source.settings.replicated_log_id, None, "None");

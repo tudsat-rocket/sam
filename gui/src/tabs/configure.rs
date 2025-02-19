@@ -259,15 +259,15 @@ impl ConfigureTab {
 
             if ctx.screen_rect().width() > 1400.0 {
                 ui.columns(2, |cols| {
-                    egui::ScrollArea::vertical().id_source("app_settings").show(&mut cols[0], |ui| {
+                    egui::ScrollArea::vertical().id_salt("app_settings").show(&mut cols[0], |ui| {
                         changed = self.app_settings_ui(ui, data_source, settings);
                     });
-                    egui::ScrollArea::vertical().id_source("fc_settings").show(&mut cols[1], |ui| {
+                    egui::ScrollArea::vertical().id_salt("fc_settings").show(&mut cols[1], |ui| {
                         self.fc_settings_ui(ui, data_source, settings);
                     });
                 });
             } else {
-                egui::ScrollArea::vertical().id_source("settings").show(ui, |ui| {
+                egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     changed = self.app_settings_ui(ui, data_source, settings);
                     ui.add_space(20.0);

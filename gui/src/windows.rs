@@ -188,6 +188,7 @@ impl ArchiveWindow {
 
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
+                    #[allow(deprecated)] // right now, the alternatives arent't great
                     ui.add_visible_ui(self.progress.is_some(), |ui| {
                         let (done, total) = self.progress.unwrap_or((0, 0));
                         let f = (total > 0).then(|| done as f32 / total as f32).unwrap_or(0.0);

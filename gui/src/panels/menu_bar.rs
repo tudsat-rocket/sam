@@ -38,7 +38,7 @@ impl MenuBarPanel {
                 ui.add(image.max_size(Vec2::new(ui.available_width(), 20.0)));
 
                 ui.separator();
-                egui::widgets::global_dark_light_mode_switch(ui);
+                egui::widgets::global_theme_preference_switch(ui);
                 ui.separator();
 
                 ui.selectable_value(&mut sam.tab, GuiTab::Launch, "🚀 Launch (F1)");
