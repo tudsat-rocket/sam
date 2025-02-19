@@ -102,21 +102,21 @@ impl egui::Widget for &mut ThrusterSettings {
                             egui::DragValue::new(&mut self.propellant_mass)
                                 .suffix(" kg")
                                 .speed(0.001)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                         ui.weak(" with ");
                         ui.add(
                             egui::DragValue::new(&mut self.propellant_density)
                                 .suffix(" kg/^3")
                                 .speed(0.001)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                         ui.weak(" in ");
                         ui.add(
                             egui::DragValue::new(&mut self.tank_volume)
                                 .suffix(" L")
                                 .speed(0.01)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                     });
                     ui.end_row();
@@ -126,7 +126,7 @@ impl egui::Widget for &mut ThrusterSettings {
                         egui::DragValue::new(&mut self.nominal_tank_pressure)
                             .suffix(" bar")
                             .speed(0.1)
-                            .clamp_range(0.0..=1000.0),
+                            .range(0.0..=1000.0),
                     );
                     ui.end_row();
 
@@ -136,14 +136,14 @@ impl egui::Widget for &mut ThrusterSettings {
                             egui::DragValue::new(&mut self.nominal_thrust)
                                 .suffix(" N")
                                 .speed(0.01)
-                                .clamp_range(0.0..=1000.0),
+                                .range(0.0..=1000.0),
                         );
                         ui.weak(format!(" @ {}bar, ", self.nominal_tank_pressure));
                         ui.add(
                             egui::DragValue::new(&mut self.thrust_pressure_slope)
                                 .suffix(" N/bar")
                                 .speed(0.01)
-                                .clamp_range(0.0..=1000.0),
+                                .range(0.0..=1000.0),
                         );
                     });
                     ui.end_row();

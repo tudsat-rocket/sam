@@ -181,14 +181,14 @@ impl egui::Widget for &mut MotorSettings {
                             egui::DragValue::new(&mut self.wet_mass)
                                 .suffix(" kg")
                                 .speed(0.001)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                         ui.weak("wet, ");
                         ui.add(
                             egui::DragValue::new(&mut self.dry_mass)
                                 .suffix(" kg")
                                 .speed(0.001)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                         ui.weak("dry");
                     });
@@ -198,7 +198,7 @@ impl egui::Widget for &mut MotorSettings {
                     ui.add(
                         egui::DragValue::new(&mut self.performance)
                             .speed(0.001)
-                            .clamp_range(0.0..=10.0),
+                            .range(0.0..=10.0),
                     );
                     ui.end_row();
 
@@ -207,7 +207,7 @@ impl egui::Widget for &mut MotorSettings {
                         egui::DragValue::new(&mut self.impulse)
                             .suffix(" Ns")
                             .speed(0.1)
-                            .clamp_range(0.0..=15000.0),
+                            .range(0.0..=15000.0),
                     );
                     ui.end_row();
 

@@ -141,12 +141,12 @@ impl ConfigureTab {
                     ui.weak("Lat");
                     ui.add_sized(
                         [100.0, ui.available_height()],
-                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().0).suffix(" °").speed(0.0001).clamp_range(-90.0..=90.0),
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().0).suffix(" °").speed(0.0001).range(-90.0..=90.0),
                     );
                     ui.weak("Lng");
                     ui.add_sized(
                         [100.0, ui.available_height()],
-                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().1).suffix(" °").speed(0.0001).clamp_range(-180.0..=180.0),
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().1).suffix(" °").speed(0.0001).range(-180.0..=180.0),
                     );
                 });
                 ui.end_row();
@@ -253,7 +253,9 @@ impl ConfigureTab {
         let mut changed = false;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(enabled);
+            if !enabled {
+                ui.disable();
+            }
 
             if ctx.screen_rect().width() > 1400.0 {
                 ui.columns(2, |cols| {

@@ -15,7 +15,10 @@ impl SimulationPanel {
         let old_settings = data_source.settings.clone();
 
         egui::SidePanel::left("sim").min_width(300.0).max_width(500.0).resizable(true).show(ctx, |ui| {
-            ui.set_enabled(enabled);
+            if !enabled {
+                ui.disable();
+            }
+
             ui.add_space(10.0);
             ui.heading("Simulation");
             ui.add_space(10.0);
@@ -44,11 +47,13 @@ impl SimulationPanel {
                                 ui.end_row();
                             });
 
-                        // Disable other settings if we are using a source log
-                        ui.set_enabled(data_source.settings.replicated_log_id.is_none());
                         ui.add_space(10.0);
 
-                        ui.add(&mut data_source.settings.galadriel);
+                        // Disable other settings if we are using a source log
+                        ui.add_enabled(
+                            data_source.settings.replicated_log_id.is_none(),
+                            &mut data_source.settings.galadriel
+                        );
                     })
                 });
 

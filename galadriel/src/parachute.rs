@@ -74,7 +74,7 @@ impl egui::Widget for &mut ParachuteSettings {
                         egui::DragValue::new(&mut self.area)
                             .suffix(" m²")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .range(0.001..=100.0),
                     );
                     ui.end_row();
                     ui.label("Drag coef.");

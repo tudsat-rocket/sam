@@ -51,12 +51,12 @@ impl egui::Widget for &mut Environment {
                         ui.add(
                             egui::DragValue::new(&mut self.launch_location.0)
                                 .speed(0.000001)
-                                .clamp_range(-90.0..=90.0)
+                                .range(-90.0..=90.0)
                         );
                         ui.add(
                             egui::DragValue::new(&mut self.launch_location.1)
                                 .speed(0.000001)
-                                .clamp_range(-180.0..=180.0)
+                                .range(-180.0..=180.0)
                         );
                     });
                     ui.end_row();
@@ -66,7 +66,7 @@ impl egui::Widget for &mut Environment {
                         egui::DragValue::new(&mut self.launch_altitude)
                             .suffix(" m")
                             .speed(0.1)
-                            .clamp_range(-100.0..=6000.0)
+                            .range(-100.0..=6000.0)
                     );
                     ui.end_row();
 
@@ -75,7 +75,7 @@ impl egui::Widget for &mut Environment {
                         egui::DragValue::new(&mut self.launch_rail_length)
                             .suffix(" m")
                             .speed(0.1)
-                            .clamp_range(1.0..=100.0)
+                            .range(1.0..=100.0)
                     );
                     ui.end_row();
 
@@ -84,7 +84,7 @@ impl egui::Widget for &mut Environment {
                         egui::DragValue::new(&mut self.azimuth)
                             .suffix(" °")
                             .speed(0.1)
-                            .clamp_range(0.0..=360.0)
+                            .range(0.0..=360.0)
                     );
                     ui.end_row();
 
@@ -93,7 +93,7 @@ impl egui::Widget for &mut Environment {
                         egui::DragValue::new(&mut self.elevation)
                             .suffix(" °")
                             .speed(0.1)
-                            .clamp_range(0.0..=90.0)
+                            .range(0.0..=90.0)
                     );
                     ui.end_row();
                 });

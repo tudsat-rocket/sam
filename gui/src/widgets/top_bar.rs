@@ -153,7 +153,9 @@ impl TopBarUiExt for egui::Ui {
         };
 
         self.horizontal(|ui| {
-            ui.set_enabled(current_mode != AcsMode::Disabled);
+            if current_mode == AcsMode::Disabled {
+                ui.disable();
+            }
 
             let response_accel = ui.add_sized([50.0, 20.0], SelectableLabel::new(accel, "ACCL"));
             let response_decel = ui.add_sized([50.0, 20.0], SelectableLabel::new(decel, "DECL"));
@@ -259,10 +261,10 @@ impl TopBarUiExt for egui::Ui {
 
         let main_text = RichText::new(label).monospace();
         let button = if is_current {
-            Button::new(main_text.color(fg)).wrap(true).fill(bg)
+            Button::new(main_text.color(fg)).wrap().fill(bg)
         } else {
             Button::new(main_text)
-                .wrap(true)
+                .wrap()
                 .fill(Color32::TRANSPARENT)
                 .stroke(Stroke::new(2.0, bg))
         };

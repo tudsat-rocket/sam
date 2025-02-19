@@ -76,7 +76,7 @@ impl egui::Widget for &mut DragCoefficient {
                 ui.add(
                     egui::DragValue::new(coef)
                         .speed(0.001)
-                        .clamp_range(0.001..=10.0),
+                        .range(0.001..=10.0),
                 )
             },
             DragCoefficient::Variable(coefficients) => {

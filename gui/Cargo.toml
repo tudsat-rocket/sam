@@ -19,9 +19,9 @@ eframe = { workspace = true }
 egui_plot = { workspace = true }
 egui_extras = { workspace = true }
 image = { version = "0.24", default-features = false, features = ["jpeg", "png"] }
-egui_tiles = "0.8.0"
-transform-gizmo-egui = "0.1.0"
-walkers = "0.22"
+egui_tiles = "0.9.0"
+transform-gizmo-egui = "0.3.0"
+walkers = "0.24"
 # serialization & communication
 heapless = { workspace = true }
 serde = { workspace = true }

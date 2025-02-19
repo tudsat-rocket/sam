@@ -405,6 +405,7 @@ impl PlotUiExt for egui::Ui {
         self.style_mut().visuals.override_text_color = Some(text_color.gamma_multiply(0.5));
 
         let view_end = plot_time(&data_source.end().unwrap_or(Instant::now()), data_source);
+        #[allow(deprecated)] // the axis widths in egui suck, TODO
         let mut plot = egui_plot::Plot::new(&state.title)
             .link_axis("plot_axis_group", true, false)
             .link_cursor("plot_cursor_group", true, false)
@@ -416,7 +417,7 @@ impl PlotUiExt for egui::Ui {
             .y_axis_position(egui_plot::HPlacement::Right)
             // These two are needed to avoid egui adding a huge amount of space for the y axis ticks
             .y_axis_width(3)
-            .y_axis_formatter(|gm, _digits, _range| {
+            .y_axis_formatter(|gm, _range| {
                 let tick = gm.value;
                 let digits = (gm.step_size.log10() * -1.0) as usize;
                 format!("{tick:.digits$}")

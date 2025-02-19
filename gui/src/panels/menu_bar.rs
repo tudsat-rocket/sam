@@ -25,7 +25,10 @@ impl MenuBarPanel {
         let data_source_is_log = any.is::<LogFileDataSource>();
 
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
-            ui.set_enabled(enabled);
+            if !enabled {
+                ui.disable();
+            }
+
             ui.horizontal_centered(|ui| {
                 let image = if ui.style().visuals.dark_mode {
                     egui::Image::new(egui::include_image!("../../assets/logo_dark_mode.png"))

@@ -196,7 +196,10 @@ impl Sam {
             #[cfg(feature = "profiling")]
             puffin::profile_function!();
 
-            ui.set_enabled(!self.archive_window.open);
+            if self.archive_window.open {
+                ui.disable();
+            }
+
             ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
                 match self.tab {
                     GuiTab::Launch => {}
@@ -214,11 +217,7 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         match self.tab {
-            GuiTab::Launch => {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.set_enabled(enabled)
-                }).inner
-            }
+            GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
             GuiTab::Plot => self.plot_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled),
             GuiTab::Configure => {
                 let changed = self.configure_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled);
@@ -267,7 +266,7 @@ pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Resu
             },
             ..Default::default()
         },
-        Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, app_settings, data_source))),
+        Box::new(|cc| Ok(Box::new(Sam::init(&cc.egui_ctx, app_settings, data_source)))),
     )?;
 
     Ok(())

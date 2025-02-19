@@ -8,10 +8,10 @@ use web_time::Instant;
 use directories::ProjectDirs;
 use eframe::egui;
 use egui::{Color32, Vec2, Widget, Frame, Rect, Stroke, Layout};
-use transform_gizmo_egui::{enum_set, Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
+use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
 use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 use walkers::extras::{Places, Place, Style};
-use walkers::{HttpOptions, MapMemory, Plugin, Position, Projector, Tiles};
+use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position, Projector};
 use nalgebra::{UnitQuaternion, Vector3};
 
 use shared_types::telemetry::FlightMode;
@@ -85,8 +85,8 @@ enum Visualization {
 
 /// Permanent Map data store, kept in memory the entire time
 pub struct MapState {
-    osm_tiles: Tiles,
-    mapbox_tiles: Option<Tiles>,
+    osm_tiles: HttpTiles,
+    mapbox_tiles: Option<HttpTiles>,
     memory: MapMemory,
     satellite: bool,
     position_source: PositionSource,
@@ -120,7 +120,7 @@ impl MapState {
     }
 
     pub fn new(ctx: &egui::Context, mapbox_access_token: Option<String>) -> Self {
-        let osm_tiles = Tiles::with_options(
+        let osm_tiles = HttpTiles::with_options(
             walkers::sources::OpenStreetMap,
             Self::http_options(),
             ctx.to_owned()
@@ -128,7 +128,7 @@ impl MapState {
 
         // We only show the mapbox map if we have an access token
         let mapbox_access_token = mapbox_access_token.or(option_env!("MAPBOX_ACCESS_TOKEN").map(|s| s.to_string()));
-        let mapbox_tiles = mapbox_access_token.map(|t| Tiles::with_options(
+        let mapbox_tiles = mapbox_access_token.map(|t| HttpTiles::with_options(
             walkers::sources::Mapbox {
                 style: walkers::sources::MapboxStyle::Satellite,
                 access_token: t.to_string(),
@@ -422,7 +422,7 @@ impl<'a> Widget for Map<'a> {
                     viewport,
                     view_matrix: view_matrix.into(),
                     projection_matrix: projection_matrix.into(),
-                    modes: enum_set!(GizmoMode::Translate),
+                    modes: GizmoMode::all_translate(),
                     orientation: transform_gizmo_egui::GizmoOrientation::Local,
                     visuals,
                     ..Default::default()

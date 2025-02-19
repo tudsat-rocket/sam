@@ -257,7 +257,7 @@ impl egui::Widget for &mut SimulationSettings {
                         egui::DragValue::new(&mut self.delta_time)
                             .suffix(" ms")
                             .speed(1)
-                            .clamp_range(1..=1000),
+                            .range(1..=1000),
                     );
                     ui.end_row();
                 });

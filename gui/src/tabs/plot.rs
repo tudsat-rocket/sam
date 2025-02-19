@@ -6,6 +6,7 @@ use egui::Layout;
 use egui::SelectableLabel;
 use egui::TextBuffer;
 use egui::TextEdit;
+use egui_tiles::TabState;
 use serde::{Deserialize, Serialize};
 use egui::CentralPanel;
 use egui::Color32;
@@ -175,12 +176,12 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
         visuals.widgets.noninteractive.bg_fill
     }
 
-    fn tab_bg_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, active: bool) -> Color32 {
-        if active { self.tab_bar_color(visuals) } else { visuals.extreme_bg_color }
+    fn tab_bg_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, tab_state: &TabState) -> Color32 {
+        if tab_state.active { self.tab_bar_color(visuals) } else { visuals.extreme_bg_color }
     }
 
-    fn tab_text_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, active: bool) -> Color32 {
-        if active { visuals.widgets.active.fg_stroke.color } else { visuals.widgets.hovered.fg_stroke.color }
+    fn tab_text_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, tab_state: &TabState) -> Color32 {
+        if tab_state.active { visuals.widgets.active.fg_stroke.color } else { visuals.widgets.hovered.fg_stroke.color }
     }
 
     fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
@@ -496,7 +497,9 @@ impl PlotTab {
 
         if self.show_view_settings {
             SidePanel::right("dock_view_settings").show(ctx, |ui| {
-                ui.set_enabled(enabled);
+                if !enabled {
+                    ui.disable();
+                }
 
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width());
@@ -552,7 +555,9 @@ impl PlotTab {
         self.shared_plot.borrow_mut().set_end(data_source.end());
 
         CentralPanel::default().show(ctx, |ui| {
-            ui.set_enabled(enabled);
+            if !enabled {
+                ui.disable();
+            }
 
             let mut behavior = TileBehavior {
                 data_source,

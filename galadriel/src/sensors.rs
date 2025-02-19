@@ -100,7 +100,7 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_gyroscope)
                             .suffix(" °/s")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .range(0.001..=100.0),
                     );
                     ui.end_row();
 
@@ -109,7 +109,7 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_accelerometer1)
                             .suffix(" m/s²")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .range(0.001..=100.0),
                     );
                     ui.end_row();
 
@@ -118,7 +118,7 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_accelerometer2)
                             .suffix(" m/s²")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .range(0.001..=100.0),
                     );
                     ui.end_row();
 
@@ -127,7 +127,7 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_magnetometer)
                             .suffix(" µT")
                             .speed(0.001)
-                            .clamp_range(0.001..=100.0),
+                            .range(0.001..=100.0),
                     );
                     ui.end_row();
 
@@ -136,7 +136,7 @@ impl egui::Widget for &mut SensorSettings {
                         egui::DragValue::new(&mut self.std_dev_barometer)
                             .suffix(" m")
                             .speed(0.001)
-                            .clamp_range(0.001..=10000.0),
+                            .range(0.001..=10000.0),
                     );
                     ui.end_row();
 
@@ -144,7 +144,7 @@ impl egui::Widget for &mut SensorSettings {
                     ui.add(
                         egui::DragValue::new(&mut self.barometer_iir_alpha)
                             .speed(0.0001)
-                            .clamp_range(0.9..=1.0),
+                            .range(0.9..=1.0),
                     );
                     ui.end_row();
                 });

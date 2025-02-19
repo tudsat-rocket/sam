@@ -135,7 +135,7 @@ impl egui::Widget for &mut RocketSettings {
                             egui::DragValue::new(&mut self.dry_mass)
                                 .suffix(" kg")
                                 .speed(0.001)
-                                .clamp_range(0.0..=200.0),
+                                .range(0.0..=200.0),
                         );
                         ui.weak("(without motor casing)");
                     });
@@ -146,7 +146,7 @@ impl egui::Widget for &mut RocketSettings {
                         egui::DragValue::new(&mut self.area)
                             .suffix(" m²")
                             .speed(0.001)
-                            .clamp_range(0.0..=1.0),
+                            .range(0.0..=1.0),
                     );
                     ui.end_row();
 

@@ -100,19 +100,19 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("X");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.gyro_offset.x).suffix(" °/s").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.gyro_offset.x).suffix(" °/s").speed(0.1).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Y");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.gyro_offset.y).suffix(" °/s").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.gyro_offset.y).suffix(" °/s").speed(0.1).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Z");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.gyro_offset.z).suffix(" °/s").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.gyro_offset.z).suffix(" °/s").speed(0.1).range(-2000.0..=2000.0),
                         );
                     });
                     ui.end_row();
@@ -125,7 +125,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc_offset.x)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-2000.0..=2000.0),
+                                .range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Y");
@@ -134,7 +134,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc_offset.y)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-2000.0..=2000.0),
+                                .range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Z");
@@ -143,7 +143,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc_offset.z)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-2000.0..=2000.0),
+                                .range(-2000.0..=2000.0),
                         );
                     });
                     ui.end_row();
@@ -156,7 +156,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc2_offset.x)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-4000.0..=4000.0),
+                                .range(-4000.0..=4000.0),
                         );
 
                         ui.weak("Y");
@@ -165,7 +165,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc2_offset.y)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-4000.0..=4000.0),
+                                .range(-4000.0..=4000.0),
                         );
 
                         ui.weak("Z");
@@ -174,7 +174,7 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.acc2_offset.z)
                                 .suffix(" m/s²")
                                 .speed(0.01)
-                                .clamp_range(-4000.0..=4000.0),
+                                .range(-4000.0..=4000.0),
                         );
                     });
                     ui.end_row();
@@ -184,19 +184,19 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("X");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.mag_offset.x).suffix(" µT").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.mag_offset.x).suffix(" µT").speed(0.1).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Y");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.mag_offset.y).suffix(" µT").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.mag_offset.y).suffix(" µT").speed(0.1).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Z");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.mag_offset.z).suffix(" µT").speed(0.1).clamp_range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.mag_offset.z).suffix(" µT").speed(0.1).range(-2000.0..=2000.0),
                         );
                     });
                     ui.end_row();
@@ -205,13 +205,13 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Mahony gains");
                 ui.horizontal(|ui| {
                     ui.weak("kP");
-                    ui.add(DragValue::new(&mut self.mahony_kp).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.add(DragValue::new(&mut self.mahony_kp).speed(0.001).range(0.0..=10.0));
                     ui.weak(" kI");
-                    ui.add(DragValue::new(&mut self.mahony_ki).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.add(DragValue::new(&mut self.mahony_ki).speed(0.001).range(0.0..=10.0));
                     ui.weak(", (kP");
-                    ui.add(DragValue::new(&mut self.mahony_kp_ascent).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.add(DragValue::new(&mut self.mahony_kp_ascent).speed(0.001).range(0.0..=10.0));
                     ui.weak(" kI");
-                    ui.add(DragValue::new(&mut self.mahony_ki_ascent).speed(0.001).clamp_range(0.0..=10.0));
+                    ui.add(DragValue::new(&mut self.mahony_ki_ascent).speed(0.001).range(0.0..=10.0));
                     ui.weak("during ascent)")
 
                 });
@@ -221,17 +221,17 @@ impl FcSettingsUiExt for Settings {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.weak("accelerometer");
-                        ui.add(DragValue::new(&mut self.std_dev_accelerometer).speed(0.001).clamp_range(0.0..=100.0));
+                        ui.add(DragValue::new(&mut self.std_dev_accelerometer).speed(0.001).range(0.0..=100.0));
 
                         ui.weak(" barometer");
-                        ui.add(DragValue::new(&mut self.std_dev_barometer).speed(0.001).clamp_range(0.0..=100.0));
+                        ui.add(DragValue::new(&mut self.std_dev_barometer).speed(0.001).range(0.0..=100.0));
 
                         ui.weak(" process");
-                        ui.add(DragValue::new(&mut self.std_dev_process).speed(0.001).clamp_range(0.0..=100.0));
+                        ui.add(DragValue::new(&mut self.std_dev_process).speed(0.001).range(0.0..=100.0));
                     });
                     ui.horizontal(|ui| {
                         ui.weak("(barometer");
-                        ui.add(DragValue::new(&mut self.std_dev_barometer_transsonic).speed(0.001).clamp_range(0.0..=999_999.0));
+                        ui.add(DragValue::new(&mut self.std_dev_barometer_transsonic).speed(0.001).range(0.0..=999_999.0));
                         ui.weak("when transsonic)");
                     });
                 });
@@ -241,10 +241,10 @@ impl FcSettingsUiExt for Settings {
                 ui.horizontal(|ui| {
                     ui.weak("at least");
                     ui.add(
-                        DragValue::new(&mut self.min_takeoff_acc).suffix(" m/s²").speed(0.1).clamp_range(0.0..=1000.0),
+                        DragValue::new(&mut self.min_takeoff_acc).suffix(" m/s²").speed(0.1).range(0.0..=1000.0),
                     );
                     ui.weak("for");
-                    ui.add(DragValue::new(&mut self.min_takeoff_acc_time).suffix(" ms").speed(1).clamp_range(0..=1000));
+                    ui.add(DragValue::new(&mut self.min_takeoff_acc_time).suffix(" ms").speed(1).range(0..=1000));
                 });
                 ui.end_row();
 
@@ -253,18 +253,18 @@ impl FcSettingsUiExt for Settings {
                     ui.horizontal(|ui| {
                         ui.weak("between");
                         ui.add(
-                            DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
+                            DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000),
                         );
                         ui.weak("and");
                         ui.add(
-                            DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).clamp_range(0..=1000000),
+                            DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000),
                         );
                         ui.weak("post-launch,");
                     });
                     ui.horizontal(|ui| {
                         ui.weak("after falling for");
                         ui.add(
-                            DragValue::new(&mut self.apogee_min_falling_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                            DragValue::new(&mut self.apogee_min_falling_time).suffix(" ms").speed(1).range(0..=10000),
                         );
                     });
                 });
@@ -284,12 +284,12 @@ impl FcSettingsUiExt for Settings {
                             DragValue::new(&mut self.main_output_deployment_altitude)
                                 .suffix(" m")
                                 .speed(0.1)
-                                .clamp_range(0.0..=10000.0),
+                                .range(0.0..=10000.0),
                         );
                     });
                     ui.horizontal(|ui| {
                         ui.weak("and at least");
-                        ui.add(DragValue::new(&mut self.min_time_to_main).suffix(" ms").speed(1).clamp_range(0..=1000000));
+                        ui.add(DragValue::new(&mut self.min_time_to_main).suffix(" ms").speed(1).range(0..=1000000));
                         ui.weak("after drogue");
                     });
                 });
@@ -297,25 +297,25 @@ impl FcSettingsUiExt for Settings {
 
                 ui.label("Drogue output timing");
                 ui.horizontal(|ui| {
-                    ui.add(DragValue::new(&mut self.drogue_output_settings.num_pulses).speed(1).clamp_range(0..=20));
+                    ui.add(DragValue::new(&mut self.drogue_output_settings.num_pulses).speed(1).range(0..=20));
                     ui.weak(if self.drogue_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
-                    ui.add(DragValue::new(&mut self.drogue_output_settings.output_high_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                    ui.add(DragValue::new(&mut self.drogue_output_settings.output_high_time).suffix(" ms").speed(1).range(0..=10000));
                     if self.drogue_output_settings.num_pulses > 1 {
                         ui.weak("with");
-                        ui.add(DragValue::new(&mut self.drogue_output_settings.output_low_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                        ui.add(DragValue::new(&mut self.drogue_output_settings.output_low_time).suffix(" ms").speed(1).range(0..=10000));
                         ui.weak("pauses after");
                     } else {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_warning_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                        DragValue::new(&mut self.drogue_output_settings.output_warning_time).suffix(" ms").speed(1).range(0..=10000),
                     );
                     ui.weak("of");
                     ui.add(
                         DragValue::new(&mut self.drogue_output_settings.output_warning_frequency)
                             .suffix(" Hz")
                             .speed(1.0)
-                            .clamp_range(100.0..=10000.0),
+                            .range(100.0..=10000.0),
                     );
                     ui.weak("tone");
                 });
@@ -323,25 +323,25 @@ impl FcSettingsUiExt for Settings {
 
                 ui.label("Main output timing");
                 ui.horizontal(|ui| {
-                    ui.add(DragValue::new(&mut self.main_output_settings.num_pulses).speed(1).clamp_range(0..=20));
+                    ui.add(DragValue::new(&mut self.main_output_settings.num_pulses).speed(1).range(0..=20));
                     ui.weak(if self.main_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
-                    ui.add(DragValue::new(&mut self.main_output_settings.output_high_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                    ui.add(DragValue::new(&mut self.main_output_settings.output_high_time).suffix(" ms").speed(1).range(0..=10000));
                     if self.main_output_settings.num_pulses > 1 {
                         ui.weak("with");
-                        ui.add(DragValue::new(&mut self.main_output_settings.output_low_time).suffix(" ms").speed(1).clamp_range(0..=10000));
+                        ui.add(DragValue::new(&mut self.main_output_settings.output_low_time).suffix(" ms").speed(1).range(0..=10000));
                         ui.weak("pauses after");
                     } else {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_warning_time).suffix(" ms").speed(1).clamp_range(0..=10000),
+                        DragValue::new(&mut self.main_output_settings.output_warning_time).suffix(" ms").speed(1).range(0..=10000),
                     );
                     ui.weak("of");
                     ui.add(
                         DragValue::new(&mut self.main_output_settings.output_warning_frequency)
                             .suffix(" Hz")
                             .speed(1.0)
-                            .clamp_range(100.0..=10000.0),
+                            .range(100.0..=10000.0),
                     );
                     ui.weak("tone");
                 });
@@ -363,9 +363,9 @@ impl FcSettingsUiExt for Settings {
                 ] {
                     ui.label(format!("{} Pressure Sensor Calib.", sensor_label));
                     ui.horizontal(|ui| {
-                        ui.add(DragValue::new(&mut sensor_settings.intercept).speed(0.1).clamp_range(0.0..=3300.0));
+                        ui.add(DragValue::new(&mut sensor_settings.intercept).speed(0.1).range(0.0..=3300.0));
                         ui.weak("mV at 0 bar,");
-                        ui.add(DragValue::new(&mut sensor_settings.slope).speed(0.1).clamp_range(-10000.0..=10000.0));
+                        ui.add(DragValue::new(&mut sensor_settings.slope).speed(0.1).range(-10000.0..=10000.0));
                         ui.weak("mV/bar");
                     });
                     ui.end_row();
@@ -377,21 +377,21 @@ impl FcSettingsUiExt for Settings {
                         DragValue::new(&mut self.acs_nominal_acceleration)
                             .suffix(" m/s²")
                             .speed(0.001)
-                            .clamp_range(0.0..=1000.0),
+                            .range(0.0..=1000.0),
                     );
                     ui.weak(" @ ");
                     ui.add(
                         DragValue::new(&mut self.acs_nominal_tank_pressure)
                             .suffix(" bar")
                             .speed(0.001)
-                            .clamp_range(0.0..=1000.0),
+                            .range(0.0..=1000.0),
                     );
                     ui.weak(" with ");
                     ui.add(
                         DragValue::new(&mut self.acs_acceleration_pressure_slope)
                             .suffix(" (m/s^3)/bar")
                             .speed(0.0001)
-                            .clamp_range(0.0..=50.0),
+                            .range(0.0..=50.0),
                     );
                 });
                 ui.end_row();
@@ -400,7 +400,7 @@ impl FcSettingsUiExt for Settings {
                 ui.add(
                     DragValue::new(&mut self.drag_reduction_factor)
                         .speed(0.00001)
-                        .clamp_range(0.0..=1000.0),
+                        .range(0.0..=1000.0),
                 );
                 ui.end_row();
 
@@ -408,7 +408,7 @@ impl FcSettingsUiExt for Settings {
                 ui.add(
                     DragValue::new(&mut self.apogee_error_offset)
                         .speed(0.1)
-                        .clamp_range(-500.0..=500.0),
+                        .range(-500.0..=500.0),
                 );
                 ui.end_row();
             })

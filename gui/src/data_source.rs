@@ -204,7 +204,9 @@ pub trait ReplayableDataSource: DataSource {
         let total = (last - first).as_secs_f32();
         let elapsed = self.end().map(|p| (p - first).as_secs_f32()).unwrap_or(0.0);
 
-        ui.set_enabled(self.playback_state().is_some());
+        if self.playback_state().is_none() {
+            ui.disable();
+        }
 
         if ui.button("⏮").clicked() {
             *self.playback_state_mut() = Some(PlaybackState::Paused(first));

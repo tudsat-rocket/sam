@@ -182,17 +182,19 @@ impl HeaderPanel {
 
         if ctx.screen_rect().width() > 1000.0 {
             egui::TopBottomPanel::top("topbar").min_height(60.0).max_height(60.0).show(ctx, |ui| {
-                ui.set_enabled(enabled);
-                ui.horizontal_centered(|ui| {
-                    Self::header_ui(ui, data_source, false);
+                ui.add_enabled_ui(enabled, |ui| {
+                    ui.horizontal_centered(|ui| {
+                        Self::header_ui(ui, data_source, false);
+                    })
                 });
             });
         } else {
             egui::TopBottomPanel::top("topbar").min_height(20.0).max_height(300.0).show(ctx, |ui| {
-                ui.set_enabled(enabled);
-                CollapsingHeader::new("Status & Controls").default_open(false).show(ui, |ui| {
-                    Self::header_ui(ui, data_source, true);
-                    ui.add_space(10.0);
+                ui.add_enabled_ui(enabled, |ui| {
+                    CollapsingHeader::new("Status & Controls").default_open(false).show(ui, |ui| {
+                        Self::header_ui(ui, data_source, true);
+                        ui.add_space(10.0);
+                    });
                 });
             });
         }
