@@ -1,5 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
-
 use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -13,13 +11,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use shared_types::telemetry::*;
 
-mod data_source;
-mod file;
-mod gui;
-mod settings;
-mod telemetry_ext;
-
-use crate::data_source::serial::{self, *};
+use gui::data_source::*;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]

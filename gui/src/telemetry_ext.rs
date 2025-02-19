@@ -25,18 +25,6 @@ impl ColorExt for FlightMode {
     }
 }
 
-impl ColorExt for LogLevel {
-    fn color(&self) -> Color32 {
-        match self {
-            LogLevel::Debug => Color32::from_rgb(0x45, 0x85, 0x88),
-            LogLevel::Info => Color32::from_rgb(0x98, 0x97, 0x1a),
-            LogLevel::Warning => Color32::from_rgb(0xd7, 0x99, 0x21),
-            LogLevel::Error => Color32::from_rgb(0xcc, 0x24, 0x1d),
-            LogLevel::Critical => Color32::from_rgb(0xb1, 0x62, 0x86),
-        }
-    }
-}
-
 pub trait QuaternionExt {
     fn elevation(&self) -> f32;
     fn azimuth(&self) -> f32;

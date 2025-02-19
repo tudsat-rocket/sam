@@ -9,7 +9,7 @@ use shared_types::settings::LoRaSettings;
 pub struct AppSettings {
     pub mapbox_access_token: String,
     pub lora: LoRaSettings,
-    pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::gui::tabs::plot::PlotCell>>>,
+    pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::tabs::plot::PlotCell>>>,
     pub lora_bookmarks: Option<Vec<LoRaSettings>>,
     pub ground_station_position: Option<(f64, f64)>,
 }
@@ -34,7 +34,7 @@ impl AppSettings {
         }
 
         let f = File::open(config_dir.join("config.json"))?;
-        
+
         let mut config: Self = serde_json::from_reader(f)?;
 
         if config.ground_station_position.is_none() {

@@ -18,11 +18,11 @@ use shared_types::telemetry::FlightMode;
 use shared_types::IoBoardRole;
 
 use crate::data_source::DataSource;
-use crate::gui::acs::AcsSystemDiagram;
+use crate::acs::AcsSystemDiagram;
 use crate::settings::AppSettings;
 
-use crate::gui::map::*;
-use crate::gui::plot::*;
+use crate::map::*;
+use crate::plot::*;
 
 const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
 const G: Color32 = Color32::from_rgb(0xb8, 0xbb, 0x26);

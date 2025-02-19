@@ -10,7 +10,7 @@ use crate::data_source::DataSource;
 use crate::file::*;
 use crate::settings::AppSettings;
 
-use crate::gui::fc_settings::*;
+use crate::fc_settings::*;
 
 pub struct ConfigureTab {}
 

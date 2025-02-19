@@ -3,19 +3,20 @@ resolver = "2"
 members = [
     "android",          # Android wrapper for GUI
     "archive",          # Archived flight data
-    "gui",              # Main ground control GUI
+    "cli",              # Main ground control CLI ($ sam)
+    "gui",              # Main ground control GUI ($ sam-gui)
     "galadriel",        # Basic numerical rocketry simulation, used via GUI or standalone
     "state_estimator",  # State estimation used both in SITL simulations and firmware
     "shared_types",     # Types like telemetry and settings shared between firmware, simulation and GUI
 ]
-default-members = ["gui"] # Allows running GUI by simply running `$ cargo run` in root of workspace
+default-members = ["cli"] # Allows running GUI by simply running `$ cargo run` in root of workspace
 
 # We specify dependencies we use in multiple places here, so we can make sure
 # every crate uses the same version.
 [workspace.dependencies]
 # Workspace member packages
+gui = { path = "gui" }
 archive = { path = "archive" }
-sam = { path = "gui" }
 galadriel = { path = "galadriel" }
 shared_types = { path = "shared_types" }
 state_estimator = { path = "state_estimator" }

@@ -1,7 +1,7 @@
 use crate::data_source::LogFileDataSource;
 use crate::file::*;
-use crate::gui::tabs::GuiTab;
-use crate::gui::Sam;
+use crate::tabs::GuiTab;
+use crate::Sam;
 
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 use crate::data_source::SimulationDataSource;
@@ -28,9 +28,9 @@ impl MenuBarPanel {
             ui.set_enabled(enabled);
             ui.horizontal_centered(|ui| {
                 let image = if ui.style().visuals.dark_mode {
-                    egui::Image::new(egui::include_image!("../../../assets/logo_dark_mode.png"))
+                    egui::Image::new(egui::include_image!("../../assets/logo_dark_mode.png"))
                 } else {
-                    egui::Image::new(egui::include_image!("../../../assets/logo_light_mode.png"))
+                    egui::Image::new(egui::include_image!("../../assets/logo_light_mode.png"))
                 };
                 ui.add(image.max_size(Vec2::new(ui.available_width(), 20.0)));
 

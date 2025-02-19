@@ -3,7 +3,7 @@ use egui::CollapsingHeader;
 use archive::{ArchivedLog, ARCHIVED_LOGS};
 
 use crate::data_source::{DataSource, SimulationDataSource, SimulationSettings};
-use crate::gui::fc_settings::FcSettingsUiExt;
+use crate::fc_settings::FcSettingsUiExt;
 
 pub struct SimulationPanel {}
 

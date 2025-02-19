@@ -1,5 +1,5 @@
 [package]
-name = "sam"
+name = "gui"
 description = "Sam Ground Station"
 version = "0.1.0"
 edition = "2021"

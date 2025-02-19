@@ -1,0 +1,42 @@
+[package]
+name = "cli"
+description = "CLI for the Sam Ground Station"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+path = "src/main.rs"
+name = "sam"
+
+[dependencies]
+# Workspace members
+gui = { workspace = true } # needed to start GUI if no args are given and for serial stuff
+archive = { workspace = true }
+shared_types = { workspace = true }
+state_estimator = { workspace = true }
+# CLI & logging
+clap = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+# serialization & communication
+heapless = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
+crc = { workspace = true }
+serialport = "4"
+# misc
+mint = { workspace = true }
+nalgebra = { workspace = true }
+chrono = { workspace = true }
+directories = "4.0"
+colorgrad = "0.6"
+tokio = "1.33"
+tokio-serial = "5.4.1"
+futures = { version = "0.3.28", default-features = false }
+reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
+
+# X86 dependencies
+rand = { workspace = true }
+rfd = "0.10"
+indicatif = "0.17"

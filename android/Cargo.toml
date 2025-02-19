@@ -1,5 +1,5 @@
 [package]
-name = "sam_android"
+name = "sam-android"
 version = "0.1.0"
 edition = "2021"
 
@@ -29,7 +29,7 @@ egui-wgpu = { workspace = true }
 egui-winit = { workspace = true }
 #egui_demo_lib = "0.23"
 
-sam = { workspace = true }
+gui = { workspace = true }
 shared_types = { workspace = true }
 #mithril = { path = "../mithril", default-features = false }
 #mithril = { git = "https://github.com/tudsat-rocket/mithril.git", default-features = false }
