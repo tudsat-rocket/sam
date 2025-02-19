@@ -4,7 +4,7 @@ use shared_types::telemetry::ThrusterValveState;
 
 use crate::data_source::DataSource;
 
-use super::theme::ThemeColors;
+use crate::utils::theme::ThemeColors;
 
 const ACS_TANK_MAX_PRESSURE: f32 = 300.0;
 

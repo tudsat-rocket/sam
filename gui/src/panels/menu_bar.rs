@@ -1,13 +1,13 @@
+use eframe::egui;
+use egui::{Align, Layout, Vec2};
+
 use crate::data_source::LogFileDataSource;
-use crate::file::*;
+use crate::utils::file::*;
 use crate::tabs::GuiTab;
 use crate::Sam;
 
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 use crate::data_source::SimulationDataSource;
-
-use eframe::egui;
-use egui::{Align, Layout, Vec2};
 
 pub struct MenuBarPanel {}
 

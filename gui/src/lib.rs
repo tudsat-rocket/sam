@@ -11,23 +11,16 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 use shared_types::telemetry::*;
 
 pub mod data_source;
-mod file;
 pub mod settings;
-mod telemetry_ext;
-mod acs;
-mod panels;
-mod fc_settings;
-mod map;
-mod plot;
+pub mod panels;
 pub mod tabs;
-mod theme;
-mod top_bar;
+pub mod utils;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
+pub mod widgets;
 
 use crate::data_source::*;
 use crate::panels::*;
 use crate::tabs::*;
-use crate::theme::*;
 use crate::windows::*;
 use crate::settings::AppSettings;
 
@@ -169,7 +162,7 @@ impl Sam {
         }
 
         // Redefine text_styles
-        let colors = ThemeColors::new(ctx);
+        let colors = utils::theme::ThemeColors::new(ctx);
         let mut style = (*ctx.style()).clone();
         colors.apply(&mut style);
         style.text_styles.insert(Heading, FontId::new(14.0, Proportional));

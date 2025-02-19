@@ -24,7 +24,7 @@ use shared_types::telemetry::*;
 use state_estimator::StateEstimator;
 
 use crate::data_source::*;
-use crate::telemetry_ext::QuaternionExt;
+use crate::utils::telemetry_ext::QuaternionExt;
 
 pub enum Simulation {
     Simulation(galadriel::Simulation),

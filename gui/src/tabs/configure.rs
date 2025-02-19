@@ -7,10 +7,9 @@ use log::*;
 use shared_types::telemetry::*;
 
 use crate::data_source::DataSource;
-use crate::file::*;
 use crate::settings::AppSettings;
-
-use crate::fc_settings::*;
+use crate::widgets::fc_settings::*;
+use crate::utils::file::*;
 
 pub struct ConfigureTab {}
 

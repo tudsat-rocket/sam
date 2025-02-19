@@ -17,7 +17,7 @@ use nalgebra::{UnitQuaternion, Vector3};
 use shared_types::telemetry::FlightMode;
 
 use crate::data_source::DataSource;
-use crate::telemetry_ext::ColorExt;
+use crate::utils::telemetry_ext::ColorExt;
 use crate::settings::AppSettings;
 
 const GRADIENT_MAX_ALT: f64 = 10000.0;

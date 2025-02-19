@@ -10,7 +10,7 @@ use egui::{Color32, Label, RichText, SelectableLabel, Stroke, Rect, Vec2};
 use shared_types::{telemetry::*, IoBoardRole};
 
 use crate::data_source::*;
-use crate::telemetry_ext::*;
+use crate::utils::telemetry_ext::*;
 
 // TODO: move to telemetry_ext?
 fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {

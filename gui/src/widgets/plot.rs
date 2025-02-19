@@ -15,7 +15,7 @@ use eframe::egui::PointerButton;
 use egui_plot::{Corner, Legend, Line, LineStyle, PlotBounds, VLine};
 
 use crate::*;
-use crate::telemetry_ext::*;
+use crate::utils::telemetry_ext::*;
 
 const DOWNSAMPLING_FACTOR: usize = 4;
 const MAX_DOWNSAMPLING_RUNS: usize = 2;

@@ -2,7 +2,7 @@ use egui::{CollapsingHeader, Vec2, Layout, Align};
 
 use shared_types::telemetry::*;
 
-use crate::top_bar::*;
+use crate::widgets::top_bar::*;
 use crate::data_source::DataSource;
 
 pub struct HeaderPanel {}
