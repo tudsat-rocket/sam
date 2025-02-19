@@ -1,5 +1,6 @@
 //! Main GUI code, included by cli, wasm and android entrypoints
 
+use std::sync::Arc;
 use std::ops::DerefMut;
 use std::path::PathBuf;
 
@@ -44,8 +45,8 @@ impl Sam {
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
-        fonts.font_data.insert("RobotoMono".to_owned(), roboto);
-        fonts.font_data.insert("Overpass".to_owned(), lato);
+        fonts.font_data.insert("RobotoMono".to_owned(), Arc::new(roboto));
+        fonts.font_data.insert("Overpass".to_owned(), Arc::new(lato));
         fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "RobotoMono".to_owned());
         fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Overpass".to_owned());
 

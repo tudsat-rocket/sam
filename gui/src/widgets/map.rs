@@ -6,13 +6,14 @@ use std::time::Instant;
 use web_time::Instant;
 
 use directories::ProjectDirs;
+use nalgebra::Vector3;
+
 use eframe::egui;
 use egui::{Color32, Frame, Layout, Rect, Stroke, Ui, Vec2, Widget};
-use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
-use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 use walkers::extras::{Places, Place, Style};
-use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position, Projector};
-use nalgebra::{UnitQuaternion, Vector3};
+use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position};
+//use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
+//use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 
 use shared_types::telemetry::FlightMode;
 
@@ -183,7 +184,7 @@ impl MapState {
                 })
                 .filter(|(_, _, _, _, vs)| vs.latitude.is_some() && vs.longitude.is_some())
                 .map(|(ground_asl, alt_asl, orientation, fm, vs)| {
-                    let pos = Position::from_lat_lon(vs.latitude.unwrap() as f64, vs.longitude.unwrap() as f64);
+                    let pos = Position::new(vs.longitude.unwrap() as f64, vs.latitude.unwrap() as f64);
                     let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
                     let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
                     let variance = vs.sim.as_ref().map(|sim| sim.kalman_P[0])
@@ -203,9 +204,9 @@ impl MapState {
                     gps.latitude.is_some() && gps.longitude.is_some() && gps.num_satellites >= 6 && gps.hdop < 500
                 ).unwrap_or(false))
                 .map(|(ground_asl, alt_asl, orientation, fm, vs)| {
-                    let pos = Position::from_lat_lon(
-                        vs.gps.as_ref().and_then(|gps| gps.latitude).unwrap() as f64,
-                        vs.gps.as_ref().and_then(|gps| gps.longitude).unwrap() as f64
+                    let pos = Position::new(
+                        vs.gps.as_ref().and_then(|gps| gps.longitude).unwrap() as f64,
+                        vs.gps.as_ref().and_then(|gps| gps.latitude).unwrap() as f64
                     );
                     let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
                     let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
@@ -217,8 +218,8 @@ impl MapState {
             for (pos, alt, att, fm, variance) in all_estimated_positions {
                 let add = self.estimated_positions.last().map(|(last_pos, (last_alt, _att, _fm, _var))| {
                     (last_alt - alt).abs() > 20.0 ||
-                        (last_pos.lat() - pos.lat()).abs() > 0.00001 ||
-                        (last_pos.lon() - pos.lon()).abs() > 0.00001
+                        (last_pos.y() - pos.y()).abs() > 0.00001 ||
+                        (last_pos.x() - pos.x()).abs() > 0.00001
                 }).unwrap_or(true);
 
                 if add {
@@ -230,8 +231,8 @@ impl MapState {
             for (pos, alt, att, fm, hdop) in all_gps_positions {
                 let add = self.gps_positions.last().map(|(last_pos, (last_alt, _att, _fm, _hdop))| {
                     (last_alt - alt).abs() > 20.0 ||
-                        (last_pos.lat() - pos.lat()).abs() > 0.00001 ||
-                        (last_pos.lon() - pos.lon()).abs() > 0.00001
+                        (last_pos.y() - pos.y()).abs() > 0.00001 ||
+                        (last_pos.x() - pos.x()).abs() > 0.00001
                 }).unwrap_or(true);
 
                 if add {
@@ -261,7 +262,7 @@ pub struct Map<'a> {
     state: &'a mut MapState,
     vehicle_position: Option<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     vehicle_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
-    orientation: Option<UnitQuaternion<f32>>,
+    //orientation: Option<UnitQuaternion<f32>>,
     settings: &'a AppSettings,
 }
 
@@ -269,13 +270,13 @@ impl<'a> Map<'a> {
     pub fn new(state: &'a mut MapState, data_source: &mut dyn DataSource, settings: &'a AppSettings) -> Self {
         let vehicle_positions = state.vehicle_positions(data_source);
         let vehicle_position = state.last_position();
-        let orientation = data_source.vehicle_states().rev().find_map(|(_t, vs)| vs.orientation);
+        //let orientation = data_source.vehicle_states().rev().find_map(|(_t, vs)| vs.orientation);
 
         Self {
             state,
             vehicle_position,
             vehicle_positions,
-            orientation,
+            //orientation,
             settings,
         }
     }
@@ -295,7 +296,7 @@ impl<'a> Widget for Map<'a> {
 
         let detached_pos = self.state.memory.detached();
 
-        let position = self.vehicle_position.map(|(pos, ..)| pos).unwrap_or(Position::from_lat_lon(49.861445, 8.68519));
+        let position = self.vehicle_position.map(|(pos, ..)| pos).unwrap_or(Position::new(8.68519, 49.861445));
         let gradient_lookup = self.state.gradient_lookup.clone();
         let pos_source = self.state.position_source;
 
@@ -353,7 +354,7 @@ impl<'a> Widget for Map<'a> {
                 map = map.with_plugin(Places::new(vec![
                     Place {
                         position: *position,
-                        label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.lat(), position.lon(), alt_agl, hdop),
+                        label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.y(), position.x(), alt_agl, hdop),
                         symbol: '🚀',
                         style: Style::default(),
                     },
@@ -362,10 +363,10 @@ impl<'a> Widget for Map<'a> {
         }
 
         let (gcs_lat, gcs_lon) = self.settings.ground_station_position.unwrap();
-        let gcs_position = Position::from_lat_lon(gcs_lat, gcs_lon);
+        let gcs_position = Position::new(gcs_lon, gcs_lat);
         let attitude_text = if let Some((position, (alt_agl, _att, _fm, _hdop))) = self.vehicle_positions.last().as_ref().copied() {
-            let (rel_lat, rel_lng) = (position.lat() - gcs_position.lat(), position.lon() - gcs_position.lon());
-            let (rel_x, rel_y) = (rel_lng * 111_111.0 * gcs_position.lat().to_radians().cos(), rel_lat * 111_111.0);
+            let (rel_lng, rel_lat) = (position.x() - gcs_position.x(), position.y() - gcs_position.y());
+            let (rel_x, rel_y) = (rel_lng * 111_111.0 * gcs_position.y().to_radians().cos(), rel_lat * 111_111.0);
             let ground_dist = (rel_x.powi(2) + rel_y.powi(2)).sqrt();
             let azimuth = rel_x.atan2(rel_y).to_degrees();
             let elevation = alt_agl.atan2(ground_dist).to_degrees();
@@ -385,52 +386,52 @@ impl<'a> Widget for Map<'a> {
 
         let response = ui.add(map);
 
-        if self.state.show_gizmos {
-            if let Some(q) = self.orientation {
-                let viewport = ui.clip_rect();
+        // if self.state.show_gizmos {
+        //     if let Some(q) = self.orientation {
+        //         let viewport = ui.clip_rect();
 
-                // Fun type conversion bullshit
-                let rotation: mint::Quaternion<f64> = q.cast::<f64>().into();
-                let rotation: transform_gizmo_egui::mint::Quaternion<f64> = rotation.into();
+        //         // Fun type conversion bullshit
+        //         let rotation: mint::Quaternion<f64> = q.cast::<f64>().into();
+        //         let rotation: transform_gizmo_egui::mint::Quaternion<f64> = rotation.into();
 
-                let view_matrix = DMat4::look_at_rh(DVec3::new(0., 0., 1.), DVec3::ZERO, DVec3::new(0., 1., 0.));
-                let projection_matrix = DMat4::orthographic_rh(
-                    viewport.left() as f64,
-                    viewport.right() as f64,
-                    -viewport.bottom() as f64,
-                    -viewport.top() as f64,
-                    0.1,
-                    1000.0
-                );
+        //         let view_matrix = DMat4::look_at_rh(DVec3::new(0., 0., 1.), DVec3::ZERO, DVec3::new(0., 1., 0.));
+        //         let projection_matrix = DMat4::orthographic_rh(
+        //             viewport.left() as f64,
+        //             viewport.right() as f64,
+        //             -viewport.bottom() as f64,
+        //             -viewport.top() as f64,
+        //             0.1,
+        //             1000.0
+        //         );
 
-                // We use viewport pixel coordinates (obtained from the Map projector)
-                // for the rendering of the gizmo, but we need to invert the y axis,
-                // since screen coordinates are Y down
-                let projector = Projector::new(viewport, &self.state.memory, position);
-                let viewport_pos = projector.project(position);
-                let translation = DVec3::new(viewport_pos.x as f64, -viewport_pos.y as f64, 0.0);
-                let transform = Transform::from_scale_rotation_translation(DVec3::ONE, rotation, translation);
+        //         // We use viewport pixel coordinates (obtained from the Map projector)
+        //         // for the rendering of the gizmo, but we need to invert the y axis,
+        //         // since screen coordinates are Y down
+        //         let projector = Projector::new(viewport, &self.state.memory, position);
+        //         let viewport_pos = projector.project(position);
+        //         let translation = DVec3::new(viewport_pos.x as f64, -viewport_pos.y as f64, 0.0);
+        //         let transform = Transform::from_scale_rotation_translation(DVec3::ONE, rotation, translation);
 
-                let visuals = GizmoVisuals {
-                    inactive_alpha: 1.0,
-                    highlight_alpha: 1.0,
-                    gizmo_size: 50.0,
-                    ..Default::default()
-                };
+        //         let visuals = GizmoVisuals {
+        //             inactive_alpha: 1.0,
+        //             highlight_alpha: 1.0,
+        //             gizmo_size: 50.0,
+        //             ..Default::default()
+        //         };
 
-                let config = GizmoConfig {
-                    viewport,
-                    view_matrix: view_matrix.into(),
-                    projection_matrix: projection_matrix.into(),
-                    modes: GizmoMode::all_translate(),
-                    orientation: transform_gizmo_egui::GizmoOrientation::Local,
-                    visuals,
-                    ..Default::default()
-                };
+        //         let config = GizmoConfig {
+        //             viewport,
+        //             view_matrix: view_matrix.into(),
+        //             projection_matrix: projection_matrix.into(),
+        //             modes: GizmoMode::all_translate(),
+        //             orientation: transform_gizmo_egui::GizmoOrientation::Local,
+        //             visuals,
+        //             ..Default::default()
+        //         };
 
-                Gizmo::new(config).interact(ui, &[transform]);
-            }
-        }
+        //         Gizmo::new(config).interact(ui, &[transform]);
+        //     }
+        // }
 
         // Panel for selecting map type
         let map_type_rect = Rect::from_two_pos(
@@ -459,7 +460,7 @@ impl<'a> Widget for Map<'a> {
                 ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                     let detached_pos = self.state.memory.detached();
                     let pos = detached_pos.or(self.vehicle_position.map(|(p, ..)| p));
-                    let coords = pos.map(|p| format!("{:.6},{:.6}", p.lat(), p.lon()));
+                    let coords = pos.map(|p| format!("{:.6},{:.6}", p.y(), p.x()));
 
                     ui.add_enabled_ui(detached_pos.is_some(), |ui| {
                         if ui.button("⌖").clicked() {

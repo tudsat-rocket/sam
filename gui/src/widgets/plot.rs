@@ -407,8 +407,8 @@ impl PlotUiExt for egui::Ui {
         let view_end = plot_time(&data_source.end().unwrap_or(Instant::now()), data_source);
         #[allow(deprecated)] // the axis widths in egui suck, TODO
         let mut plot = egui_plot::Plot::new(&state.title)
-            .link_axis("plot_axis_group", true, false)
-            .link_cursor("plot_cursor_group", true, false)
+            .link_axis("plot_axis_group", Vec2b::new(true, false))
+            .link_cursor("plot_cursor_group", Vec2b::new(true, false))
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
             .allow_scroll(false) // TODO: x only
             .allow_drag([true, false])
