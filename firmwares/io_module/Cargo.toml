@@ -26,28 +26,6 @@ embassy-sync = "0.5"
 embassy-futures = "0.1"
 
 static_cell = "2"
-crc = "3"
+crc = { workspace = true }
 
-shared_types = { git = "https://github.com/tudsat-rocket/sam" }
-#shared_types = { path = "../../sam/shared_types" }
-
-# cargo build/run
-[profile.dev]
-codegen-units = 1
-debug = "full"
-debug-assertions = false
-incremental = false
-lto = "fat"
-opt-level = 2
-#opt-level = "s"
-overflow-checks = false
-
-# cargo build/run --release
-[profile.release]
-codegen-units = 1
-debug = "full"
-debug-assertions = false
-incremental = false
-lto = "fat"
-opt-level = 2
-overflow-checks = false
+shared_types = { workspace = true }
