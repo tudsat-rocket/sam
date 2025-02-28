@@ -1,0 +1,77 @@
+[env]
+FEATURES = "${CARGO_MAKE_TASK_ARGS}"
+
+[tasks.reboot-to-bootloader]
+command = "sam"
+args = ["bootloader"]
+# Try to keep going, e.g. if the device already is in bootloader mode
+ignore_errors = true
+
+[tasks.build]
+command = "cargo"
+args = [
+    "build",
+    "--release",
+    "--features", "${FEATURES}"
+]
+
+[tasks.test]
+command = "cargo"
+args = [
+    "test",
+    "--lib",
+    "--target", "x86_64-unknown-linux-gnu",
+    "--no-default-features"
+]
+
+[tasks.objcopy]
+command = "cargo"
+args = [
+    "objcopy",
+    "--quiet",
+    "--release",
+    "--features", "${FEATURES}",
+    "--",
+    "-O", "binary",
+    "target/thumbv7em-none-eabihf/release/dfu-rs.bin"
+]
+dependencies = ["build"]
+
+[tasks.dfu]
+linux_alias = "dfu_linux"
+windows_alias = "dfu_win"
+
+[tasks.dfu_linux]
+command = "dfu-util"
+args = [
+    "-d", "0483:df11",
+    "-a", "0",
+    "-s", "0x08000000:leave",
+    "-D", "target/thumbv7em-none-eabihf/release/dfu-rs.bin",
+    "-w"
+]
+dependencies = ["objcopy", "reboot-to-bootloader"]
+
+[tasks.dfu_win]
+command = "./dfu-util.exe"
+args = [
+    "-d", "0483:df11",
+    "-a", "0",
+    "-s", "0x08000000:leave",
+    "-D", "target/thumbv7em-none-eabihf/release/dfu-rs.bin",
+]
+dependencies = ["objcopy", "reboot-to-bootloader"]
+
+[tasks.dfu-log]
+command = "sam"
+args = ["logcat"]
+dependencies = ["dfu"]
+
+[tasks.swd]
+command = "cargo"
+args = [
+    "embed",
+    "--release",
+    "--features", "${FEATURES}",
+    "--chip=stm32f401rctx"
+]

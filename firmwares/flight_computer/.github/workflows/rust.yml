@@ -1,0 +1,27 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: dtolnay/rust-toolchain@nightly
+    - name: Install thumbv7em-none-eabihf target
+      run: rustup target add thumbv7em-none-eabihf
+    - name: Install flip-link linker
+      run: cargo install flip-link
+    - name: Build
+      run: cargo build --release
+    - name: Build for ground station
+      run: cargo build --release --features gcs
