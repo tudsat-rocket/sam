@@ -8,6 +8,7 @@ members = [
     "galadriel",        # Basic numerical rocketry simulation, used via GUI or standalone
     "state_estimator",  # State estimation used both in SITL simulations and firmware
     "shared_types",     # Types like telemetry and settings shared between firmware, simulation and GUI
+    "firmwares/flight_computer",
 ]
 default-members = ["cli"] # Allows running GUI by simply running `$ cargo run` in root of workspace
 
@@ -40,11 +41,17 @@ heapless = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1.0.89"
 postcard = "1.0"
-siphasher = "0.3"
-crc = "2"
+siphasher = { version = "0.3", default-features = false }
+crc = "3"
 # misc
 chrono = "0.4"
-rand = { version = "0.8", default-features = false, features = ["std", "std_rng"] }
+rand = { version = "0.8", default-features = false }
 
+# cargo build/run --release
 [profile.release]
-lto = "thin"
+codegen-units = 1
+debug = "full"
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 2

@@ -28,19 +28,19 @@ embassy-sync = "0.5"
 embassy-usb = "0.2"
 embassy-futures = "0.1"
 
-heapless = "0.8.0"
 static_cell = "2"
 num-traits = { version = "0.2.15", default-features = false }
-serde = { version = "1", default-features = false, features = ["derive"] }
-postcard = "1.0"
-crc = "3"
-nalgebra = { version = "0.32", default-features = false, features = ["serde-serialize-no-std", "macros"] }
-siphasher = { version = "0.3", default-features = false }
-rand = { version = "0.8", default-features = false }
+heapless = { workspace = true }
+serde = { workspace = true }
+postcard = { workspace = true }
+crc = { workspace = true }
+nalgebra = { workspace = true }
+siphasher = { workspace = true }
+rand = { workspace = true }
 rand_chacha = { version = "0.3", default-features = false }
 
-shared_types = { git = "https://github.com/tudsat-rocket/sam" }
-state_estimator = { git = "https://github.com/tudsat-rocket/sam" }
+shared_types = { workspace = true }
+state_estimator = { workspace = true }
 
 [dev-dependencies]
 defmt-test = "0.3"
@@ -48,23 +48,3 @@ defmt-test = "0.3"
 [features]
 gcs = []
 rev1 = []
-
-# cargo build/run
-[profile.dev]
-codegen-units = 1
-debug = "full"
-debug-assertions = false
-incremental = false
-lto = "fat"
-opt-level = 2
-overflow-checks = false
-
-# cargo build/run --release
-[profile.release]
-codegen-units = 1
-debug = "full"
-debug-assertions = false
-incremental = false
-lto = "fat"
-opt-level = 2
-overflow-checks = false

@@ -48,7 +48,7 @@ puffin_egui = { version = "0.26", optional = true }
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 galadriel = { workspace = true, features = ["egui"] }
-rand = { workspace = true }
+rand = { workspace = true, features = ["std", "std_rng"] }
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
