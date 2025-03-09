@@ -470,7 +470,7 @@ impl<'a> Widget for Map<'a> {
 
                     ui.add_enabled_ui(coords.is_some(), |ui| {
                         if ui.button("📋").clicked() {
-                            ui.output_mut(|o| o.copied_text = coords.clone().unwrap_or_default());
+                            ui.ctx().copy_text(coords.clone().unwrap_or_default());
                         }
                     });
 

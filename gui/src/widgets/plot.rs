@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::Instant;
-use egui_plot::HLine;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
@@ -256,7 +255,7 @@ impl PlotCache {
         show_stats: bool,
         data_source: &dyn DataSource,
         view_width: f32,
-    ) -> Vec<Line> {
+    ) -> Vec<(Vec<[f64; 2]>, String, Color32)> {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -274,7 +273,10 @@ impl PlotCache {
                 } else {
                     pcl.name.clone()
                 };
-                Line::new(data).name(legend).color(pcl.color)
+
+                //let plot_points = PlotPoints::Owned(data);
+                (data, legend, pcl.color)
+                //Line::new(data).name(legend).color(pcl.color)
             })
             .collect()
     }
@@ -395,7 +397,6 @@ impl PlotUiExt for egui::Ui {
         puffin::profile_function!();
 
         let mut shared = state.shared.borrow_mut();
-        let mut cache = state.cache.borrow_mut();
 
         let legend =
             Legend::default().text_style(egui::TextStyle::Small).background_alpha(0.5).position(Corner::LeftTop);
@@ -407,13 +408,13 @@ impl PlotUiExt for egui::Ui {
         let view_end = plot_time(&data_source.end().unwrap_or(Instant::now()), data_source);
         #[allow(deprecated)] // the axis widths in egui suck, TODO
         let mut plot = egui_plot::Plot::new(&state.title)
-            .link_axis("plot_axis_group", Vec2b::new(true, false))
-            .link_cursor("plot_cursor_group", Vec2b::new(true, false))
+            .link_axis("plot_axis_group", [true, false])
+            .link_cursor("plot_cursor_group", [true, false])
             .set_margin_fraction(egui::Vec2::new(0.0, 0.15))
-            .allow_scroll(false) // TODO: x only
+            .allow_scroll([true, false])
             .allow_drag([true, false])
             .allow_zoom([true, false])
-            .auto_bounds([false, true].into())
+            .auto_bounds([false, true])
             .y_axis_position(egui_plot::HPlacement::Right)
             // These two are needed to avoid egui adding a huge amount of space for the y axis ticks
             .y_axis_width(3)
@@ -437,22 +438,23 @@ impl PlotUiExt for egui::Ui {
         let show_stats = shared.show_stats;
         let view_width = self.max_rect().width();
         let attached_to_edge = shared.attached_to_edge;
+        let cache: Rc<RefCell<PlotCache>> = state.cache.clone();
         let ir = plot.show(self, move |plot_ui| {
             if attached_to_edge {
                 plot_ui.set_auto_bounds(Vec2b::new(true, true));
             }
 
-            let lines = cache.plot_lines(plot_ui.plot_bounds(), show_stats, data_source, view_width);
-            for l in lines.into_iter() {
-                plot_ui.line(l.width(1.2));
+            let lines = cache.borrow_mut().plot_lines(plot_ui.plot_bounds(), show_stats, data_source, view_width);
+            for (data, legend, color) in lines.into_iter() {
+                plot_ui.line(Line::new(data).name(legend).color(color).width(1.2));
             }
 
-            for vl in cache.mode_lines(data_source) {
+            for vl in cache.borrow_mut().mode_lines(data_source) {
                 plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));
             }
 
             for (y, color) in &state.horizontal_lines {
-                let hl = HLine::new(*y).color(*color);
+                let hl = egui_plot::HLine::new(*y).color(*color);
                 plot_ui.hline(hl.style(LineStyle::Dashed { length: 4.0 }));
             }
         });

@@ -1,4 +1,4 @@
-use egui::{Painter, Stroke, Pos2, Rect, Color32, epaint::{PathShape, RectShape}, Vec2, Shape, Rounding, RichText};
+use egui::{Painter, Stroke, Pos2, Rect, Color32, epaint::{PathShape, RectShape}, Vec2, Shape, CornerRadius, RichText};
 
 use shared_types::telemetry::ThrusterValveState;
 
@@ -65,7 +65,7 @@ impl AcsSystemDiagram {
 
     fn draw_regulator(&self, painter: &Painter, pos: Pos2, w: f32, stroke: Stroke) {
         // TODO: draw the rest of the fucking regulator
-        painter.rect(Rect::from_center_size(pos, Vec2::splat(w)), 0.0, Color32::TRANSPARENT, stroke);
+        painter.rect(Rect::from_center_size(pos, Vec2::splat(w)), 0.0, Color32::TRANSPARENT, stroke, egui::StrokeKind::Outside);
     }
 
     fn draw_valve(&self, painter: &Painter, pos: Pos2, w: f32, open: bool, vertical: bool, stroke: Stroke) {
@@ -73,9 +73,10 @@ impl AcsSystemDiagram {
             let shape = Shape::Rect(
                 RectShape::new(
                     Rect::from_center_size(pos, Vec2::splat(w * 1.2)),
-                    Rounding::same(0.0),
+                    CornerRadius::same(0),
                     Color32::from_rgb(0xfe, 0x80, 0x19),
-                    Stroke::NONE
+                    Stroke::NONE,
+                    egui::StrokeKind::Outside
                 )
             );
             painter.add(shape);
