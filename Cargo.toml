@@ -11,7 +11,8 @@ members = [
     "firmwares/flight_computer",
     "firmwares/io_module",
     "firmwares/power_module",
-    "firmwares/fancyfins",
+    "firmwares/fancyfins", 
+    "firmwares/engine_board",
 ]
 default-members = ["cli"] # Allows running GUI by simply running `$ cargo run` in root of workspace
 
