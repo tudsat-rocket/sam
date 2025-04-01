@@ -1706,6 +1706,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine_board"
+version = "0.1.0"
+dependencies = [
+ "alloc-cortex-m",
+ "cortex-m",
+ "cortex-m-rt",
+ "crc",
+ "defmt",
+ "defmt-rtt",
+ "embassy-embedded-hal",
+ "embassy-executor",
+ "embassy-futures",
+ "embassy-stm32",
+ "embassy-sync 0.5.0",
+ "embassy-time",
+ "embedded-hal 1.0.0",
+ "embedded-hal-async",
+ "panic-probe",
+ "shared_types",
+ "static_cell",
+]
+
+[[package]]
 name = "enum-map"
 version = "2.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

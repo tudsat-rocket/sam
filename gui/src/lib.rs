@@ -18,6 +18,7 @@ pub mod tabs;
 pub mod utils;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 pub mod widgets;
+pub mod flow_components;
 
 use crate::data_source::*;
 use crate::panels::*;

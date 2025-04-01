@@ -21,6 +21,7 @@ use shared_types::IoBoardRole;
 use crate::data_source::DataSource;
 use crate::settings::AppSettings;
 use crate::widgets::acs::*;
+use crate::widgets::hybrid::*;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
 
@@ -56,6 +57,7 @@ pub enum PlotCell {
     IoSensors,
     FinData,
     Acs,
+    Hybrid
 }
 
 impl PlotCell {
@@ -79,6 +81,7 @@ impl PlotCell {
             PlotCell::IoSensors,
             PlotCell::FinData,
             PlotCell::Acs,
+            PlotCell::Hybrid
         ]
     }
 }
@@ -104,6 +107,7 @@ impl std::fmt::Display for PlotCell {
             PlotCell::IoSensors      => write!(f, "IO Board Sensors"),
             PlotCell::FinData        => write!(f, "Fin Data"),
             PlotCell::Acs            => write!(f, "ACS"),
+            PlotCell::Hybrid         => write!(f, "Hybrid")
         }
     }
 }
@@ -155,6 +159,7 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
             PlotCell::FinData        => ui.plot_telemetry(&self.fin_data_plot, self.data_source),
             PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source, self.settings)); },
             PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
+            PlotCell::Hybrid         => { ui.add(HybridSystemDiagram::new()); },
         }
 
         egui_tiles::UiResponse::None
@@ -394,10 +399,15 @@ impl PlotTab {
             tiles.insert_pane(PlotCell::Runtime),
         ];
 
+        let flow_tabs = vec![
+            tiles.insert_pane(PlotCell::Acs),
+            tiles.insert_pane(PlotCell::Hybrid)
+        ];
+
         let overview = vec![
             tiles.insert_pane(PlotCell::Orientation),
             tiles.insert_pane(PlotCell::Temperatures),
-            tiles.insert_pane(PlotCell::Acs),
+            tiles.insert_tab_tile(flow_tabs),
             tiles.insert_pane(PlotCell::Power),
             tiles.insert_tab_tile(t),
             tiles.insert_pane(PlotCell::Signal),
