@@ -4,27 +4,29 @@ use crate::{flow_components::flow_component::ResponseBounds, utils::theme::Theme
 
 use super::flow_component::ComponentPainter;
 
-pub struct Tank {
+pub struct TankPainter {
     pos: Vec2,
     width: f32,
     height: f32,
     stroke_width: f32,
     fill_color: Color32,
+    fill_percentage: f32
 }
 
-impl Tank {
-    pub fn new(pos: Vec2, width: f32, height: f32, stroke_width: f32, fill_color: Color32) -> Self {
+impl TankPainter {
+    pub fn new(pos: Vec2, width: f32, height: f32, stroke_width: f32, fill_color: Color32, fill_percentage: f32) -> Self {
         Self {
             pos,
             width,
             height,
             stroke_width,
-            fill_color
+            fill_color,
+            fill_percentage
         }
     }
 }
 
-impl ComponentPainter for Tank {
+impl ComponentPainter for TankPainter {
 
     fn paint(&self, ui: &mut Ui) -> ResponseBounds{
         const HEIGHT_BULKHEAD: f32 = 15.0;
@@ -43,7 +45,7 @@ impl ComponentPainter for Tank {
             color: theme.foreground_weak
         };
         let background_color = theme.background_weak;
-        //let &fill_color = &self.fill_color;
+        let &fill_color = &self.fill_color;
 
         let mut path_bulkhead: Vec<_> = (0..=BULKHEAD_STEPS)
             .map(|i| (90.0 * (i as f32) / (BULKHEAD_STEPS as f32)).to_radians())
@@ -54,27 +56,24 @@ impl ComponentPainter for Tank {
         let mut path_complete: Vec<_> = path_bulkhead.iter().map(|v| pos + Vec2::new(v.x, -height/2.0 + v.y)).collect();
         path_complete.extend(path_bulkhead.iter().rev().map(|v| pos + Vec2::new(v.x, height/2.0 - v.y)));
 
-        // let mut path_fill: Vec<_> = path_bulkhead.iter().rev().map(|v| pos + Vec2::new(v.x, height/2.0 - v.y)).collect();
-        // if self.fill_percentage < (height - HEIGHT_BULKHEAD) / height && self.fill_percentage > HEIGHT_BULKHEAD / height {
-        //     path_fill.extend(&[
-        //         pos + Vec2::new(-width/2.0, height/2.0 - height * self.fill_percentage),
-        //         pos + Vec2::new(width/2.0, height/2.0 - height * self.fill_percentage),
-        //     ]);
-        // } else {
-        //     path_fill.extend(path_bulkhead.iter().rev().map(|v| pos + Vec2::new(-v.x, -height/2.0 + v.y)));
-        // }
+        let mut path_fill: Vec<_> = path_bulkhead.iter().rev().map(|v| pos + Vec2::new(v.x, height/2.0 - v.y)).collect();
+        if self.fill_percentage < (height - HEIGHT_BULKHEAD) / height && self.fill_percentage > HEIGHT_BULKHEAD / height {
+            path_fill.extend(&[
+                pos + Vec2::new(-width/2.0, height/2.0 - height * self.fill_percentage),
+                pos + Vec2::new(width/2.0, height/2.0 - height * self.fill_percentage),
+            ]);
+        } else {
+            path_fill.extend(path_bulkhead.iter().rev().map(|v| pos + Vec2::new(-v.x, -height/2.0 + v.y)));
+        }
 
-        // path_fill = path_fill.into_iter().filter(|v| (v.y - pos.y) > (height/2.0 - height * self.fill_percentage - 1.0)).collect();
+        path_fill = path_fill.into_iter().filter(|v| (v.y - pos.y) > (height/2.0 - height * self.fill_percentage - 1.0)).collect();
 
         let full_shape = Shape::Path(PathShape::convex_polygon(path_complete, background_color, stroke));
         let bb = full_shape.visual_bounding_rect();
 
         painter.add(full_shape);
-        //painter.add(Shape::Path(PathShape::convex_polygon(path_fill, fill_color, stroke)));
+        painter.add(Shape::Path(PathShape::convex_polygon(path_fill, fill_color, stroke)));
 
-    //    ui.interact(bb, egui::Id::new(self.name.clone()), egui::Sense::hover()).on_hover_ui(|ui| {
-    //         ui.style_mut().interaction.selectable_labels = true;
-    //     });
         return ResponseBounds::new(bb, None);
     }
 
