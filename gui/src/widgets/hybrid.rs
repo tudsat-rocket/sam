@@ -1,6 +1,6 @@
-use egui::{Color32, Vec2};
+use egui::{Color32, Pos2, Vec2};
 
-use crate::flow_components::{flow_component::{ComponentInfo, DisplayValue, FlowComponent}, tank::TankPainter, valve::ValvePainter};
+use crate::flow_components::{flow_component::{ComponentInfo, DisplayValue, FlowComponent}, line::LinePainter, tank::TankPainter, valve::ValvePainter};
 
 pub struct HybridSystemDiagram {
     components: Vec<FlowComponent>
@@ -27,6 +27,17 @@ impl HybridSystemDiagram {
                     DisplayValue::new("Fill".to_string(), Some("%".to_string()), Some(0.2))
                 ]),
                 Box::new(TankPainter::new(Vec2::new(0.5, 0.5), 0.2, 0.6, 1.8, Color32::LIGHT_BLUE, 0.2)),
+                None
+            ),
+
+            //------Test Line-----
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Test Line"), vec![
+                    DisplayValue::new("Test".to_string(), None, None)
+                ]),
+                Box::new(LinePainter::new(vec![
+                    Pos2::new(0.15, 0.8), Pos2::new(0.15, 0.9), Pos2::new(0.5, 0.9), Pos2::new(0.5, 0.8)
+                ])),
                 None
             ),
 
