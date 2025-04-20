@@ -1,7 +1,6 @@
-use egui::{pos2, Painter, Pos2, Rect, Stroke, Ui, Vec2};
-use egui_plot::Line;
+use egui::{Pos2, Rect, Stroke, Ui, Vec2};
 
-use crate::{flow_components::line, utils::theme::ThemeColors};
+use crate::utils::theme::ThemeColors;
 
 use super::flow_component::{ComponentPainter, ResponseBounds};
 
@@ -17,18 +16,20 @@ impl LinePainter{
         }
     }
 
-    fn find_bounding_box(positions: Vec<Pos2>) -> Rect {
+    fn find_bounding_box(positions: &Vec<Pos2>) -> Rect {
         const POS2_MAX: Pos2 = Pos2::new(f32::MAX, f32::MAX);
         const POS2_MIN: Pos2 = Pos2::new(f32::MIN, f32::MIN);
 
-        let min = positions.clone().into_iter()
-                                            .fold(POS2_MAX,|r, p| {
-                                                r.min(p)
-                                            });
-        let max = positions.into_iter()
-                                            .fold(POS2_MIN, |r, p| {
-                                                    r.max(p)
-                                            });
+        let min = positions
+                            .iter()
+                            .fold(POS2_MAX,|r, p| {
+                                r.min(*p)
+                            });
+        let max = positions
+                            .iter()
+                            .fold(POS2_MIN, |r, p| {
+                                r.max(*p)
+                            });
         return Rect {min, max};
     }
 }
@@ -64,7 +65,7 @@ impl ComponentPainter for LinePainter{
 
         let mut positions = left_side.clone();
         positions.append(&mut right_side.clone());
-        let rb =  ResponseBounds::new(LinePainter::find_bounding_box(positions), None);
+        let rb =  ResponseBounds::new(LinePainter::find_bounding_box(&positions), None);
 
         painter.line(left_side, stroke);
         painter.line(right_side, stroke);

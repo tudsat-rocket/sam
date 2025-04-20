@@ -52,6 +52,7 @@ rand = { workspace = true, features = ["std", "std_rng"] }
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
+earcutr = "0.4.3"
 
 # Android dependencies
 [target.'cfg(target_os = "android")'.dependencies]
