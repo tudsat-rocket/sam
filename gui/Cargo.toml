@@ -44,6 +44,7 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 # Used for profiling
 puffin = { version = "0.19", optional = true }
 puffin_egui = { version = "0.26", optional = true }
+enum-map = "2.7.3"
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]

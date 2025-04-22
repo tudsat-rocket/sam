@@ -2386,6 +2386,7 @@ dependencies = [
  "egui_extras",
  "egui_plot",
  "egui_tiles",
+ "enum-map",
  "env_logger",
  "futures",
  "galadriel",

@@ -228,6 +228,8 @@ pub struct PlotTab {
 
 impl PlotTab {
     pub fn init(ctx: &egui::Context, settings: &AppSettings) -> Self {
+        HybridSystemDiagram::init(ctx);
+
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
 
         let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(360.0)), shared_plot.clone())

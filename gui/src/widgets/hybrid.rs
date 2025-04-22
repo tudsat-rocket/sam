@@ -1,12 +1,17 @@
 use egui::{Pos2, Vec2};
 
-use crate::flow_components::{flow_component::{ComponentInfo, Value, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, N2, N2O, TEST_SENSOR}, line::LinePainter, tank::TankPainter, valve::ValvePainter};
+use crate::{flow_components::{flow_component::{ComponentInfo, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, Value, N2, N2O, TEST_SENSOR}, line::LinePainter, tank::TankPainter, valve::ValvePainter}, utils::mesh::register_textures};
 
 pub struct HybridSystemDiagram {
     components: Vec<FlowComponent>
 }
 
 impl HybridSystemDiagram {
+
+    pub fn init(ctx: &egui::Context) {
+        register_textures(ctx);
+    }
+
     pub fn new() -> Self {
 
         Self { components: vec![
@@ -59,6 +64,7 @@ impl HybridSystemDiagram {
         //     connecting_line: Line::new(connecting_points),
         // }
     }
+
 }
 
 impl egui::Widget for HybridSystemDiagram {

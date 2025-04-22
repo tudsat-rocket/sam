@@ -1,6 +1,6 @@
-use egui::{epaint::PathShape, Color32, Mesh, Pos2, Shape, Stroke, Ui, Vec2};
+use egui::{epaint::PathShape, Color32, Shape, Stroke, Ui, Vec2};
 
-use crate::{flow_components::flow_component::{Justification, Value, ResponseBounds, JUSTIFICATION_MEASRURED_PATTERN, JUSTIFICATION_NONE_PATTERN, JUSTIFICATION_REASONED_PATTERN}, utils::{mesh::is_point_in_mesh, theme::ThemeColors}};
+use crate::{flow_components::flow_component::{ResponseBounds, Value}, utils::{mesh::{create_mesh, is_point_in_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
 use super::flow_component::{ComponentPainter, Fluid};
 
@@ -71,60 +71,15 @@ impl ComponentPainter for TankPainter {
 
         path_fill = path_fill.into_iter().filter(|v| (v.y - pos.y) > (height/2.0 - height * fill_percentage - 1.0)).collect();
 
-        let image_data = match self.fluid.pressure.justification {
-            Justification::Measured(_)  => JUSTIFICATION_MEASRURED_PATTERN,
-            Justification::Reasoned     => JUSTIFICATION_REASONED_PATTERN,
-            Justification::Process      => JUSTIFICATION_MEASRURED_PATTERN,
-            Justification::None         => JUSTIFICATION_NONE_PATTERN,
-        };
-
-        // Decode it (e.g., using `image` crate)
-        let image = image::load_from_memory(image_data).unwrap().to_rgba8();
-        let (width, height) = image.dimensions();
-        let pixels: Vec<Color32> = image
-            .pixels()
-            .map(|p| Color32::from_rgba_premultiplied(p[0], p[1], p[2], p[3]))
-            .collect();
+        // let image_data = match self.fluid.pressure.justification {
+        //     Justification::Measured(_)  => JUSTIFICATION_MEASRURED_PATTERN,
+        //     Justification::Reasoned     => JUSTIFICATION_REASONED_PATTERN,
+        //     Justification::Process      => JUSTIFICATION_MEASRURED_PATTERN,
+        //     Justification::None         => JUSTIFICATION_NONE_PATTERN,
+        // };
         
-        // Create texture
-        let texture = egui::ColorImage {
-            size: [width as usize, height as usize],
-            pixels,
-        };
-
-        //TODO: Where exactly should this be called?
-        let tex_id = ui.ctx().load_texture("lined_pattern", texture, egui::TextureOptions::LINEAR_REPEAT);
-
-        // 1. Triangulate the polygon (you'll need a crate like `earcutr` or `lyon`)
-        let indices = earcutr::earcut(
-            &path_fill.iter().map(|p| vec![p.x as f64, p.y as f64]).flatten().collect::<Vec<_>>(),
-            &[],
-            2,
-        );
-
-        // 2. Build a Mesh
-        let mut mesh = Mesh {
-            texture_id: tex_id.id(),
-            ..Default::default()
-        };
-
-        // Find bounding box for UV mapping
-        let min = path_fill.iter().fold(Pos2::new(f32::MAX, f32::MAX), |a, b| a.min(*b));
-        let max = path_fill.iter().fold(Pos2::new(f32::MIN, f32::MIN), |a, b| a.max(*b));
-        let size = max - min;
-
-        // Add vertices with UVs
-        for p in &path_fill {
-        let uv = Vec2::new((p.x - min.x) / size.x, (p.y - min.y) / size.y) * size / 32.0;
-        mesh.vertices.push(egui::epaint::Vertex {
-            pos: *p,
-            uv: uv.to_pos2(),
-            color: self.fluid.fluid_type.color,
-        });
-        }
-
-        // Add indices
-        mesh.indices.extend(indices.unwrap().iter().map(|i| *i as u32));
+        let fluid_texture =  ColoredTexture::new(TextureKey::PatternFull, self.fluid.fluid_type.color);
+        let mesh = create_mesh(&path_fill, fluid_texture);
 
         // 3. Paint the mesh
         ui.painter().add(mesh.clone());
