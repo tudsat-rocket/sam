@@ -2,7 +2,7 @@ use egui::{Pos2, Rect, Stroke, Ui, Vec2};
 
 use crate::utils::theme::ThemeColors;
 
-use super::flow_component::{ComponentPainter, ResponseBounds};
+use super::{constants::STROKE_WITH, flow_component::{ComponentPainter, ResponseBounds}};
 
 
 pub struct LinePainter {
@@ -43,7 +43,7 @@ impl ComponentPainter for LinePainter{
         let available_space = ui.available_rect_before_wrap();
 
         let stroke = Stroke {
-            width: 1.6,
+            width: STROKE_WITH,
             color: theme.foreground_weak
         };
         let line_width = 0.05;

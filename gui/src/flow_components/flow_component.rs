@@ -80,9 +80,6 @@ pub struct FluidType{
     pub color: Color32
 }
 
-pub const N2:  FluidType = FluidType{name: "N\u{2082}", color: Color32::LIGHT_GREEN};
-pub const N2O: FluidType = FluidType{name: "N\u{2082}O", color: Color32::LIGHT_BLUE};
-
 pub struct Fluid{
     pub fluid_type: FluidType,   
     pub pressure: JustifiedValue

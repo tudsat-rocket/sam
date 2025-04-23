@@ -1,6 +1,6 @@
 use egui::{Pos2, Vec2};
 
-use crate::{flow_components::{flow_component::{ComponentInfo, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, Value, N2, N2O, TEST_SENSOR}, line::LinePainter, tank::TankPainter, valve::ValvePainter}, utils::mesh::register_textures};
+use crate::{flow_components::{bottle::BottlePainter, constants::{ETHANOL, N2, N2O}, flow_component::{ComponentInfo, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, Value, TEST_SENSOR}, line::LinePainter, sensor::SensorPainter, tank::TankPainter, valve::ValvePainter}, utils::mesh::register_textures};
 
 pub struct HybridSystemDiagram {
     components: Vec<FlowComponent>
@@ -16,22 +16,31 @@ impl HybridSystemDiagram {
 
         Self { components: vec![
 
+            // //------N2O Bottle-----
+            // FlowComponent::new(
+            //     ComponentInfo::new(String::from("N\u{2082}O Bottle"), vec![
+            //         DisplayValue::new("Fill".to_string(), Some("%".to_string()), JustifiedValue::new(Some(Value::F32(0.2)), Justification::Measured(TEST_SENSOR)))
+            //     ]),
+            //     Box::new(BottlePainter::new(Pos2::new(0.15, 0.5), 0.2, 0.6, 60.0, Fluid{fluid_type: N2O, pressure: JustifiedValue::new(Some(Value::F32(15.0)), Justification::Reasoned)})),
+            //     None
+            // ),
+
             //------N2 Tank------
             FlowComponent::new(
                 ComponentInfo::new(String::from("N\u{2082} Tank"), vec![
                     DisplayValue::new("Fill".to_string(), Some("%".to_string()), JustifiedValue::new(Some(Value::F32(0.6)), Justification::Measured(TEST_SENSOR))),
                     DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
                 ]),
-                Box::new(TankPainter::new(Vec2::new(0.15, 0.5), 0.2, 0.6, 1.8, 300.0, Fluid{fluid_type: N2, pressure: JustifiedValue::new(Some(Value::F32(180.0)), Justification::Reasoned)})),
+                Box::new(TankPainter::new(Vec2::new(0.4, 0.5), 0.15, 0.4, 300.0, Fluid{fluid_type: N2, pressure: JustifiedValue::new(Some(Value::F32(180.0)), Justification::Reasoned)})),
                 Some("You clicked the N2 tank".to_string())
             ),
 
-            //------N2O Tank-----
+            //------Ethanol Tank-----
             FlowComponent::new(
                 ComponentInfo::new(String::from("N\u{2082}O Tank"), vec![
                     DisplayValue::new("Fill".to_string(), Some("%".to_string()), JustifiedValue::new(Some(Value::F32(0.2)), Justification::Measured(TEST_SENSOR)))
                 ]),
-                Box::new(TankPainter::new(Vec2::new(0.5, 0.5), 0.2, 0.6, 1.8, 60.0, Fluid{fluid_type: N2O, pressure: JustifiedValue::new(Some(Value::F32(15.0)), Justification::Reasoned)})),
+                Box::new(TankPainter::new(Vec2::new(0.6, 0.5), 0.15, 0.4, 60.0, Fluid{fluid_type: ETHANOL, pressure: JustifiedValue::new(Some(Value::F32(15.0)), Justification::Reasoned)})),
                 None
             ),
 
@@ -51,7 +60,25 @@ impl HybridSystemDiagram {
                 ComponentInfo::new(String::from("Test valve"), vec![
                     DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
                 ]), 
-                Box::new(ValvePainter::new(Vec2::new(0.75, 0.5), 0.2)),
+                Box::new(ValvePainter::new(Vec2::new(0.75, 0.5), 0.1)),
+                None
+            ),
+
+            //-Temperature Sensor-
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Temperature Sensor"), vec![
+                    DisplayValue::new("Temperature".to_string(), Some("C".to_string()), JustifiedValue::new(None, Justification::None))
+                ]), 
+                Box::new(SensorPainter::new(Pos2::new(0.75, 0.75), 0.02, "T")),
+                None
+            ),
+
+            //-Pressure Sensor-
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Pressure Sensor"), vec![
+                    DisplayValue::new("Pressure".to_string(), Some("Bar".to_string()), JustifiedValue::new(None, Justification::None))
+                ]), 
+                Box::new(SensorPainter::new(Pos2::new(0.85, 0.75), 0.03, "P")),
                 None
             ),
         

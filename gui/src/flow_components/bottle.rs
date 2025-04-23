@@ -1,19 +1,19 @@
-use egui::{epaint::PathShape, Color32, Shape, Stroke, Ui, Vec2};
+use egui::{epaint::PathShape, Color32, Pos2, Shape, Stroke, Vec2};
 
 use crate::{flow_components::{constants::STROKE_WITH, flow_component::{ResponseBounds, Value}}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
 use super::flow_component::{ComponentPainter, Fluid};
 
-pub struct TankPainter {
-    pos: Vec2,
+pub struct BottlePainter {
+    pos: Pos2,
     width: f32,
     height: f32,
     max_pressure: f32,
     fluid: Fluid
 }
 
-impl TankPainter {
-    pub fn new(pos: Vec2, width: f32, height: f32, max_pressure: f32, fluid: Fluid) -> Self {
+impl BottlePainter {
+    pub fn new(pos: Pos2, width: f32, height: f32, max_pressure: f32, fluid: Fluid) -> Self {
         Self {
             pos,
             width,
@@ -24,9 +24,8 @@ impl TankPainter {
     }
 }
 
-impl ComponentPainter for TankPainter {
-
-    fn paint(&self, ui: &mut Ui) -> ResponseBounds{
+impl ComponentPainter for BottlePainter {
+    fn paint(&self, ui: &mut egui::Ui) -> super::flow_component::ResponseBounds {
         const HEIGHT_BULKHEAD: f32 = 15.0;
         const BULKHEAD_STEPS: usize = 100;
 
@@ -34,7 +33,7 @@ impl ComponentPainter for TankPainter {
         let theme = ThemeColors::new(ui.ctx());
         let available_space = ui.available_rect_before_wrap();
 
-        let pos = available_space.lerp_inside(self.pos);
+        let pos = available_space.lerp_inside(self.pos.to_vec2());
         let width = available_space.width() * self.width;
         let height = available_space.height() * self.height;
 
@@ -42,8 +41,7 @@ impl ComponentPainter for TankPainter {
             width: STROKE_WITH,
             color: theme.foreground_weak
         };
-        //let background_color = theme.background_weak;
-        //let fluid_pressure = self.fluid.pressure;//.clone().unwrap_or(JustifiedValue { value: self.max_pressure, justification: Justification::None });
+
         let fill_percentage = match self.fluid.pressure.value.clone().unwrap_or(Value::F32(self.max_pressure)) {Value::F32(v) => v, _ => -1.0} / self.max_pressure;
 
         let mut path_bulkhead: Vec<_> = (0..=BULKHEAD_STEPS)
@@ -66,15 +64,8 @@ impl ComponentPainter for TankPainter {
         }
 
         path_fill = path_fill.into_iter().filter(|v| (v.y - pos.y) > (height/2.0 - height * fill_percentage - 1.0)).collect();
-
-        // let image_data = match self.fluid.pressure.justification {
-        //     Justification::Measured(_)  => JUSTIFICATION_MEASRURED_PATTERN,
-        //     Justification::Reasoned     => JUSTIFICATION_REASONED_PATTERN,
-        //     Justification::Process      => JUSTIFICATION_MEASRURED_PATTERN,
-        //     Justification::None         => JUSTIFICATION_NONE_PATTERN,
-        // };
         
-        let fluid_texture =  ColoredTexture::new(TextureKey::PatternFull, self.fluid.fluid_type.color);
+        let fluid_texture =  ColoredTexture::new(TextureKey::PatternCrosshatch, self.fluid.fluid_type.color);
         let fluid_mesh = create_mesh(&path_fill, fluid_texture);
 
         // 3. Paint the mesh
@@ -89,5 +80,4 @@ impl ComponentPainter for TankPainter {
         //Currently does not use precise hit detection as this would require a second mesh or some uv trickery
         return ResponseBounds::new(bb, None/*Some(Box::new(move |point| is_point_in_mesh(point, mesh.clone())))*/);
     }
-
 }
