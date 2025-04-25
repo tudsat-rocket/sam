@@ -1,11 +1,11 @@
-use egui::{epaint::PathShape, Rect, Shape, Stroke, Ui, Vec2};
+use egui::{epaint::PathShape, Pos2, Rect, Shape, Stroke, Ui, Vec2};
 
 use crate::utils::theme::ThemeColors;
 
-use super::flow_component::{ComponentPainter, ResponseBounds};
+use super::{flow_component::{ComponentPainter, ResponseBounds}, sensor::SymbolPainter};
 
 pub struct ValvePainter {
-    pos: Vec2,
+    pos: Pos2,
     width: f32,
     //height: f32,
     //stroke_width: f32,
@@ -13,7 +13,7 @@ pub struct ValvePainter {
 
 impl ValvePainter {
     
-    pub fn new(pos: Vec2, width: f32) -> Self {
+    pub fn new(pos: Pos2, width: f32) -> Self {
         Self { 
             pos, width
         }
@@ -44,7 +44,7 @@ impl ComponentPainter for ValvePainter {
         //     );
         //     painter.add(shape);
         // }
-        let pos = available_space.lerp_inside(self.pos);
+        let pos = available_space.lerp_inside(self.pos.to_vec2());
         let w = available_space.width() * self.width;
 
         let h = 30f32.to_radians().sin() * w;
@@ -73,3 +73,30 @@ impl ComponentPainter for ValvePainter {
     }
 }
 
+
+pub struct BallValvePainter{
+    valve_painter: ValvePainter,
+    symbol_painter: SymbolPainter
+}
+
+impl BallValvePainter {
+    
+    pub fn new(valve_painter: ValvePainter) -> Self {
+        let symbol_pos = valve_painter.pos + Vec2::new(0.0, 0.08);
+        Self {
+            valve_painter,
+            symbol_painter: SymbolPainter::new(symbol_pos, 0.03, "M")
+        }
+    }
+
+}
+
+impl ComponentPainter for BallValvePainter {
+
+    fn paint(&self, ui: &mut Ui) -> ResponseBounds {
+        let rb_valve = self.valve_painter.paint(ui);
+        let rb_symbol = self.symbol_painter.paint(ui);
+        return rb_valve.combine(rb_symbol);
+    }
+
+}

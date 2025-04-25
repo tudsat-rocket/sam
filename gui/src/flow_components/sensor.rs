@@ -5,13 +5,13 @@ use crate::utils::theme::ThemeColors;
 use super::{constants::STROKE_WITH, flow_component::{ComponentPainter, ResponseBounds}};
 
 
-pub struct SensorPainter {
+pub struct SymbolPainter {
     pos: Pos2,
     radius: f32,
     symbol: &'static str
 }
 
-impl SensorPainter {
+impl SymbolPainter {
 
     pub fn new(pos: Pos2, radius: f32, symbol: &'static str) -> Self {
         Self { pos, radius, symbol }
@@ -19,7 +19,7 @@ impl SensorPainter {
 
 }
 
-impl ComponentPainter for SensorPainter {
+impl ComponentPainter for SymbolPainter {
 
     fn paint(&self, ui: &mut egui::Ui) -> ResponseBounds {
         

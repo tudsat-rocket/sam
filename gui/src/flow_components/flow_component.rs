@@ -7,6 +7,8 @@ pub struct ResponseBounds{
     is_inside: Option<Box<dyn Fn (&Pos2) -> bool>> 
 }
 
+
+
 pub struct DisplayValue{
     desc: String,
     unit: Option<String>,
@@ -163,6 +165,13 @@ impl ResponseBounds{
 
     pub fn new(bounding_box: Rect, is_inside: Option<Box<dyn Fn(&Pos2) -> bool>>) -> Self {
         Self{ bounding_box, is_inside }
+    }
+
+    pub fn combine(self, other: ResponseBounds) -> Self {
+        Self { 
+            bounding_box: self.bounding_box.union(other.bounding_box), 
+            is_inside: None
+        }
     }
 
 }
