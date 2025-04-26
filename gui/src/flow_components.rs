@@ -4,4 +4,6 @@ pub mod line;
 pub mod valve;
 pub mod sensor;
 pub mod bottle;
+pub mod burst_disc;
+pub mod flex_tube;
 pub mod constants;

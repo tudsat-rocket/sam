@@ -1,6 +1,6 @@
 use egui::{Pos2, Vec2};
 
-use crate::{flow_components::{bottle::BottlePainter, constants::{ETHANOL, N2, N2O}, flow_component::{ComponentInfo, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, Value, TEST_SENSOR}, line::LinePainter, sensor::SymbolPainter, tank::TankPainter, valve::{BallValvePainter, ValvePainter}}, utils::mesh::register_textures};
+use crate::{flow_components::{bottle::BottlePainter, burst_disc::BurstDiscPainter, constants::{ETHANOL, N2, N2O}, flex_tube::FlexTubePainter, flow_component::{ComponentInfo, DisplayValue, FlowComponent, Fluid, Justification, JustifiedValue, Value, TEST_SENSOR}, line::{LinePainter1D, LinePainter2D}, sensor::SymbolPainter, tank::TankPainter, valve::{BallValvePainter, TankValvePainter, ValvePainter}}, utils::mesh::register_textures};
 
 pub struct HybridSystemDiagram {
     components: Vec<FlowComponent>
@@ -44,23 +44,43 @@ impl HybridSystemDiagram {
                 None
             ),
 
-            //------Test Line-----
+            //------Test Line 1D -----
             FlowComponent::new(
-                ComponentInfo::new(String::from("Test Line"), vec![
+                ComponentInfo::new(String::from("Line 1D"), vec![
                     DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
                 ]),
-                Box::new(LinePainter::new(vec![
+                Box::new(LinePainter1D::new(vec![
+                    Pos2::new(0.6, 0.8), Pos2::new(0.65, 0.7), Pos2::new(0.7, 0.8)
+                ])),
+                None
+            ),
+
+            //------Test Line 2D -----
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Line 2D"), vec![
+                    DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
+                ]),
+                Box::new(LinePainter2D::new(vec![
                     Pos2::new(0.15, 0.8), Pos2::new(0.15, 0.9), Pos2::new(0.5, 0.9), Pos2::new(0.5, 0.8)
                 ])),
                 None
             ),
 
-            //------Test Valve---
+            //------Tank Valve---
             FlowComponent::new(
-                ComponentInfo::new(String::from("Test valve"), vec![
+                ComponentInfo::new(String::from("Tank valve"), vec![
                     DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
                 ]), 
-                Box::new(BallValvePainter::new(ValvePainter::new(Pos2::new(0.75, 0.5), 0.1))),
+                Box::new(TankValvePainter::new(ValvePainter::new(Pos2::new(0.75, 0.5), 0.1))),
+                None
+            ),
+
+            //------Ball Valve---
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Ball valve"), vec![
+                    DisplayValue::new("Test".to_string(), None, JustifiedValue::new(None, Justification::None))
+                ]), 
+                Box::new(BallValvePainter::new(ValvePainter::new(Pos2::new(0.9, 0.5), 0.1))),
                 None
             ),
 
@@ -81,15 +101,22 @@ impl HybridSystemDiagram {
                 Box::new(SymbolPainter::new(Pos2::new(0.85, 0.75), 0.03, "P")),
                 None
             ),
+
+            //-Burst Disc-
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Burst Disc"), vec![]), 
+                Box::new(BurstDiscPainter::new(Pos2::new(0.93, 0.75), 0.06, 0.12)),
+                None
+            ),
+
+            //-Flex Tube-
+            FlowComponent::new(
+                ComponentInfo::new(String::from("Flex Tube"), vec![]), 
+                Box::new(FlexTubePainter::new(Pos2::new(0.75, 0.25), 0.1, 0.08)),
+                None
+            ),
         
         ]}
-        // let connecting_points= vec![Pos2::new(0.15, 0.8), Pos2::new(0.15, 0.9), Pos2::new(0.5, 0.9), Pos2::new(0.5, 0.8)];
-        // let n2o_vis_data = PropellantTankVisData::new(Vec2::new(0.5, 0.5), 0.2, 0.6, 1.8, Color32::LIGHT_BLUE);
-        // Self {
-        //     n2_tank: Tank::new( ,0.6, n2_vis_data),
-        //     n2o_tank: Tank::new(String::from("N\u{2082}O"), 0.2, n2o_vis_data),
-        //     connecting_line: Line::new(connecting_points),
-        // }
     }
 
 }

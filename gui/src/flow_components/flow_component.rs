@@ -170,7 +170,7 @@ impl ResponseBounds{
     pub fn combine(self, other: ResponseBounds) -> Self {
         Self { 
             bounding_box: self.bounding_box.union(other.bounding_box), 
-            is_inside: None
+            is_inside: None //TODO Hans: Not implemented yet
         }
     }
 
