@@ -1714,7 +1714,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "engine_board"
+name = "engine_board_firmware"
 version = "0.1.0"
 dependencies = [
  "alloc-cortex-m",
