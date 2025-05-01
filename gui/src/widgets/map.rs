@@ -5,10 +5,10 @@ use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use eframe::egui;
 use egui::{Color32, Frame, Layout, Rect, Stroke, Ui, Vec2, Widget};
+use transform_gizmo_egui::math::{DMat4, DVec3, Transform};
+use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
 use walkers::extras::{Place, Places, Style};
-use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position};
-//use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
-//use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
+use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position, Projector};
 
 use shared_types::telemetry::FlightMode;
 use telemetry::{Dim, Metric};
@@ -148,7 +148,7 @@ impl MapState {
             satellite,
             #[cfg(target_arch = "wasm32")]
             satellite: false,
-            position_source: PositionSource::Estimate,
+            position_source: PositionSource::Gps,
             visualization: Visualization::Altitude,
             show_gizmos: true,
             gradient_lookup,
@@ -290,6 +290,7 @@ pub struct Map<'a> {
     state: &'a mut MapState,
     vehicle_position: Option<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     vehicle_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
+    orientation: Option<UnitQuaternion<f32>>,
     settings: &'a AppSettings,
 }
 
@@ -298,10 +299,24 @@ impl<'a> Map<'a> {
         let vehicle_positions = state.vehicle_positions(backend);
         let vehicle_position = state.last_position();
 
+        let q0 = backend.current_value(Metric::Orientation(0));
+        let q1 = backend.current_value(Metric::Orientation(1));
+        let q2 = backend.current_value(Metric::Orientation(2));
+        let q3 = backend.current_value(Metric::Orientation(3));
+        let orientation = match (q0, q1, q2, q3) {
+            (Some(q0), Some(q1), Some(q2), Some(q3)) => {
+                let orientation =
+                    UnitQuaternion::from_quaternion(Quaternion::from_parts(q3, Vector3::new(q0, q1, q2))).cast::<f32>();
+                Some(orientation)
+            }
+            _ => None,
+        };
+
         Self {
             state,
             vehicle_position,
             vehicle_positions,
+            orientation,
             settings,
         }
     }
@@ -415,52 +430,52 @@ impl<'a> Widget for Map<'a> {
 
         let response = ui.add(map);
 
-        // if self.state.show_gizmos {
-        //     if let Some(q) = self.orientation {
-        //         let viewport = ui.clip_rect();
+        if self.state.show_gizmos {
+            if let Some(q) = self.orientation {
+                let viewport = ui.clip_rect();
 
-        //         // Fun type conversion bullshit
-        //         let rotation: mint::Quaternion<f64> = q.cast::<f64>().into();
-        //         let rotation: transform_gizmo_egui::mint::Quaternion<f64> = rotation.into();
+                // Fun type conversion bullshit
+                let rotation: mint::Quaternion<f64> = q.cast::<f64>().into();
+                let rotation: transform_gizmo_egui::mint::Quaternion<f64> = rotation.into();
 
-        //         let view_matrix = DMat4::look_at_rh(DVec3::new(0., 0., 1.), DVec3::ZERO, DVec3::new(0., 1., 0.));
-        //         let projection_matrix = DMat4::orthographic_rh(
-        //             viewport.left() as f64,
-        //             viewport.right() as f64,
-        //             -viewport.bottom() as f64,
-        //             -viewport.top() as f64,
-        //             0.1,
-        //             1000.0
-        //         );
+                let view_matrix = DMat4::look_at_rh(DVec3::new(0., 0., 1.), DVec3::ZERO, DVec3::new(0., 1., 0.));
+                let projection_matrix = DMat4::orthographic_rh(
+                    viewport.left() as f64,
+                    viewport.right() as f64,
+                    -viewport.bottom() as f64,
+                    -viewport.top() as f64,
+                    0.1,
+                    1000.0,
+                );
 
-        //         // We use viewport pixel coordinates (obtained from the Map projector)
-        //         // for the rendering of the gizmo, but we need to invert the y axis,
-        //         // since screen coordinates are Y down
-        //         let projector = Projector::new(viewport, &self.state.memory, position);
-        //         let viewport_pos = projector.project(position);
-        //         let translation = DVec3::new(viewport_pos.x as f64, -viewport_pos.y as f64, 0.0);
-        //         let transform = Transform::from_scale_rotation_translation(DVec3::ONE, rotation, translation);
+                // We use viewport pixel coordinates (obtained from the Map projector)
+                // for the rendering of the gizmo, but we need to invert the y axis,
+                // since screen coordinates are Y down
+                let projector = Projector::new(viewport, &self.state.memory, position);
+                let viewport_pos = projector.project(position);
+                let translation = DVec3::new(viewport_pos.x as f64, -viewport_pos.y as f64, 0.0);
+                let transform = Transform::from_scale_rotation_translation(DVec3::ONE, rotation, translation);
 
-        //         let visuals = GizmoVisuals {
-        //             inactive_alpha: 1.0,
-        //             highlight_alpha: 1.0,
-        //             gizmo_size: 50.0,
-        //             ..Default::default()
-        //         };
+                let visuals = GizmoVisuals {
+                    inactive_alpha: 1.0,
+                    highlight_alpha: 1.0,
+                    gizmo_size: 50.0,
+                    ..Default::default()
+                };
 
-        //         let config = GizmoConfig {
-        //             viewport,
-        //             view_matrix: view_matrix.into(),
-        //             projection_matrix: projection_matrix.into(),
-        //             modes: GizmoMode::all_translate(),
-        //             orientation: transform_gizmo_egui::GizmoOrientation::Local,
-        //             visuals,
-        //             ..Default::default()
-        //         };
+                let config = GizmoConfig {
+                    viewport,
+                    view_matrix: view_matrix.into(),
+                    projection_matrix: projection_matrix.into(),
+                    modes: GizmoMode::all_translate(),
+                    orientation: transform_gizmo_egui::GizmoOrientation::Local,
+                    visuals,
+                    ..Default::default()
+                };
 
-        //         Gizmo::new(config).interact(ui, &[transform]);
-        //     }
-        // }
+                Gizmo::new(config).interact(ui, &[transform]);
+            }
+        }
 
         // Panel for selecting map type
         let map_type_rect = Rect::from_two_pos(
