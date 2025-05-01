@@ -8,6 +8,7 @@ members = [
     "galadriel",        # Basic numerical rocketry simulation, used via GUI or standalone
     "state_estimator",  # State estimation used both in SITL simulations and firmware
     "shared_types",     # Types like telemetry and settings shared between firmware, simulation and GUI
+    "telemetry",
     "firmwares/flight_computer",
     "firmwares/io_module",
     "firmwares/power_module",
@@ -25,6 +26,7 @@ archive = { path = "archive" }
 galadriel = { path = "galadriel" }
 shared_types = { path = "shared_types" }
 state_estimator = { path = "state_estimator" }
+telemetry = { path = "telemetry" }
 # CLI & logging
 clap = { version = "3.2", features = ["derive"] }
 log = "0.4"
@@ -41,6 +43,7 @@ eframe = { version = "0.31", default-features = false, features = ["glow", "wayl
 egui_plot = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
 # serialization & communication
+bitvec = { version = "1.0.1", default-features = false, features = ["atomic"] }
 heapless = { version = "0.8.0", features = ["serde"] }
 serde = { version = "1", default-features = false, features = ["derive"] }
 serde_json = "1.0.89"
@@ -51,11 +54,9 @@ crc = "3"
 chrono = "0.4"
 rand = { version = "0.8", default-features = false }
 
-# cargo build/run --release
+[profile.dev]
+opt-level = 1
+overflow-checks = false
+
 [profile.release]
-codegen-units = 1
-debug = "full"
-debug-assertions = false
-incremental = false
-lto = "fat"
-opt-level = 2
+debug = true

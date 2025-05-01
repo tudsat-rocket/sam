@@ -1,8 +1,7 @@
 //! Main GUI code, included by cli, wasm and android entrypoints
 
-use std::sync::Arc;
-use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use eframe::egui;
 use egui::FontFamily::Proportional;
@@ -11,25 +10,27 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use shared_types::telemetry::*;
 
-pub mod data_source;
-pub mod settings;
+pub mod backend;
+pub mod data_store;
+pub mod flow_components;
 pub mod panels;
+pub mod settings;
 pub mod tabs;
 pub mod utils;
-pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 pub mod widgets;
-pub mod flow_components;
+pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
-use crate::data_source::*;
+use crate::backend::*;
+use crate::data_store::*;
 use crate::panels::*;
+use crate::settings::AppSettings;
 use crate::tabs::*;
 use crate::windows::*;
-use crate::settings::AppSettings;
 
 /// Main state object of our GUI application
 pub struct Sam {
     settings: AppSettings,
-    data_sources: Vec<Box<dyn DataSource>>,
+    backends: Vec<Backend>,
     tab: GuiTab,
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
@@ -39,9 +40,8 @@ pub struct Sam {
 impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
-    pub fn init(ctx: &egui::Context, settings: AppSettings, default_data_source: Option<Box<dyn DataSource>>) -> Self {
-        let default_data_source = default_data_source
-            .unwrap_or(Box::new(SerialDataSource::new(ctx, settings.lora.clone())));
+    pub fn init(ctx: &egui::Context, settings: AppSettings, default_backend: Option<Backend>) -> Self {
+        let backend = default_backend.unwrap_or(Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())));
 
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
@@ -60,7 +60,7 @@ impl Sam {
 
         Self {
             settings,
-            data_sources: vec![default_data_source],
+            backends: vec![backend],
 
             tab: GuiTab::Plot,
             plot_tab,
@@ -70,41 +70,24 @@ impl Sam {
         }
     }
 
-    /// Closes the currently opened data source
-    fn close_data_source(&mut self) {
-        // TODO: extend this to arbitrarily many data sources?
-        self.data_sources.truncate(1);
+    fn close_backend(&mut self) {
+        self.backends.truncate(1);
     }
 
-    fn open_data_source(&mut self, data_source: Box<dyn DataSource>) {
-        self.close_data_source();
-        self.data_sources.push(data_source);
+    fn open_backend(&mut self, data_source: Backend) {
+        self.close_backend();
+        self.backends.push(data_source);
     }
 
-    fn data_source(&mut self) -> &Box<dyn DataSource> {
-        self.data_sources.last().unwrap()
+    fn backend(&mut self) -> &Backend {
+        self.backends.last().unwrap()
     }
 
-    fn data_source_mut(&mut self) -> &mut Box<dyn DataSource> {
-        self.data_sources.last_mut().unwrap()
+    fn backend_mut(&mut self) -> &mut Backend {
+        self.backends.last_mut().unwrap()
     }
 
-    pub fn ui(&mut self, ctx: &egui::Context) {
-        #[cfg(feature = "profiling")]
-        puffin::profile_function!();
-        #[cfg(feature = "profiling")]
-        puffin::GlobalProfiler::lock().new_frame();
-        #[cfg(feature = "profiling")]
-        puffin_egui::profiler_window(ctx);
-
-        self.data_source_mut().update(ctx);
-
-        // TODO: only send this if we know it's not a ground station?
-        if self.data_source_mut().fc_settings().is_none() && self.data_source().vehicle_states().next().is_some() {
-            self.data_source_mut().send(UplinkMessage::ReadSettings).unwrap();
-        }
-
-        // Check for keyboard inputs for tab and flight mode changes
+    fn process_keybinding(&mut self, ctx: &egui::Context) {
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F1)) {
             self.tab = GuiTab::Launch;
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F2)) {
@@ -118,8 +101,7 @@ impl Sam {
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
             Some(FlightMode::HardwareArmed)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            let current_fm = self.data_source().vehicle_states().rev().find_map(|(_t, vs)| vs.mode).unwrap_or_default();
-            if current_fm == FlightMode::Armed {
+            if self.backend().flight_mode().unwrap_or_default() == FlightMode::Armed {
                 Some(FlightMode::ArmedLaunchImminent)
             } else {
                 Some(FlightMode::Armed)
@@ -140,7 +122,7 @@ impl Sam {
 
         // Set new flight mode if keyboard shortcut was used
         if let Some(fm) = shortcut_mode {
-            self.data_source_mut().send_command(Command::SetFlightMode(fm)).unwrap();
+            self.backend_mut().send_command(Command::SetFlightMode(fm)).unwrap();
         }
 
         let alt = ctx.input(|i| i.modifiers) == Modifiers::ALT;
@@ -153,15 +135,27 @@ impl Sam {
             Some(ThrusterValveState::OpenAccel)
         } else if alt && key_decel {
             Some(ThrusterValveState::OpenDecel)
-        } else if (ctx.input_mut(|i| i.key_released(Key::Plus) || i.key_released(Key::Minus))) && !key_accel && !key_decel {
+        } else if (ctx.input_mut(|i| i.key_released(Key::Plus) || i.key_released(Key::Minus)))
+            && !key_accel
+            && !key_decel
+        {
             Some(ThrusterValveState::Closed)
         } else {
             None
         };
 
         if let Some(s) = thruster_state {
-            self.data_source_mut().send_command(Command::SetAcsValveState(s)).unwrap();
+            self.backend_mut().send_command(Command::SetAcsValveState(s)).unwrap();
         }
+    }
+
+    pub fn ui(&mut self, ctx: &egui::Context) {
+        #[cfg(feature = "profiling")]
+        puffin::profile_function!();
+        #[cfg(feature = "profiling")]
+        puffin::GlobalProfiler::lock().new_frame();
+        #[cfg(feature = "profiling")]
+        puffin_egui::profiler_window(ctx);
 
         // Redefine text_styles
         let colors = utils::theme::ThemeColors::new(ctx);
@@ -172,8 +166,12 @@ impl Sam {
 
         // A window to open archived logs directly in the application
         if let Some(log) = self.archive_window.show_if_open(ctx) {
-            self.open_data_source(Box::new(log));
+            self.open_backend(Backend::Log(log));
         }
+
+        self.backend_mut().update(ctx);
+
+        self.process_keybinding(ctx);
 
         let enabled = !self.archive_window.open;
 
@@ -181,17 +179,17 @@ impl Sam {
         // TODO: avoid passing in self here
         MenuBarPanel::show(ctx, self, enabled);
 
-        let data_source = self.data_sources.last_mut().unwrap();
-
-        // If our current data source is a simulation, show a config panel to the left
+        // If our current backend is a simulation, show a config panel to the left
         #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        if let Some(sim) = data_source.as_any_mut().downcast_mut::<SimulationDataSource>() {
+        if let Backend::Simulation(sim) = self.backend_mut() {
             #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
             SimulationPanel::show(ctx, sim, enabled);
         }
 
         // Header containing text indicators and flight mode buttons
-        HeaderPanel::show(ctx, data_source.deref_mut(), enabled);
+        HeaderPanel::show(ctx, self.backend_mut(), enabled);
+
+        let tab = self.tab.clone();
 
         // Bottom status bar
         egui::TopBottomPanel::bottom("bottombar").min_height(30.0).show(ctx, |ui| {
@@ -203,28 +201,29 @@ impl Sam {
             }
 
             ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                match self.tab {
+                match tab {
                     GuiTab::Launch => {}
-                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui, data_source.deref_mut()),
+                    GuiTab::Plot => self.plot_tab.bottom_bar_ui(ui),
                     GuiTab::Configure => {}
                 }
 
                 ui.separator();
 
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    data_source.status_bar_ui(ui);
+                    self.backend_mut().status_bar_ui(ui);
                 })
             });
         });
 
         // Everything else. This has to be called after all the other panels are created.
-        match self.tab {
+        let backend = self.backends.last_mut().unwrap();
+        match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
-            GuiTab::Plot => self.plot_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled),
+            GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, enabled),
             GuiTab::Configure => {
-                let changed = self.configure_tab.main_ui(ctx, data_source.deref_mut(), &mut self.settings, enabled);
+                let changed = self.configure_tab.main_ui(ctx, backend, &mut self.settings, enabled);
                 if changed {
-                    data_source.apply_settings(&self.settings);
+                    backend.apply_settings(&self.settings);
                 }
             }
         }
@@ -240,18 +239,18 @@ impl eframe::App for Sam {
 }
 
 /// The main entrypoint for the egui interface.
-#[cfg(all(not(target_arch = "wasm32"), not(target_os="android")))]
+#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Result<(), Box<dyn std::error::Error>> {
     let app_settings = AppSettings::load().ok().unwrap_or_default();
 
-    let data_source: Option<Box<dyn DataSource>> = if let Some(log) = simulate {
+    let data_source: Option<Backend> = if let Some(log) = simulate {
         if let Some(log) = log {
-            Some(Box::new(SimulationDataSource::replicate(log)))
+            Some(Backend::Simulation(SimulationBackend::replicate(log)))
         } else {
-            Some(Box::new(SimulationDataSource::default()))
+            Some(Backend::Simulation(SimulationBackend::simulate()))
         }
     } else if let Some(path) = log_file {
-        Some(Box::new(LogFileDataSource::new(path)?))
+        Some(Backend::Log(LogFileBackend::new(path)?))
     } else {
         None
     };

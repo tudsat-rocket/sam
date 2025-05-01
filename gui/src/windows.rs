@@ -14,10 +14,11 @@ use log::*;
 
 use archive::ARCHIVED_LOGS;
 
-use crate::data_source::LogFileDataSource;
+use crate::backend::LogFileBackend;
 
 #[derive(Debug)]
-enum ArchiveLoadProgress { Progress((u64, u64)),
+enum ArchiveLoadProgress {
+    Progress((u64, u64)),
     Complete(Vec<u8>),
     Error(reqwest::Error),
 }
@@ -35,7 +36,7 @@ impl Default for ArchiveWindow {
         Self {
             open: cfg!(target_arch = "wasm32"),
             progress_receiver: None,
-            progress: None
+            progress: None,
         }
     }
 }
@@ -103,7 +104,7 @@ impl ArchiveWindow {
         wasm_bindgen_futures::spawn_local(Self::load_log(ctx, url, sender));
     }
 
-    pub fn show_if_open(&mut self, ctx: &egui::Context) -> Option<LogFileDataSource> {
+    pub fn show_if_open(&mut self, ctx: &egui::Context) -> Option<LogFileBackend> {
         if let Some(receiver) = self.progress_receiver.as_ref() {
             let mut progress = None;
 
@@ -119,13 +120,13 @@ impl ArchiveWindow {
                     self.progress_receiver = None;
                     self.progress = None;
                     self.open = false;
-                    return Some(LogFileDataSource::from_bytes(bytes));
+                    return Some(LogFileBackend::from_bytes(bytes));
                 }
                 Some(ArchiveLoadProgress::Error(e)) => {
                     error!("{:?}", e); // TODO: show this visually
                     self.progress_receiver = None;
                     self.progress = None;
-                },
+                }
                 None => {}
             }
         }
@@ -175,7 +176,8 @@ impl ArchiveWindow {
                                 self.open_log(ctx, log.flash_log_url.unwrap());
                             }
 
-                            if ui.add_enabled(log.telemetry_log_url.is_some(), Button::new("📡 Telemetry")).clicked() {
+                            if ui.add_enabled(log.telemetry_log_url.is_some(), Button::new("📡 Telemetry")).clicked()
+                            {
                                 self.open_log(ctx, log.telemetry_log_url.unwrap());
                             }
                         });

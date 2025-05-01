@@ -1,15 +1,15 @@
 use std::str::FromStr;
 
-use egui::{Align, Button, Layout, RichText, TextEdit, DragValue};
+use egui::{Align, Button, DragValue, Layout, RichText, TextEdit};
 
 use log::*;
 
 use shared_types::telemetry::*;
 
-use crate::data_source::DataSource;
 use crate::settings::AppSettings;
-use crate::widgets::fc_settings::*;
 use crate::utils::file::*;
+use crate::widgets::fc_settings::*;
+use crate::Backend;
 
 pub struct ConfigureTab {}
 
@@ -18,7 +18,7 @@ impl ConfigureTab {
         Self {}
     }
 
-    fn app_settings_ui(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource, settings: &mut AppSettings) -> bool {
+    fn app_settings_ui(&mut self, ui: &mut egui::Ui, backend: &mut Backend, settings: &mut AppSettings) -> bool {
         let mut changed = false;
 
         ui.add_space(10.0);
@@ -37,49 +37,19 @@ impl ConfigureTab {
                 ui.label("LoRa channel selection (500kHz BW)");
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
-                        ui.toggle_value(
-                            &mut settings.lora.channels[0],
-                            RichText::new("863.25").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[1],
-                            RichText::new("863.75").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[2],
-                            RichText::new("864.25").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[3],
-                            RichText::new("864.75").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[4],
-                            RichText::new("865.25").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[5],
-                            RichText::new("865.75").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[6],
-                            RichText::new("866.25").monospace().size(10.0),
-                        );
+                        ui.toggle_value(&mut settings.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
                         ui.label(RichText::new("MHz").weak().size(10.0));
                     });
                     ui.horizontal(|ui| {
-                        ui.toggle_value(
-                            &mut settings.lora.channels[7],
-                            RichText::new("866.75").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[8],
-                            RichText::new("867.25").monospace().size(10.0),
-                        );
-                        ui.toggle_value(
-                            &mut settings.lora.channels[9],
-                            RichText::new("867.75").monospace().size(10.0),
-                        );
+                        ui.toggle_value(&mut settings.lora.channels[7], RichText::new("866.75").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[8], RichText::new("867.25").monospace().size(10.0));
+                        ui.toggle_value(&mut settings.lora.channels[9], RichText::new("867.75").monospace().size(10.0));
                         ui.toggle_value(
                             &mut settings.lora.channels[10],
                             RichText::new("868.25").monospace().size(10.0),
@@ -104,7 +74,7 @@ impl ConfigureTab {
                 ui.label("LoRa binding phrase");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.button("⬅ Copy from FC").clicked() {
-                        settings.lora.binding_phrase = data_source
+                        settings.lora.binding_phrase = backend
                             .fc_settings()
                             .map(|s| s.lora.binding_phrase.clone())
                             .unwrap_or(settings.lora.binding_phrase.clone());
@@ -119,7 +89,7 @@ impl ConfigureTab {
                 ui.label("LoRa uplink key");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     if ui.button("⬅ Copy from FC").clicked() {
-                        settings.lora.authentication_key = data_source
+                        settings.lora.authentication_key = backend
                             .fc_settings()
                             .map(|s| s.lora.authentication_key)
                             .unwrap_or(settings.lora.authentication_key);
@@ -141,12 +111,18 @@ impl ConfigureTab {
                     ui.weak("Lat");
                     ui.add_sized(
                         [100.0, ui.available_height()],
-                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().0).suffix(" °").speed(0.0001).range(-90.0..=90.0),
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().0)
+                            .suffix(" °")
+                            .speed(0.0001)
+                            .range(-90.0..=90.0),
                     );
                     ui.weak("Lng");
                     ui.add_sized(
                         [100.0, ui.available_height()],
-                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().1).suffix(" °").speed(0.0001).range(-180.0..=180.0),
+                        DragValue::new(&mut settings.ground_station_position.as_mut().unwrap().1)
+                            .suffix(" °")
+                            .speed(0.0001)
+                            .range(-180.0..=180.0),
                     );
                 });
                 ui.end_row();
@@ -202,12 +178,12 @@ impl ConfigureTab {
         changed
     }
 
-    fn fc_settings_ui(&mut self, ui: &mut egui::Ui, data_source: &mut dyn DataSource, settings: &mut AppSettings) {
+    fn fc_settings_ui(&mut self, ui: &mut egui::Ui, backend: &mut Backend, settings: &mut AppSettings) {
         ui.add_space(10.0);
         ui.heading("FC Settings");
         ui.add_space(10.0);
 
-        if let Some(fc_settings) = data_source.fc_settings_mut() {
+        if let Some(fc_settings) = backend.fc_settings_mut() {
             fc_settings.ui(ui, Some(settings), false);
         } else {
             ui.weak("Not connected.");
@@ -217,39 +193,41 @@ impl ConfigureTab {
         ui.add_space(20.0);
 
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if ui
-                .add_enabled(data_source.fc_settings().is_some(), Button::new("💾 Write Settings & Reboot"))
-                .clicked()
-            {
-                let settings = data_source.fc_settings().cloned().unwrap();
-                data_source.send(UplinkMessage::WriteSettings(settings)).unwrap();
+            if ui.add_enabled(backend.fc_settings().is_some(), Button::new("💾 Write Settings & Reboot")).clicked() {
+                let settings = backend.fc_settings().cloned().unwrap();
+                backend.send(UplinkMessage::WriteSettings(settings)).unwrap();
             }
 
-            #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
-            if ui.add_enabled(data_source.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
-                save_fc_settings_file(data_source.fc_settings().unwrap());
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+            if ui.add_enabled(backend.fc_settings().is_some(), Button::new("🖹 Save to File")).clicked() {
+                save_fc_settings_file(backend.fc_settings().unwrap());
             }
 
-            #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
-            if ui.add_enabled(data_source.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked()
-            {
+            #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
+            if ui.add_enabled(backend.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked() {
                 if let Some(settings) = open_fc_settings_file() {
                     info!("Loaded settings: {:?}", settings);
-                    *data_source.fc_settings_mut().unwrap() = settings;
+                    *backend.fc_settings_mut().unwrap() = settings;
                 }
             }
 
             if ui.button("🔃Reload from FC").clicked() {
-                data_source.send(UplinkMessage::ReadSettings).unwrap();
+                backend.send(UplinkMessage::ReadSettings).unwrap();
             }
 
             if ui.button("⏮ Reset to Defaults").clicked() {
-                *data_source.fc_settings_mut().unwrap() = Default::default();
+                *backend.fc_settings_mut().unwrap() = Default::default();
             }
         });
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, data_source: &mut dyn DataSource, settings: &mut AppSettings, enabled: bool) -> bool {
+    pub fn main_ui(
+        &mut self,
+        ctx: &egui::Context,
+        backend: &mut Backend,
+        settings: &mut AppSettings,
+        enabled: bool,
+    ) -> bool {
         let mut changed = false;
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -260,19 +238,19 @@ impl ConfigureTab {
             if ctx.screen_rect().width() > 1400.0 {
                 ui.columns(2, |cols| {
                     egui::ScrollArea::vertical().id_salt("app_settings").show(&mut cols[0], |ui| {
-                        changed = self.app_settings_ui(ui, data_source, settings);
+                        changed = self.app_settings_ui(ui, backend, settings);
                     });
                     egui::ScrollArea::vertical().id_salt("fc_settings").show(&mut cols[1], |ui| {
-                        self.fc_settings_ui(ui, data_source, settings);
+                        self.fc_settings_ui(ui, backend, settings);
                     });
                 });
             } else {
                 egui::ScrollArea::vertical().id_salt("settings").show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    changed = self.app_settings_ui(ui, data_source, settings);
+                    changed = self.app_settings_ui(ui, backend, settings);
                     ui.add_space(20.0);
                     ui.separator();
-                    self.fc_settings_ui(ui, data_source, settings);
+                    self.fc_settings_ui(ui, backend, settings);
                 });
             }
         });

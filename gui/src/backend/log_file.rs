@@ -1,12 +1,10 @@
 //! A data source based on a logfile, either passed as a file path, or with
 //! some raw bytes.
 
-use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
-use std::slice::Iter;
 use std::time::Duration;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -18,18 +16,19 @@ use log::*;
 
 use shared_types::telemetry::*;
 
-use crate::data_source::*;
+use crate::backend::*;
+use crate::DataStore;
 
-pub struct LogFileDataSource {
+pub struct LogFileBackend {
     file: Option<File>,
     buffer: Vec<u8>,
     is_json: bool,
-    vehicle_states: Vec<(Instant, VehicleState)>,
     playback: Option<PlaybackState>,
     playback_speed: usize,
+    data_store: DataStore,
 }
 
-impl LogFileDataSource {
+impl LogFileBackend {
     /// Open the given file as a data source.
     pub fn new(path: PathBuf) -> Result<Self, std::io::Error> {
         let file = File::open(&path)?;
@@ -39,9 +38,9 @@ impl LogFileDataSource {
             file: Some(file),
             buffer: Vec::new(),
             is_json,
-            vehicle_states: Vec::new(),
             playback: None,
             playback_speed: 0,
+            data_store: DataStore::default(),
         })
     }
 
@@ -55,14 +54,14 @@ impl LogFileDataSource {
             file: None,
             buffer: bytes,
             is_json,
-            vehicle_states: Vec::new(),
             playback: None,
             playback_speed: 0,
+            data_store: DataStore::default(),
         }
     }
 }
 
-impl DataSource for LogFileDataSource {
+impl BackendVariant for LogFileBackend {
     fn update(&mut self, ctx: &egui::Context) {
         if let Some(file) = self.file.as_mut() {
             if let Err(e) = file.read_to_end(&mut self.buffer) {
@@ -104,16 +103,19 @@ impl DataSource for LogFileDataSource {
             last_vehicle_times.push_front(u32::max(*last.unwrap_or(&0), msg.time()));
             last_vehicle_times.truncate(5); // TODO: use these for better filtering?
 
-            self.vehicle_states.push((last_time, msg.into()));
+            //// TODO: think about which time(s) we actually want to use some more.
+            //let start = self.vehicle_states.first().map(|(t, _)| t).unwrap_or(&last_time);
+            //self.data_store.ingest_legacy_message((last_time - *start).as_secs_f64(), &msg);
+
+            //let vs: VehicleState = msg.into();
+            //self.vehicle_states.push((last_time, vs.clone()));
         }
 
         self.update_playback(ctx);
     }
 
-    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
-        let inst = self.end().unwrap_or(Instant::now());
-        let i = self.vehicle_states.partition_point(|(t, _)| t <= &inst);
-        self.vehicle_states[..i].iter()
+    fn data_store<'a>(&'a self) -> &'a DataStore {
+        &self.data_store
     }
 
     fn fc_settings(&mut self) -> Option<&Settings> {
@@ -125,27 +127,19 @@ impl DataSource for LogFileDataSource {
     }
 
     fn reset(&mut self) {
-        self.vehicle_states.truncate(0);
+        self.data_store = DataStore::default();
     }
 
-    fn end(&self) -> Option<Instant> {
+    fn end(&self) -> Option<f64> {
         self.playback_end()
     }
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
         self.playback_ui(ui)
     }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
 }
 
-impl ReplayableDataSource for LogFileDataSource {
+impl ReplayableBackendVariant for LogFileBackend {
     fn playback_state(&self) -> Option<PlaybackState> {
         self.playback.clone()
     }
@@ -160,9 +154,5 @@ impl ReplayableDataSource for LogFileDataSource {
 
     fn playback_speed_mut(&mut self) -> &mut usize {
         &mut self.playback_speed
-    }
-
-    fn all_vehicle_states(&self) -> &Vec<(Instant, VehicleState)> {
-        &self.vehicle_states
     }
 }

@@ -4,13 +4,13 @@ use std::fs::File;
 
 use shared_types::settings::Settings;
 
-use crate::data_source::*;
+use crate::backend::*;
 
 // TODO: file support for wasm
 
 #[cfg(target_arch = "x86_64")]
-pub fn open_log_file() -> Option<LogFileDataSource> {
-    rfd::FileDialog::new().pick_file().and_then(|p| LogFileDataSource::new(p).ok())
+pub fn open_log_file() -> Option<LogFileBackend> {
+    rfd::FileDialog::new().pick_file().and_then(|p| LogFileBackend::new(p).ok())
 }
 
 #[cfg(target_arch = "x86_64")]

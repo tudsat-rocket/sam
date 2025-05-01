@@ -1,8 +1,13 @@
+use std::convert::Infallible;
+
 use nalgebra::Vector3;
 use rand::rngs::StdRng;
 use rand_distr::Distribution;
 
-use crate::{SimulationState, SimulationSettings, GRAVITY};
+use ::telemetry::{AccelerometerId, BarometerId, GyroscopeId, MagnetometerId, MetricSource, PressureSensorId};
+use shared_types::{telemetry::GPSDatum, GPSFixType};
+
+use crate::{FlightPhase, SimulationSettings, SimulationState, GRAVITY};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SensorSettings {
@@ -39,6 +44,7 @@ pub struct SensorData {
     pub magnetometer: Option<Vector3<f32>>,
     pub lp_filtered_pressure: Option<f32>,
     pub pressure: Option<f32>,
+    pub gps: Option<GPSDatum>,
 }
 
 impl SensorData {
@@ -47,14 +53,28 @@ impl SensorData {
     }
 
     fn sample_3d(rng: &mut StdRng, std_dev: f32) -> Vector3<f32> {
-        Vector3::new(
-            Self::sample_1d(rng, std_dev),
-            Self::sample_1d(rng, std_dev),
-            Self::sample_1d(rng, std_dev)
-        )
+        Vector3::new(Self::sample_1d(rng, std_dev), Self::sample_1d(rng, std_dev), Self::sample_1d(rng, std_dev))
     }
 
-    pub fn sample(rng: &mut StdRng, state: &SimulationState, settings: &SimulationSettings, last: Option<&Self>) -> Self {
+    fn altitude_asl(state: &SimulationState, settings: &SimulationSettings) -> f32 {
+        state.position.z + settings.environment.launch_altitude
+    }
+
+    fn latitude(state: &SimulationState, settings: &SimulationSettings) -> f32 {
+        settings.environment.launch_location.0 + state.position.y / 111_111.0
+    }
+
+    fn longitude(state: &SimulationState, settings: &SimulationSettings) -> f32 {
+        settings.environment.launch_location.1
+            + state.position.x / (111_111.0 * settings.environment.launch_location.0.to_radians().cos())
+    }
+
+    pub fn sample(
+        rng: &mut StdRng,
+        state: &SimulationState,
+        settings: &SimulationSettings,
+        last: Option<&Self>,
+    ) -> Self {
         let alt_asl = state.position.z + settings.environment.launch_altitude;
         let sampled_pressure = 1013.25 * (1.0 - alt_asl / 44307.694).powf(1.0 / 0.190284);
 
@@ -69,6 +89,21 @@ impl SensorData {
         let mag_field = Vector3::new(0.0, 50.0, 0.0);
         let mag = state.orientation.inverse_transform_vector(&mag_field);
 
+        let gps_present = state.t % (100 - 100 % settings.delta_time) == 0
+            && !(state.flight_phase == FlightPhase::Burn
+                || state.flight_phase == FlightPhase::Coast
+                || state.flight_phase == FlightPhase::Descent && state.seconds_in_phase() < 5.0);
+        let gps = gps_present.then_some(GPSDatum {
+            utc_time: None,
+            // TODO: noise
+            latitude: Some(Self::latitude(state, settings)),
+            longitude: Some(Self::longitude(state, settings)),
+            altitude: Some(Self::altitude_asl(state, settings)), // TODO: offset
+            fix: GPSFixType::AutonomousFix,
+            hdop: 100,
+            num_satellites: 10,
+        });
+
         SensorData {
             time: state.t,
             gyroscope: Some(state.angular_velocity + Self::sample_3d(rng, settings.sensors.std_dev_gyroscope)),
@@ -77,6 +112,7 @@ impl SensorData {
             magnetometer: Some(mag + Self::sample_3d(rng, settings.sensors.std_dev_magnetometer)),
             lp_filtered_pressure: Some(new_filtered_pressure),
             pressure: Some(pressure),
+            gps,
         }
     }
 }
@@ -141,13 +177,56 @@ impl egui::Widget for &mut SensorSettings {
                     ui.end_row();
 
                     ui.label("Barometer IIR α");
-                    ui.add(
-                        egui::DragValue::new(&mut self.barometer_iir_alpha)
-                            .speed(0.0001)
-                            .range(0.9..=1.0),
-                    );
+                    ui.add(egui::DragValue::new(&mut self.barometer_iir_alpha).speed(0.0001).range(0.9..=1.0));
                     ui.end_row();
                 });
-        }).response
+        })
+        .response
+    }
+}
+
+impl MetricSource for SensorData {
+    type Error = Infallible;
+
+    fn write_metric<const N: usize>(
+        &mut self,
+        w: &mut ::telemetry::TelemetryMessageWriter<N>,
+        metric: ::telemetry::Metric,
+        repr: ::telemetry::Representation,
+    ) -> Result<(), Self::Error> {
+        use ::telemetry::Metric;
+        use Metric::*;
+
+        match metric {
+            RawAngularVelocity(GyroscopeId::LSM6DSR, dim) => {
+                w.write_vector(repr, dim, &self.gyroscope.unwrap_or_default())
+            }
+            RawAcceleration(AccelerometerId::LSM6DSR, dim) => {
+                w.write_vector(repr, dim, &self.accelerometer1.unwrap_or_default())
+            }
+            RawAcceleration(AccelerometerId::H3LIS331, dim) => {
+                w.write_vector(repr, dim, &self.accelerometer2.unwrap_or_default())
+            }
+            RawMagneticFluxDensity(MagnetometerId::LIS3MDL, dim) => {
+                w.write_vector(repr, dim, &self.magnetometer.unwrap_or_default())
+            }
+            RawBarometricAltitude(BarometerId::MS5611) => w.write_float(
+                repr,
+                self.pressure.map(|p| 44330.769 * (1.0 - (p / 1012.5).powf(0.190223))).unwrap_or_default(),
+            ),
+            Pressure(PressureSensorId::FlightComputer(BarometerId::MS5611)) => {
+                w.write_float(repr, self.pressure.unwrap_or_default())
+            }
+            GpsFix => w.write_enum(repr, self.gps.as_ref().and_then(|gps| Some(gps.fix)).unwrap_or_default() as u8), // TODo
+            GpsLatitude => w.write_float(repr, self.gps.as_ref().and_then(|gps| gps.latitude).unwrap_or_default()),
+            GpsLongitude => w.write_float(repr, self.gps.as_ref().and_then(|gps| gps.longitude).unwrap_or_default()),
+            GpsAltitude => w.write_float(repr, self.gps.as_ref().and_then(|gps| gps.altitude).unwrap_or_default()),
+            GpsHdop => w.write_float(repr, self.gps.as_ref().and_then(|gps| Some(gps.hdop as f32)).unwrap_or_default()),
+            GpsSatellites => w.write_float(
+                repr,
+                self.gps.as_ref().and_then(|gps| Some(gps.num_satellites as f32)).unwrap_or_default(),
+            ),
+            m => todo!("{m:?}"),
+        }
     }
 }

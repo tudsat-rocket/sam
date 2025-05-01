@@ -11,7 +11,7 @@ use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use shared_types::telemetry::*;
 
-use gui::data_source::*;
+use gui::backend::*;
 
 #[derive(Debug, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -256,10 +256,8 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         let file_stem = path.file_stem().unwrap().to_str().unwrap();
         let output_path = path.with_file_name(format!("{}_flight_{}.json", file_stem, flight_id));
 
-        let serialized: Vec<_> = flight
-            .into_iter()
-            .map(|(_flight_id, msg)| serde_json::to_string(&msg).unwrap())
-            .collect();
+        let serialized: Vec<_> =
+            flight.into_iter().map(|(_flight_id, msg)| serde_json::to_string(&msg).unwrap()).collect();
 
         let mut output = File::create(output_path)?;
         output.write_all(b"[\n")?;
@@ -319,14 +317,15 @@ fn bin2kml(
     let mut buffer = Vec::new();
     input.read_to_end(&mut buffer)?;
 
-    let coordinates: Vec<String> = buffer
-        .split_mut(|b| *b == 0x00)
-        .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
-        .map(|msg| msg.into())
-        .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_asl.is_some())
-        .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_asl.unwrap()))
-        .map(|(ln, lt, alt)| format!("     {},{},{}", ln, lt, alt + 100.0))
-        .collect();
+    //let coordinates: Vec<String> = buffer
+    //    .split_mut(|b| *b == 0x00)
+    //    .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
+    //    .map(|msg| msg.into())
+    //    .filter(|vs: &VehicleState| vs.longitude.is_some() && vs.latitude.is_some() && vs.altitude_asl.is_some())
+    //    .map(|vs| (vs.longitude.unwrap(), vs.latitude.unwrap(), vs.altitude_asl.unwrap()))
+    //    .map(|(ln, lt, alt)| format!("     {},{},{}", ln, lt, alt + 100.0))
+    //    .collect();
+    let coordinates: Vec<String> = Vec::new(); // TODO
 
     let name = name.unwrap_or("Sting FC Track".into());
 
@@ -392,7 +391,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new().filter_level(LevelFilter::Info).parse_default_env().init();
 
     let args = Cli::parse();
-    match args.command.unwrap_or(CliCommand::Gui { log_path: None, simulate: None }) {
+    match args.command.unwrap_or(CliCommand::Gui {
+        log_path: None,
+        simulate: None,
+    }) {
         CliCommand::Gui { log_path, simulate } => gui::main(log_path, simulate),
         CliCommand::DumpFlash {
             path,

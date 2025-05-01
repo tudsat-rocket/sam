@@ -1,5 +1,5 @@
 [package]
-name = "sam-android"
+name = "sam_android"
 version = "0.1.0"
 edition = "2021"
 

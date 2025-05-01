@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 shared_types = { workspace = true }
+telemetry = { workspace = true }
 nalgebra = { workspace = true }
 ahrs = { git = "https://github.com/tudsat-rocket/ahrs-rs", branch="sensor-gains", default-features = false, features = ["field_access"] }
 filter = { git = "https://github.com/tudsat-rocket/filter-rs" }

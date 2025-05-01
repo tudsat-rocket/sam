@@ -1,18 +1,22 @@
-#![cfg_attr(target_os="none", no_std)] // this is imported by the firmware, so no standard library
+#![cfg_attr(target_os = "none", no_std)] // this is imported by the firmware, so no standard library
 
-#[cfg(target_os="none")]
+use core::convert::Infallible;
+#[cfg(target_os = "none")]
 use core::num::Wrapping;
-#[cfg(not(target_os="none"))]
+#[cfg(not(target_os = "none"))]
 use std::num::Wrapping;
 
-use nalgebra::*;
 use ahrs::Ahrs;
 use filter::kalman::kalman_filter::KalmanFilter;
+use nalgebra::*;
 
-use shared_types::FlightMode;
 use shared_types::settings::*;
 use shared_types::telemetry::*;
+use shared_types::FlightMode;
 use shared_types::FlightMode::*;
+use telemetry::Metric;
+use telemetry::MetricSource;
+use telemetry::Representation;
 
 const GRAVITY: f32 = 9.80665;
 const GPS_NO_FIX_STD_DEV: f32 = 999_999.0;
@@ -74,7 +78,7 @@ impl StateEstimator {
         kalman.x = vector![
             0.0, 0.0, 0.0, // XYZ position (m)
             0.0, 0.0, 0.0, // XYZ velocity (m/s)
-            0.0, 0.0, 0.0  // XYZ acceleration (m/s^2)
+            0.0, 0.0, 0.0 // XYZ acceleration (m/s^2)
         ];
 
         // State Transition Matrix
@@ -118,12 +122,42 @@ impl StateEstimator {
 
         // Measurement Covariance Matrix
         kalman.R = Matrix6::new(
-            settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0, 0.0, 0.0,
-            0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0, 0.0,
-            0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0,
-            0.0, 0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0,
-            0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2), 0.0,
-            0.0, 0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2),
+            settings.std_dev_barometer.powi(2),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            settings.std_dev_accelerometer.powi(2),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            settings.std_dev_accelerometer.powi(2),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            settings.std_dev_accelerometer.powi(2),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            GPS_NO_FIX_STD_DEV.powi(2),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            GPS_NO_FIX_STD_DEV.powi(2),
         );
 
         Self {
@@ -149,12 +183,7 @@ impl StateEstimator {
         }
     }
 
-    fn apply_measurements(
-        &mut self,
-        altitude_baro: f32,
-        accel: Vector3<f32>,
-        gps: Option<GPSDatum>
-    ) {
+    fn apply_measurements(&mut self, altitude_baro: f32, accel: Vector3<f32>, gps: Option<GPSDatum>) {
         // Update GPS measurement noise
         let std_dev = self.hdop_to_std_dev(gps.as_ref().map(|gps| gps.hdop));
         self.kalman.R[(4, 4)] = std_dev;
@@ -164,7 +193,7 @@ impl StateEstimator {
             let global_pos = Vector3::new(
                 gps.latitude.unwrap_or_default(),
                 gps.longitude.unwrap_or_default(),
-                gps.altitude.unwrap_or_default()
+                gps.altitude.unwrap_or_default(),
             );
             if self.gps_origin.is_none() {
                 self.gps_origin = Some(global_pos);
@@ -212,7 +241,9 @@ impl StateEstimator {
             // In the free-fall flight modes we ignore the accelerometer data
             // for orientation estimation.
             (*self.ahrs.acc_gain_mut(), *self.ahrs.kp_mut(), *self.ahrs.ki_mut()) = match self.mode {
-                FlightMode::Burn | FlightMode::Coast => (0.0, self.settings.mahony_kp_ascent, self.settings.mahony_ki_ascent),
+                FlightMode::Burn | FlightMode::Coast => {
+                    (0.0, self.settings.mahony_kp_ascent, self.settings.mahony_ki_ascent)
+                }
                 _ => (1.0, self.settings.mahony_kp, self.settings.mahony_ki),
             }
         }
@@ -221,9 +252,9 @@ impl StateEstimator {
         // but have to switch to the secondary if we exceed +-16G (or get close enough) on any axis.
         let acc = match (accelerometer1, accelerometer2) {
             (Some(acc1), Some(acc2)) if acc1.amax() > 14.0 * GRAVITY && acc2.amax() > 14.0 * GRAVITY => Some(acc2),
-            (Some(acc1), _)                                                                          => Some(acc1),
-            (None, Some(acc2))                                                                       => Some(acc2),
-            (None, None)                                                                             => None
+            (Some(acc1), _) => Some(acc1),
+            (None, Some(acc2)) => Some(acc2),
+            (None, None) => None,
         };
         self.acceleration = acc.map(|a| self.correct_orientation(&a));
 
@@ -233,17 +264,13 @@ impl StateEstimator {
 
             // Update the orientation estimator with IMU data
             if self.mode != FlightMode::Burn {
-                self.orientation = self
-                    .ahrs
-                    .update(&(gyro * 3.14159 / 180.0), &acc, &mag)
-                    .ok()
-                    .cloned();
+                self.orientation = self.ahrs.update(&(gyro * 3.14159 / 180.0), &acc, &mag).ok().cloned();
             }
 
             // Rotate acceleration vector to get world-space acceleration
             // (where Z is straight up) and subtract gravity.
-            self.acceleration_world = self.orientation
-                .map(|quat| quat.transform_vector(acc) - Vector3::new(0.0, 0.0, GRAVITY));
+            self.acceleration_world =
+                self.orientation.map(|quat| quat.transform_vector(acc) - Vector3::new(0.0, 0.0, GRAVITY));
         } else {
             self.orientation = None;
             self.acceleration_world = None;
@@ -261,15 +288,14 @@ impl StateEstimator {
         let altitude_baro = barometer
             .and_then(|a| (!a.is_nan()).then_some(a)) // NaN is not a valid altitude
             .and_then(|a| (a > -100.0 && a < 12_000.0).then_some(a)); // neither is -13000
-        let accel = self.acceleration_world
-            .and_then(|a| (!(a.x.is_nan() || a.y.is_nan() || a.z.is_nan())).then_some(a));
-        let gps = gps_datum
-            .and_then(|d| self.gps_reliable(&d).then_some(d));
+        let accel =
+            self.acceleration_world.and_then(|a| (!(a.x.is_nan() || a.y.is_nan() || a.z.is_nan())).then_some(a));
+        let gps = gps_datum.and_then(|d| self.gps_reliable(&d).then_some(d));
 
         match (accel, altitude_baro) {
             (Some(accel), Some(altitude_baro)) => {
                 self.apply_measurements(altitude_baro, accel, gps);
-            },
+            }
             (Some(accel), None) => {
                 // Use predicted altitude values, basically attempting to do inertial navigation.
                 self.apply_measurements(self.altitude_asl(), accel, gps);
@@ -277,7 +303,7 @@ impl StateEstimator {
             (None, Some(altitude_baro)) => {
                 // Just assume acceleration is zero.
                 self.apply_measurements(altitude_baro, Vector3::new(0.0, 0.0, 0.0), gps);
-            },
+            }
             (None, None) => {
                 // Do nothing, as long as this gap isn't too big and barometer values come back,
                 // the Kalman filter should be able to recover from this.
@@ -344,13 +370,14 @@ impl StateEstimator {
             FlightMode::Coast => {
                 let direction: f32 = self.last_valve_state.into();
                 let pressure_offset = f32::min(0.0, acs_tank_pressure - self.settings.acs_nominal_tank_pressure);
-                let thrust = self.settings.acs_nominal_acceleration + pressure_offset * self.settings.acs_acceleration_pressure_slope;
+                let thrust = self.settings.acs_nominal_acceleration
+                    + pressure_offset * self.settings.acs_acceleration_pressure_slope;
                 let estimated_thruster_acceleration = direction * f32::max(0.0, thrust);
 
                 let estimated_thruster_acc = match self.last_valve_state {
                     ThrusterValveState::OpenAccel => estimated_thruster_acceleration,
                     ThrusterValveState::OpenDecel => -estimated_thruster_acceleration,
-                    _ => 0.0
+                    _ => 0.0,
                 };
                 let orientation = self.orientation.unwrap_or_default();
                 let thrust = orientation * Vector3::new(0., 0., estimated_thruster_acc);
@@ -360,19 +387,21 @@ impl StateEstimator {
 
                 // By how much should we reduce our drag estimate to roughly match the
                 // average over the remaining flight?
-                let reduction = 1.0 + self.settings.drag_reduction_factor * self.mach().powf(self.settings.drag_reduction_exp);
+                let reduction =
+                    1.0 + self.settings.drag_reduction_factor * self.mach().powf(self.settings.drag_reduction_exp);
 
                 // This gives 0.5 * air density * drag coefficient * area
                 let drag_over_vel_squared = (drag.magnitude() / self.velocity().magnitude_squared()) / reduction;
 
                 // Calculate terminal velocity and remaining vertical distance
                 let terminal_vel_squared = GRAVITY / drag_over_vel_squared;
-                let remaining_height = (terminal_vel_squared / (2.0 * GRAVITY)) * ((self.vertical_speed().powi(2) + terminal_vel_squared) / terminal_vel_squared).ln();
+                let remaining_height = (terminal_vel_squared / (2.0 * GRAVITY))
+                    * ((self.vertical_speed().powi(2) + terminal_vel_squared) / terminal_vel_squared).ln();
 
                 Some(self.altitude_asl() + remaining_height)
-            },
+            }
             FlightMode::RecoveryDrogue | FlightMode::RecoveryMain | FlightMode::Landed => Some(self.altitude_max),
-            _ => None
+            _ => None,
         }
     }
 
@@ -416,8 +445,9 @@ impl StateEstimator {
         let drogue_duration = self.settings.drogue_output_settings.total_duration();
         let main_duration = self.settings.main_output_settings.total_duration();
 
-        let gravity_present = self.acceleration
-            .map(|acc| (GRAVITY*0.95..GRAVITY*1.05).contains(&acc.magnitude()))
+        let gravity_present = self
+            .acceleration
+            .map(|acc| (GRAVITY * 0.95..GRAVITY * 1.05).contains(&acc.magnitude()))
             .unwrap_or(true);
         let condition_landed = gravity_present && self.vertical_speed().abs() < 1.0;
 
@@ -455,24 +485,26 @@ impl StateEstimator {
                     let below_alt = self.true_since(condition, 100);
                     let min_time = u32::max(drogue_duration, self.settings.min_time_to_main);
                     (t_in_mode > min_time && below_alt).then(|| FlightMode::RecoveryMain)
-                },
+                }
                 MainOutputMode::Never => {
                     let landed = self.true_since(condition_landed, 1000);
                     (t_in_mode > drogue_duration && landed).then(|| FlightMode::Landed)
-                },
+                }
             },
             // Landing detection
             FlightMode::RecoveryMain => {
                 let landed = self.true_since(condition_landed, 1000);
                 (t_in_mode > main_duration && landed).then(|| FlightMode::Landed)
-            },
+            }
             // Once in the Landed mode, the vehicle will not do anything by itself
-            FlightMode::Landed => None
+            FlightMode::Landed => None,
         }
     }
 
     pub fn thruster_valve(&mut self, acs_tank_pressure: f32) -> ThrusterValveState {
-        if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain) && self.time_in_mode() > 10_000 {
+        if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain)
+            && self.time_in_mode() > 10_000
+        {
             self.last_valve_state = ThrusterValveState::OpenBoth;
             return ThrusterValveState::OpenBoth;
         }
@@ -484,7 +516,8 @@ impl StateEstimator {
         }
 
         // TODO: configuration, etc.
-        let error = (self.apogee_agl(acs_tank_pressure).unwrap_or_default() - 3000.0) + self.settings.apogee_error_offset;
+        let error =
+            (self.apogee_agl(acs_tank_pressure).unwrap_or_default() - 3000.0) + self.settings.apogee_error_offset;
 
         #[cfg(not(target_os = "none"))]
         {
@@ -499,7 +532,7 @@ impl StateEstimator {
         let mut new = match error {
             _ if error < -threshold => ThrusterValveState::OpenAccel,
             _ if error > threshold => ThrusterValveState::OpenDecel,
-            _ => ThrusterValveState::Closed
+            _ => ThrusterValveState::Closed,
         };
 
         if (self.time - self.last_valve_state_change).0 < 200 {
@@ -518,12 +551,10 @@ impl StateEstimator {
         self.condition_true_since = match (cond, self.condition_true_since) {
             (true, None) => Some(self.time),
             (true, Some(t)) => Some(t),
-            (false, _) => None
+            (false, _) => None,
         };
 
-        self.condition_true_since
-            .map(|t| (self.time - t).0 > duration)
-            .unwrap_or(false)
+        self.condition_true_since.map(|t| (self.time - t).0 > duration).unwrap_or(false)
     }
 
     fn correct_orientation(&self, raw: &Vector3<f32>) -> Vector3<f32> {
@@ -534,14 +565,14 @@ impl StateEstimator {
     }
 
     fn gps_reliable(&self, datum: &GPSDatum) -> bool {
-        self.mode != FlightMode::Burn &&
-            self.mode != FlightMode::Coast &&
-            datum.fix != GPSFixType::NoFix &&
-            datum.num_satellites > 6 &&
-            datum.hdop < 300 &&
-            datum.latitude.is_some() &&
-            datum.longitude.is_some() &&
-            datum.altitude.is_some()
+        self.mode != FlightMode::Burn
+            && self.mode != FlightMode::Coast
+            && datum.fix != GPSFixType::NoFix
+            && datum.num_satellites > 6
+            && datum.hdop < 300
+            && datum.latitude.is_some()
+            && datum.longitude.is_some()
+            && datum.altitude.is_some()
     }
 
     fn hdop_to_std_dev(&self, hdop: Option<u16>) -> f32 {
@@ -551,11 +582,67 @@ impl StateEstimator {
     fn global_to_local(&self, global: Vector3<f32>) -> Vector3<f32> {
         let offset = global - self.gps_origin.unwrap_or_default();
         let (lat, lng) = (offset.x, offset.y);
-        Vector3::new(lng * 111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos(), lat * 111_111.0, global.z)
+        Vector3::new(
+            lng * 111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos(),
+            lat * 111_111.0,
+            global.z,
+        )
     }
 
     fn local_to_global(&self, local: Vector3<f32>) -> Vector3<f32> {
-        let offset = Vector3::new(local.y / 111_111.0, local.x / (111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos()), local.z);
+        let offset = Vector3::new(
+            local.y / 111_111.0,
+            local.x / (111_111.0 * self.gps_origin.unwrap_or_default().x.to_radians().cos()),
+            local.z,
+        );
         self.gps_origin.unwrap_or_default() + offset
+    }
+}
+
+impl MetricSource for StateEstimator {
+    type Error = Infallible;
+
+    fn write_metric<const N: usize>(
+        &mut self,
+        w: &mut telemetry::TelemetryMessageWriter<N>,
+        metric: telemetry::Metric,
+        repr: Representation,
+    ) -> Result<(), Self::Error> {
+        match metric {
+            Metric::Orientation(i) => w.write_float(repr, self.orientation.unwrap_or_default()[i]),
+            Metric::Elevation => {
+                let elevation = self
+                    .orientation
+                    .map(|q| {
+                        let up = Vector3::new(0.0, 0.0, 1.0);
+                        let attitude = q * up;
+                        90.0 - up.dot(&attitude).acos().to_degrees()
+                    })
+                    .unwrap_or_default();
+                let elevation = (elevation * 128.0 / 90.0) as i8;
+                w.write_float(repr, elevation)
+            }
+            Metric::Azimuth => {
+                let azimuth = self
+                    .orientation
+                    .map(|q| {
+                        let attitude = q * Vector3::new(0.0, 0.0, 1.0);
+                        (90.0 - attitude.y.atan2(attitude.x).to_degrees()) % 360.0
+                    })
+                    .unwrap_or_default();
+                let azimuth = if azimuth < 0.0 { azimuth + 360.0 } else { azimuth };
+                let azimuth = (azimuth * 256.0 / 360.0) as u8;
+                w.write_float(repr, azimuth)
+            }
+            Metric::AccelerationWorldSpace(dim) => w.write_vector(repr, dim, &self.acceleration_world()),
+            Metric::VelocityWorldSpace(dim) => w.write_vector(repr, dim, &self.velocity()),
+            Metric::PositionWorldSpace(dim) => w.write_vector(repr, dim, &self.position_local()),
+            Metric::Latitude => w.write_float(repr, self.latitude().unwrap_or_default()),
+            Metric::Longitude => w.write_float(repr, self.longitude().unwrap_or_default()),
+            Metric::GroundAltitudeASL => w.write_float(repr, self.altitude_ground),
+            Metric::GroundSpeed => w.write_float(repr, self.ground_speed()),
+            Metric::KalmanStateCovariance(i, j) => w.write_float(repr, self.kalman.P[(i, j)]),
+            _ => unreachable!(),
+        }
     }
 }

@@ -1,4 +1,4 @@
-use shared_types::{DownlinkMessage, VehicleState, Settings};
+use shared_types::{DownlinkMessage, Settings};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LaunchSite {
@@ -213,11 +213,6 @@ impl ArchivedLog {
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
     pub fn flash_messages(&self) -> Option<Vec<DownlinkMessage>> {
         self.flash_log_bytes.map(|bytes| serde_json::from_slice::<Vec<DownlinkMessage>>(bytes).unwrap())
-    }
-
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub fn flash_states(&self) -> Option<Vec<VehicleState>> {
-        self.flash_messages().map(|vec| vec.into_iter().map(|msg| Into::<VehicleState>::into(msg)).collect())
     }
 
     #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]

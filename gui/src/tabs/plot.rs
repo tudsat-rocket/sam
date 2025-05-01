@@ -1,29 +1,29 @@
 use std::cell::RefCell;
+use std::ops::DerefMut;
 use std::rc::Rc;
 
 use egui::Align;
-use egui::Layout;
-use egui::SelectableLabel;
-use egui::TextBuffer;
-use egui::TextEdit;
-use egui_tiles::TabState;
-use serde::{Deserialize, Serialize};
 use egui::CentralPanel;
 use egui::Color32;
+use egui::Layout;
+use egui::SelectableLabel;
 use egui::SidePanel;
 use egui::Stroke;
+use egui::TextBuffer;
+use egui::TextEdit;
 use egui::Vec2;
 use egui_tiles::SimplificationOptions;
+use egui_tiles::TabState;
+use serde::{Deserialize, Serialize};
 
-use shared_types::telemetry::FlightMode;
-use shared_types::IoBoardRole;
+use telemetry::*;
 
-use crate::data_source::DataSource;
 use crate::settings::AppSettings;
 use crate::widgets::acs::*;
 use crate::widgets::hybrid::*;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
+use crate::*;
 
 const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
 const G: Color32 = Color32::from_rgb(0xb8, 0xbb, 0x26);
@@ -37,130 +37,50 @@ const BR: Color32 = Color32::from_rgb(0x61, 0x48, 0x1c);
 const P: Color32 = Color32::from_rgb(0xb1, 0x62, 0x86);
 const C: Color32 = Color32::from_rgb(0x68, 0x9d, 0x6a);
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub enum PlotCell {
-    Orientation,
-    VerticalSpeed,
-    Altitude,
-    Gyroscope,
-    Accelerometers,
-    Magnetometer,
-    Pressures,
-    Temperatures,
-    Power,
-    Runtime,
-    Signal,
+pub struct GlobalWidgetState {
+    map: MapState,
+    shared_plot: Rc<RefCell<SharedPlotState>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WidgetPane {
+    Plot { title: String, config: PlotConfig },
     Map,
-    Kalman,
-    Valves,
-    Masses,
-    IoSensors,
-    FinData,
     Acs,
-    Hybrid
-}
-
-impl PlotCell {
-    fn all() -> Vec<Self> {
-        vec![
-            PlotCell::Orientation,
-            PlotCell::VerticalSpeed,
-            PlotCell::Altitude,
-            PlotCell::Map,
-            PlotCell::Gyroscope,
-            PlotCell::Accelerometers,
-            PlotCell::Magnetometer,
-            PlotCell::Pressures,
-            PlotCell::Temperatures,
-            PlotCell::Power,
-            PlotCell::Runtime,
-            PlotCell::Signal,
-            PlotCell::Kalman,
-            PlotCell::Valves,
-            PlotCell::Masses,
-            PlotCell::IoSensors,
-            PlotCell::FinData,
-            PlotCell::Acs,
-            PlotCell::Hybrid
-        ]
-    }
-}
-
-impl std::fmt::Display for PlotCell {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            PlotCell::Orientation    => write!(f, "Orientation"),
-            PlotCell::VerticalSpeed  => write!(f, "Vertical Speed & Accel."),
-            PlotCell::Altitude       => write!(f, "Altitude (ASL)"),
-            PlotCell::Gyroscope      => write!(f, "Gyroscope"),
-            PlotCell::Accelerometers => write!(f, "Accelerometers"),
-            PlotCell::Magnetometer   => write!(f, "Magnetometer"),
-            PlotCell::Pressures      => write!(f, "Pressures"),
-            PlotCell::Temperatures   => write!(f, "Temperatures"),
-            PlotCell::Power          => write!(f, "Power"),
-            PlotCell::Runtime        => write!(f, "Runtime"),
-            PlotCell::Signal         => write!(f, "Signal"),
-            PlotCell::Map            => write!(f, "Map"),
-            PlotCell::Kalman         => write!(f, "Kalman"),
-            PlotCell::Valves         => write!(f, "Valves"),
-            PlotCell::Masses         => write!(f, "Masses"),
-            PlotCell::IoSensors      => write!(f, "IO Board Sensors"),
-            PlotCell::FinData        => write!(f, "Fin Data"),
-            PlotCell::Acs            => write!(f, "ACS"),
-            PlotCell::Hybrid         => write!(f, "Hybrid")
-        }
-    }
+    Hybrid,
 }
 
 struct TileBehavior<'a> {
-    data_source: &'a mut dyn DataSource,
+    backend: &'a mut Backend,
     settings: &'a AppSettings,
-    orientation_plot: &'a mut PlotState,
-    vertical_speed_plot: &'a mut PlotState,
-    altitude_plot: &'a mut PlotState,
-    gyroscope_plot: &'a mut PlotState,
-    accelerometer_plot: &'a mut PlotState,
-    magnetometer_plot: &'a mut PlotState,
-    pressures_plot: &'a mut PlotState,
-    temperature_plot: &'a mut PlotState,
-    power_plot: &'a mut PlotState,
-    runtime_plot: &'a mut PlotState,
-    signal_plot: &'a mut PlotState,
-    kalman_plot: &'a mut PlotState,
-    valve_plot: &'a mut PlotState,
-    masses_plot: &'a mut PlotState,
-    raw_sensors_plot: &'a mut PlotState,
-    fin_data_plot: &'a mut PlotState,
-    map: &'a mut MapState,
+    global_widget_state: &'a mut GlobalWidgetState,
 }
 
-impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
-    fn tab_title_for_pane(&mut self, pane: &PlotCell) -> egui::WidgetText {
-        format!("{}", pane).into()
+impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
+    fn tab_title_for_pane(&mut self, pane: &WidgetPane) -> egui::WidgetText {
+        match pane {
+            WidgetPane::Plot { title, config: _ } => title.clone(),
+            WidgetPane::Map => "Map".to_string(),
+            WidgetPane::Acs => "ACS".to_string(),
+            WidgetPane::Hybrid => "Hybrid".to_string(),
+        }
+        .into()
     }
 
-    fn pane_ui(&mut self, ui: &mut egui::Ui, _tile_id: egui_tiles::TileId, pane: &mut PlotCell) -> egui_tiles::UiResponse {
+    fn pane_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        _tile_id: egui_tiles::TileId,
+        pane: &mut WidgetPane,
+    ) -> egui_tiles::UiResponse {
         match pane {
-            PlotCell::Orientation    => ui.plot_telemetry(&self.orientation_plot, self.data_source),
-            PlotCell::VerticalSpeed  => ui.plot_telemetry(&self.vertical_speed_plot, self.data_source),
-            PlotCell::Altitude       => ui.plot_telemetry(&self.altitude_plot, self.data_source),
-            PlotCell::Gyroscope      => ui.plot_telemetry(&self.gyroscope_plot, self.data_source),
-            PlotCell::Accelerometers => ui.plot_telemetry(&self.accelerometer_plot, self.data_source),
-            PlotCell::Magnetometer   => ui.plot_telemetry(&self.magnetometer_plot, self.data_source),
-            PlotCell::Pressures      => ui.plot_telemetry(&self.pressures_plot, self.data_source),
-            PlotCell::Temperatures   => ui.plot_telemetry(&self.temperature_plot, self.data_source),
-            PlotCell::Power          => ui.plot_telemetry(&self.power_plot, self.data_source),
-            PlotCell::Runtime        => ui.plot_telemetry(&self.runtime_plot, self.data_source),
-            PlotCell::Signal         => ui.plot_telemetry(&self.signal_plot, self.data_source),
-            PlotCell::Kalman         => ui.plot_telemetry(&self.kalman_plot, self.data_source),
-            PlotCell::Valves         => ui.plot_telemetry(&self.valve_plot, self.data_source),
-            PlotCell::Masses         => ui.plot_telemetry(&self.masses_plot, self.data_source),
-            PlotCell::IoSensors      => ui.plot_telemetry(&self.raw_sensors_plot, self.data_source),
-            PlotCell::FinData        => ui.plot_telemetry(&self.fin_data_plot, self.data_source),
-            PlotCell::Map            => { ui.add(Map::new(&mut self.map, self.data_source, self.settings)); },
-            PlotCell::Acs            => { ui.add(AcsSystemDiagram::new(self.data_source)); },
-            PlotCell::Hybrid         => { ui.add(HybridSystemDiagram::new()); },
-        }
+            WidgetPane::Plot { title: _, config } => {
+                ui.add(Plot::new(&config, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.backend))
+            }
+            WidgetPane::Map => ui.add(Map::new(&mut self.global_widget_state.map, self.backend, self.settings)),
+            WidgetPane::Acs => ui.add(AcsSystemDiagram::new(self.backend)),
+            WidgetPane::Hybrid => ui.add(HybridSystemDiagram::new()),
+        };
 
         egui_tiles::UiResponse::None
     }
@@ -170,7 +90,10 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
     }
 
     fn drag_preview_stroke(&self, _visuals: &egui::Visuals) -> egui::Stroke {
-        Stroke { width: 1.0, color: Color32::from_rgb(0xb8, 0xbb, 0x26) }
+        Stroke {
+            width: 1.0,
+            color: Color32::from_rgb(0xb8, 0xbb, 0x26),
+        }
     }
 
     fn drag_preview_color(&self, _visuals: &egui::Visuals) -> Color32 {
@@ -181,12 +104,32 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
         visuals.widgets.noninteractive.bg_fill
     }
 
-    fn tab_bg_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, tab_state: &TabState) -> Color32 {
-        if tab_state.active { self.tab_bar_color(visuals) } else { visuals.extreme_bg_color }
+    fn tab_bg_color(
+        &self,
+        visuals: &egui::Visuals,
+        _tiles: &egui_tiles::Tiles<WidgetPane>,
+        _tile_id: egui_tiles::TileId,
+        tab_state: &TabState,
+    ) -> Color32 {
+        if tab_state.active {
+            self.tab_bar_color(visuals)
+        } else {
+            visuals.extreme_bg_color
+        }
     }
 
-    fn tab_text_color(&self, visuals: &egui::Visuals, _tiles: &egui_tiles::Tiles<PlotCell>, _tile_id: egui_tiles::TileId, tab_state: &TabState) -> Color32 {
-        if tab_state.active { visuals.widgets.active.fg_stroke.color } else { visuals.widgets.hovered.fg_stroke.color }
+    fn tab_text_color(
+        &self,
+        visuals: &egui::Visuals,
+        _tiles: &egui_tiles::Tiles<WidgetPane>,
+        _tile_id: egui_tiles::TileId,
+        tab_state: &TabState,
+    ) -> Color32 {
+        if tab_state.active {
+            visuals.widgets.active.fg_stroke.color
+        } else {
+            visuals.widgets.hovered.fg_stroke.color
+        }
     }
 
     fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
@@ -201,29 +144,219 @@ impl<'a> egui_tiles::Behavior<PlotCell> for TileBehavior<'a> {
     }
 }
 
+pub fn default_orientation_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Orientation".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::Elevation, B),
+                (Metric::Azimuth, R),
+                (Metric::TrueElevation, B1),
+                (Metric::TrueAzimuth, R1),
+            ],
+            ylimits: (Some(-180.0), Some(360.0)),
+        },
+    }
+}
+
+pub fn default_vertical_speed_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Vertical Speed/Accel.".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::AccelerationWorldSpace(Dim::Z), O),
+                (Metric::VelocityWorldSpace(Dim::Z), B),
+                (Metric::TrueAccelerationWorldSpace(Dim::Z), O1),
+                (Metric::TrueVelocityWorldSpace(Dim::Z), B1),
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_altitude_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Altitude (ASL)".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::GroundAltitudeASL, BR),
+                (Metric::RawBarometricAltitude(BarometerId::MS5611), B1),
+                (Metric::PositionWorldSpace(Dim::Z), B),
+                (Metric::ApogeeAltitudeASL, O1),
+                (Metric::GpsAltitude, G),
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_gyroscope_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Gyroscope".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::X), R),
+                (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::Y), G),
+                (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::Z), B),
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_accelerometer_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Accelerometers".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::X), R1),
+                (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::Y), G1),
+                (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::Z), B1),
+                (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::X), R),
+                (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Y), G),
+                (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Z), B),
+            ],
+            ylimits: (Some(-10.0), Some(10.0)),
+        },
+    }
+}
+
+pub fn default_magnetometer_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Magnetometer".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::X), R),
+                (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Y), G),
+                (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Z), B),
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_pressures_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Pressures".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::MS5611)), C),
+                (Metric::Pressure(PressureSensorId::AcsTank), R),
+                (Metric::Pressure(PressureSensorId::AcsPostRegulator), G),
+                (Metric::Pressure(PressureSensorId::AcsValveAccel), O),
+                (Metric::Pressure(PressureSensorId::AcsValveDecel), O1),
+                (Metric::Pressure(PressureSensorId::RecoveryChamber), B),
+                (Metric::Pressure(PressureSensorId::MainRelease), BR),
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_valves_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Valves".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                // TODO
+            ],
+            ylimits: (Some(-1.0), Some(1.0)),
+        },
+    }
+}
+
+pub fn default_masses_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Masses".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::TrueVehicleMass, B),
+                (Metric::TrueMotorMass, R),
+                (Metric::TrueThrusterPropellantMass, O1),
+            ],
+            ylimits: (Some(0.0), None),
+        },
+    }
+}
+
+pub fn default_kalman_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Kalman".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                // TODO
+            ],
+            ylimits: (None, None),
+        },
+    }
+}
+
+pub fn default_runtime_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Runtime".to_string(),
+        config: PlotConfig {
+            lines: vec![(Metric::CpuUtilization, O)],
+            ylimits: (Some(0.0), Some(100.0)),
+        },
+    }
+}
+
+pub fn default_temperatures_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Temperatures".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::MS5611)), C),
+                (Metric::Temperature(TemperatureSensorId::Acs), R),
+                (Metric::Temperature(TemperatureSensorId::Recovery), B),
+                (Metric::Temperature(TemperatureSensorId::Payload), O),
+            ],
+            ylimits: (Some(25.0), Some(35.0)),
+        },
+    }
+}
+
+pub fn default_power_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Power".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::BatteryVoltage(BatteryId::Avionics), G),
+                (Metric::BatteryCurrent(BatteryId::Avionics), O1),
+                (Metric::SupplyVoltage, B),
+                (Metric::BatteryVoltage(BatteryId::Acs), G1),
+                (Metric::BatteryCurrent(BatteryId::Acs), O),
+                (Metric::BatteryVoltage(BatteryId::Recovery), C),
+                (Metric::BatteryCurrent(BatteryId::Recovery), R),
+                (Metric::BatteryVoltage(BatteryId::Payload), G1),
+                (Metric::BatteryCurrent(BatteryId::Payload), O),
+            ],
+            ylimits: (Some(0.0), Some(15.0)),
+        },
+    }
+}
+
+pub fn default_signal_plot() -> WidgetPane {
+    WidgetPane::Plot {
+        title: "Signal".to_string(),
+        config: PlotConfig {
+            lines: vec![
+                (Metric::DownlinkRssi, B),
+                (Metric::DownlinkSnr, B1),
+                (Metric::UplinkRssi, P),
+                (Metric::UplinkSnr, C),
+                (Metric::GpsHdop, R),
+            ],
+            ylimits: (Some(-100.0), Some(10.0)),
+        },
+    }
+}
+
 pub struct PlotTab {
-    tile_tree: egui_tiles::Tree<PlotCell>,
+    tile_tree: egui_tiles::Tree<WidgetPane>,
     show_view_settings: bool,
     new_preset_name: String,
-
-    shared_plot: Rc<RefCell<SharedPlotState>>,
-    orientation_plot: PlotState,
-    vertical_speed_plot: PlotState,
-    altitude_plot: PlotState,
-    gyroscope_plot: PlotState,
-    accelerometer_plot: PlotState,
-    magnetometer_plot: PlotState,
-    pressures_plot: PlotState,
-    temperature_plot: PlotState,
-    power_plot: PlotState,
-    runtime_plot: PlotState,
-    signal_plot: PlotState,
-    kalman_plot: PlotState,
-    valve_plot: PlotState,
-    masses_plot: PlotState,
-    raw_sensors_plot: PlotState,
-    fin_data_plot: PlotState,
-    map: MapState,
+    global_widget_state: GlobalWidgetState,
 }
 
 impl PlotTab {
@@ -231,279 +364,117 @@ impl PlotTab {
         HybridSystemDiagram::init(ctx);
 
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
+        let mapbox_token = (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone());
+        let map = MapState::new(ctx, mapbox_token);
 
-        let orientation_plot = PlotState::new("Orientation", (Some(-180.0), Some(360.0)), shared_plot.clone())
-            .line("Elevation [°]", B, |vs| vs.elevation)
-            .line("Azimuth [°]", R, |vs| vs.azimuth)
-            .line("True Elevation [°]", B1, |vs| vs.sim.as_ref().and_then(|s| s.elevation))
-            .line("True Azimuth [°]", R1, |vs| vs.sim.as_ref().and_then(|s| s.azimuth));
-
-        let vertical_speed_plot = PlotState::new("Vert. Speed & Accel.", (None, None), shared_plot.clone())
-            .line("Vertical Accel [m/s²]", O, |vs| vs.vertical_accel)
-            .line("Vario [m/s]", B, |vs| vs.vertical_speed)
-            .line("True Vertical Accel [m/s²]", G, |vs| vs.sim.as_ref().and_then(|s| s.vertical_accel))
-            .line("True Vario [m/s]", B1, |vs| vs.sim.as_ref().and_then(|s| s.vertical_speed));
-
-        let altitude_plot = PlotState::new("Altitude (ASL)", (None, None), shared_plot.clone())
-            .line("Ground [m]", BR, |vs| vs.altitude_ground_asl)
-            .line("Altitude (Baro) [m]", B1, |vs| vs.altitude_baro)
-            .line("Altitude [m]", B, |vs| vs.altitude_asl)
-            .line("Apogee [m]", O1, |vs| (vs.mode == Some(FlightMode::Coast)).then_some(vs.apogee_asl).flatten())
-            .line("Altitude (GPS) [m]", G, |vs| vs.gps.as_ref().and_then(|gps| gps.altitude));
-
-        let gyroscope_plot = PlotState::new("Gyroscope", (None, None), shared_plot.clone())
-            .line("Gyro (X) [°/s]", R, |vs| vs.gyroscope.map(|a| a.x))
-            .line("Gyro (Y) [°/s]", G, |vs| vs.gyroscope.map(|a| a.y))
-            .line("Gyro (Z) [°/s]", B, |vs| vs.gyroscope.map(|a| a.z));
-
-        let accelerometer_plot = PlotState::new("Accelerometers", (Some(-10.0), Some(10.0)), shared_plot.clone())
-            .line("Accel 2 (X) [m/s²]", R1, |vs| vs.accelerometer2.map(|a| a.x))
-            .line("Accel 2 (Y) [m/s²]", G1, |vs| vs.accelerometer2.map(|a| a.y))
-            .line("Accel 2 (Z) [m/s²]", B1, |vs| vs.accelerometer2.map(|a| a.z))
-            .line("Accel 1 (X) [m/s²]", R, |vs| vs.accelerometer1.map(|a| a.x))
-            .line("Accel 1 (Y) [m/s²]", G, |vs| vs.accelerometer1.map(|a| a.y))
-            .line("Accel 1 (Z) [m/s²]", B, |vs| vs.accelerometer1.map(|a| a.z));
-
-        let magnetometer_plot = PlotState::new("Magnetometer", (None, None), shared_plot.clone())
-            .line("Mag (X) [µT]", R, |vs| vs.magnetometer.map(|a| a.x))
-            .line("Mag (Y) [µT]", G, |vs| vs.magnetometer.map(|a| a.y))
-            .line("Mag (Z) [µT]", B, |vs| vs.magnetometer.map(|a| a.z));
-
-        let pressures_plot = PlotState::new("Pressures", (None, None), shared_plot.clone())
-            .line("Barometer [bar]", C, |vs| vs.pressure_baro.map(|p| p / 1000.0))
-            .line("ACS Tank [bar]", R, |vs| vs.acs_tank_pressure)
-            .line("ACS Post-Regulator [bar]", G, |vs| vs.acs_regulator_pressure)
-            .line("ACS Accel Valve [bar]", O, |vs| vs.acs_accel_valve_pressure)
-            .line("ACS Decel Valve [bar]", O1, |vs| vs.acs_decel_valve_pressure)
-            .line("Recovery [bar]", B, |vs| vs.recovery_pressure)
-            .line("Main Release Sensor", BR, |vs| vs.main_release_sensor.map(|b| if b { 10.0 } else { 0.0 }));
-
-        let temperature_plot = PlotState::new("Temperatures", (Some(25.0), Some(35.0)), shared_plot.clone())
-            .line("Barometer [°C]", C, |vs| vs.temperature_baro)
-            .line("ACS [°C]", R, |vs| vs.acs_temperature.flatten().map(|t| (t as f32) / 2.0))
-            .line("Recovery [°C]", B, |vs| vs.recovery_temperature.flatten().map(|t| (t as f32) / 2.0))
-            .line("Payload [°C]", O, |vs| vs.payload_temperature.flatten().map(|t| (t as f32) / 2.0));
-
-        let power_plot = PlotState::new("Power", (Some(0.0), Some(9.0)), shared_plot.clone())
-            .line("Battery Voltage [V]", G, |vs| vs.battery_voltage.map(|v| (v as f32) / 1000.0))
-            .line("Battery Current [A]", O1, |vs| vs.current.map(|v| (v as f32) / 1000.0))
-            .line("Charge Voltage [V]", B, |vs| vs.charge_voltage.map(|v| (v as f32) / 1000.0))
-            .line("ACS Voltage [V]", G1, |vs| vs.acs_voltage.flatten().map(|v| (v as f32) / 1000.0))
-            .line("ACS Current [A]", O, |vs| vs.acs_current.flatten().map(|v| (v as f32) / 1000.0))
-            .line("Recovery Voltage [V]", C, |vs| vs.recovery_voltage.flatten().map(|v| (v as f32) / 1000.0))
-            .line("Recovery Current [A]", R, |vs| vs.recovery_current.flatten().map(|v| (v as f32) / 1000.0))
-            .line("Payload Voltage [V]", G1, |vs| vs.payload_voltage.flatten().map(|v| (v as f32) / 1000.0))
-            .line("Payload Current [A]", O, |vs| vs.payload_current.flatten().map(|v| (v as f32) / 1000.0));
-
-        let runtime_plot = PlotState::new("Runtime", (Some(0.0), Some(100.0)), shared_plot.clone())
-            .line("CPU Util. [%]", O, |vs| vs.cpu_utilization);
-
-        let signal_plot = PlotState::new("Signal", (Some(-100.0), Some(10.0)), shared_plot.clone())
-            .line("GCS RSSI [dBm]", B, |vs| vs.gcs_lora_rssi.map(|x| x as f32 / -2.0))
-            .line("GCS Signal RSSI [dBm]", B1, |vs| vs.gcs_lora_rssi_signal.map(|x| x as f32 / -2.0))
-            .line("GCS SNR [dB]", C, |vs| vs.gcs_lora_snr.map(|x| x as f32 / 4.0))
-            .line("Vehicle RSSI [dBm]", P, |vs| vs.lora_rssi.map(|x| x as f32 / -2.0))
-            .line("HDOP", R, |vs| vs.gps.as_ref().map(|gps| gps.hdop as f32 / 100.0))
-            .line("# Satellites", G, |vs| vs.gps.as_ref().map(|gps| gps.num_satellites as f32));
-
-        let kalman_plot = PlotState::new("Kalman", (None, None), shared_plot.clone())
-            .line("x (pos. X) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_x[0]))
-            .line("x (pos. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_x[1]))
-            .line("x (speed X) [m]", R1, |vs| vs.sim.as_ref().map(|s| s.kalman_x[3]))
-            .line("x (speed Y) [m]", G1, |vs| vs.sim.as_ref().map(|s| s.kalman_x[4]))
-            .line("x (accel. X) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_x[6]))
-            .line("x (accel. Y) [m]", G, |vs| vs.sim.as_ref().map(|s| s.kalman_x[7]))
-            .line("P (pos. X/Y) [m]", R, |vs| vs.sim.as_ref().map(|s| s.kalman_P[0]))
-            .line("P (speed Z) [m/s]", B1, |vs| vs.sim.as_ref().map(|s| s.kalman_P[5]))
-            .line("P (accel. Z) [m/s²]", B, |vs| vs.sim.as_ref().map(|s| s.kalman_P[8]))
-            .line("R (baro.) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[0]))
-            .line("R (pos. X/Y) [m]", O, |vs| vs.sim.as_ref().map(|s| s.kalman_R[4]))
-            .line("X/Y Pos. Variance [m]", R, |vs| vs.position_variance)
-            .line("Altitude Variance [m]", B, |vs| vs.altitude_variance)
-            .line("Vertical Speed Variance [m/s]", O1, |vs| vs.vertical_speed_variance)
-            .line("Barometer Variance [m]", C, |vs| vs.barometer_variance)
-            .line("Accelerometer Variance [m/s²]", O, |vs| vs.accelerometer_variance)
-            .line("GPS Variance [m]", G, |vs| vs.gps_variance);
-
-        let valve_plot = PlotState::new("Valves", (Some(-1.0), Some(1.0)), shared_plot.clone())
-            .line("Thruster State", B1, |vs| vs.thruster_valve_state.map(|v| v.into()))
-            .line("Thrust [N]", B, |vs| vs.sim.as_ref().map(|sim| sim.force_thrust.unwrap_or_default().z))
-            .line("Apogee Error", R, |vs| vs.sim.as_ref().and_then(|s| s.apogee_error));
-
-        let masses_plot = PlotState::new("Masses", (Some(0.0), None), shared_plot.clone())
-            .line("Vehicle [kg]", B, |vs| vs.sim.as_ref().and_then(|sim| sim.mass))
-            .line("Motor [kg]", R, |vs| vs.sim.as_ref().and_then(|sim| sim.motor_mass))
-            .line("Thruster Propellant [kg]", O1, |vs| vs.sim.as_ref().and_then(|sim| sim.thruster_propellant_mass));
-
-        // TODO: refactor
-        let raw_sensors_plot = PlotState::new("Raw Sensors", (Some(0f32), Some(3300f32)), shared_plot.clone())
-            .line("ACS #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("ACS #3 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Acs && *id == 0).then_some(msg.i2c_sensors[3]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #0 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[0]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #1 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[1]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))))
-            .line("Recovery #2 [mV]", B, |vs| vs.io_board_sensor_data.as_ref().and_then(|(role, id, msg)| (*role == IoBoardRole::Recovery && *id == 0).then_some(msg.i2c_sensors[2]).flatten().map(|(v, _)| 3300f32 * v as f32 / 2f32.powi(10))));
-
-        // TODO: refactor
-        let fin_data_plot = PlotState::new("Fin Data", (None, None), shared_plot.clone())
-            .line("Fin Board #0 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 0 && *id == 0).then_some(msg.data[0] as f32)))
-            .line("Fin Board #0 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 0 && *id == 1).then_some(msg.data[0] as f32)))
-            .line("Fin Board #1 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 1 && *id == 0).then_some(msg.data[0] as f32)))
-            .line("Fin Board #1 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 1 && *id == 1).then_some(msg.data[0] as f32)))
-            .line("Fin Board #2 SG 0 [8-bit]", O, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 2 && *id == 0).then_some(msg.data[0] as f32)))
-            .line("Fin Board #2 SG 1 [8-bit]", G, |vs| vs.fin_board_sensor_data.as_ref().and_then(|(fin, id, msg)| (*fin == 2 && *id == 1).then_some(msg.data[0] as f32)));
-
-        let map = MapState::new(ctx, (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone()));
+        let global_widget_state = GlobalWidgetState { map, shared_plot };
 
         Self {
-            tile_tree: Self::tree_launch(),
+            tile_tree: Self::tree_default(),
             show_view_settings: false,
             new_preset_name: String::new(),
-            shared_plot,
-            orientation_plot,
-            vertical_speed_plot,
-            altitude_plot,
-            gyroscope_plot,
-            accelerometer_plot,
-            magnetometer_plot,
-            pressures_plot,
-            temperature_plot,
-            power_plot,
-            runtime_plot,
-            signal_plot,
-            kalman_plot,
-            valve_plot,
-            masses_plot,
-            raw_sensors_plot,
-            fin_data_plot,
-            map,
+            global_widget_state,
         }
     }
 
-    fn tree_launch() -> egui_tiles::Tree<PlotCell> {
+    fn tree_default() -> egui_tiles::Tree<WidgetPane> {
         let mut tiles = egui_tiles::Tiles::default();
 
         let left_misc = vec![
-            tiles.insert_pane(PlotCell::Valves),
-            tiles.insert_pane(PlotCell::Masses),
-            tiles.insert_pane(PlotCell::Kalman),
+            tiles.insert_pane(default_valves_plot()),
+            tiles.insert_pane(default_masses_plot()),
+            tiles.insert_pane(default_kalman_plot()),
         ];
 
         let left = vec![
-            tiles.insert_pane(PlotCell::Altitude),
-            tiles.insert_pane(PlotCell::VerticalSpeed),
+            tiles.insert_pane(default_altitude_plot()),
+            tiles.insert_pane(default_vertical_speed_plot()),
             tiles.insert_tab_tile(left_misc),
         ];
 
         let t = vec![
-            tiles.insert_pane(PlotCell::Pressures),
-            tiles.insert_pane(PlotCell::Runtime),
+            tiles.insert_pane(default_pressures_plot()),
+            tiles.insert_pane(default_runtime_plot()),
         ];
 
         let flow_tabs = vec![
-            tiles.insert_pane(PlotCell::Acs),
-            tiles.insert_pane(PlotCell::Hybrid)
+            tiles.insert_pane(WidgetPane::Acs),
+            tiles.insert_pane(WidgetPane::Hybrid),
         ];
 
         let overview = vec![
-            tiles.insert_pane(PlotCell::Orientation),
-            tiles.insert_pane(PlotCell::Temperatures),
+            tiles.insert_pane(default_orientation_plot()),
+            tiles.insert_pane(default_temperatures_plot()),
             tiles.insert_tab_tile(flow_tabs),
-            tiles.insert_pane(PlotCell::Power),
+            tiles.insert_pane(default_power_plot()),
             tiles.insert_tab_tile(t),
-            tiles.insert_pane(PlotCell::Signal),
+            tiles.insert_pane(default_signal_plot()),
         ];
 
         let raw_sensors = vec![
-            tiles.insert_pane(PlotCell::Gyroscope),
-            tiles.insert_pane(PlotCell::Accelerometers),
-            tiles.insert_pane(PlotCell::Magnetometer),
-            tiles.insert_pane(PlotCell::Pressures),
+            tiles.insert_pane(default_gyroscope_plot()),
+            tiles.insert_pane(default_accelerometer_plot()),
+            tiles.insert_pane(default_magnetometer_plot()),
+            tiles.insert_pane(default_pressures_plot()),
         ];
 
         let right_misc = vec![
             tiles.insert_grid_tile(overview),
             tiles.insert_vertical_tile(raw_sensors),
-            tiles.insert_pane(PlotCell::IoSensors),
-            tiles.insert_pane(PlotCell::FinData),
+            //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let right = vec![
-            tiles.insert_pane(PlotCell::Map),
-            tiles.insert_tab_tile(right_misc),
-        ];
+        let right = vec![tiles.insert_pane(WidgetPane::Map), tiles.insert_tab_tile(right_misc)];
 
-        let children = vec![
-            tiles.insert_vertical_tile(left),
-            tiles.insert_vertical_tile(right),
-        ];
+        let children = vec![tiles.insert_vertical_tile(left), tiles.insert_vertical_tile(right)];
 
         let root = tiles.insert_horizontal_tile(children);
         egui_tiles::Tree::new("plot_tree", root, tiles)
     }
 
-
-    fn tree_grid() -> egui_tiles::Tree<PlotCell> {
-        let mut tiles = egui_tiles::Tiles::default();
-        let t1 = vec![
-            tiles.insert_pane(PlotCell::Acs),
-            tiles.insert_pane(PlotCell::Pressures),
-            tiles.insert_pane(PlotCell::Valves),
-            tiles.insert_pane(PlotCell::IoSensors),
-            tiles.insert_pane(PlotCell::FinData),
-        ];
-        let t2 = vec![
-            tiles.insert_pane(PlotCell::Runtime),
-            tiles.insert_pane(PlotCell::Kalman),
-        ];
-        let t3 = vec![
-            tiles.insert_pane(PlotCell::Signal),
-            tiles.insert_pane(PlotCell::Masses),
-        ];
-        let children = vec![
-            tiles.insert_pane(PlotCell::Orientation),
-            tiles.insert_pane(PlotCell::VerticalSpeed),
-            tiles.insert_pane(PlotCell::Altitude),
-            tiles.insert_pane(PlotCell::Map),
-            tiles.insert_pane(PlotCell::Gyroscope),
-            tiles.insert_pane(PlotCell::Accelerometers),
-            tiles.insert_pane(PlotCell::Magnetometer),
-            tiles.insert_tab_tile(t1),
-            tiles.insert_pane(PlotCell::Temperatures),
-            tiles.insert_pane(PlotCell::Power),
-            tiles.insert_tab_tile(t2),
-            tiles.insert_tab_tile(t3),
-        ];
-        let grid = tiles.insert_grid_tile(children);
-        egui_tiles::Tree::new("plot_tree", grid, tiles)
+    fn tree_tabs() -> egui_tiles::Tree<WidgetPane> {
+        egui_tiles::Tree::new_tabs(
+            "plot_tree",
+            vec![
+                default_altitude_plot(),
+                default_vertical_speed_plot(),
+                default_orientation_plot(),
+                default_valves_plot(),
+                default_masses_plot(),
+                default_kalman_plot(),
+                default_runtime_plot(),
+                default_temperatures_plot(),
+                WidgetPane::Acs,
+                default_power_plot(),
+                default_signal_plot(),
+                default_gyroscope_plot(),
+                default_accelerometer_plot(),
+                default_magnetometer_plot(),
+                default_pressures_plot(),
+                //PlotCell::IoSensors,
+                WidgetPane::Map,
+            ],
+        )
     }
 
-    fn tree_from_tiles(tiles: egui_tiles::Tiles<PlotCell>) -> egui_tiles::Tree<PlotCell> {
-        let root = tiles.iter()
-            .filter(|(id, _tile)| tiles.is_root(**id))
-            .next()
-            .unwrap().0;
+    fn tree_from_tiles(tiles: egui_tiles::Tiles<WidgetPane>) -> egui_tiles::Tree<WidgetPane> {
+        let root = tiles.iter().filter(|(id, _tile)| tiles.is_root(**id)).next().unwrap().0;
         egui_tiles::Tree::new("plot_tree", *root, tiles)
     }
 
-    fn tree_presets() -> Vec<(&'static str, egui_tiles::Tree<PlotCell>)> {
-        vec![
-            ("Launch", Self::tree_launch()),
-            ("Grid", Self::tree_grid()),
-            ("Tabs", egui_tiles::Tree::new_tabs("plot_tree", PlotCell::all())),
-        ]
+    fn tree_presets() -> Vec<(&'static str, egui_tiles::Tree<WidgetPane>)> {
+        vec![("Default", Self::tree_default()), ("Tabs", Self::tree_tabs())]
     }
 
-    fn same_topology(&self, tiles: &egui_tiles::Tiles<PlotCell>) -> bool {
+    fn same_topology(&self, tiles: &egui_tiles::Tiles<WidgetPane>) -> bool {
         // remove all the additional info to allow comparison
         // TODO: find a better way
         let serialized = serde_json::to_string(&self.tile_tree.tiles).unwrap();
-        let deserialized: egui_tiles::Tiles<PlotCell> = serde_json::from_str(&serialized).unwrap();
+        let deserialized: egui_tiles::Tiles<WidgetPane> = serde_json::from_str(&serialized).unwrap();
         deserialized == *tiles
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, data_source: &mut dyn DataSource, settings: &mut AppSettings, enabled: bool) {
+    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, enabled: bool) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -515,12 +486,18 @@ impl PlotTab {
 
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.checkbox(&mut self.shared_plot.borrow_mut().show_stats, "Show Stats");
+                    ui.checkbox(&mut self.global_widget_state.shared_plot.borrow_mut().show_stats, "Show Stats");
                     ui.separator();
                     ui.weak("Presets");
 
                     for (name, tree) in Self::tree_presets() {
-                        if ui.add_sized(Vec2::new(ui.available_width(), 1.0), SelectableLabel::new(self.same_topology(&tree.tiles), name)).clicked() {
+                        if ui
+                            .add_sized(
+                                Vec2::new(ui.available_width(), 1.0),
+                                SelectableLabel::new(self.same_topology(&tree.tiles), name),
+                            )
+                            .clicked()
+                        {
                             self.tile_tree = tree;
                         }
                     }
@@ -537,7 +514,13 @@ impl PlotTab {
                                     changed = true;
                                 }
 
-                                if ui.add_sized(Vec2::new(ui.available_width(), 1.0), SelectableLabel::new(self.same_topology(&tiles), name)).clicked() {
+                                if ui
+                                    .add_sized(
+                                        Vec2::new(ui.available_width(), 1.0),
+                                        SelectableLabel::new(self.same_topology(&tiles), name),
+                                    )
+                                    .clicked()
+                                {
                                     self.tile_tree = Self::tree_from_tiles(tiles.clone());
                                 }
                             });
@@ -546,7 +529,8 @@ impl PlotTab {
 
                     ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                         if ui.button("Save").clicked() {
-                            settings.tile_presets
+                            settings
+                                .tile_presets
                                 .get_or_insert(std::collections::HashMap::new())
                                 .insert(self.new_preset_name.take(), self.tile_tree.tiles.clone());
                             changed = true;
@@ -564,7 +548,7 @@ impl PlotTab {
             });
         }
 
-        self.shared_plot.borrow_mut().set_end(data_source.end());
+        self.global_widget_state.shared_plot.borrow_mut().set_end(backend.end());
 
         CentralPanel::default().show(ctx, |ui| {
             if !enabled {
@@ -572,31 +556,16 @@ impl PlotTab {
             }
 
             let mut behavior = TileBehavior {
-                data_source,
-                orientation_plot: &mut self.orientation_plot,
-                vertical_speed_plot: &mut self.vertical_speed_plot,
-                altitude_plot: &mut self.altitude_plot,
-                gyroscope_plot: &mut self.gyroscope_plot,
-                accelerometer_plot: &mut self.accelerometer_plot,
-                magnetometer_plot: &mut self.magnetometer_plot,
-                pressures_plot: &mut self.pressures_plot,
-                temperature_plot: &mut self.temperature_plot,
-                power_plot: &mut self.power_plot,
-                runtime_plot: &mut self.runtime_plot,
-                signal_plot: &mut self.signal_plot,
-                kalman_plot: &mut self.kalman_plot,
-                valve_plot: &mut self.valve_plot,
-                masses_plot: &mut self.masses_plot,
-                raw_sensors_plot: &mut self.raw_sensors_plot,
-                fin_data_plot: &mut self.fin_data_plot,
-                map: &mut self.map,
+                backend,
+                global_widget_state: &mut self.global_widget_state,
                 settings,
             };
+
             self.tile_tree.ui(&mut behavior, ui);
         });
     }
 
-    pub fn bottom_bar_ui(&mut self, ui: &mut egui::Ui, _data_source: &mut dyn DataSource) {
+    pub fn bottom_bar_ui(&mut self, ui: &mut egui::Ui) {
         ui.toggle_value(&mut self.show_view_settings, "⚙ View Settings");
     }
 }

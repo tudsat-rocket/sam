@@ -71,6 +71,12 @@ pub struct SimulationState {
     pub acceleration: Vector3<f32>,
 }
 
+impl SimulationState {
+    pub fn seconds_in_phase(&self) -> f32 {
+        ((self.t - self.t_phase_start) as f32) / 1000.0
+    }
+}
+
 pub struct Simulation {
     rng: StdRng,
     settings: SimulationSettings,
@@ -111,22 +117,6 @@ impl Simulation {
         }
         self.state.flight_phase = phase;
         self.state.t_phase_start = self.state.t;
-    }
-
-    pub fn time_in_phase(&self) -> f32 {
-        ((self.state.t - self.state.t_phase_start) as f32) / 1000.0
-    }
-
-    pub fn altitude_asl(&self) -> f32 {
-        self.state.position.z + self.settings.environment.launch_altitude
-    }
-
-    pub fn latitude(&self) -> f32 {
-        self.settings.environment.launch_location.0 + self.state.position.y / 111_111.0
-    }
-
-    pub fn longitude(&self) -> f32 {
-        self.settings.environment.launch_location.1 + self.state.position.x / (111_111.0 * self.settings.environment.launch_location.0.to_radians().cos())
     }
 
     pub fn tick(&mut self) {
@@ -183,8 +173,7 @@ impl Simulation {
         let mass = self.rocket.mass(t_since_ignition);
         self.state.acceleration = forces / mass;
 
-        if self.state.flight_phase != FlightPhase::PreLaunch &&
-                self.state.flight_phase != FlightPhase::Touchdown {
+        if self.state.flight_phase != FlightPhase::PreLaunch && self.state.flight_phase != FlightPhase::Touchdown {
             self.state.acceleration.z -= GRAVITY;
         }
 
@@ -200,11 +189,9 @@ impl Simulation {
         // We assume stability, so we derive orientation from velocity.
         let last_orientation = self.state.orientation;
         let new_orientation = match self.state.flight_phase {
-            FlightPhase::Burn | FlightPhase::Coast | FlightPhase::Descent =>
-            UnitQuaternion::rotation_between(
-                &Vector3::new(0.0, 0.0, 1.0),
-                &self.state.velocity,
-            ),
+            FlightPhase::Burn | FlightPhase::Coast | FlightPhase::Descent => {
+                UnitQuaternion::rotation_between(&Vector3::new(0.0, 0.0, 1.0), &self.state.velocity)
+            }
             _ => None,
         };
 
@@ -212,8 +199,8 @@ impl Simulation {
             self.state.orientation = orientation;
         }
 
-        let (r,p,y) = (last_orientation.inverse() * &self.state.orientation).euler_angles();
-        self.state.angular_velocity = Vector3::new(p.to_degrees(),r.to_degrees(),y.to_degrees()) / delta_time;
+        let (r, p, y) = (last_orientation.inverse() * &self.state.orientation).euler_angles();
+        self.state.angular_velocity = Vector3::new(p.to_degrees(), r.to_degrees(), y.to_degrees()) / delta_time;
 
         self.state.t += self.settings.delta_time;
     }
@@ -230,7 +217,7 @@ impl Iterator for Simulation {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.tick();
-        if self.state.flight_phase != FlightPhase::Touchdown || self.time_in_phase() < 10.0 {
+        if self.state.flight_phase != FlightPhase::Touchdown || self.state.seconds_in_phase() < 10.0 {
             Some(self.sensors())
         } else {
             None
@@ -253,12 +240,7 @@ impl egui::Widget for &mut SimulationSettings {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Δtime");
-                    ui.add(
-                        egui::DragValue::new(&mut self.delta_time)
-                            .suffix(" ms")
-                            .speed(1)
-                            .range(1..=1000),
-                    );
+                    ui.add(egui::DragValue::new(&mut self.delta_time).suffix(" ms").speed(1).range(1..=1000));
                     ui.end_row();
                 });
 
@@ -270,6 +252,7 @@ impl egui::Widget for &mut SimulationSettings {
 
             ui.add_space(10.0);
             ui.add(&mut self.sensors);
-        }).response
+        })
+        .response
     }
 }

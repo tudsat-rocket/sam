@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 shared_types = { workspace = true }
+telemetry = { workspace = true }
 
 nalgebra = { workspace = true }
 rand = { workspace = true }

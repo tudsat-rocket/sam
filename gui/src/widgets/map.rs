@@ -1,25 +1,21 @@
 //! Contains our map widget, based on the walkers crate.
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::Instant;
-#[cfg(target_arch = "wasm32")]
-use web_time::Instant;
-
 use directories::ProjectDirs;
-use nalgebra::Vector3;
+use nalgebra::{Quaternion, UnitQuaternion, Vector3};
 
 use eframe::egui;
 use egui::{Color32, Frame, Layout, Rect, Stroke, Ui, Vec2, Widget};
-use walkers::extras::{Places, Place, Style};
+use walkers::extras::{Place, Places, Style};
 use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position};
 //use transform_gizmo_egui::{Gizmo, GizmoConfig, GizmoExt, GizmoMode, GizmoVisuals};
 //use transform_gizmo_egui::math::{DMat4, Transform, DVec3};
 
 use shared_types::telemetry::FlightMode;
+use telemetry::{Dim, Metric};
 
-use crate::data_source::DataSource;
-use crate::utils::telemetry_ext::ColorExt;
 use crate::settings::AppSettings;
+use crate::utils::telemetry_ext::ColorExt;
+use crate::Backend;
 
 const GRADIENT_MAX_ALT: f64 = 10000.0;
 
@@ -32,7 +28,7 @@ impl Plugin for CrosshairPlugin {
         let rect = ui.painter().clip_rect();
         let crosshair_stroke = Stroke {
             width: 1.0,
-            color: Color32::GRAY.gamma_multiply(0.8)
+            color: Color32::GRAY.gamma_multiply(0.8),
         };
 
         if self.render_crosshair {
@@ -48,7 +44,7 @@ pub struct Path<'a, T> {
 }
 
 pub struct PathPlugin<'a, T> {
-    paths: Vec<Path<'a, T>>
+    paths: Vec<Path<'a, T>>,
 }
 
 impl<'a, T> PathPlugin<'a, T> {
@@ -60,9 +56,8 @@ impl<'a, T> PathPlugin<'a, T> {
 impl<'a, T> Plugin for PathPlugin<'a, T> {
     fn run(self: Box<Self>, ui: &mut Ui, _response: &egui::Response, projector: &walkers::Projector) {
         for p in &self.paths {
-            let screen_positions: Vec<_> = p.values.iter()
-                .map(|(p, val)| (projector.project(*p).to_pos2(), val))
-                .collect();
+            let screen_positions: Vec<_> =
+                p.values.iter().map(|(p, val)| (projector.project(*p).to_pos2(), val)).collect();
             for segment in screen_positions.windows(2) {
                 ui.painter().line_segment([segment[0].0, segment[1].0], (p.stroke_callback)(segment[0].1));
             }
@@ -73,7 +68,7 @@ impl<'a, T> Plugin for PathPlugin<'a, T> {
 #[derive(PartialEq, Clone, Copy)]
 enum PositionSource {
     Estimate,
-    Gps
+    Gps,
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -96,7 +91,7 @@ pub struct MapState {
     gradient_lookup: Vec<Color32>,
     estimated_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     gps_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
-    cached_state: Option<(Instant, usize)>,
+    cached_state: Option<(f64, usize)>,
 }
 
 impl MapState {
@@ -121,23 +116,21 @@ impl MapState {
     }
 
     pub fn new(ctx: &egui::Context, mapbox_access_token: Option<String>) -> Self {
-        let osm_tiles = HttpTiles::with_options(
-            walkers::sources::OpenStreetMap,
-            Self::http_options(),
-            ctx.to_owned()
-        );
+        let osm_tiles = HttpTiles::with_options(walkers::sources::OpenStreetMap, Self::http_options(), ctx.to_owned());
 
         // We only show the mapbox map if we have an access token
         let mapbox_access_token = mapbox_access_token.or(option_env!("MAPBOX_ACCESS_TOKEN").map(|s| s.to_string()));
-        let mapbox_tiles = mapbox_access_token.map(|t| HttpTiles::with_options(
-            walkers::sources::Mapbox {
-                style: walkers::sources::MapboxStyle::Satellite,
-                access_token: t.to_string(),
-                high_resolution: true,
-            },
-            Self::http_options(),
-            ctx.to_owned()
-        ));
+        let mapbox_tiles = mapbox_access_token.map(|t| {
+            HttpTiles::with_options(
+                walkers::sources::Mapbox {
+                    style: walkers::sources::MapboxStyle::Satellite,
+                    access_token: t.to_string(),
+                    high_resolution: true,
+                },
+                Self::http_options(),
+                ctx.to_owned(),
+            )
+        });
 
         // We default to satellite view if we have one.
         let satellite = mapbox_tiles.is_some();
@@ -165,62 +158,92 @@ impl MapState {
         }
     }
 
-    pub fn vehicle_positions(&mut self, data_source: &mut dyn DataSource) -> Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))> {
-        let Some(last) = data_source.vehicle_states().next_back() else {
+    pub fn vehicle_positions(
+        &mut self,
+        backend: &mut Backend,
+    ) -> Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))> {
+        let Some(last) = backend.end() else {
             return Vec::new();
         };
 
-        let state = (last.0, data_source.vehicle_states().len());
+        let state = (last, backend.timeseries(&Metric::PositionWorldSpace(Dim::Z)).unwrap().len());
 
         // repopulate cache
         if self.cached_state.map(|s| s != state).unwrap_or(true) {
-            let all_estimated_positions = data_source.vehicle_states()
-                .scan((None, None, None, None), |(ground_asl, altitude_asl, orientation, fm), (_, vs)| {
-                    *ground_asl = vs.altitude_ground_asl.or(*ground_asl);
-                    *altitude_asl = vs.altitude_asl.or(*altitude_asl);
-                    *orientation = vs.orientation.or(*orientation);
-                    *fm = vs.mode.or(*fm);
-                    Some((*ground_asl, *altitude_asl, *orientation, *fm, vs))
-                })
-                .filter(|(_, _, _, _, vs)| vs.latitude.is_some() && vs.longitude.is_some())
-                .map(|(ground_asl, alt_asl, orientation, fm, vs)| {
-                    let pos = Position::new(vs.longitude.unwrap() as f64, vs.latitude.unwrap() as f64);
-                    let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
-                    let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
-                    let variance = vs.sim.as_ref().map(|sim| sim.kalman_P[0])
-                        .or(vs.position_variance)
-                        .unwrap_or(0.0);
-                    (pos, alt, att, fm.unwrap_or_default(), variance)
+            let all_estimated_positions = backend
+                .zip_timeseries(
+                    [
+                        Metric::Latitude,
+                        Metric::Longitude,
+                        Metric::PositionWorldSpace(Dim::Z),
+                        Metric::GroundAltitudeASL,
+                        Metric::Orientation(0),
+                        Metric::Orientation(1),
+                        Metric::Orientation(2),
+                        Metric::Orientation(3),
+                        Metric::FlightMode,
+                        Metric::KalmanStateCovariance(0, 0),
+                    ],
+                    1.0,
+                )
+                .filter(|(_x, [lat, lon, ..])| lat.is_some() && lon.is_some())
+                .map(|(_x, [lat, lon, alt_asl, ground_asl, q0, q1, q2, q3, fm, var])| {
+                    let q: Vec<f64> =
+                        [q0, q1, q2, q3].iter().copied().collect::<Option<_>>().unwrap_or(vec![1.0, 0.0, 0.0, 0.0]);
+                    let orientation =
+                        UnitQuaternion::from_quaternion(Quaternion::from_parts(q[3], Vector3::new(q[0], q[1], q[2])))
+                            .cast::<f32>();
+                    let pos = Position::new(lon.unwrap_or_default(), lat.unwrap_or_default());
+                    let alt = alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default();
+                    let att = orientation * Vector3::new(0.0, 0.0, 1.0);
+                    (pos, alt, att, (fm.unwrap_or_default() as u8).try_into().unwrap(), var.unwrap_or_default() as f32)
+                    // TODO: fm is very hacky
                 });
-            let all_gps_positions = data_source.vehicle_states()
-                .scan((None, None, None, None), |(ground_asl, altitude_asl, orientation, fm), (_, vs)| {
-                    *ground_asl = vs.altitude_ground_asl.or(*ground_asl);
-                    *altitude_asl = vs.gps.as_ref().and_then(|gps| gps.altitude).or(*altitude_asl);
-                    *orientation = vs.orientation.or(*orientation);
-                    *fm = vs.mode.or(*fm);
-                    Some((*ground_asl, *altitude_asl, *orientation, *fm, vs))
+
+            let all_gps_positions = backend
+                .zip_timeseries(
+                    [
+                        Metric::GpsLatitude,
+                        Metric::GpsLongitude,
+                        Metric::GpsAltitude,
+                        Metric::GroundAltitudeASL,
+                        Metric::Orientation(0),
+                        Metric::Orientation(1),
+                        Metric::Orientation(2),
+                        Metric::Orientation(3),
+                        Metric::FlightMode,
+                        Metric::GpsHdop,
+                        Metric::GpsSatellites,
+                    ],
+                    10.0,
+                )
+                .filter(|(_x, [lat, lon, _alt_asl, _ground_asl, _q0, _q1, _q2, _q3, _fm, hdop, sats])| {
+                    lat.is_some() && lon.is_some() && sats.unwrap_or(0.0) >= 6.0 && hdop.unwrap_or(99.0) < 5.0
                 })
-                .filter(|(_, _, _, _, vs)| vs.gps.as_ref().map(|gps|
-                    gps.latitude.is_some() && gps.longitude.is_some() && gps.num_satellites >= 6 && gps.hdop < 500
-                ).unwrap_or(false))
-                .map(|(ground_asl, alt_asl, orientation, fm, vs)| {
-                    let pos = Position::new(
-                        vs.gps.as_ref().and_then(|gps| gps.longitude).unwrap() as f64,
-                        vs.gps.as_ref().and_then(|gps| gps.latitude).unwrap() as f64
-                    );
-                    let alt = (alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default()) as f64;
-                    let att = orientation.unwrap_or_default() * Vector3::new(0.0, 0.0, 1.0);
-                    let hdop = vs.gps.as_ref().map(|gps| gps.hdop).unwrap_or_default() as f32 / 100.0;
-                    (pos, alt, att, fm.unwrap_or_default(), hdop)
+                .map(|(_x, [lat, lon, alt_asl, ground_asl, q0, q1, q2, q3, fm, hdop, _sats])| {
+                    let q: Vec<f64> =
+                        [q0, q1, q2, q3].iter().copied().collect::<Option<_>>().unwrap_or(vec![1.0, 0.0, 0.0, 0.0]);
+                    let orientation =
+                        UnitQuaternion::from_quaternion(Quaternion::from_parts(q[3], Vector3::new(q[0], q[1], q[2])))
+                            .cast::<f32>();
+                    let pos = Position::new(lon.unwrap_or_default(), lat.unwrap_or_default());
+                    let alt = alt_asl.unwrap_or_default() - ground_asl.unwrap_or_default();
+                    let att = orientation * Vector3::new(0.0, 0.0, 1.0);
+                    (pos, alt, att, (fm.unwrap_or_default() as u8).try_into().unwrap(), hdop.unwrap_or_default() as f32)
+                    // TODO: fm is very hacky
                 });
 
             self.estimated_positions.truncate(0);
             for (pos, alt, att, fm, variance) in all_estimated_positions {
-                let add = self.estimated_positions.last().map(|(last_pos, (last_alt, _att, _fm, _var))| {
-                    (last_alt - alt).abs() > 20.0 ||
-                        (last_pos.y() - pos.y()).abs() > 0.00001 ||
-                        (last_pos.x() - pos.x()).abs() > 0.00001
-                }).unwrap_or(true);
+                let add = self
+                    .estimated_positions
+                    .last()
+                    .map(|(last_pos, (last_alt, _att, _fm, _var))| {
+                        (last_alt - alt).abs() > 20.0
+                            || (last_pos.y() - pos.y()).abs() > 0.00001
+                            || (last_pos.x() - pos.x()).abs() > 0.00001
+                    })
+                    .unwrap_or(true);
 
                 if add {
                     self.estimated_positions.push((pos, (alt, att, fm, variance)));
@@ -229,11 +252,15 @@ impl MapState {
 
             self.gps_positions.truncate(0);
             for (pos, alt, att, fm, hdop) in all_gps_positions {
-                let add = self.gps_positions.last().map(|(last_pos, (last_alt, _att, _fm, _hdop))| {
-                    (last_alt - alt).abs() > 20.0 ||
-                        (last_pos.y() - pos.y()).abs() > 0.00001 ||
-                        (last_pos.x() - pos.x()).abs() > 0.00001
-                }).unwrap_or(true);
+                let add = self
+                    .gps_positions
+                    .last()
+                    .map(|(last_pos, (last_alt, _att, _fm, _hdop))| {
+                        (last_alt - alt).abs() > 20.0
+                            || (last_pos.y() - pos.y()).abs() > 0.00001
+                            || (last_pos.x() - pos.x()).abs() > 0.00001
+                    })
+                    .unwrap_or(true);
 
                 if add {
                     self.gps_positions.push((pos, (alt, att, fm, hdop)));
@@ -262,21 +289,18 @@ pub struct Map<'a> {
     state: &'a mut MapState,
     vehicle_position: Option<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
     vehicle_positions: Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))>,
-    //orientation: Option<UnitQuaternion<f32>>,
     settings: &'a AppSettings,
 }
 
 impl<'a> Map<'a> {
-    pub fn new(state: &'a mut MapState, data_source: &mut dyn DataSource, settings: &'a AppSettings) -> Self {
-        let vehicle_positions = state.vehicle_positions(data_source);
+    pub fn new(state: &'a mut MapState, backend: &mut Backend, settings: &'a AppSettings) -> Self {
+        let vehicle_positions = state.vehicle_positions(backend);
         let vehicle_position = state.last_position();
-        //let orientation = data_source.vehicle_states().rev().find_map(|(_t, vs)| vs.orientation);
 
         Self {
             state,
             vehicle_position,
             vehicle_positions,
-            //orientation,
             settings,
         }
     }
@@ -291,7 +315,7 @@ impl<'a> Widget for Map<'a> {
 
         let tiles = match self.state.mapbox_tiles.as_mut() {
             Some(tiles) if self.state.satellite => tiles,
-            _ => &mut self.state.osm_tiles
+            _ => &mut self.state.osm_tiles,
         };
 
         let detached_pos = self.state.memory.detached();
@@ -306,14 +330,18 @@ impl<'a> Widget for Map<'a> {
                 stroke_callback: Box::new(move |(alt, _att, _fm, _var)| {
                     let f = alt / GRADIENT_MAX_ALT;
                     let i = (f * (gradient_lookup.len() as f64)) as usize;
-                    Stroke { width: (1.0 + (alt/GRADIENT_MAX_ALT)*10.0) as f32, color: gradient_lookup[usize::min(i, gradient_lookup.len() - 1)] }
-                })
+                    Stroke {
+                        width: (1.0 + (alt / GRADIENT_MAX_ALT) * 10.0) as f32,
+                        color: gradient_lookup[usize::min(i, gradient_lookup.len() - 1)],
+                    }
+                }),
             },
             Visualization::FlightMode => Path {
                 values: &self.vehicle_positions,
-                stroke_callback: Box::new(move |(alt, _att, fm, _var)| {
-                    Stroke { width: (1.0 + (alt / GRADIENT_MAX_ALT)*10.0) as f32, color: fm.color() }
-                })
+                stroke_callback: Box::new(move |(alt, _att, fm, _var)| Stroke {
+                    width: (1.0 + (alt / GRADIENT_MAX_ALT) * 10.0) as f32,
+                    color: fm.color(),
+                }),
             },
             Visualization::Attitude => Path {
                 values: &self.vehicle_positions,
@@ -323,8 +351,11 @@ impl<'a> Widget for Map<'a> {
                         (256.0 * (att.y + 1.0) / 2.0) as u8,
                         (256.0 * (att.z + 1.0) / 2.0) as u8,
                     );
-                    Stroke { width: (1.0 + (alt/GRADIENT_MAX_ALT)*10.0) as f32, color }
-                })
+                    Stroke {
+                        width: (1.0 + (alt / GRADIENT_MAX_ALT) * 10.0) as f32,
+                        color,
+                    }
+                }),
             },
             Visualization::Uncertainty => Path {
                 values: &self.vehicle_positions,
@@ -336,11 +367,11 @@ impl<'a> Widget for Map<'a> {
                     };
                     let i = ((0.3 - f64::min(f as f64, 1.0) * 0.3) * (gradient_lookup.len() as f64)) as usize;
                     Stroke {
-                        width: (1.0 + (alt/GRADIENT_MAX_ALT)*10.0) as f32,
-                        color: gradient_lookup[usize::min(i, gradient_lookup.len() - 1)]
+                        width: (1.0 + (alt / GRADIENT_MAX_ALT) * 10.0) as f32,
+                        color: gradient_lookup[usize::min(i, gradient_lookup.len() - 1)],
                     }
-                })
-            }
+                }),
+            },
         };
 
         let mut map = walkers::Map::new(Some(tiles), &mut self.state.memory, position)
@@ -351,38 +382,35 @@ impl<'a> Widget for Map<'a> {
 
         if !self.state.show_gizmos {
             if let Some((position, (alt_agl, _att, _fm, hdop))) = self.vehicle_positions.last().as_ref().copied() {
-                map = map.with_plugin(Places::new(vec![
-                    Place {
-                        position: *position,
-                        label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.y(), position.x(), alt_agl, hdop),
-                        symbol: '🚀',
-                        style: Style::default(),
-                    },
-                ]));
+                map = map.with_plugin(Places::new(vec![Place {
+                    position: *position,
+                    label: format!("{:.6}, {:.6}\nAGL: {:.1}m\nHDOP: {:.2}", position.y(), position.x(), alt_agl, hdop),
+                    symbol: '🚀',
+                    style: Style::default(),
+                }]));
             }
         }
 
-        let (gcs_lat, gcs_lon) = self.settings.ground_station_position.unwrap();
+        let (gcs_lat, gcs_lon) = self.settings.ground_station_position.unwrap_or_default();
         let gcs_position = Position::new(gcs_lon, gcs_lat);
-        let attitude_text = if let Some((position, (alt_agl, _att, _fm, _hdop))) = self.vehicle_positions.last().as_ref().copied() {
-            let (rel_lng, rel_lat) = (position.x() - gcs_position.x(), position.y() - gcs_position.y());
-            let (rel_x, rel_y) = (rel_lng * 111_111.0 * gcs_position.y().to_radians().cos(), rel_lat * 111_111.0);
-            let ground_dist = (rel_x.powi(2) + rel_y.powi(2)).sqrt();
-            let azimuth = rel_x.atan2(rel_y).to_degrees();
-            let elevation = alt_agl.atan2(ground_dist).to_degrees();
-            Some(format!("\nAzim.: {:.1}°\nElev.: {:.1}°", azimuth, elevation))
-        } else {
-            None
-        };
+        let attitude_text =
+            if let Some((position, (alt_agl, _att, _fm, _hdop))) = self.vehicle_positions.last().as_ref().copied() {
+                let (rel_lng, rel_lat) = (position.x() - gcs_position.x(), position.y() - gcs_position.y());
+                let (rel_x, rel_y) = (rel_lng * 111_111.0 * gcs_position.y().to_radians().cos(), rel_lat * 111_111.0);
+                let ground_dist = (rel_x.powi(2) + rel_y.powi(2)).sqrt();
+                let azimuth = rel_x.atan2(rel_y).to_degrees();
+                let elevation = alt_agl.atan2(ground_dist).to_degrees();
+                Some(format!("\nAzim.: {:.1}°\nElev.: {:.1}°", azimuth, elevation))
+            } else {
+                None
+            };
 
-        map = map.with_plugin(Places::new(vec![
-            Place {
-                position: gcs_position,
-                label: format!("GCS{}", attitude_text.unwrap_or_default()),
-                symbol: '📡',
-                style: Style::default(),
-            },
-        ]));
+        map = map.with_plugin(Places::new(vec![Place {
+            position: gcs_position,
+            label: format!("GCS{}", attitude_text.unwrap_or_default()),
+            symbol: '📡',
+            style: Style::default(),
+        }]));
 
         let response = ui.add(map);
 
@@ -436,82 +464,87 @@ impl<'a> Widget for Map<'a> {
         // Panel for selecting map type
         let map_type_rect = Rect::from_two_pos(
             rect.left_bottom() + Vec2::new(10.0, -10.0),
-            rect.left_bottom() + Vec2::new(100.0, -40.0)
+            rect.left_bottom() + Vec2::new(100.0, -40.0),
         );
         #[cfg(not(target_arch = "wasm32"))]
         ui.put(map_type_rect, |ui: &mut egui::Ui| {
-            Frame::window(ui.style()).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.state.satellite, false, "🗺");
-                    ui.add_enabled_ui(self.state.mapbox_tiles.is_some(), |ui| {
-                        ui.selectable_value(&mut self.state.satellite, true, "🌍")
+            Frame::window(ui.style())
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut self.state.satellite, false, "🗺");
+                        ui.add_enabled_ui(self.state.mapbox_tiles.is_some(), |ui| {
+                            ui.selectable_value(&mut self.state.satellite, true, "🌍")
+                        });
                     });
-                });
-            }).response
+                })
+                .response
         });
 
         // Panel for resetting map to vehicle position
         let reset_rect = Rect::from_two_pos(
             rect.right_bottom() + Vec2::new(-10.0, -10.0),
-            rect.right_bottom() + Vec2::new(-40.0, -40.0)
+            rect.right_bottom() + Vec2::new(-40.0, -40.0),
         );
         ui.put(reset_rect, |ui: &mut egui::Ui| {
-            Frame::window(ui.style()).show(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                    let detached_pos = self.state.memory.detached();
-                    let pos = detached_pos.or(self.vehicle_position.map(|(p, ..)| p));
-                    let coords = pos.map(|p| format!("{:.6},{:.6}", p.y(), p.x()));
+            Frame::window(ui.style())
+                .show(ui, |ui| {
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        let detached_pos = self.state.memory.detached();
+                        let pos = detached_pos.or(self.vehicle_position.map(|(p, ..)| p));
+                        let coords = pos.map(|p| format!("{:.6},{:.6}", p.y(), p.x()));
 
-                    ui.add_enabled_ui(detached_pos.is_some(), |ui| {
-                        if ui.button("⌖").clicked() {
-                            self.state.memory.follow_my_position();
+                        ui.add_enabled_ui(detached_pos.is_some(), |ui| {
+                            if ui.button("⌖").clicked() {
+                                self.state.memory.follow_my_position();
+                            }
+                        });
+
+                        ui.add_enabled_ui(coords.is_some(), |ui| {
+                            if ui.button("📋").clicked() {
+                                ui.ctx().copy_text(coords.clone().unwrap_or_default());
+                            }
+                        });
+
+                        if detached_pos.is_some() {
+                            ui.monospace(coords.unwrap_or_default());
                         }
-                    });
-
-                    ui.add_enabled_ui(coords.is_some(), |ui| {
-                        if ui.button("📋").clicked() {
-                            ui.ctx().copy_text(coords.clone().unwrap_or_default());
-                        }
-                    });
-
-                    if detached_pos.is_some() {
-                        ui.monospace(coords.unwrap_or_default());
-                    }
-                }).response
-            }).response
+                    })
+                    .response
+                })
+                .response
         });
 
         // Panel for selecting path visualizations
-        let map_type_rect = Rect::from_two_pos(
-            rect.left_top() + Vec2::new(10.0, 10.0),
-            rect.left_top() + Vec2::new(100.0, 40.0)
-        );
+        let map_type_rect =
+            Rect::from_two_pos(rect.left_top() + Vec2::new(10.0, 10.0), rect.left_top() + Vec2::new(100.0, 40.0));
         ui.put(map_type_rect, |ui: &mut egui::Ui| {
-            Frame::window(ui.style()).show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.state.position_source, PositionSource::Estimate, "🗠");
-                    ui.selectable_value(&mut self.state.position_source, PositionSource::Gps, "🌍");
-                    ui.separator();
-                    ui.selectable_value(&mut self.state.visualization, Visualization::Altitude, "⬍");
-                    ui.selectable_value(&mut self.state.visualization, Visualization::FlightMode, "🏷");
-                    ui.selectable_value(&mut self.state.visualization, Visualization::Attitude, "🔃");
-                    ui.selectable_value(&mut self.state.visualization, Visualization::Uncertainty, "⁉");
-                });
-            }).response
+            Frame::window(ui.style())
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.selectable_value(&mut self.state.position_source, PositionSource::Estimate, "🗠");
+                        ui.selectable_value(&mut self.state.position_source, PositionSource::Gps, "🌍");
+                        ui.separator();
+                        ui.selectable_value(&mut self.state.visualization, Visualization::Altitude, "⬍");
+                        ui.selectable_value(&mut self.state.visualization, Visualization::FlightMode, "🏷");
+                        ui.selectable_value(&mut self.state.visualization, Visualization::Attitude, "🔃");
+                        ui.selectable_value(&mut self.state.visualization, Visualization::Uncertainty, "⁉");
+                    });
+                })
+                .response
         });
 
         // Panel for switching between gizmos and position tags
-        let gizmo_rect = Rect::from_two_pos(
-            rect.right_top() + Vec2::new(-10.0, 10.0),
-            rect.right_top() + Vec2::new(-100.0, 40.0)
-        );
+        let gizmo_rect =
+            Rect::from_two_pos(rect.right_top() + Vec2::new(-10.0, 10.0), rect.right_top() + Vec2::new(-100.0, 40.0));
         ui.put(gizmo_rect, |ui: &mut egui::Ui| {
-            Frame::window(ui.style()).show(ui, |ui| {
-                ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.selectable_value(&mut self.state.show_gizmos, false, "📋");
-                    ui.selectable_value(&mut self.state.show_gizmos, true, "🔃");
-                });
-            }).response
+            Frame::window(ui.style())
+                .show(ui, |ui| {
+                    ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.selectable_value(&mut self.state.show_gizmos, false, "📋");
+                        ui.selectable_value(&mut self.state.show_gizmos, true, "🔃");
+                    });
+                })
+                .response
         });
 
         // TODO: attribution

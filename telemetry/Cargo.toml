@@ -1,0 +1,16 @@
+[package]
+name = "telemetry"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bitvec = { workspace = true }
+heapless = { workspace = true }
+half = { workspace = true, default-features = false }
+nalgebra = { workspace = true }
+serde = { workspace = true, optional = true }
+
+[features]
+serde = ["dep:serde", "half/serde"]

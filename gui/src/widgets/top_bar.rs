@@ -5,12 +5,12 @@ use std::time::Duration;
 
 use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
-use egui::{Color32, Label, RichText, SelectableLabel, Stroke, Rect, Vec2};
+use egui::{Color32, Label, Rect, RichText, SelectableLabel, Stroke, Vec2};
 
 use shared_types::{telemetry::*, IoBoardRole};
 
-use crate::data_source::*;
 use crate::utils::telemetry_ext::*;
+use crate::Backend;
 
 // TODO: move to telemetry_ext?
 fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
@@ -34,29 +34,24 @@ pub trait TopBarUiExt {
         &mut self,
         icon: &str,
         label: &str,
-        value: Option<f32>,
+        value: Option<f64>,
         decimals: usize,
-        nominal_min: f32,
-        nominal_max: f32,
+        nominal_min: f64,
+        nominal_max: f64,
     );
 
-    fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource);
-    fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource);
-    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource);
-    fn camera_controls(&mut self, current: [bool; 3], data_source: &mut dyn DataSource);
+    fn transmit_power_controls(&mut self, current: TransmitPower, backend: &mut Backend);
+    fn acs_mode_controls(&mut self, current: AcsMode, backend: &mut Backend);
+    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, backend: &mut Backend);
+    fn camera_controls(&mut self, current: [bool; 3], backend: &mut Backend);
     fn io_module_indicators(&mut self, acs_present: bool, recovery_present: bool, payload_present: bool);
     fn fin_indicators(&mut self, fins_present: [bool; 3]);
 
-    fn battery_bar(&mut self, w: f32, voltage: Option<f32>);
-    fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>);
-    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut dyn DataSource);
-    fn flight_mode_button(
-        &mut self,
-        fm: FlightMode,
-        current: Option<FlightMode>,
-        data_source: &mut dyn DataSource,
-    );
-    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, data_source: &mut dyn DataSource);
+    fn battery_bar(&mut self, w: f32, voltage: Option<f64>);
+    fn flash_bar(&mut self, w: f32, flash_pointer: Option<f64>);
+    fn command_button(&mut self, label: &'static str, cmd: Command, backend: &mut Backend);
+    fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend);
+    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend);
 }
 
 impl TopBarUiExt for egui::Ui {
@@ -83,10 +78,10 @@ impl TopBarUiExt for egui::Ui {
         &mut self,
         icon: &str,
         label: &str,
-        value: Option<f32>,
+        value: Option<f64>,
         decimals: usize,
-        nominal_min: f32,
-        nominal_max: f32,
+        nominal_min: f64,
+        nominal_max: f64,
     ) {
         let value_string = value.map(|v| format!("{0:.1$}", v, decimals)).unwrap_or("N/A".to_string());
         let value_text = RichText::new(value_string).strong().monospace();
@@ -107,42 +102,42 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn transmit_power_controls(&mut self, current: TransmitPower, data_source: &mut dyn DataSource) {
+    fn transmit_power_controls(&mut self, current: TransmitPower, backend: &mut Backend) {
         use TransmitPower::*;
 
         self.horizontal(|ui| {
             if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P14dBm, "14")).clicked() {
-                data_source.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
+                backend.send_command(Command::SetTransmitPower(TransmitPower::P14dBm)).unwrap();
             }
             if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P17dBm, "17")).clicked() {
-                data_source.send_command(Command::SetTransmitPower(TransmitPower::P17dBm)).unwrap();
+                backend.send_command(Command::SetTransmitPower(TransmitPower::P17dBm)).unwrap();
             }
             if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P20dBm, "20")).clicked() {
-                data_source.send_command(Command::SetTransmitPower(TransmitPower::P20dBm)).unwrap();
+                backend.send_command(Command::SetTransmitPower(TransmitPower::P20dBm)).unwrap();
             }
             if ui.add_sized([25.0, 20.0], SelectableLabel::new(current == P22dBm, "22")).clicked() {
-                data_source.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
+                backend.send_command(Command::SetTransmitPower(TransmitPower::P22dBm)).unwrap();
             }
         });
     }
 
-    fn acs_mode_controls(&mut self, current: AcsMode, data_source: &mut dyn DataSource) {
+    fn acs_mode_controls(&mut self, current: AcsMode, backend: &mut Backend) {
         use AcsMode::*;
 
         self.horizontal(|ui| {
             if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Disabled, "OFF")).clicked() {
-                data_source.send_command(Command::SetAcsMode(AcsMode::Disabled)).unwrap();
+                backend.send_command(Command::SetAcsMode(AcsMode::Disabled)).unwrap();
             }
             if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Auto, "AUTO")).clicked() {
-                data_source.send_command(Command::SetAcsMode(AcsMode::Auto)).unwrap();
+                backend.send_command(Command::SetAcsMode(AcsMode::Auto)).unwrap();
             }
             if ui.add_sized([33.0, 20.0], SelectableLabel::new(current == Manual, "MNL")).clicked() {
-                data_source.send_command(Command::SetAcsMode(AcsMode::Manual)).unwrap();
+                backend.send_command(Command::SetAcsMode(AcsMode::Manual)).unwrap();
             }
         });
     }
 
-    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, data_source: &mut dyn DataSource) {
+    fn acs_valve_controls(&mut self, current: ThrusterValveState, current_mode: AcsMode, backend: &mut Backend) {
         use ThrusterValveState::*;
 
         let (accel, decel) = match current {
@@ -161,32 +156,32 @@ impl TopBarUiExt for egui::Ui {
             let response_decel = ui.add_sized([50.0, 20.0], SelectableLabel::new(decel, "DECL"));
 
             if response_accel.is_pointer_button_down_on() || response_accel.dragged() {
-                data_source.send_command(Command::SetAcsValveState(OpenAccel)).unwrap();
+                backend.send_command(Command::SetAcsValveState(OpenAccel)).unwrap();
                 ui.ctx().request_repaint_after(Duration::from_millis(20));
             }
 
             if response_decel.is_pointer_button_down_on() || response_decel.dragged() {
-                data_source.send_command(Command::SetAcsValveState(OpenDecel)).unwrap();
+                backend.send_command(Command::SetAcsValveState(OpenDecel)).unwrap();
                 ui.ctx().request_repaint_after(Duration::from_millis(20));
             }
 
             if response_accel.drag_stopped() || response_decel.drag_stopped() {
-                data_source.send_command(Command::SetAcsValveState(Closed)).unwrap();
+                backend.send_command(Command::SetAcsValveState(Closed)).unwrap();
             }
         });
     }
 
     // TODO: data structure
-    fn camera_controls(&mut self, current: [bool; 3], data_source: &mut dyn DataSource) {
+    fn camera_controls(&mut self, current: [bool; 3], backend: &mut Backend) {
         self.horizontal(|ui| {
             if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[0], "R0")).clicked() {
-                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 0, !current[0])).unwrap();
+                backend.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 0, !current[0])).unwrap();
             }
             if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[1], "R1")).clicked() {
-                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 1, !current[1])).unwrap();
+                backend.send_command(Command::SetIoModuleOutput(IoBoardRole::Recovery, 1, !current[1])).unwrap();
             }
             if ui.add_sized([20.0, 20.0], SelectableLabel::new(current[2], "P")).clicked() {
-                data_source.send_command(Command::SetIoModuleOutput(IoBoardRole::Payload, 0, !current[2])).unwrap();
+                backend.send_command(Command::SetIoModuleOutput(IoBoardRole::Payload, 0, !current[2])).unwrap();
             }
         });
     }
@@ -207,7 +202,7 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn battery_bar(&mut self, w: f32, voltage: Option<f32>) {
+    fn battery_bar(&mut self, w: f32, voltage: Option<f64>) {
         let f = voltage.map(|v| (v - 6.0) / (8.4 - 6.0)).unwrap_or(0.0);
         let text = voltage.map(|v| format!("🔋 Battery: {:.2}V", v)).unwrap_or("🔋 Battery: N/A".to_string());
         let color = match voltage {
@@ -218,11 +213,11 @@ impl TopBarUiExt for egui::Ui {
 
         self.horizontal(|ui| {
             ui.style_mut().visuals.selection.bg_fill = color;
-            ui.add(ProgressBar::new(f).desired_width(w).text(text));
+            ui.add(ProgressBar::new(f as f32).desired_width(w).text(text));
         });
     }
 
-    fn flash_bar(&mut self, w: f32, flash_pointer: Option<u32>) {
+    fn flash_bar(&mut self, w: f32, flash_pointer: Option<f64>) {
         let flash_pointer = flash_pointer.map(|fp| (fp as f32) / 1024.0 / 1024.0).unwrap_or_default();
         let flash_size = (FLASH_SIZE as f32) / 1024.0 / 1024.0;
         let f = flash_pointer / flash_size;
@@ -239,18 +234,13 @@ impl TopBarUiExt for egui::Ui {
         });
     }
 
-    fn command_button(&mut self, label: &'static str, cmd: Command, data_source: &mut dyn DataSource) {
+    fn command_button(&mut self, label: &'static str, cmd: Command, backend: &mut Backend) {
         if self.button(label).clicked() {
-            data_source.send_command(cmd).unwrap();
+            backend.send_command(cmd).unwrap();
         }
     }
 
-    fn flight_mode_button(
-        &mut self,
-        fm: FlightMode,
-        current: Option<FlightMode>,
-        data_source: &mut dyn DataSource,
-    ) {
+    fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend) {
         let fm = match (current, fm) {
             (Some(FlightMode::ArmedLaunchImminent), FlightMode::Armed) => FlightMode::ArmedLaunchImminent,
             _ => fm,
@@ -263,10 +253,7 @@ impl TopBarUiExt for egui::Ui {
         let button = if is_current {
             Button::new(main_text.color(fg)).wrap().fill(bg)
         } else {
-            Button::new(main_text)
-                .wrap()
-                .fill(Color32::TRANSPARENT)
-                .stroke(Stroke::new(2.0, bg))
+            Button::new(main_text).wrap().fill(Color32::TRANSPARENT).stroke(Stroke::new(2.0, bg))
         };
 
         self.add_space(5.0);
@@ -281,20 +268,20 @@ impl TopBarUiExt for egui::Ui {
 
         self.put(Rect::from_two_pos(pos + size * Vec2::new(0.0, 0.6), pos + size), shortcut);
         if self.put(Rect::from_two_pos(pos, pos + size), button).clicked() {
-            data_source.send_command(Command::SetFlightMode(fm)).unwrap();
+            backend.send_command(Command::SetFlightMode(fm)).unwrap();
         }
     }
 
-    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, data_source: &mut dyn DataSource) {
+    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend) {
         self.columns(8, |columns| {
-            columns[0].flight_mode_button(FlightMode::Idle, current, data_source);
-            columns[1].flight_mode_button(FlightMode::HardwareArmed, current, data_source);
-            columns[2].flight_mode_button(FlightMode::Armed, current, data_source);
-            columns[3].flight_mode_button(FlightMode::Burn, current, data_source);
-            columns[4].flight_mode_button(FlightMode::Coast, current, data_source);
-            columns[5].flight_mode_button(FlightMode::RecoveryDrogue, current, data_source);
-            columns[6].flight_mode_button(FlightMode::RecoveryMain, current, data_source);
-            columns[7].flight_mode_button(FlightMode::Landed, current, data_source);
+            columns[0].flight_mode_button(FlightMode::Idle, current, backend);
+            columns[1].flight_mode_button(FlightMode::HardwareArmed, current, backend);
+            columns[2].flight_mode_button(FlightMode::Armed, current, backend);
+            columns[3].flight_mode_button(FlightMode::Burn, current, backend);
+            columns[4].flight_mode_button(FlightMode::Coast, current, backend);
+            columns[5].flight_mode_button(FlightMode::RecoveryDrogue, current, backend);
+            columns[6].flight_mode_button(FlightMode::RecoveryMain, current, backend);
+            columns[7].flight_mode_button(FlightMode::Landed, current, backend);
         });
     }
 }

@@ -17,7 +17,7 @@ impl Replication {
             time: last_measurement.time,
             delta_time,
             last_measurement,
-            remaining_measurements: measurements
+            remaining_measurements: measurements,
         }
     }
 }
@@ -42,6 +42,7 @@ impl Iterator for Replication {
                 magnetometer: next.magnetometer,
                 lp_filtered_pressure: next.pressure,
                 pressure: next.pressure,
+                gps: None, // TODO
             }
         } else {
             let next = self.remaining_measurements.front().unwrap();
@@ -54,7 +55,8 @@ impl Iterator for Replication {
                 accelerometer2: last.accelerometer2.zip(next.accelerometer2).map(|(l, n)| l.lerp(&n, t)),
                 magnetometer: last.magnetometer.zip(next.magnetometer).map(|(l, n)| l.lerp(&n, t)),
                 lp_filtered_pressure: next.pressure,
-                pressure: last.pressure.zip(next.pressure).map(|(l, n)| l + (n - l)*t),
+                pressure: last.pressure.zip(next.pressure).map(|(l, n)| l + (n - l) * t),
+                gps: None, // TODO
             }
             // TODO: linear interpolation is probably not the best choice here.
         })

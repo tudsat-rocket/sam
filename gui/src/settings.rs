@@ -9,7 +9,7 @@ use shared_types::settings::LoRaSettings;
 pub struct AppSettings {
     pub mapbox_access_token: String,
     pub lora: LoRaSettings,
-    pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::tabs::plot::PlotCell>>>,
+    pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::tabs::plot::WidgetPane>>>,
     pub lora_bookmarks: Option<Vec<LoRaSettings>>,
     pub ground_station_position: Option<(f64, f64)>,
 }

@@ -1,5 +1,5 @@
 [package]
-name = "mithril"
+name = "flight_computer_firmware"
 version = "0.1.0"
 authors = [
     # Feel free to add yourself here
@@ -41,6 +41,7 @@ rand_chacha = { version = "0.3", default-features = false }
 
 shared_types = { workspace = true }
 state_estimator = { workspace = true }
+telemetry = { workspace = true }
 
 [dev-dependencies]
 defmt-test = "0.3"
@@ -48,3 +49,9 @@ defmt-test = "0.3"
 [features]
 gcs = []
 rev1 = []
+
+[profile.release]
+opt-level = "z"
+debug = false
+lto = true
+codegen-units = 1

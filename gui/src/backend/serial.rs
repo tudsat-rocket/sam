@@ -1,12 +1,10 @@
 //! A serial port data source. The default.
 
-use std::any::Any;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::pin::{pin, Pin};
-use std::slice::Iter;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -15,12 +13,12 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
-use tokio_serial::SerialStream;
 use futures::{select, FutureExt};
-use tokio::sync::mpsc::{Sender, Receiver};
+use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::mpsc::error::SendError;
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_serial::SerialPortBuilderExt;
-use tokio::io::{ReadHalf, AsyncReadExt, AsyncWriteExt, WriteHalf};
+use tokio_serial::SerialStream;
 
 use eframe::epaint::Color32;
 use log::*;
@@ -28,19 +26,19 @@ use log::*;
 use shared_types::settings::*;
 use shared_types::telemetry::*;
 
-use crate::data_source::DataSource;
+use crate::backend::BackendVariant;
 use crate::settings::AppSettings;
+use crate::DataStore;
 
 pub const BAUD_RATE: u32 = 115_200;
 
-
 // For Android, the Java wrapper has to handle the actual serial port and
 // we use these questionable methods to pass the data in via JNI
-#[cfg(target_os="android")]
+#[cfg(target_os = "android")]
 pub static mut DOWNLINK_MESSAGE_RECEIVER: Option<Receiver<(Instant, DownlinkMessage)>> = None;
-#[cfg(target_os="android")]
+#[cfg(target_os = "android")]
 pub static mut UPLINK_MESSAGE_SENDER: Option<Sender<UplinkMessage>> = None;
-#[cfg(target_os="android")]
+#[cfg(target_os = "android")]
 pub static mut SERIAL_STATUS_RECEIVER: Option<Receiver<SerialStatus>> = None;
 
 /// The current state of our downlink monitoring thread
@@ -163,10 +161,7 @@ pub fn find_serial_ports() -> Vec<String> {
     let mut ports = tokio_serial::available_ports().unwrap_or_default();
     ports.sort_by_key(|p| {
         let is_tudsat = if let tokio_serial::SerialPortType::UsbPort(info) = &p.port_type {
-            info.manufacturer
-                .as_ref()
-                .map(|m| m.to_lowercase() == "tudsat")
-                .unwrap_or(false)
+            info.manufacturer.as_ref().map(|m| m.to_lowercase() == "tudsat").unwrap_or(false)
         } else {
             false
         };
@@ -174,7 +169,8 @@ pub fn find_serial_ports() -> Vec<String> {
         (!is_tudsat) as u8
     });
 
-    ports.iter()
+    ports
+        .iter()
         .filter_map(|p| {
             if let tokio_serial::SerialPortType::UsbPort(_info) = &p.port_type {
                 Some(p.port_name.clone())
@@ -191,7 +187,7 @@ pub fn find_serial_ports() -> Vec<String> {
 pub async fn downlink_monitor(
     ctx: Option<egui::Context>,
     serial_status_tx: Sender<(SerialStatus, Option<String>)>,
-    mut serial_status_rx: Receiver<(SerialStatus,Option<String>)>,
+    mut serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     mut downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -223,21 +219,13 @@ pub async fn downlink_monitor(
             serial_status_tx.send((SerialStatus::Connected, Some(p.clone()))).await?;
 
             info!("Opening port {}", p);
-            let res = run_port(
-                ctx.clone(),
-                &mut downlink_tx,
-                &mut uplink_rx,
-                &mut serial_status_rx,
-                p.clone()
-            ).await;
+            let res = run_port(ctx.clone(), &mut downlink_tx, &mut uplink_rx, &mut serial_status_rx, p.clone()).await;
 
             match res {
                 Ok(None) => {
                     continue;
                 }
-                Ok(Some(new_port)) => {
-                    selected_port = Some(new_port)
-                }
+                Ok(Some(new_port)) => selected_port = Some(new_port),
                 Err(e) => {
                     eprintln!("Failed to open {}: {:?}", p, e);
                     serial_status_tx.send((SerialStatus::Error, Some(p.clone()))).await?;
@@ -261,13 +249,17 @@ pub fn spawn_downlink_monitor(
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     uplink_rx: Receiver<UplinkMessage>,
 ) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-        rt.block_on(downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx)).unwrap()
-    })
+    std::thread::Builder::new()
+        .name("sam-serial".to_owned())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
+            rt.block_on(downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx))
+                .unwrap()
+        })
+        .unwrap()
 }
 
-pub struct SerialDataSource {
+pub struct SerialBackend {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     serial_status_uplink_tx: Sender<(SerialStatus, Option<String>)>,
     downlink_rx: Receiver<(Instant, DownlinkMessage)>,
@@ -281,21 +273,21 @@ pub struct SerialDataSource {
     telemetry_log_path: PathBuf,
     telemetry_log_file: Result<File, std::io::Error>,
 
-    vehicle_states: Vec<(Instant, VehicleState)>,
+    data_store: DataStore,
     fc_settings: Option<Settings>,
-    message_receipt_times: VecDeque<(Instant, u32)>,
-    last_time: Option<Instant>,
 
-    last_command: Option<(Command, Instant)>,
+    message_receipt_times: VecDeque<(Instant, u32)>,
+    last_command: Option<(Instant, Command)>,
 }
 
-impl SerialDataSource {
+impl SerialBackend {
     /// Create a new serial port data source.
     pub fn new(ctx: &egui::Context, lora_settings: LoRaSettings) -> Self {
         let (downlink_tx, downlink_rx) = tokio::sync::mpsc::channel::<(Instant, DownlinkMessage)>(10);
         let (uplink_tx, uplink_rx) = tokio::sync::mpsc::channel::<UplinkMessage>(10);
         let (serial_status_tx, serial_status_rx) = tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
-        let (serial_status_uplink_tx, serial_status_uplink_rx) = tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
+        let (serial_status_uplink_tx, serial_status_uplink_rx) =
+            tokio::sync::mpsc::channel::<(SerialStatus, Option<String>)>(10);
 
         let ctx = ctx.clone();
 
@@ -316,13 +308,11 @@ impl SerialDataSource {
             lora_settings,
             telemetry_log_path,
             telemetry_log_file,
-            vehicle_states: Vec::new(),
+            data_store: DataStore::default(),
             fc_settings: None,
             message_receipt_times: VecDeque::new(),
-            last_time: None,
             last_command: None,
         }
-
     }
 
     /// No telemetry file needed because serial port does not work on
@@ -365,11 +355,11 @@ impl SerialDataSource {
     }
 }
 
-impl DataSource for SerialDataSource {
+impl BackendVariant for SerialBackend {
     fn update(&mut self, _ctx: &egui::Context) {
         self.message_receipt_times.retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
 
-        #[cfg(target_os="android")]
+        #[cfg(target_os = "android")]
         for status in unsafe { SERIAL_STATUS_RECEIVER.as_mut().unwrap().try_iter() } {
             self.serial_status = status;
             self.serial_port = Some("".to_owned());
@@ -379,7 +369,7 @@ impl DataSource for SerialDataSource {
             }
         }
 
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         while let Ok((status, port)) = self.serial_status_rx.try_recv() {
             self.serial_status = status;
             self.serial_port = port;
@@ -389,9 +379,9 @@ impl DataSource for SerialDataSource {
             }
         }
 
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         let mut msgs: Vec<_> = Vec::new();
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         while let Ok(msg) = self.downlink_rx.try_recv() {
             msgs.push(msg);
         }
@@ -407,7 +397,7 @@ impl DataSource for SerialDataSource {
             // TODO
             if let DownlinkMessage::TelemetryGCS(..) = msg {
             } else {
-                self.message_receipt_times.push_back((Instant::now(), msg.time()));
+                self.message_receipt_times.push_back((t, msg.time()));
             }
 
             match msg {
@@ -415,16 +405,20 @@ impl DataSource for SerialDataSource {
                     self.fc_settings = Some(settings);
                 }
                 _ => {
-                    let vs: VehicleState = msg.into();
-                    self.vehicle_states.push((t, vs.clone()));
-                    self.last_time = Some(t);
+                    // TODO: metrics via downlink message
+                    //let vs: VehicleState = msg.into();
+                    //self.vehicle_states.push((t, vs.clone()));
                 }
             }
         }
+
+        if self.fc_settings.is_none() && self.end().is_some() {
+            self.send(UplinkMessage::ReadSettings).unwrap();
+        }
     }
 
-    fn vehicle_states(&self) -> Iter<'_, (Instant, VehicleState)> {
-        self.vehicle_states.iter()
+    fn data_store<'a>(&'a self) -> &'a DataStore {
+        &self.data_store
     }
 
     fn fc_settings(&mut self) -> Option<&Settings> {
@@ -438,22 +432,20 @@ impl DataSource for SerialDataSource {
     fn reset(&mut self) {
         self.telemetry_log_path = Self::new_telemetry_log_path();
         self.telemetry_log_file = File::create(&self.telemetry_log_path);
-        self.vehicle_states.truncate(0);
+        self.data_store = DataStore::default();
         self.fc_settings = None;
         self.message_receipt_times.truncate(0);
     }
 
-    #[cfg(not(any(target_arch = "wasm32", target_os="android")))]
+    #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         log::info!("Sending {:?}", msg);
         self.uplink_tx.blocking_send(msg)
     }
 
-    #[cfg(target_os="android")]
+    #[cfg(target_os = "android")]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
-        unsafe {
-            UPLINK_MESSAGE_SENDER.as_mut().unwrap().send(msg)
-        }
+        unsafe { UPLINK_MESSAGE_SENDER.as_mut().unwrap().send(msg) }
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -462,26 +454,30 @@ impl DataSource for SerialDataSource {
     }
 
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        if let Some((last_cmd, t)) = self.last_command.as_ref() {
+        if let Some((t, last_cmd)) = self.last_command.as_ref() {
             if last_cmd == &cmd && t.elapsed() < Duration::from_millis(100) {
                 return Ok(());
             }
         }
 
-        self.last_command = Some((cmd.clone(), Instant::now()));
+        self.last_command = Some((Instant::now(), cmd.clone()));
         self.send(UplinkMessage::Command(cmd))
     }
 
-    fn end(&self) -> Option<Instant> {
+    fn end(&self) -> Option<f64> {
         let postroll = Duration::from_secs_f64(10.0);
+        // TODO: postroll
+        let Some((time_received, time_message)) = self.message_receipt_times.front() else {
+            return None;
+        };
 
-        self.last_time.map(|t| {
-            if t.elapsed() < postroll {
-                Instant::now()
-            } else {
-                t + postroll
-            }
-        })
+        let x = if time_received.elapsed() < postroll {
+            ((*time_message as f64) / 1000.0) + time_received.elapsed().as_secs_f64()
+        } else {
+            ((*time_message as f64) / 1000.0) + postroll.as_secs_f64()
+        };
+
+        Some(x)
     }
 
     fn apply_settings(&mut self, settings: &AppSettings) {
@@ -490,18 +486,7 @@ impl DataSource for SerialDataSource {
     }
 
     fn link_quality(&self) -> Option<f32> {
-        let telemetry_data_rate = self
-            .vehicle_states
-            .iter()
-            .rev()
-            .find_map(|(_t, msg)| msg.data_rate)
-            .unwrap_or(TelemetryDataRate::Low);
-        let expected = match telemetry_data_rate {
-            // TODO: don't hardcode these?
-            TelemetryDataRate::Low => 15,
-            TelemetryDataRate::High => 35,
-        };
-        let percentage = ((self.message_receipt_times.len() as f32) / (expected as f32)) * 100.0;
+        let percentage = ((self.message_receipt_times.len() as f32) / (15 as f32)) * 100.0;
         Some(f32::min(percentage, 100.0))
     }
 
@@ -516,10 +501,12 @@ impl DataSource for SerialDataSource {
 
         #[cfg(not(target_arch = "wasm32"))]
         {
-            find_serial_ports().iter().for_each(|port|{
-                if ui.selectable_label(self.serial_port.as_ref() == Some(port), port).clicked(){
+            find_serial_ports().iter().for_each(|port| {
+                if ui.selectable_label(self.serial_port.as_ref() == Some(port), port).clicked() {
                     self.serial_port = Some(port.clone());
-                    self.serial_status_uplink_tx.blocking_send((SerialStatus::Init, Some(port.clone()))).unwrap_or_default();
+                    self.serial_status_uplink_tx
+                        .blocking_send((SerialStatus::Init, Some(port.clone())))
+                        .unwrap_or_default();
                     self.reset();
                 }
             });
@@ -541,13 +528,5 @@ impl DataSource for SerialDataSource {
         };
 
         ui.weak(telemetry_log_info);
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }

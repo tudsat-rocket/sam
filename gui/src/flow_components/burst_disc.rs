@@ -1,4 +1,4 @@
-use egui::{epaint::RectShape, Pos2, Rect, Rounding, Vec2};
+use egui::{epaint::RectShape, CornerRadius, Pos2, Rect, StrokeKind, Vec2};
 
 use crate::utils::theme::ThemeColors;
 
@@ -36,7 +36,7 @@ impl ComponentPainter for BurstDiscPainter {
 
         let bb = Rect::from_center_size(pos, Vec2::new(width, height));
 
-        painter.add(RectShape::stroke(bb.clone(), Rounding::ZERO, stroke));
+        painter.add(RectShape::stroke(bb.clone(), CornerRadius::ZERO, stroke, StrokeKind::Middle));
         painter.line(
             vec![
                 pos - Vec2::new(width, height) / 2.0,
