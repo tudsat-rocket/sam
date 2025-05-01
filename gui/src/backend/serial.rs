@@ -25,10 +25,10 @@ use log::*;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
+use telemetry::DataStore;
 
 use crate::backend::BackendVariant;
 use crate::settings::AppSettings;
-use crate::DataStore;
 
 pub const BAUD_RATE: u32 = 115_200;
 

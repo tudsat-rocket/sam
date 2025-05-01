@@ -45,7 +45,8 @@ pub enum PressureSensorId {
     AcsPostRegulator,
     AcsValveAccel,
     AcsValveDecel,
-    RecoveryChamber,
+    RecoveryChamberDrogue,
+    RecoveryChamberMain,
     MainRelease,
 }
 
@@ -91,6 +92,7 @@ pub enum Metric {
     ApogeeAltitudeASL,
     GroundSpeed,
     KalmanStateCovariance(usize, usize),
+    KalmanMeasurementCovariance(usize, usize),
     RawAngularVelocity(GyroscopeId, Dim),
     RawAcceleration(AccelerometerId, Dim),
     RawMagneticFluxDensity(MagnetometerId, Dim),
@@ -105,6 +107,7 @@ pub enum Metric {
     Temperature(TemperatureSensorId),
     BatteryVoltage(BatteryId),
     BatteryCurrent(BatteryId),
+    BatteryChargerState(BatteryId),
     SupplyVoltage,
     SupplyCurrent,
     CpuUtilization,
@@ -149,7 +152,6 @@ impl std::fmt::Display for Metric {
             Self::Longitude => "Longitude".to_string(),
             Self::GroundAltitudeASL => "Ground Altitude ASL".to_string(),
             Self::ApogeeAltitudeASL => "Apogee ASL".to_string(),
-            Self::KalmanStateCovariance(i, j) => format!("Kalman State Covariance ({i},{j})"),
 
             Self::RawAngularVelocity(id, dim) => format!("Angular Velocity ({id:?}, {dim:?}) [°/s]"),
             Self::RawAcceleration(id, dim) => format!("Acceleration ({id:?}, {dim:?}) [m/s²]"),
@@ -160,7 +162,12 @@ impl std::fmt::Display for Metric {
 
             Self::TrueElevation => "True Elevation [°]".to_string(),
             Self::TrueAzimuth => "True Azimuth [°]".to_string(),
-
+            Self::KalmanStateCovariance(0, 0) => "X/Y Pos. Variance [m]".to_string(),
+            Self::KalmanStateCovariance(2, 2) => "Altitude Variance [m]".to_string(),
+            Self::KalmanStateCovariance(5, 5) => "Vertical Speed Variance [m/s]".to_string(),
+            Self::KalmanMeasurementCovariance(0, 0) => "Barometer Variance [m]".to_string(),
+            Self::KalmanMeasurementCovariance(1, 1) => "Accelerometer Variance [m/s²]".to_string(),
+            Self::KalmanMeasurementCovariance(4, 4) => "GPS Variance [m]".to_string(),
             _ => format!("{:?}", self),
         })
     }

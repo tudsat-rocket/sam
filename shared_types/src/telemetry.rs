@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use siphasher::sip::SipHasher;
 
 use crate::can::*;
-pub use crate::common::FlightMode;
+pub use crate::common::*;
 use crate::settings::*;
 
 pub const LORA_MESSAGE_INTERVAL: u32 = 25;
@@ -174,6 +174,29 @@ impl TryFrom<u8> for ThrusterValveState {
             0b10 => Ok(Self::OpenAccel),
             0b01 => Ok(Self::OpenDecel),
             0b11 => Ok(Self::OpenBoth),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+pub enum BatteryChargerState {
+    #[default]
+    NotCharging = 0b00,
+    Charging = 0b01,
+    RecoverableFault = 0b10,
+    NonRecoverableFault = 0b11,
+}
+
+impl TryFrom<u8> for BatteryChargerState {
+    type Error = ();
+
+    fn try_from(x: u8) -> Result<Self, Self::Error> {
+        match x {
+            0b00 => Ok(Self::NotCharging),
+            0b01 => Ok(Self::Charging),
+            0b10 => Ok(Self::RecoverableFault),
+            0b11 => Ok(Self::NonRecoverableFault),
             _ => Err(()),
         }
     }

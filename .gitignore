@@ -3,9 +3,8 @@
 *.json
 *.gpx
 *.kml
-!archive/assets/*.json
-!archive/assets/*.gpx
-!archive/assets/*.kml
+!archive/flight_data/*.json
+!archive/settings/*.json
 *.exe
 *.bin
 perf.data

@@ -245,7 +245,8 @@ pub fn default_pressures_plot() -> WidgetPane {
                 (Metric::Pressure(PressureSensorId::AcsPostRegulator), G),
                 (Metric::Pressure(PressureSensorId::AcsValveAccel), O),
                 (Metric::Pressure(PressureSensorId::AcsValveDecel), O1),
-                (Metric::Pressure(PressureSensorId::RecoveryChamber), B),
+                (Metric::Pressure(PressureSensorId::RecoveryChamberDrogue), B),
+                (Metric::Pressure(PressureSensorId::RecoveryChamberMain), B1),
                 (Metric::Pressure(PressureSensorId::MainRelease), BR),
             ],
             ylimits: (None, None),
@@ -284,7 +285,11 @@ pub fn default_kalman_plot() -> WidgetPane {
         title: "Kalman".to_string(),
         config: PlotConfig {
             lines: vec![
-                // TODO
+                (Metric::KalmanStateCovariance(0, 0), R),
+                (Metric::KalmanStateCovariance(2, 2), B),
+                (Metric::KalmanStateCovariance(5, 5), O1),
+                (Metric::KalmanMeasurementCovariance(0, 0), C),
+                (Metric::KalmanMeasurementCovariance(4, 4), G),
             ],
             ylimits: (None, None),
         },
@@ -346,6 +351,7 @@ pub fn default_signal_plot() -> WidgetPane {
                 (Metric::UplinkRssi, P),
                 (Metric::UplinkSnr, C),
                 (Metric::GpsHdop, R),
+                (Metric::GpsSatellites, G),
             ],
             ylimits: (Some(-100.0), Some(10.0)),
         },
@@ -392,22 +398,12 @@ impl PlotTab {
             tiles.insert_tab_tile(left_misc),
         ];
 
-        let t = vec![
-            tiles.insert_pane(default_pressures_plot()),
-            tiles.insert_pane(default_runtime_plot()),
-        ];
-
-        let flow_tabs = vec![
-            tiles.insert_pane(WidgetPane::Acs),
-            tiles.insert_pane(WidgetPane::Hybrid),
-        ];
-
         let overview = vec![
             tiles.insert_pane(default_orientation_plot()),
             tiles.insert_pane(default_temperatures_plot()),
-            tiles.insert_tab_tile(flow_tabs),
+            tiles.insert_pane(default_pressures_plot()),
             tiles.insert_pane(default_power_plot()),
-            tiles.insert_tab_tile(t),
+            tiles.insert_pane(default_runtime_plot()),
             tiles.insert_pane(default_signal_plot()),
         ];
 
@@ -424,7 +420,12 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let right = vec![tiles.insert_pane(WidgetPane::Map), tiles.insert_tab_tile(right_misc)];
+        let top_right = vec![tiles.insert_pane(WidgetPane::Acs), tiles.insert_pane(WidgetPane::Map)];
+
+        let right = vec![
+            tiles.insert_horizontal_tile(top_right),
+            tiles.insert_tab_tile(right_misc),
+        ];
 
         let children = vec![tiles.insert_vertical_tile(left), tiles.insert_vertical_tile(right)];
 
@@ -444,15 +445,15 @@ impl PlotTab {
                 default_kalman_plot(),
                 default_runtime_plot(),
                 default_temperatures_plot(),
-                WidgetPane::Acs,
                 default_power_plot(),
                 default_signal_plot(),
                 default_gyroscope_plot(),
                 default_accelerometer_plot(),
                 default_magnetometer_plot(),
                 default_pressures_plot(),
-                //PlotCell::IoSensors,
                 WidgetPane::Map,
+                WidgetPane::Acs,
+                WidgetPane::Hybrid,
             ],
         )
     }

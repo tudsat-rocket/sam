@@ -86,7 +86,7 @@ impl ArchiveWindow {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn open_log(&mut self, ctx: &egui::Context, url: &'static str) {
+    fn open_log_url(&mut self, ctx: &egui::Context, url: &'static str) {
         let ctx = ctx.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         self.progress_receiver = Some(receiver);
@@ -173,12 +173,12 @@ impl ArchiveWindow {
 
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.add_enabled(log.flash_log_url.is_some(), Button::new("🖴  Flash")).clicked() {
-                                self.open_log(ctx, log.flash_log_url.unwrap());
+                                self.open_log_url(ctx, log.flash_log_url.unwrap());
                             }
 
                             if ui.add_enabled(log.telemetry_log_url.is_some(), Button::new("📡 Telemetry")).clicked()
                             {
-                                self.open_log(ctx, log.telemetry_log_url.unwrap());
+                                self.open_log_url(ctx, log.telemetry_log_url.unwrap());
                             }
                         });
                     });

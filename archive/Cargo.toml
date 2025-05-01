@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 shared_types = { workspace = true }
+telemetry = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -166,7 +166,8 @@ impl MapState {
             return Vec::new();
         };
 
-        let state = (last, backend.timeseries(&Metric::PositionWorldSpace(Dim::Z)).unwrap().len());
+        let state =
+            (last, backend.timeseries(&Metric::PositionWorldSpace(Dim::Z)).map(|t| t.len()).unwrap_or_default());
 
         // repopulate cache
         if self.cached_state.map(|s| s != state).unwrap_or(true) {

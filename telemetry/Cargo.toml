@@ -11,6 +11,8 @@ heapless = { workspace = true }
 half = { workspace = true, default-features = false }
 nalgebra = { workspace = true }
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+egui_plot = { workspace = true, optional = true }
 
 [features]
-serde = ["dep:serde", "half/serde"]
+serde = ["dep:serde", "dep:serde_json", "dep:egui_plot", "half/serde"]

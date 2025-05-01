@@ -4,6 +4,7 @@ mod metrics;
 mod representation;
 mod schema;
 mod source;
+mod store;
 
 use core::convert::Infallible;
 
@@ -11,6 +12,7 @@ pub use metrics::*;
 pub use representation::*;
 pub use schema::*;
 pub use source::*;
+pub use store::*;
 
 pub const ALTITUDE_REPRESENTATION: Representation = Representation::fixed(16, -100.0..=10_000.0);
 
@@ -70,7 +72,7 @@ pub const TELEMETRY_PRESSURES: MessageDefinition = MessageDefinition(&[
     (Metric::Pressure(PressureSensorId::AcsPostRegulator), Representation::fixed(16, 0.0..=40.0)),
     (Metric::Pressure(PressureSensorId::AcsValveAccel), Representation::fixed(8, 0.0..=40.0)),
     (Metric::Pressure(PressureSensorId::AcsValveDecel), Representation::fixed(8, 0.0..=40.0)),
-    (Metric::Pressure(PressureSensorId::RecoveryChamber), Representation::fixed(16, 0.0..=40.0)),
+    (Metric::Pressure(PressureSensorId::RecoveryChamberDrogue), Representation::fixed(16, 0.0..=40.0)),
 ]);
 
 pub const TELEMETRY_KALMAN: MessageDefinition = MessageDefinition(&[]); // TODO

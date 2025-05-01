@@ -1,5 +1,3 @@
-use shared_types::{DownlinkMessage, Settings};
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct LaunchSite {
     pub name: &'static str,
@@ -27,10 +25,6 @@ pub struct ArchivedLog {
     pub description: &'static str,
     pub telemetry_log_url: Option<&'static str>,
     pub flash_log_url: Option<&'static str>,
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub flash_log_bytes: Option<&'static [u8]>,
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub fc_settings_bytes: Option<&'static [u8]>,
     pub apogee_agl: f32,
 }
 
@@ -70,10 +64,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         description: "",
         telemetry_log_url: None, // TODO: migrate
         flash_log_url: None, // TODO: migrate
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: None,
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: None,
         apogee_agl: 395.9,
     },
     ArchivedLog {
@@ -87,10 +77,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         description: "",
         telemetry_log_url: None, // TODO: migrate
         flash_log_url: None, // TODO: migrate
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: None,
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: None,
         apogee_agl: 361.8,
     },
     ArchivedLog {
@@ -105,10 +91,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_a_telem_filtered.json"),
         telemetry_log_url: None,
         flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_a_flash_filtered.json"),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: Some(include_bytes!("../assets/dare_launch_a_flash_filtered.json").as_slice()),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: Some(include_bytes!("../assets/dare_launch_a_settings.json").as_slice()),
         apogee_agl: 1130.4,
     },
     ArchivedLog {
@@ -123,10 +105,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_b_telem_filtered.json"),
         telemetry_log_url: None,
         flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_b_flash_filtered.json"),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: Some(include_bytes!("../assets/dare_launch_b_flash_filtered.json").as_slice()),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: Some(include_bytes!("../assets/dare_launch_b_settings.json").as_slice()),
         apogee_agl: 1130.4,
     },
     ArchivedLog {
@@ -141,10 +119,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2023_telem_filtered.json"),
         telemetry_log_url: None,
         flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2023_flash_filtered.json"),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: Some(include_bytes!("../assets/euroc_2023_flash_filtered.json").as_slice()),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: Some(include_bytes!("../assets/euroc_2023_settings.json").as_slice()),
         apogee_agl: 3474.8,
     },
     //ArchivedLog {
@@ -176,12 +150,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         description: "",
         telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_telemetry.json"),
         flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_flash.json"),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: Some(include_bytes!("../assets/euroc_2024_primary_flash.json").as_slice()),
-        //#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        //fc_settings_bytes: Some(include_bytes!("../assets/euroc_2023_settings.json").as_slice()),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: None,
         apogee_agl: 3049.6,
     },
     ArchivedLog {
@@ -195,12 +163,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         description: "",
         telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_telemetry.json"),
         flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_flash.json"),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        flash_log_bytes: Some(include_bytes!("../assets/euroc_2024_secondary_flash.json").as_slice()),
-        //#[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        //fc_settings_bytes: Some(include_bytes!("../assets/euroc_2023_settings.json").as_slice()),
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        fc_settings_bytes: None,
         apogee_agl: 3052.0,
     },
 ];
@@ -208,16 +170,6 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
 impl ArchivedLog {
     pub fn find(id: &str) -> Option<Self> {
         ARCHIVED_LOGS.into_iter().find(|log| log.id == id)
-    }
-
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub fn flash_messages(&self) -> Option<Vec<DownlinkMessage>> {
-        self.flash_log_bytes.map(|bytes| serde_json::from_slice::<Vec<DownlinkMessage>>(bytes).unwrap())
-    }
-
-    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    pub fn fc_settings(&self) -> Option<Settings> {
-        self.fc_settings_bytes.map(|bytes| serde_json::from_slice::<Settings>(bytes).unwrap())
     }
 }
 

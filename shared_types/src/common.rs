@@ -29,7 +29,7 @@ impl TryFrom<u8> for FlightMode {
             6 => Ok(Self::RecoveryDrogue),
             7 => Ok(Self::RecoveryMain),
             8 => Ok(Self::Landed),
-            _ => Err(())
+            _ => Err(()),
         }
     }
 }

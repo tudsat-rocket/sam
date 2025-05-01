@@ -1,0 +1,62 @@
+{
+  "identifier": "🚀 FRODO-J1 B (rev 2)",
+  "gyro_offset": [
+    -0.28,
+    -0.08,
+    -0.28
+  ],
+  "acc_offset": [
+    -0.315,
+    0.095,
+    -0.13
+  ],
+  "acc2_offset": [
+    -1.825,
+    101.85,
+    -2.36
+  ],
+  "mag_offset": [
+    -4.99,
+    896.42,
+    10.16
+  ],
+  "mahony_kp": 0.5,
+  "mahony_ki": 0.0,
+  "std_dev_accelerometer": 0.5,
+  "std_dev_barometer": 0.8,
+  "std_dev_process": 0.5,
+  "takeoff_detection_mode": "Acceleration",
+  "min_takeoff_acc": 30.0,
+  "min_takeoff_acc_time": 50,
+  "min_time_to_apogee": 5000,
+  "max_time_to_apogee": 30000,
+  "apogee_min_falling_time": 100,
+  "main_output_mode": "BelowAltitude",
+  "main_output_deployment_altitude": 300.0,
+  "outputs_warning_time": 500,
+  "outputs_high_time": 10,
+  "lora": {
+    "channels": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ],
+    "binding_phrase": "aesir_tudsat_payload",
+    "authentication_key": 254098462009012330938235087169990064613
+  },
+  "default_data_rate": "Low",
+  "min_time_to_main": 5000,
+  "orientation": "ZDown",
+  "outputs_warning_frequency": 440.0
+}

@@ -11,10 +11,9 @@ use egui::{Layout, RichText, Slider};
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::Metric;
+use telemetry::{DataStore, Metric};
 
 use crate::settings::AppSettings;
-use crate::DataStore;
 
 pub mod log_file;
 pub mod serial;

@@ -11,7 +11,6 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 use shared_types::telemetry::*;
 
 pub mod backend;
-pub mod data_store;
 pub mod flow_components;
 pub mod panels;
 pub mod settings;
@@ -21,7 +20,6 @@ pub mod widgets;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::backend::*;
-use crate::data_store::*;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
