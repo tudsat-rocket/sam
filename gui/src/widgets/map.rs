@@ -144,10 +144,7 @@ impl MapState {
             osm_tiles,
             mapbox_tiles,
             memory: MapMemory::default(),
-            #[cfg(not(target_arch = "wasm32"))]
             satellite,
-            #[cfg(target_arch = "wasm32")]
-            satellite: false,
             position_source: PositionSource::Gps,
             visualization: Visualization::Altitude,
             show_gizmos: true,
@@ -482,7 +479,6 @@ impl<'a> Widget for Map<'a> {
             rect.left_bottom() + Vec2::new(10.0, -10.0),
             rect.left_bottom() + Vec2::new(100.0, -40.0),
         );
-        #[cfg(not(target_arch = "wasm32"))]
         ui.put(map_type_rect, |ui: &mut egui::Ui| {
             Frame::window(ui.style())
                 .show(ui, |ui| {

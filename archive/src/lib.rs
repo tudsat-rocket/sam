@@ -52,7 +52,7 @@ const EUROC: LaunchSite = LaunchSite {
     elevation: None,
 };
 
-pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
+pub const ARCHIVED_LOGS: [ArchivedLog; 8] = [
     ArchivedLog {
         id: "zuelpich22-1",
         fc_serial: "1A",
@@ -62,8 +62,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2022, 12, 10),
         name: "Launch #1",
         description: "",
-        telemetry_log_url: None, // TODO: migrate
-        flash_log_url: None, // TODO: migrate
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/zuelpich_2022_launch1_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/zuelpich_2022_launch1_flash.json"),
         apogee_agl: 395.9,
     },
     ArchivedLog {
@@ -75,8 +75,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2022, 12, 10),
         name: "Launch #2",
         description: "",
-        telemetry_log_url: None, // TODO: migrate
-        flash_log_url: None, // TODO: migrate
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/zuelpich_2022_launch2_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/zuelpich_2022_launch2_flash.json"),
         apogee_agl: 361.8,
     },
     ArchivedLog {
@@ -88,9 +88,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2023, 9, 22),
         name: "Primary FC",
         description: "",
-        //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_a_telem_filtered.json"),
-        telemetry_log_url: None,
-        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_a_flash_filtered.json"),
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/dare_2023_primary_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/dare_2023_primary_flash.json"),
         apogee_agl: 1130.4,
     },
     ArchivedLog {
@@ -102,9 +101,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2023, 9, 22),
         name: "Secondary FC",
         description: "",
-        //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_b_telem_filtered.json"),
-        telemetry_log_url: None,
-        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/dare_launch_b_flash_filtered.json"),
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/dare_2023_secondary_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/dare_2023_secondary_flash.json"),
         apogee_agl: 1130.4,
     },
     ArchivedLog {
@@ -116,29 +114,23 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2023, 10, 13),
         name: "Payload",
         description: "",
-        //telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2023_telem_filtered.json"),
-        telemetry_log_url: None,
-        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2023_flash_filtered.json"),
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2023_telemetry.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2023_flash.json"),
         apogee_agl: 3474.8,
     },
-    //ArchivedLog {
-    //    id: "zuelpich24",
-    //    fc_serial: "2C",
-    //    vehicle: "FRoDO-H-GOSA",
-    //    site: ZUELPICH,
-    //    #[allow(deprecated)] // the replacement is not const yet
-    //    date: chrono::NaiveDate::from_ymd(2024, 4, 21),
-    //    name: "",
-    //    description: "significant barometer spikes",
-    //    telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/zuelpich_gosa_telem.json"),
-    //    telemetry_log_url: None,
-    //    flash_log_url: None,
-    //    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    //    flash_log_bytes: None,
-    //    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-    //    fc_settings_bytes: Some(include_bytes!("../assets/zuelpich_gosa_settings.json").as_slice()),
-    //    apogee_agl: 246.5,
-    //},
+    ArchivedLog {
+        id: "zuelpich24",
+        fc_serial: "2C",
+        vehicle: "FRoDO-H-GOSA",
+        site: ZUELPICH,
+        #[allow(deprecated)] // the replacement is not const yet
+        date: chrono::NaiveDate::from_ymd(2024, 4, 21),
+        name: "",
+        description: "significant barometer spikes",
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/zuelpich_2024_telem.json"),
+        flash_log_url: None,
+        apogee_agl: 246.5,
+    },
     ArchivedLog {
         id: "euroc24-primary",
         fc_serial: "2B",
@@ -148,8 +140,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2024, 10, 12),
         name: "Primary",
         description: "",
-        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_telemetry.json"),
-        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_primary_flash.json"),
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2024_primary_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2024_primary_flash.json"),
         apogee_agl: 3049.6,
     },
     ArchivedLog {
@@ -161,8 +153,8 @@ pub const ARCHIVED_LOGS: [ArchivedLog; 7] = [
         date: chrono::NaiveDate::from_ymd(2024, 10, 12),
         name: "Secondary",
         description: "",
-        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_telemetry.json"),
-        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/develop/archive/assets/euroc_2024_secondary_flash.json"),
+        telemetry_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2024_secondary_telem.json"),
+        flash_log_url: Some("https://raw.githubusercontent.com/tudsat-rocket/sam/main/archive/flight_data/euroc_2024_secondary_flash.json"),
         apogee_agl: 3052.0,
     },
 ];

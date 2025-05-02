@@ -97,7 +97,7 @@ impl ArchiveWindow {
     }
 
     #[cfg(target_arch = "wasm32")]
-    fn open_log(&mut self, ctx: &egui::Context, url: &'static str) {
+    fn open_log_url(&mut self, ctx: &egui::Context, url: &'static str) {
         let ctx = ctx.clone();
         let (sender, receiver) = std::sync::mpsc::channel();
         self.progress_receiver = Some(receiver);

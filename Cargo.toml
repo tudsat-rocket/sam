@@ -36,10 +36,10 @@ mint = "0.5.9"
 half = { version = "2.4.1", default-features = false }
 nalgebra = { version = "0.32", default-features = false, features = ["macros", "mint", "serde-serialize-no-std"] }
 # egui & friends
-egui = { version = "0.31", default-features = false }
-egui-wgpu = { version = "0.31", features = [ "winit" ] }
-egui-winit = { version = "0.31", default-features = false }
-eframe = { version = "0.31", default-features = false, features = ["glow", "wayland", "x11"] }
+egui = { version = "0.31" }
+egui-wgpu = { version = "0.31" }
+egui-winit = { version = "0.31" }
+eframe = { version = "0.31", default-features = false }
 egui_plot = "0.31"
 egui_extras = { version = "0.31", features = ["image"] }
 # serialization & communication

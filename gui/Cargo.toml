@@ -16,7 +16,7 @@ log = { workspace = true }
 env_logger = { workspace = true }
 # egui & friends
 egui = { workspace = true }
-eframe = { workspace = true }
+eframe = { workspace = true, default-features = true }
 egui_plot = { workspace = true }
 egui_extras = { workspace = true }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
@@ -36,12 +36,11 @@ nalgebra = { workspace = true }
 chrono = { workspace = true }
 directories = "4.0"
 colorgrad = "0.6"
-tokio = "1.33"
-tokio-serial = "5.4.1"
 futures = { version = "0.3.28", default-features = false }
 reqwest = { version = "0.11", default-features = false, features = ["rustls-tls", "stream", "json"] }
 itertools = "0.14"
 enum-map = "2.7.3"
+earcutr = "0.4.3"
 
 # Used for profiling
 #puffin = { version = "0.19", optional = true }
@@ -56,7 +55,6 @@ rand = { workspace = true, features = ["std", "std_rng"] }
 rfd = "0.10"
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
-earcutr = "0.4.3"
 
 # Android dependencies
 [target.'cfg(target_os = "android")'.dependencies]
@@ -64,9 +62,15 @@ rand = { workspace = true }
 home = "0.5" # No home directories in web assembly
 indicatif = "0.17"
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = "1.33"
+tokio-serial = "5.4.1"
+
 # Web Assembly dependencies
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+eframe = { workspace = true, default-features = false, features = ["wgpu"] }
 rand = { version = "0.8", default-features = false, features = ["small_rng"] }
+getrandom = { version = "0.2", features = ["js"] }
 web-time = "0.2"
 wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1"
@@ -88,3 +92,7 @@ wasm-opt = false
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
+
+[[bin]]
+name = "wasm"
+path = "src/wasm.rs"

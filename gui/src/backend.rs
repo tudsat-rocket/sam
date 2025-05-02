@@ -5,7 +5,11 @@ use std::time::Instant;
 #[cfg(target_arch = "wasm32")]
 use web_time::Instant;
 
+#[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::mpsc::error::SendError;
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug)]
+pub struct SendError<T>(T);
 
 use egui::{Layout, RichText, Slider};
 
@@ -16,11 +20,15 @@ use telemetry::{DataStore, Metric};
 use crate::settings::AppSettings;
 
 pub mod log_file;
+pub mod noop;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod serial;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub mod simulation;
 
 pub use log_file::*;
+pub use noop::*;
+#[cfg(not(target_arch = "wasm32"))]
 pub use serial::*;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub use simulation::*;
@@ -260,32 +268,44 @@ pub trait ReplayableBackendVariant: BackendVariant {
 }
 
 pub enum Backend {
+    #[cfg(not(target_arch = "wasm32"))]
     Serial(SerialBackend),
+    Noop(NoopBackend),
     Log(LogFileBackend),
+    #[cfg(not(target_arch = "wasm32"))]
     Simulation(SimulationBackend),
 }
 
 impl Backend {
     pub fn update(&mut self, ctx: &egui::Context) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.update(ctx),
+            Self::Noop(b) => b.update(ctx),
             Self::Log(b) => b.update(ctx),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.update(ctx),
         }
     }
 
     pub fn data_store<'a>(&'a self) -> &'a DataStore {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.data_store(),
+            Self::Noop(b) => b.data_store(),
             Self::Log(b) => b.data_store(),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.data_store(),
         }
     }
 
     pub fn end(&self) -> Option<f64> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.end(),
+            Self::Noop(b) => b.end(),
             Self::Log(b) => b.end(),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.end(),
         }
     }
@@ -327,22 +347,29 @@ impl Backend {
 
     pub fn fc_settings(&mut self) -> Option<&Settings> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.fc_settings(),
+            Self::Noop(b) => b.fc_settings(),
             Self::Log(b) => b.fc_settings(),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.fc_settings(),
         }
     }
 
     pub fn fc_settings_mut(&mut self) -> Option<&mut Settings> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.fc_settings_mut(),
+            Self::Noop(b) => b.fc_settings_mut(),
             Self::Log(_b) => None,
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.fc_settings_mut(),
         }
     }
 
     pub fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.send(msg),
             _ => Ok(()),
         }
@@ -350,6 +377,7 @@ impl Backend {
 
     pub fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.send_command(cmd),
             _ => Ok(()),
         }
@@ -361,24 +389,33 @@ impl Backend {
 
     pub fn reset(&mut self) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.reset(),
+            Self::Noop(b) => b.reset(),
             Self::Log(b) => b.reset(),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.reset(),
         }
     }
 
     pub fn apply_settings(&mut self, settings: &AppSettings) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.apply_settings(settings),
+            Self::Noop(b) => b.apply_settings(settings),
             Self::Log(b) => b.apply_settings(settings),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.apply_settings(settings),
         }
     }
 
     pub fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.status_bar_ui(ui),
+            Self::Noop(b) => b.status_bar_ui(ui),
             Self::Log(b) => b.status_bar_ui(ui),
+            #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.status_bar_ui(ui),
         }
     }

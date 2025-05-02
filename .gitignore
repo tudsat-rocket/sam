@@ -9,3 +9,4 @@
 *.bin
 perf.data
 flamegraph.svg
+gui/dist

@@ -39,7 +39,10 @@ impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
     pub fn init(ctx: &egui::Context, settings: AppSettings, default_backend: Option<Backend>) -> Self {
+        #[cfg(not(target_arch = "wasm32"))]
         let backend = default_backend.unwrap_or(Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())));
+        #[cfg(target_arch = "wasm32")]
+        let backend = default_backend.unwrap_or(Backend::Noop(NoopBackend::default()));
 
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
@@ -269,65 +272,4 @@ pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Resu
     )?;
 
     Ok(())
-}
-
-#[cfg(target_arch = "wasm32")]
-use eframe::WebRunner;
-
-#[cfg(target_arch = "wasm32")]
-use settings::AppSettings;
-
-// Entry point for wasm
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
-#[cfg(target_arch = "wasm32")]
-#[derive(Clone)]
-#[wasm_bindgen]
-pub struct WebHandle {
-    runner: WebRunner,
-}
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen]
-impl WebHandle {
-    /// Installs a panic hook, then returns.
-    #[allow(clippy::new_without_default)]
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        // Redirect [`log`] message to `console.log` and friends:
-        eframe::WebLogger::init(log::LevelFilter::Debug).ok();
-
-        Self {
-            runner: WebRunner::new(),
-        }
-    }
-
-    /// Call this once from JavaScript to start your app.
-    #[wasm_bindgen]
-    pub async fn start(&self, canvas_id: &str) -> Result<(), wasm_bindgen::JsValue> {
-        self.runner
-            .start(
-                canvas_id,
-                eframe::WebOptions::default(),
-                Box::new(|cc| Box::new(Sam::init(&cc.egui_ctx, AppSettings::default(), None))),
-            )
-            .await
-    }
-
-    /// The JavaScript can check whether or not your app has crashed:
-    #[wasm_bindgen]
-    pub fn has_panicked(&self) -> bool {
-        self.runner.has_panicked()
-    }
-
-    #[wasm_bindgen]
-    pub fn panic_message(&self) -> Option<String> {
-        self.runner.panic_summary().map(|s| s.message())
-    }
-
-    #[wasm_bindgen]
-    pub fn panic_callstack(&self) -> Option<String> {
-        self.runner.panic_summary().map(|s| s.callstack())
-    }
 }
