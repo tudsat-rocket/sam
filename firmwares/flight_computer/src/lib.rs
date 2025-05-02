@@ -1,6 +1,6 @@
 //! Export of selected modules for use in external programs, such as ground station.
 
-#![cfg_attr(target_os="none", no_std)]
+#![cfg_attr(target_os = "none", no_std)]
 #![no_main]
 
 #[cfg(target_os = "none")]

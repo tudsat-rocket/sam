@@ -42,11 +42,11 @@ impl Default for RocketSettings {
             }),
             parachutes: vec![
                 ParachuteSettings {
-                    area: PI * (0.457/2.0f32).powi(2),
+                    area: PI * (0.457 / 2.0f32).powi(2),
                     ..Default::default()
                 },
                 ParachuteSettings {
-                    area: PI * (2.44/2.0f32).powi(2),
+                    area: PI * (2.44 / 2.0f32).powi(2),
                     trigger: ParachuteTrigger::BelowAltitude(450.0),
                     ..Default::default()
                 },
@@ -70,9 +70,7 @@ impl Rocket {
     pub fn new(settings: &RocketSettings) -> Self {
         let motor = Motor::new(&settings.motor);
         let thrusters = settings.thrusters.as_ref().map(|s| Thrusters::new(s));
-        let parachutes = settings.parachutes.iter()
-            .map(|s| Parachute::new(s))
-            .collect();
+        let parachutes = settings.parachutes.iter().map(|s| Parachute::new(s)).collect();
         Self {
             settings: settings.clone(),
             motor,
@@ -80,24 +78,20 @@ impl Rocket {
             parachutes,
             last_mass: 0.0,
             last_thrust: Vector3::default(),
-            last_drag: Vector3::default()
+            last_drag: Vector3::default(),
         }
     }
 
     pub fn mass(&mut self, time_since_ignition: f32) -> f32 {
-        self.last_mass = self.settings.dry_mass +
-            self.motor.mass(time_since_ignition) +
-            self.thrusters.as_ref()
-                .map(|t| t.propellant_mass)
-                .unwrap_or_default();
+        self.last_mass = self.settings.dry_mass
+            + self.motor.mass(time_since_ignition)
+            + self.thrusters.as_ref().map(|t| t.propellant_mass).unwrap_or_default();
         self.last_mass
     }
 
     pub fn thrust(&mut self, time_since_ignition: f32) -> Vector3<f32> {
-        let t = self.motor.thrust(time_since_ignition) +
-            self.thrusters.as_ref()
-                .map(|t| t.thrust())
-                .unwrap_or_default();
+        let t =
+            self.motor.thrust(time_since_ignition) + self.thrusters.as_ref().map(|t| t.thrust()).unwrap_or_default();
         self.last_thrust = Vector3::new(0.0, 0.0, t);
         self.last_thrust
     }
@@ -105,9 +99,7 @@ impl Rocket {
     pub fn drag(&mut self, velocity: Vector3<f32>, density: f32) -> Vector3<f32> {
         let velmag = velocity.magnitude();
         let vehicle = self.settings.drag_coef.pressure(velmag, density) * self.settings.area;
-        let parachutes: f32 = self.parachutes.iter()
-            .map(|p| p.drag(velmag, density))
-            .sum();
+        let parachutes: f32 = self.parachutes.iter().map(|p| p.drag(velmag, density)).sum();
         let mut direction = velocity.normalize() * -1.0;
         if direction.x.is_nan() {
             direction = Vector3::new(0.0, 0.0, 0.0);
@@ -131,23 +123,13 @@ impl egui::Widget for &mut RocketSettings {
                 .show(ui, |ui| {
                     ui.label("Dry mass");
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut self.dry_mass)
-                                .suffix(" kg")
-                                .speed(0.001)
-                                .range(0.0..=200.0),
-                        );
+                        ui.add(egui::DragValue::new(&mut self.dry_mass).suffix(" kg").speed(0.001).range(0.0..=200.0));
                         ui.weak("(without motor casing)");
                     });
                     ui.end_row();
 
                     ui.label("Cross section");
-                    ui.add(
-                        egui::DragValue::new(&mut self.area)
-                            .suffix(" m²")
-                            .speed(0.001)
-                            .range(0.0..=1.0),
-                    );
+                    ui.add(egui::DragValue::new(&mut self.area).suffix(" m²").speed(0.001).range(0.0..=1.0));
                     ui.end_row();
 
                     ui.label("Drag coef.");
@@ -167,6 +149,7 @@ impl egui::Widget for &mut RocketSettings {
                 ui.add_space(10.0);
                 ui.add(p);
             }
-        }).response
+        })
+        .response
     }
 }

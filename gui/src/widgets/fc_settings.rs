@@ -41,10 +41,22 @@ impl FcSettingsUiExt for Settings {
                             ui.toggle_value(&mut self.lora.channels[7], RichText::new("866.75").monospace().size(10.0));
                             ui.toggle_value(&mut self.lora.channels[8], RichText::new("867.25").monospace().size(10.0));
                             ui.toggle_value(&mut self.lora.channels[9], RichText::new("867.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[10], RichText::new("868.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[11], RichText::new("868.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[12], RichText::new("869.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[13], RichText::new("869.75").monospace().size(10.0));
+                            ui.toggle_value(
+                                &mut self.lora.channels[10],
+                                RichText::new("868.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.channels[11],
+                                RichText::new("868.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.channels[12],
+                                RichText::new("869.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.channels[13],
+                                RichText::new("869.75").monospace().size(10.0),
+                            );
                             ui.label(RichText::new("MHz").weak().size(10.0));
                         });
                     });
@@ -122,28 +134,19 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("X");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc_offset.x)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.acc_offset.x).suffix(" m/s²").speed(0.01).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Y");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc_offset.y)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.acc_offset.y).suffix(" m/s²").speed(0.01).range(-2000.0..=2000.0),
                         );
 
                         ui.weak("Z");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc_offset.z)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-2000.0..=2000.0),
+                            DragValue::new(&mut self.acc_offset.z).suffix(" m/s²").speed(0.01).range(-2000.0..=2000.0),
                         );
                     });
                     ui.end_row();
@@ -153,28 +156,19 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("X");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc2_offset.x)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-4000.0..=4000.0),
+                            DragValue::new(&mut self.acc2_offset.x).suffix(" m/s²").speed(0.01).range(-4000.0..=4000.0),
                         );
 
                         ui.weak("Y");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc2_offset.y)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-4000.0..=4000.0),
+                            DragValue::new(&mut self.acc2_offset.y).suffix(" m/s²").speed(0.01).range(-4000.0..=4000.0),
                         );
 
                         ui.weak("Z");
                         ui.add_sized(
                             [100.0, ui.available_height()],
-                            DragValue::new(&mut self.acc2_offset.z)
-                                .suffix(" m/s²")
-                                .speed(0.01)
-                                .range(-4000.0..=4000.0),
+                            DragValue::new(&mut self.acc2_offset.z).suffix(" m/s²").speed(0.01).range(-4000.0..=4000.0),
                         );
                     });
                     ui.end_row();
@@ -213,7 +207,6 @@ impl FcSettingsUiExt for Settings {
                     ui.weak(" kI");
                     ui.add(DragValue::new(&mut self.mahony_ki_ascent).speed(0.001).range(0.0..=10.0));
                     ui.weak("during ascent)")
-
                 });
                 ui.end_row();
 
@@ -231,7 +224,9 @@ impl FcSettingsUiExt for Settings {
                     });
                     ui.horizontal(|ui| {
                         ui.weak("(barometer");
-                        ui.add(DragValue::new(&mut self.std_dev_barometer_transsonic).speed(0.001).range(0.0..=999_999.0));
+                        ui.add(
+                            DragValue::new(&mut self.std_dev_barometer_transsonic).speed(0.001).range(0.0..=999_999.0),
+                        );
                         ui.weak("when transsonic)");
                     });
                 });
@@ -240,9 +235,7 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Takeoff detection acceleration");
                 ui.horizontal(|ui| {
                     ui.weak("at least");
-                    ui.add(
-                        DragValue::new(&mut self.min_takeoff_acc).suffix(" m/s²").speed(0.1).range(0.0..=1000.0),
-                    );
+                    ui.add(DragValue::new(&mut self.min_takeoff_acc).suffix(" m/s²").speed(0.1).range(0.0..=1000.0));
                     ui.weak("for");
                     ui.add(DragValue::new(&mut self.min_takeoff_acc_time).suffix(" ms").speed(1).range(0..=1000));
                 });
@@ -252,13 +245,9 @@ impl FcSettingsUiExt for Settings {
                 ui.vertical(|ui| {
                     ui.horizontal(|ui| {
                         ui.weak("between");
-                        ui.add(
-                            DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000),
-                        );
+                        ui.add(DragValue::new(&mut self.min_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000));
                         ui.weak("and");
-                        ui.add(
-                            DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000),
-                        );
+                        ui.add(DragValue::new(&mut self.max_time_to_apogee).suffix(" ms").speed(1).range(0..=1000000));
                         ui.weak("post-launch,");
                     });
                     ui.horizontal(|ui| {
@@ -298,17 +287,34 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Drogue output timing");
                 ui.horizontal(|ui| {
                     ui.add(DragValue::new(&mut self.drogue_output_settings.num_pulses).speed(1).range(0..=20));
-                    ui.weak(if self.drogue_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
-                    ui.add(DragValue::new(&mut self.drogue_output_settings.output_high_time).suffix(" ms").speed(1).range(0..=10000));
+                    ui.weak(if self.drogue_output_settings.num_pulses == 1 {
+                        "pulse of"
+                    } else {
+                        "pulses of"
+                    });
+                    ui.add(
+                        DragValue::new(&mut self.drogue_output_settings.output_high_time)
+                            .suffix(" ms")
+                            .speed(1)
+                            .range(0..=10000),
+                    );
                     if self.drogue_output_settings.num_pulses > 1 {
                         ui.weak("with");
-                        ui.add(DragValue::new(&mut self.drogue_output_settings.output_low_time).suffix(" ms").speed(1).range(0..=10000));
+                        ui.add(
+                            DragValue::new(&mut self.drogue_output_settings.output_low_time)
+                                .suffix(" ms")
+                                .speed(1)
+                                .range(0..=10000),
+                        );
                         ui.weak("pauses after");
                     } else {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_warning_time).suffix(" ms").speed(1).range(0..=10000),
+                        DragValue::new(&mut self.drogue_output_settings.output_warning_time)
+                            .suffix(" ms")
+                            .speed(1)
+                            .range(0..=10000),
                     );
                     ui.weak("of");
                     ui.add(
@@ -324,17 +330,34 @@ impl FcSettingsUiExt for Settings {
                 ui.label("Main output timing");
                 ui.horizontal(|ui| {
                     ui.add(DragValue::new(&mut self.main_output_settings.num_pulses).speed(1).range(0..=20));
-                    ui.weak(if self.main_output_settings.num_pulses == 1 { "pulse of" } else { "pulses of" });
-                    ui.add(DragValue::new(&mut self.main_output_settings.output_high_time).suffix(" ms").speed(1).range(0..=10000));
+                    ui.weak(if self.main_output_settings.num_pulses == 1 {
+                        "pulse of"
+                    } else {
+                        "pulses of"
+                    });
+                    ui.add(
+                        DragValue::new(&mut self.main_output_settings.output_high_time)
+                            .suffix(" ms")
+                            .speed(1)
+                            .range(0..=10000),
+                    );
                     if self.main_output_settings.num_pulses > 1 {
                         ui.weak("with");
-                        ui.add(DragValue::new(&mut self.main_output_settings.output_low_time).suffix(" ms").speed(1).range(0..=10000));
+                        ui.add(
+                            DragValue::new(&mut self.main_output_settings.output_low_time)
+                                .suffix(" ms")
+                                .speed(1)
+                                .range(0..=10000),
+                        );
                         ui.weak("pauses after");
                     } else {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_warning_time).suffix(" ms").speed(1).range(0..=10000),
+                        DragValue::new(&mut self.main_output_settings.output_warning_time)
+                            .suffix(" ms")
+                            .speed(1)
+                            .range(0..=10000),
                     );
                     ui.weak("of");
                     ui.add(
@@ -397,19 +420,11 @@ impl FcSettingsUiExt for Settings {
                 ui.end_row();
 
                 ui.label("Apogee prediction drag red. factor");
-                ui.add(
-                    DragValue::new(&mut self.drag_reduction_factor)
-                        .speed(0.00001)
-                        .range(0.0..=1000.0),
-                );
+                ui.add(DragValue::new(&mut self.drag_reduction_factor).speed(0.00001).range(0.0..=1000.0));
                 ui.end_row();
 
                 ui.label("Apogee error offset");
-                ui.add(
-                    DragValue::new(&mut self.apogee_error_offset)
-                        .speed(0.1)
-                        .range(-500.0..=500.0),
-                );
+                ui.add(DragValue::new(&mut self.apogee_error_offset).speed(0.1).range(-500.0..=500.0));
                 ui.end_row();
             })
     }

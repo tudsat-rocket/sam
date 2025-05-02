@@ -2,12 +2,12 @@
 #![no_main]
 
 use embassy_executor::{InterruptExecutor, Spawner};
-use embassy_stm32::adc::Adc;
 use embassy_stm32::Config;
+use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
-use embassy_stm32::interrupt::{Priority, InterruptExt};
 use embassy_stm32::interrupt;
+use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
@@ -23,9 +23,9 @@ mod can;
 
 use can::*;
 
-type OutputStateChannel = PubSubChannel::<CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
-type OutputStateSubscriber = Subscriber::<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
-type OutputStatePublisher = Publisher::<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStateChannel = PubSubChannel<CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStateSubscriber = Subscriber<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStatePublisher = Publisher<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
 static OUTPUT_STATE: StaticCell<OutputStateChannel> = StaticCell::new();
 
 // TODO
@@ -85,7 +85,6 @@ async fn main(spawner: Spawner) {
     config.rcc.pclk2 = Some(Hertz::mhz(72));
     config.rcc.adcclk = Some(Hertz::mhz(14));
     let mut p = embassy_stm32::init(config);
-
 }
 
 #[interrupt]

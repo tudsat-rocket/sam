@@ -14,10 +14,7 @@ pub struct W25Q<SPI> {
 
 impl<SPI: SpiDevice> W25Q<SPI> {
     pub async fn init(spi: SPI) -> Result<Self, FlashError<SPI::Error>> {
-        let mut w25 = Self {
-            spi,
-            size: 0,
-        };
+        let mut w25 = Self { spi, size: 0 };
 
         let ids = w25.command(W25OpCode::JedecId, &[], 3).await?;
         let (man_id, dev_id) = (ids[0], u16::from_le_bytes([ids[2], ids[1]]));
@@ -38,7 +35,12 @@ impl<SPI: SpiDevice> W25Q<SPI> {
         Ok(w25)
     }
 
-    async fn command(&mut self, opcode: W25OpCode, params: &[u8], response_len: usize) -> Result<Vec<u8, 256>, FlashError<SPI::Error>> {
+    async fn command(
+        &mut self,
+        opcode: W25OpCode,
+        params: &[u8],
+        response_len: usize,
+    ) -> Result<Vec<u8, 256>, FlashError<SPI::Error>> {
         let mut payload = [&[opcode as u8], params, &[0x00].repeat(response_len)].concat();
 
         self.spi.transfer_in_place(&mut payload).await?;

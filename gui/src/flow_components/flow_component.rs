@@ -7,7 +7,7 @@ pub struct ResponseBounds {
     is_inside: Option<Box<dyn Fn(&Pos2) -> bool>>,
 }
 
-pub struct DisplayValue{
+pub struct DisplayValue {
     desc: String,
     unit: Option<String>,
     val: JustifiedValue,
@@ -116,14 +116,13 @@ define_fluids! {
 
 ///The fill state of components like tanks. A level of 0.0 corresponds to an empty vessel
 pub struct FillState {
-    pub fluid: FluidType,   
+    pub fluid: FluidType,
     pub level: f32,
 }
 
 impl FillState {
-
     pub fn new(fluid: FluidType, level: f32) -> Self {
-        Self { fluid, level}
+        Self { fluid, level }
     }
 }
 
@@ -138,7 +137,7 @@ pub enum ConnectionState {
 //     ConnectionState(ConnectionState),
 // }
 
-pub struct ComponentInfo{
+pub struct ComponentInfo {
     name: String,
     data: Vec<DisplayValue>,
 }

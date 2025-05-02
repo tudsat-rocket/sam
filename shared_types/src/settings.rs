@@ -1,7 +1,7 @@
 //! Data structures for permanent settings stored in FC flash.
 
 use nalgebra::Vector3;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crate::telemetry::TelemetryDataRate;
 
@@ -24,7 +24,7 @@ pub struct LoRaSettings {
     /// binding phrase, used to generate LoRa FHSS sequence
     pub binding_phrase: heapless::String<64>,
     /// key for uplink authentication
-    pub authentication_key: u128
+    pub authentication_key: u128,
 }
 
 impl Default for LoRaSettings {
@@ -32,7 +32,7 @@ impl Default for LoRaSettings {
         Self {
             channels: [true; 14],
             binding_phrase: heapless::String::new(),
-            authentication_key: 0x00000000000000000000000000000000
+            authentication_key: 0x00000000000000000000000000000000,
         }
     }
 }
@@ -60,9 +60,9 @@ pub struct RecoveryOutputSettings {
 
 impl RecoveryOutputSettings {
     pub fn total_duration(&self) -> u32 {
-        self.output_warning_time +
-            self.num_pulses * self.output_high_time +
-            (self.num_pulses - 1) * self.output_low_time
+        self.output_warning_time
+            + self.num_pulses * self.output_high_time
+            + (self.num_pulses - 1) * self.output_low_time
     }
 
     pub fn currently_high(&self, time_in_mode: u32) -> bool {
@@ -93,7 +93,10 @@ pub struct PressureSensorCalibrationSettings {
 
 impl Default for PressureSensorCalibrationSettings {
     fn default() -> Self {
-        Self { intercept: 0.0, slope: 1.0 }
+        Self {
+            intercept: 0.0,
+            slope: 1.0,
+        }
     }
 }
 
@@ -221,11 +224,11 @@ impl Default for Settings {
             },
             acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings {
                 intercept: 1495.7,
-                slope: 24.43
+                slope: 24.43,
             },
             acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings {
                 intercept: 404.5,
-                slope: 25.09
+                slope: 25.09,
             },
             acs_decel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings {
                 intercept: 296.2,
@@ -241,5 +244,6 @@ impl Default for Settings {
             drag_reduction_factor: 0.8,
             drag_reduction_exp: 0.5,
             apogee_error_offset: 10.0,
-        } }
+        }
+    }
 }

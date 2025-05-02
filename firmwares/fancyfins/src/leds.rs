@@ -1,31 +1,95 @@
 use defmt::error;
 use embassy_executor;
-use embassy_stm32::spi::{Spi, Config, Phase, Polarity};
-use embassy_stm32::time::Hertz;
 use embassy_stm32::peripherals::*;
+use embassy_stm32::spi::{Config, Phase, Polarity, Spi};
+use embassy_stm32::time::Hertz;
 use embassy_time::{Duration, Timer};
 use shared_types::FlightMode;
+use smart_leds::SmartLedsWrite;
 use smart_leds::RGB8;
 use ws2812_spi::Ws2812;
-use smart_leds::SmartLedsWrite;
 
 const NAVIGATION_LIGHT_PATTERN: [RGB8; 16] = [
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-    RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-    RGB8 { r: 0x00, g: 0xff, b: 0x00 },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0xff,
+        g: 0x00,
+        b: 0x00,
+    },
+    RGB8 {
+        r: 0x00,
+        g: 0xff,
+        b: 0x00,
+    },
 ];
 const NAVIGATION_LIGHT_BLINK_DURATION_MILLIS: u64 = 50;
 
@@ -34,7 +98,11 @@ async fn boot_animation(leds: &mut Ws2812<Spi<'static, SPI3, DMA1_CH1, DMA1_CH2>
 
     for i in 0..16 {
         Timer::after(Duration::from_millis(20)).await;
-        colors[i] = RGB8 { r: 0x00, g: 0xff, b: 0x00 };
+        colors[i] = RGB8 {
+            r: 0x00,
+            g: 0xff,
+            b: 0x00,
+        };
         let _ = leds.write(colors);
     }
 
@@ -82,11 +150,27 @@ pub async fn run(
             Timer::after(Duration::from_millis(1000 - NAVIGATION_LIGHT_BLINK_DURATION_MILLIS)).await;
         } else {
             let color = match flight_mode {
-                FlightMode::Idle => RGB8 { r: 0x00, g: 0xff, b: 0x00 },
-                FlightMode::HardwareArmed => RGB8 { r: 0xff, g: 0x90, b: 0x00 },
-                FlightMode::Armed => RGB8 { r: 0xff, g: 0x00, b: 0x00 },
-                FlightMode::ArmedLaunchImminent => RGB8 { r: 0xff, g: 0x00, b: 0x00 }, // TODO
-                _ => RGB8::default()
+                FlightMode::Idle => RGB8 {
+                    r: 0x00,
+                    g: 0xff,
+                    b: 0x00,
+                },
+                FlightMode::HardwareArmed => RGB8 {
+                    r: 0xff,
+                    g: 0x90,
+                    b: 0x00,
+                },
+                FlightMode::Armed => RGB8 {
+                    r: 0xff,
+                    g: 0x00,
+                    b: 0x00,
+                },
+                FlightMode::ArmedLaunchImminent => RGB8 {
+                    r: 0xff,
+                    g: 0x00,
+                    b: 0x00,
+                }, // TODO
+                _ => RGB8::default(),
             };
 
             if let Err(_e) = leds.write([color; 16]) {

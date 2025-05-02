@@ -8,19 +8,13 @@ use state_estimator::StateEstimator;
 
 use FlightMode::*;
 
-fn mocked_sensor_values() -> (
-    Vector3<f32>,
-    Vector3<f32>,
-    Vector3<f32>,
-    Vector3<f32>,
-    f32
-) {
+fn mocked_sensor_values() -> (Vector3<f32>, Vector3<f32>, Vector3<f32>, Vector3<f32>, f32) {
     (
         Vector3::new(0.1, -0.5, 0.3),
         Vector3::new(0.6, -3.1, -14.0),
         Vector3::new(0.6, -3.1, -14.0),
         Vector3::new(50.0, -0.5, 0.1),
-        123.4
+        123.4,
     )
 }
 
@@ -36,7 +30,7 @@ fn update(c: &mut Criterion) {
                 |(g, a1, a2, m, b)| {
                     state_estimator.update(Wrapping(t), *mode, Some(g), Some(a1), Some(a2), Some(m), Some(b), None)
                 },
-                BatchSize::PerIteration
+                BatchSize::PerIteration,
             );
         });
     }

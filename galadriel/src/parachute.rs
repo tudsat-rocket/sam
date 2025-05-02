@@ -44,8 +44,7 @@ impl Parachute {
 
     pub fn drag(&self, velocity: f32, density: f32) -> f32 {
         if self.open {
-            self.settings.drag_coef.pressure(velocity, density) *
-                self.settings.area
+            self.settings.drag_coef.pressure(velocity, density) * self.settings.area
         } else {
             0.0
         }
@@ -70,17 +69,13 @@ impl egui::Widget for &mut ParachuteSettings {
                 .striped(true)
                 .show(ui, |ui| {
                     ui.label("Cross section");
-                    ui.add(
-                        egui::DragValue::new(&mut self.area)
-                            .suffix(" m²")
-                            .speed(0.001)
-                            .range(0.001..=100.0),
-                    );
+                    ui.add(egui::DragValue::new(&mut self.area).suffix(" m²").speed(0.001).range(0.001..=100.0));
                     ui.end_row();
                     ui.label("Drag coef.");
                     ui.add(&mut self.drag_coef);
                     ui.end_row();
                 });
-        }).response
+        })
+        .response
     }
 }

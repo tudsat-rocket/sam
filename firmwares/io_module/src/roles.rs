@@ -1,14 +1,14 @@
 use embassy_executor::{SendSpawner, Spawner};
-use embassy_stm32::can::BxcanInstance;
 use embassy_stm32::can::bxcan::Can;
 use embassy_stm32::can::bxcan::{filter, Fifo, StandardId};
+use embassy_stm32::can::BxcanInstance;
 use embassy_stm32::peripherals::CAN;
 
 use embassy_time::Duration;
 use shared_types::{CanBusMessageId, FlightMode, IoBoardRole};
 
-use crate::{BoardIo, CanInChannel, CanOutChannel, DriveVoltage, InputMode};
 use crate::OutputStateChannel;
+use crate::{BoardIo, CanInChannel, CanOutChannel, DriveVoltage, InputMode};
 
 pub mod common;
 
@@ -28,16 +28,15 @@ pub trait BoardRole: Sized {
         let command_prefix = CanBusMessageId::IoBoardCommand(Self::ROLE_ID, 0).into();
         let command_filter = filter::Mask32::frames_with_std_id(
             StandardId::new(command_prefix).unwrap(),
-            StandardId::new(0x7f0).unwrap()
+            StandardId::new(0x7f0).unwrap(),
         );
 
         let telemetry_filter = filter::Mask32::frames_with_std_id(
             StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-            StandardId::new(0x700).unwrap()
+            StandardId::new(0x700).unwrap(),
         );
 
-        can
-            .modify_filters()
+        can.modify_filters()
             .enable_bank(0, Fifo::Fifo0, command_filter)
             .enable_bank(1, Fifo::Fifo1, telemetry_filter);
     }

@@ -34,22 +34,20 @@ impl crate::roles::BoardRole for Recovery {
     ) {
         // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
         if let (Input1::I2c(i2c2), Input3::Gpio(p0, p1)) = (io.input1, io.input3) {
-            low_priority_spawner.spawn(run_i2c_sensors(
-                Some(i2c2),
-                None,
-                Some((p0, p1)),
-                can_out.publisher().unwrap(),
-                Self::ROLE_ID,
-                Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
-            )).unwrap();
+            low_priority_spawner
+                .spawn(run_i2c_sensors(
+                    Some(i2c2),
+                    None,
+                    Some((p0, p1)),
+                    can_out.publisher().unwrap(),
+                    Self::ROLE_ID,
+                    Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
+                ))
+                .unwrap();
         }
 
         // Set the LEDs based on the output state.
         let led_output_state_sub = output_state.subscriber().unwrap();
-        low_priority_spawner.spawn(run_leds(
-            io.leds,
-            led_output_state_sub,
-            ID_LED_PATTERN,
-        )).unwrap();
+        low_priority_spawner.spawn(run_leds(io.leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();
     }
 }

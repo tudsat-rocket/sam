@@ -1,7 +1,7 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::can::bxcan::{filter, Fifo, Frame, Id, StandardId};
+use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::peripherals::CAN;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -14,17 +14,19 @@ pub const NUM_CAN_SUBSCRIBERS: usize = 1; // TODO
 pub const NUM_CAN_PUBLISHERS: usize = 1; // TODO
 
 pub type CanFrame = (u16, [u8; 8]);
-pub type CanInChannel = PubSubChannel::<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper = Subscriber::<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanOutChannel = PubSubChannel::<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
-pub type CanOutPublisher = Publisher::<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanInSubscriper =
+    Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 
 pub static CAN_IN: StaticCell<CanInChannel> = StaticCell::new();
 pub static CAN_OUT: StaticCell<CanOutChannel> = StaticCell::new();
 
 pub const NUM_FLIGHT_MODE_SUBSCRIBERS: usize = 3;
-pub type FlightModeChannel = PubSubChannel::<CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
-pub type FlightModeSubscriber = Subscriber::<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
+pub type FlightModeChannel = PubSubChannel<CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
+pub type FlightModeSubscriber =
+    Subscriber<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
 pub static FLIGHT_MODE: StaticCell<FlightModeChannel> = StaticCell::new();
 
 static CAN: StaticCell<Can<'static, CAN>> = StaticCell::new();
@@ -45,11 +47,10 @@ pub async fn spawn(
 
     let telemetry_filter = filter::Mask32::frames_with_std_id(
         StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-        StandardId::new(0x700).unwrap()
+        StandardId::new(0x700).unwrap(),
     );
 
-    can.modify_filters()
-        .enable_bank(0, Fifo::Fifo0, telemetry_filter);
+    can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
 
     can.set_bitrate(125_000);
     can.enable().await;
@@ -116,7 +117,7 @@ async fn run_rx(
 #[embassy_executor::task]
 pub async fn run_flight_mode_listener(
     mut can_subscriber: CanInSubscriper,
-    flight_mode_publisher: Publisher<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>
+    flight_mode_publisher: Publisher<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>,
 ) -> ! {
     loop {
         let (sid, data) = can_subscriber.next_message_pure().await;

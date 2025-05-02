@@ -48,55 +48,32 @@ impl egui::Widget for &mut Environment {
                 .show(ui, |ui| {
                     ui.label("Launch coords.");
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut self.launch_location.0)
-                                .speed(0.000001)
-                                .range(-90.0..=90.0)
-                        );
-                        ui.add(
-                            egui::DragValue::new(&mut self.launch_location.1)
-                                .speed(0.000001)
-                                .range(-180.0..=180.0)
-                        );
+                        ui.add(egui::DragValue::new(&mut self.launch_location.0).speed(0.000001).range(-90.0..=90.0));
+                        ui.add(egui::DragValue::new(&mut self.launch_location.1).speed(0.000001).range(-180.0..=180.0));
                     });
                     ui.end_row();
 
                     ui.label("Launch altitude");
                     ui.add(
-                        egui::DragValue::new(&mut self.launch_altitude)
-                            .suffix(" m")
-                            .speed(0.1)
-                            .range(-100.0..=6000.0)
+                        egui::DragValue::new(&mut self.launch_altitude).suffix(" m").speed(0.1).range(-100.0..=6000.0),
                     );
                     ui.end_row();
 
                     ui.label("Launch rail length");
                     ui.add(
-                        egui::DragValue::new(&mut self.launch_rail_length)
-                            .suffix(" m")
-                            .speed(0.1)
-                            .range(1.0..=100.0)
+                        egui::DragValue::new(&mut self.launch_rail_length).suffix(" m").speed(0.1).range(1.0..=100.0),
                     );
                     ui.end_row();
 
                     ui.label("Launch azimuth");
-                    ui.add(
-                        egui::DragValue::new(&mut self.azimuth)
-                            .suffix(" °")
-                            .speed(0.1)
-                            .range(0.0..=360.0)
-                    );
+                    ui.add(egui::DragValue::new(&mut self.azimuth).suffix(" °").speed(0.1).range(0.0..=360.0));
                     ui.end_row();
 
                     ui.label("Launch elevation");
-                    ui.add(
-                        egui::DragValue::new(&mut self.elevation)
-                            .suffix(" °")
-                            .speed(0.1)
-                            .range(0.0..=90.0)
-                    );
+                    ui.add(egui::DragValue::new(&mut self.elevation).suffix(" °").speed(0.1).range(0.0..=90.0));
                     ui.end_row();
                 });
-        }).response
+        })
+        .response
     }
 }

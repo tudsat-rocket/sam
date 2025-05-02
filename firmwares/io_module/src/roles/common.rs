@@ -1,9 +1,9 @@
-use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::adc::Adc;
+use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::peripherals::*;
-use embassy_time::{Delay, Ticker};
 use embassy_time::{with_timeout, Duration};
+use embassy_time::{Delay, Ticker};
 use embedded_hal::digital::OutputPin;
 
 use shared_types::*;
@@ -13,7 +13,7 @@ use crate::{CanInSubscriper, DriveVoltage, OutputStatePublisher, OutputStateSubs
 async fn receive_output_message(
     subscriber: &mut crate::CanInSubscriper,
     role: IoBoardRole,
-    command_id: u8
+    command_id: u8,
 ) -> IoBoardOutputMessage {
     let expected_sid = CanBusMessageId::IoBoardCommand(role, command_id).into();
 
@@ -23,15 +23,13 @@ async fn receive_output_message(
                 if let Ok(Some(msg)) = IoBoardOutputMessage::parse(data) {
                     return msg;
                 }
-            },
+            }
             _ => {}
         }
     }
 }
 
-async fn receive_telemetry_message(
-    subscriber: &mut crate::CanInSubscriper,
-) -> TelemetryToPayloadMessage {
+async fn receive_telemetry_message(subscriber: &mut crate::CanInSubscriper) -> TelemetryToPayloadMessage {
     let expected_sid = CanBusMessageId::TelemetryBroadcast(0).into();
 
     loop {
@@ -78,7 +76,7 @@ pub async fn run_output_control_via_can(
         let (outputs, failsafe) = if let Some(timeout) = timeout {
             match with_timeout(timeout, receive_output_message(&mut can_subscriber, role, 0)).await {
                 Ok(msg) => (msg.outputs, false),
-                Err(_) => ([false; 8], true)
+                Err(_) => ([false; 8], true),
             }
         } else {
             (receive_output_message(&mut can_subscriber, role, 0).await.outputs, false)
@@ -90,7 +88,7 @@ pub async fn run_output_control_via_can(
 
 async fn read_i2c_amp_value<I2C: embedded_hal_async::i2c::I2c>(
     i2c: &mut I2C,
-    i2c_address: u8
+    i2c_address: u8,
 ) -> Result<(u16, bool), I2C::Error> {
     // https://www.ti.com/lit/ds/symlink/adc101c027.pdf
     let mut buffer: [u8; 2] = [0x00, 0x00];
@@ -183,11 +181,11 @@ pub async fn run_power_report(
             DriveVoltage::Battery | DriveVoltage::Regulator5V => {
                 let sample = with_timeout(TIMEOUT, adc.read(&mut battery_voltage_sense_pin)).await;
                 ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (4.7 + 2.2) / 2.2) as u16
-            },
+            }
             DriveVoltage::ChargeBus => {
                 let sample = with_timeout(TIMEOUT, adc.read(&mut charge_bus_voltage_sense_pin)).await;
                 ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (15.0 + 2.2) / 2.2) as u16
-            },
+            }
             DriveVoltage::BoostConverter => {
                 let sample = with_timeout(TIMEOUT, adc.read(&mut boost_voltage_sense_pin)).await;
                 ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (22.0 + 2.2) / 2.2) as u16
@@ -255,7 +253,7 @@ pub async fn run_leds(
         let _ = led_white.set_state((!white).into());
         let _ = led_yellow.set_state((!true).into());
 
-        i = (i+1) % id_pattern.len();
+        i = (i + 1) % id_pattern.len();
         ticker.next().await;
     }
 }

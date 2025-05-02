@@ -1,15 +1,18 @@
 //! USB serial link implementation, handling regular telemetry, log messsages
 //! and uplink commands.
 
-use heapless::Vec;
 use embassy_executor::Spawner;
-use embassy_stm32::{peripherals::{PA12, PA11, USB_OTG_FS}, usb_otg::Driver};
 use embassy_stm32::bind_interrupts;
-use embassy_sync::channel::{self, Channel};
+use embassy_stm32::{
+    peripherals::{PA11, PA12, USB_OTG_FS},
+    usb_otg::Driver,
+};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_time::{Timer, Duration, TimeoutError, with_timeout};
+use embassy_sync::channel::{self, Channel};
+use embassy_time::{with_timeout, Duration, TimeoutError, Timer};
+use embassy_usb::class::cdc_acm::{CdcAcmClass, Receiver, Sender, State};
 use embassy_usb::{driver::EndpointError, Builder, UsbDevice};
-use embassy_usb::class::cdc_acm::{CdcAcmClass, State, Sender, Receiver};
+use heapless::Vec;
 use static_cell::StaticCell;
 
 use shared_types::*;
@@ -22,9 +25,9 @@ static CONTROL_BUFFER: StaticCell<[u8; 128]> = StaticCell::new();
 
 static CDC_ACM_STATE: StaticCell<State> = StaticCell::new();
 
-static UPLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, UplinkMessage, 3>> = StaticCell::new();
-static DOWNLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
-static FLASH_DOWNLINK_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
+static UPLINK_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, UplinkMessage, 3>> = StaticCell::new();
+static DOWNLINK_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
+static FLASH_DOWNLINK_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
 
 bind_interrupts!(struct Irqs {
     OTG_FS => embassy_stm32::usb_otg::InterruptHandler<USB_OTG_FS>;
@@ -80,7 +83,9 @@ impl UsbHandle {
 
         let spawner = Spawner::for_current_executor().await;
         spawner.spawn(run_usb(usb)).unwrap();
-        spawner.spawn(handle_usb_downlink(usb_sender, downlink_channel.receiver(), flash_downlink_channel.receiver())).unwrap();
+        spawner
+            .spawn(handle_usb_downlink(usb_sender, downlink_channel.receiver(), flash_downlink_channel.receiver()))
+            .unwrap();
         spawner.spawn(handle_usb_uplink(usb_receiver, uplink_channel.sender())).unwrap();
 
         let usb_handle = Self {
@@ -117,7 +122,10 @@ async fn run_usb(mut usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>) -> ! 
     usb.run().await
 }
 
-async fn write_message(class: &mut Sender<'static, Driver<'static, USB_OTG_FS>>, serialized: &[u8]) -> Result<(), EndpointError> {
+async fn write_message(
+    class: &mut Sender<'static, Driver<'static, USB_OTG_FS>>,
+    serialized: &[u8],
+) -> Result<(), EndpointError> {
     for chunk in serialized.chunks(64) {
         class.write_packet(chunk).await?;
     }
@@ -133,7 +141,7 @@ async fn write_message(class: &mut Sender<'static, Driver<'static, USB_OTG_FS>>,
 async fn handle_usb_downlink(
     mut class: Sender<'static, Driver<'static, USB_OTG_FS>>,
     downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
-    flash_downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>
+    flash_downlink_receiver: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
 ) -> ! {
     loop {
         class.wait_connection().await;
@@ -153,7 +161,7 @@ async fn handle_usb_downlink(
             Ok(Ok(())) => {}
             Ok(Err(EndpointError::BufferOverflow)) => {
                 defmt::error!("buffer overflow");
-            },
+            }
             Ok(Err(EndpointError::Disabled)) => {
                 defmt::error!("disabled");
             }
@@ -170,7 +178,7 @@ async fn handle_usb_downlink(
 #[embassy_executor::task]
 async fn handle_usb_uplink(
     mut class: Receiver<'static, Driver<'static, USB_OTG_FS>>,
-    uplink_sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>
+    uplink_sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
 ) -> ! {
     const UPLINK_BUFFER_SIZE: usize = 512;
 
@@ -193,14 +201,14 @@ async fn handle_usb_uplink(
                     Ok((msg, rest)) => {
                         uplink_buffer = Vec::from_slice(rest).unwrap_or_default();
                         uplink_sender.send(msg).await;
-                    },
+                    }
                     Err(_) => {
                         if uplink_buffer.iter().position(|b| *b == 0).is_some() {
                             uplink_buffer.truncate(0);
                         }
                     }
                 }
-            },
+            }
             Err(_e) => {
                 continue;
             }

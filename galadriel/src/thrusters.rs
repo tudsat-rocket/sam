@@ -112,12 +112,7 @@ impl egui::Widget for &mut ThrusterSettings {
                                 .range(0.0..=200.0),
                         );
                         ui.weak(" in ");
-                        ui.add(
-                            egui::DragValue::new(&mut self.tank_volume)
-                                .suffix(" L")
-                                .speed(0.01)
-                                .range(0.0..=200.0),
-                        );
+                        ui.add(egui::DragValue::new(&mut self.tank_volume).suffix(" L").speed(0.01).range(0.0..=200.0));
                     });
                     ui.end_row();
 
@@ -133,10 +128,7 @@ impl egui::Widget for &mut ThrusterSettings {
                     ui.label("Thrust");
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::DragValue::new(&mut self.nominal_thrust)
-                                .suffix(" N")
-                                .speed(0.01)
-                                .range(0.0..=1000.0),
+                            egui::DragValue::new(&mut self.nominal_thrust).suffix(" N").speed(0.01).range(0.0..=1000.0),
                         );
                         ui.weak(format!(" @ {}bar, ", self.nominal_tank_pressure));
                         ui.add(
@@ -148,6 +140,7 @@ impl egui::Widget for &mut ThrusterSettings {
                     });
                     ui.end_row();
                 });
-        }).response
+        })
+        .response
     }
 }

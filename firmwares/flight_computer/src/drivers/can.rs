@@ -31,13 +31,13 @@ struct TransmitMessageObject {
 impl TransmitMessageObject {
     fn serialize(self) -> [u8; 16] {
         let dlc: u32 = 8;
-        let t1: u32 = ((self.seq as u32) << 9) |
-            ((self.error_status_indicator as u32) << 8) |
-            ((self.fd_frame as u32) << 7) |
-            ((self.bit_rate_switch as u32) << 6) |
-            ((self.remote_transmission_request as u32) << 5) |
-            ((self.identifier_extension_flag as u32) << 4) |
-            (dlc & 0x0f);
+        let t1: u32 = ((self.seq as u32) << 9)
+            | ((self.error_status_indicator as u32) << 8)
+            | ((self.fd_frame as u32) << 7)
+            | ((self.bit_rate_switch as u32) << 6)
+            | ((self.remote_transmission_request as u32) << 5)
+            | ((self.identifier_extension_flag as u32) << 4)
+            | (dlc & 0x0f);
 
         let mut frame = [0x00; 16];
         frame[..4].copy_from_slice(&self.id.to_le_bytes());
@@ -84,15 +84,12 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
         ((nbrp - 1) << 24) | ((ntseg1 - 1) << 16) | ((ntseg2 - 1) << 8) | (nsjw - 1)
     }
 
-    pub async fn init(
-        spi: SPI,
-        data_rate: CanDataRate
-    ) -> Result<Self, MCP2517Error<SPI::Error>> {
+    pub async fn init(spi: SPI, data_rate: CanDataRate) -> Result<Self, MCP2517Error<SPI::Error>> {
         let mut mcp = Self {
             spi,
             seq: 0,
             fifo_index: 0,
-            data_rate
+            data_rate,
         };
 
         mcp.configure().await?;
@@ -111,7 +108,7 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
             c1con = self.sfr_read(MCP2517FDRegister::C1Con).await?;
 
             if (c1con >> 21) & 0b111 == 0b100 {
-                break
+                break;
             }
         }
 
@@ -145,7 +142,7 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
         for _in in 0..3 {
             c1con = self.sfr_read(MCP2517FDRegister::C1Con).await?;
             if (c1con >> 21) & 0b111 == 0b000 {
-                break
+                break;
             }
         }
 
@@ -183,7 +180,7 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
     async fn memory_read(&mut self, address: u32) -> Result<[u8; 16], SPI::Error> {
         let address = ((MCP2517FDInstruction::Read as u16) << 12) | (address as u16);
 
-        let mut buffer: [u8; 16+2] = [0; 16+2];
+        let mut buffer: [u8; 16 + 2] = [0; 16 + 2];
         buffer[0..2].copy_from_slice(&address.to_be_bytes());
 
         self.spi.transfer_in_place(&mut buffer).await?;
@@ -198,7 +195,7 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
     async fn memory_write(&mut self, address: u32, value: [u8; 16]) -> Result<(), SPI::Error> {
         let address = ((MCP2517FDInstruction::Write as u16) << 12) | (address as u16);
 
-        let mut buffer: [u8; 16+2] = [0; 16+2];
+        let mut buffer: [u8; 16 + 2] = [0; 16 + 2];
         buffer[0..2].copy_from_slice(&address.to_be_bytes());
         buffer[2..].copy_from_slice(&value);
 
@@ -265,7 +262,6 @@ impl<SPI: SpiDevice<u8> + 'static> MCP2517FD<SPI> {
     }
 }
 
-
 #[allow(dead_code)]
 enum MCP2517FDInstruction {
     Reset = 0b0000,
@@ -281,7 +277,7 @@ enum MCP2517FDRegister {
     C1Con = 0x000,
     C1NBtCfg = 0x004,
     C1DBtCfg = 0x008,
-    C1TDC= 0x00C,
+    C1TDC = 0x00C,
     C1FiFoCon1 = 0x05c,
     C1FiFoSta1 = 0x060,
     C1FiFoUA1 = 0x064,

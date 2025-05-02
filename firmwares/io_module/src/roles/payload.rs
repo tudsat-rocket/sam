@@ -39,18 +39,14 @@ impl crate::roles::BoardRole for Payload {
 
         // Set the LEDs based on the output state.
         let led_output_state_sub = output_state.subscriber().unwrap();
-        low_priority_spawner.spawn(run_leds(
-            io.leds,
-            led_output_state_sub,
-            ID_LED_PATTERN,
-        )).unwrap();
+        low_priority_spawner.spawn(run_leds(io.leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();
     }
 }
 
 #[embassy_executor::task]
 pub async fn run_can_to_uart(
     mut subscriber: crate::CanInSubscriper,
-    mut uart_tx: UartTx<'static, USART3, DMA1_CH2>
+    mut uart_tx: UartTx<'static, USART3, DMA1_CH2>,
 ) -> ! {
     loop {
         // These messages are relayed byte-for-byte, including CRC, so we never
@@ -65,10 +61,7 @@ pub async fn run_can_to_uart(
 }
 
 #[embassy_executor::task]
-pub async fn run_uart_to_can(
-    publisher: crate::CanOutPublisher,
-    mut uart_rx: UartRx<'static, USART3, DMA1_CH3>
-) -> ! {
+pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, USART3, DMA1_CH3>) -> ! {
     let message_id: u16 = CanBusMessageId::IoBoardInput(IoBoardRole::Payload, 0).into();
 
     // TODO: convince swiss to stick to 8-byte messages?
@@ -79,7 +72,7 @@ pub async fn run_uart_to_can(
         match join(uart_rx.read(&mut buffer), ticker_interval.next()).await {
             (Ok(()), _) => {
                 publisher.publish_immediate((message_id, buffer));
-            },
+            }
             (Err(e), _) => {
                 error!("Failed to read payload telemetry message from UART: {:?}", Debug2Format(&e));
             }

@@ -15,7 +15,7 @@
 //! 0x200 - 0x2ff      Internal telemetry (e.g. data shared with payloads)
 
 #[cfg(feature = "serde")]
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use crc::{Crc, CRC_16_IBM_SDLC};
 
@@ -42,10 +42,10 @@ impl Into<u16> for CanBusMessageId {
     fn into(self) -> u16 {
         match self {
             Self::IoBoardCommand(role, id) => 0x000 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
-            Self::IoBoardInput(role, id)   => 0x100 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
-            Self::FinBoardInput(fin, id)   => 0x100 + (((fin + 0x0b) as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
-            Self::BatteryBoardInput(id)    => 0x1f0 + (id as u16 & 0x0f),
-            Self::TelemetryBroadcast(id)   => 0x200 + id as u16,
+            Self::IoBoardInput(role, id) => 0x100 + ((role as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
+            Self::FinBoardInput(fin, id) => 0x100 + (((fin + 0x0b) as u16 & 0x0f) << 4) + (id as u16 & 0x0f),
+            Self::BatteryBoardInput(id) => 0x1f0 + (id as u16 & 0x0f),
+            Self::TelemetryBroadcast(id) => 0x200 + id as u16,
         }
     }
 }
@@ -57,21 +57,25 @@ impl TryFrom<u16> for CanBusMessageId {
         match value {
             0x000..=0x0ff => {
                 let role_id: u8 = ((value & 0x0f0) >> 4) as u8;
-                let Ok(role) = IoBoardRole::try_from(role_id) else { return Err(value) };
+                let Ok(role) = IoBoardRole::try_from(role_id) else {
+                    return Err(value);
+                };
                 Ok(Self::IoBoardCommand(role, (value & 0x00f) as u8))
-            },
+            }
             0x100..=0x1af => {
                 let role_id: u8 = ((value & 0x0f0) >> 4) as u8;
-                let Ok(role) = IoBoardRole::try_from(role_id) else { return Err(value) };
+                let Ok(role) = IoBoardRole::try_from(role_id) else {
+                    return Err(value);
+                };
                 Ok(Self::IoBoardInput(role, (value & 0x00f) as u8))
-            },
+            }
             0x1b0..=0x1ef => {
                 let fin_id: u8 = ((value & 0x0f0) >> 4) as u8 - 0x0b;
                 Ok(Self::FinBoardInput(fin_id, (value & 0x00f) as u8))
-            },
+            }
             0x1f0..=0x1ff => Ok(Self::BatteryBoardInput((value & 0x00f) as u8)),
             0x200..=0x2ff => Ok(Self::TelemetryBroadcast((value & 0x0ff) as u8)),
-            unknown => Err(unknown)
+            unknown => Err(unknown),
         }
     }
 }
@@ -115,7 +119,7 @@ impl TryFrom<u8> for IoBoardRole {
             1 => Ok(IoBoardRole::Acs),
             2 => Ok(IoBoardRole::Recovery),
             8 => Ok(IoBoardRole::Payload),
-            _ => Err(value)
+            _ => Err(value),
         }
     }
 }
@@ -129,8 +133,11 @@ pub struct IoBoardOutputMessage {
 
 impl CanBusMessage for IoBoardOutputMessage {
     fn serialize(self) -> [u8; 6] {
-        let byte = self.outputs.iter().enumerate()
-            .map(|(i, output)| (*output as u8) << (7-i))
+        let byte = self
+            .outputs
+            .iter()
+            .enumerate()
+            .map(|(i, output)| (*output as u8) << (7 - i))
             .reduce(|a, b| a | b)
             .unwrap();
 
@@ -173,7 +180,7 @@ impl CanBusMessage for IoBoardSensorMessage {
 
             // each sensor gets 12 bits sacc_cccc_cccc (s = is_some, a = alert, c = value)
             let sensor = (some_flag << 11) | (alert_flag << 10) | sensor_value;
-            sensors_packed |= (sensor as u64) << (52 - (i*12));
+            sensors_packed |= (sensor as u64) << (52 - (i * 12));
         }
 
         let mut msg = [0x00; 6];
@@ -186,19 +193,16 @@ impl CanBusMessage for IoBoardSensorMessage {
 
         let mut i2c_sensors = [None; 4];
         for i in 0..i2c_sensors.len() {
-            let sensor = (sensors_packed >> (52 - i*12)) & 0xfff;
+            let sensor = (sensors_packed >> (52 - i * 12)) & 0xfff;
             let is_some = (sensor >> 11) > 0;
             let alert = ((sensor >> 10) & 0b1) > 0;
             let value = (sensor & 0x3ff) as u16;
             i2c_sensors[i] = is_some.then_some((value, alert));
         }
 
-        Some(Self {
-            i2c_sensors,
-        })
+        Some(Self { i2c_sensors })
     }
 }
-
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -257,11 +261,7 @@ impl CanBusMessage for TelemetryToPayloadMessage {
         let Ok(mode) = data[3].try_into() else { return None };
         let altitude = u16::from_le_bytes([data[4], data[5]]);
 
-        Some(Self {
-                time,
-                mode,
-                altitude
-        })
+        Some(Self { time, mode, altitude })
     }
 }
 
@@ -269,9 +269,9 @@ impl CanBusMessage for TelemetryToPayloadMessage {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct BatteryTelemetryMessage {
     pub voltage_battery: u16, // mV
-    pub voltage_charge: u16, // mV
-    pub current: i32, // mA
-    pub stat0: bool, // TODO: higher type
+    pub voltage_charge: u16,  // mV
+    pub current: i32,         // mA
+    pub stat0: bool,          // TODO: higher type
     pub stat1: bool,
 }
 

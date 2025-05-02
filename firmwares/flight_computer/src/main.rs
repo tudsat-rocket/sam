@@ -10,17 +10,17 @@ extern crate alloc;
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::adc::Adc;
-use embassy_stm32::gpio::{Level, Speed, Output, Pull, Input, OutputType};
+use embassy_stm32::gpio::low_level::Pin;
+use embassy_stm32::gpio::{Input, Level, Output, OutputType, Pull, Speed};
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
-use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Pll, PllMul, PllPreDiv, PllPDiv, PllQDiv, PllSource, Sysclk};
+use embassy_stm32::rcc::{AHBPrescaler, APBPrescaler, Pll, PllMul, PllPDiv, PllPreDiv, PllQDiv, PllSource, Sysclk};
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::Channel;
-use embassy_stm32::gpio::low_level::Pin;
 use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::timer::Channel;
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_stm32::{interrupt, Config};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Duration, Instant, Ticker};
@@ -36,22 +36,22 @@ mod flash;
 mod lora;
 mod usb;
 
-#[cfg(not(feature="gcs"))]
-mod vehicle;
-#[cfg(feature="gcs")]
+#[cfg(feature = "gcs")]
 mod gcs;
+#[cfg(not(feature = "gcs"))]
+mod vehicle;
 
 use buzzer::*;
 use can::*;
+use drivers::sensors::*;
 use flash::*;
 use lora::*;
-use drivers::sensors::*;
 use usb::*;
 
-#[cfg(not(feature="gcs"))]
-use vehicle::*;
-#[cfg(feature="gcs")]
+#[cfg(feature = "gcs")]
 use gcs::*;
+#[cfg(not(feature = "gcs"))]
+use vehicle::*;
 
 const HEAP_SIZE: usize = 1024;
 static mut HEAP: [core::mem::MaybeUninit<u8>; HEAP_SIZE] = [core::mem::MaybeUninit::uninit(); HEAP_SIZE];
@@ -66,8 +66,8 @@ static SPI1_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI1, DMA2_CH3
 static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI2, DMA1_CH4, DMA1_CH3>>> = StaticCell::new();
 static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<SPI3, DMA1_CH7, DMA1_CH0>>> = StaticCell::new();
 
-#[cfg_attr(feature="gcs", allow(dead_code))]
-#[cfg_attr(feature="gcs", allow(unused_variables))]
+#[cfg_attr(feature = "gcs", allow(dead_code))]
+#[cfg_attr(feature = "gcs", allow(unused_variables))]
 #[embassy_executor::main]
 async fn main(low_priority_spawner: Spawner) {
     // Basic setup, including clocks
@@ -105,9 +105,9 @@ async fn main(low_priority_spawner: Spawner) {
     // Shared SPI1 bus
     let mut spi1_config = embassy_stm32::spi::Config::default();
     spi1_config.frequency = Hertz::mhz(10);
-    #[cfg(feature="rev1")]
+    #[cfg(feature = "rev1")]
     let spi1 = Spi::new(p.SPI1, p.PA5, p.PA7, p.PB4, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
-    #[cfg(not(feature="rev1"))]
+    #[cfg(not(feature = "rev1"))]
     let spi1 = Spi::new(p.SPI1, p.PA5, p.PA7, p.PA6, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
     let spi1 = Mutex::<CriticalSectionRawMutex, _>::new(spi1);
     let spi1 = SPI1_SHARED.init(spi1);
@@ -123,11 +123,10 @@ async fn main(low_priority_spawner: Spawner) {
     let acc = H3LIS331DL::init(SpiDevice::new(spi1, spi1_cs_acc)).await.unwrap();
     let mag = LIS3MDL::init(SpiDevice::new(spi1, spi1_cs_mag)).await.unwrap();
     let baro = MS5611::init(SpiDevice::new(spi1, spi1_cs_baro)).await.unwrap();
-    let radio = Radio::init(
-        SpiDevice::new(spi1, spi1_cs_radio),
-        Input::new(p.PC0, Pull::Down),
-        Input::new(p.PC1, Pull::Down),
-    ).await.unwrap();
+    let radio =
+        Radio::init(SpiDevice::new(spi1, spi1_cs_radio), Input::new(p.PC0, Pull::Down), Input::new(p.PC1, Pull::Down))
+            .await
+            .unwrap();
 
     // SPI2, only used for CAN bus
     let mut spi2_config = embassy_stm32::spi::Config::default();
@@ -136,9 +135,9 @@ async fn main(low_priority_spawner: Spawner) {
     let spi2 = Mutex::<CriticalSectionRawMutex, _>::new(spi2);
     let spi2 = SPI2_SHARED.init(spi2);
 
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let spi2_cs_can = Output::new(p.PB12, Level::High, Speed::VeryHigh);
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let (can_tx, can_rx, can_handle) = can::init(SpiDevice::new(spi2, spi2_cs_can), CanDataRate::Kbps125).await;
 
     // SPI 3
@@ -149,16 +148,17 @@ async fn main(low_priority_spawner: Spawner) {
     let spi3 = SPI3_SHARED.init(spi3);
 
     let spi3_cs_flash = Output::new(p.PD2, Level::High, Speed::VeryHigh);
-    #[cfg(not(feature="gcs"))]
-    let (flash, flash_handle, settings) = Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
+    #[cfg(not(feature = "gcs"))]
+    let (flash, flash_handle, settings) =
+        Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
 
     // Initialize GPS
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);
 
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let adc = Adc::new(p.ADC1, &mut Delay);
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
 
     let led_red = Output::new(p.PC13, Level::Low, Speed::Low);
@@ -166,14 +166,14 @@ async fn main(low_priority_spawner: Spawner) {
     let led_green = Output::new(p.PC15, Level::Low, Speed::Low);
     let leds = (led_red, led_yellow, led_green);
 
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let gpio_drogue = Output::new(p.PC8, Level::Low, Speed::Low);
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let gpio_main = Output::new(p.PC9, Level::Low, Speed::Low);
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let recovery = (gpio_drogue, gpio_main);
 
-    #[cfg(feature="rev1")]
+    #[cfg(feature = "rev1")]
     let buzzer = {
         let gpiob_block = p.PB9.block();
         let pwm_pin = PwmPin::new_ch4(p.PB9, OutputType::PushPull);
@@ -181,7 +181,7 @@ async fn main(low_priority_spawner: Spawner) {
         Buzzer::init(pwm, Channel::Ch4, gpiob_block, 9)
     };
 
-    #[cfg(not(feature="rev1"))]
+    #[cfg(not(feature = "rev1"))]
     let buzzer = {
         let gpioc_block = p.PC7.block();
         let pwm_pin = PwmPin::new_ch2(p.PC7, OutputType::PushPull);
@@ -191,7 +191,7 @@ async fn main(low_priority_spawner: Spawner) {
 
     iwdg.unleash();
 
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     let vehicle = Vehicle::init(
         imu,
         acc,
@@ -209,7 +209,7 @@ async fn main(low_priority_spawner: Spawner) {
         settings,
     );
 
-    #[cfg(feature="gcs")]
+    #[cfg(feature = "gcs")]
     let gcs = GroundControlStation::init(usb, radio, leds, buzzer);
 
     // Start high priority executor
@@ -220,7 +220,7 @@ async fn main(low_priority_spawner: Spawner) {
     interrupt::I2C3_ER.set_priority(Priority::P7);
     let medium_priority_spawner = EXECUTOR_MEDIUM.start(interrupt::I2C3_ER);
 
-    #[cfg(not(feature="gcs"))]
+    #[cfg(not(feature = "gcs"))]
     {
         high_priority_spawner.spawn(vehicle::run(vehicle, iwdg)).unwrap();
         medium_priority_spawner.spawn(can::run_tx(can_tx)).unwrap();
@@ -229,7 +229,7 @@ async fn main(low_priority_spawner: Spawner) {
         medium_priority_spawner.spawn(flash::run(flash)).unwrap();
     }
 
-    #[cfg(feature="gcs")]
+    #[cfg(feature = "gcs")]
     high_priority_spawner.spawn(gcs::run(gcs, iwdg)).unwrap();
 
     low_priority_spawner.spawn(guard_task()).unwrap();

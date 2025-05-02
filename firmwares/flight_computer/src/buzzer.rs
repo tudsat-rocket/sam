@@ -2,188 +2,294 @@
 //! warning tones using the STM32's timers for PWM generation.
 //! TODO: maybe run melodies in a separate embassy task
 
-use embassy_stm32::timer::{simple_pwm::SimplePwm, Channel, CaptureCompare16bitInstance};
-use embassy_stm32::time::Hertz;
-use embassy_stm32::pac::gpio::Gpio;
 use embassy_stm32::pac::gpio::vals;
+use embassy_stm32::pac::gpio::Gpio;
+use embassy_stm32::time::Hertz;
+use embassy_stm32::timer::{simple_pwm::SimplePwm, CaptureCompare16bitInstance, Channel};
 
 use num_traits::Float;
 
 use shared_types::*;
 
-use Semitone::*;
 use crate::drivers::sensors::BatteryStatus;
+use Semitone::*;
 
 #[allow(dead_code)]
 const STARTUP: [Note; 6] = [
-    Note::note(C, 4, 150), Note::pause(10),
-    Note::note(E, 4, 150), Note::pause(10),
-    Note::note(G, 4, 150), Note::pause(10),
+    Note::note(C, 4, 150),
+    Note::pause(10),
+    Note::note(E, 4, 150),
+    Note::pause(10),
+    Note::note(G, 4, 150),
+    Note::pause(10),
 ];
 
 const HWARMED: [Note; 6] = [
-    Note::note(A, 3, 150), Note::pause(10),
-    Note::note(A, 3, 150), Note::pause(10),
-    Note::note(A, 3, 150), Note::pause(10),
+    Note::note(A, 3, 150),
+    Note::pause(10),
+    Note::note(A, 3, 150),
+    Note::pause(10),
+    Note::note(A, 3, 150),
+    Note::pause(10),
 ];
 
 const ARMED: [Note; 6] = [
-    Note::note(G, 4, 150), Note::pause(10),
-    Note::note(G, 4, 150), Note::pause(10),
-    Note::note(G, 4, 150), Note::pause(10),
+    Note::note(G, 4, 150),
+    Note::pause(10),
+    Note::note(G, 4, 150),
+    Note::pause(10),
+    Note::note(G, 4, 150),
+    Note::pause(10),
 ];
 
 #[allow(dead_code)]
 const LANDED: [Note; 57] = [
-    Note::note(C, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-    Note::note(F, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-
-    Note::note(As, 4, 450 - 50), Note::pause(50),
-    Note::note(As, 4, 450 - 50), Note::pause(50),
-    Note::note(G, 4, 600 - 50), Note::pause(50),
+    Note::note(C, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(F, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(As, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(As, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(G, 4, 600 - 50),
+    Note::pause(50),
     Note::pause(300),
-    Note::note(C, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-    Note::note(F, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-
-    Note::note(G, 4, 450 - 50), Note::pause(50),
-    Note::note(G, 4, 450 - 50), Note::pause(50),
-    Note::note(F, 4, 450 - 50), Note::pause(50),
-    Note::note(E, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 300 - 10), Note::pause(10),
-    Note::note(C, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-    Note::note(F, 4, 150 - 10), Note::pause(10),
-    Note::note(D, 4, 150 - 10), Note::pause(10),
-
-    Note::note(F, 4, 600 - 50), Note::pause(50),
-    Note::note(G, 4, 300 - 50), Note::pause(50),
-    Note::note(E, 4, 450 - 50), Note::pause(50),
-    Note::note(D, 4, 150 - 50), Note::pause(50),
-    Note::note(C, 4, 600 - 50), Note::pause(50),
-    Note::note(C, 4, 300 - 50), Note::pause(50),
-
-    Note::note(G, 4, 600 - 50), Note::pause(50),
-    Note::note(F, 4, 600 - 50), Note::pause(50),
+    Note::note(C, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(F, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(G, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(G, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(F, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(E, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 300 - 10),
+    Note::pause(10),
+    Note::note(C, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(F, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(D, 4, 150 - 10),
+    Note::pause(10),
+    Note::note(F, 4, 600 - 50),
+    Note::pause(50),
+    Note::note(G, 4, 300 - 50),
+    Note::pause(50),
+    Note::note(E, 4, 450 - 50),
+    Note::pause(50),
+    Note::note(D, 4, 150 - 50),
+    Note::pause(50),
+    Note::note(C, 4, 600 - 50),
+    Note::pause(50),
+    Note::note(C, 4, 300 - 50),
+    Note::pause(50),
+    Note::note(G, 4, 600 - 50),
+    Note::pause(50),
+    Note::note(F, 4, 600 - 50),
+    Note::pause(50),
 ];
 
 #[allow(dead_code)]
 const REMNANTS: [Note; 40] = [
-    Note::note(E, 3, 200), Note::pause(10),
-    Note::note(D, 3, 200), Note::pause(10),
-    Note::note(A, 4, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-
-    Note::note(A, 4, 400), Note::pause(10),
-    Note::note(D, 5, 200), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(F, 5, 800), Note::pause(10),
-
-    Note::note(E, 3, 200), Note::pause(10),
-    Note::note(D, 3, 200), Note::pause(10),
-    Note::note(F, 3, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-    Note::note(D, 5, 400), Note::pause(10),
-
-    Note::note(F, 3, 400), Note::pause(10),
-    Note::note(D, 5, 200), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10),
-    Note::note(As, 4, 800), Note::pause(10),
+    Note::note(E, 3, 200),
+    Note::pause(10),
+    Note::note(D, 3, 200),
+    Note::pause(10),
+    Note::note(A, 4, 400),
+    Note::pause(10),
+    Note::note(D, 5, 400),
+    Note::pause(10),
+    Note::note(D, 5, 400),
+    Note::pause(10),
+    Note::note(A, 4, 400),
+    Note::pause(10),
+    Note::note(D, 5, 200),
+    Note::pause(10),
+    Note::note(A, 4, 100),
+    Note::pause(10),
+    Note::note(D, 5, 100),
+    Note::pause(10),
+    Note::note(F, 5, 800),
+    Note::pause(10),
+    Note::note(E, 3, 200),
+    Note::pause(10),
+    Note::note(D, 3, 200),
+    Note::pause(10),
+    Note::note(F, 3, 400),
+    Note::pause(10),
+    Note::note(D, 5, 400),
+    Note::pause(10),
+    Note::note(D, 5, 400),
+    Note::pause(10),
+    Note::note(F, 3, 400),
+    Note::pause(10),
+    Note::note(D, 5, 200),
+    Note::pause(10),
+    Note::note(D, 5, 100),
+    Note::pause(10),
+    Note::note(D, 5, 100),
+    Note::pause(10),
+    Note::note(As, 4, 800),
+    Note::pause(10),
 ];
 
 #[allow(dead_code)]
 const THUNDERSTRUCK: [Note; 64] = [
-    Note::note(B, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(A, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Fs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Gs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-
-    Note::note(Fs, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(E, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
-    Note::note(Ds, 4, 100), Note::pause(10),
-    Note::note(B, 3, 100), Note::pause(10),
+    Note::note(B, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(A, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Gs, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(A, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Gs, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Fs, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Gs, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(E, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Fs, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Ds, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(E, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Ds, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(E, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Ds, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(E, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
+    Note::note(Ds, 4, 100),
+    Note::pause(10),
+    Note::note(B, 3, 100),
+    Note::pause(10),
 ];
 
 #[allow(dead_code)]
 const E1M1: [Note; 56] = [
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(D, 4, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(C, 4, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(As, 3, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(Gs, 3, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(A, 3, 100), Note::pause(10),
-    Note::note(As, 3, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(D, 4, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(C, 4, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(As, 3, 100), Note::pause(10),
-
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(E, 3, 100), Note::pause(10),
-    Note::note(Gs, 3, 500), Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(D, 4, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(C, 4, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(As, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(Gs, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(A, 3, 100),
+    Note::pause(10),
+    Note::note(As, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(D, 4, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(C, 4, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(As, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(E, 3, 100),
+    Note::pause(10),
+    Note::note(Gs, 3, 500),
+    Note::pause(10),
 ];
 #[allow(dead_code)]
 const WARNING_MELODY: [Note; 4] = [
-    Note::note(C, 5, 500),  Note::pause(200),
-    Note::note(C, 5, 500), Note::pause(9000)];
+    Note::note(C, 5, 500),
+    Note::pause(200),
+    Note::note(C, 5, 500),
+    Note::pause(9000),
+];
 
 #[allow(dead_code)]
 const SHORT_WARNING_MELODY: [Note; 2] = [Note::note(C, 5, 500), Note::pause(500)];
 #[allow(dead_code)]
 const NO_BATTERY_ATTACHED_MELODY: [Note; 4] = [
-    Note::note(F, 5, 400), Note::pause(10),
-    Note::note(D, 5, 100), Note::pause(10)
+    Note::note(F, 5, 400),
+    Note::pause(10),
+    Note::note(D, 5, 100),
+    Note::pause(10),
 ];
 
 pub struct Buzzer<TIM: 'static> {
@@ -199,14 +305,14 @@ pub struct Buzzer<TIM: 'static> {
     time_note_change: u32,
     repeat: bool,
     is_warning: bool,
-    nba_already_played: bool //no_battery_attached_melody_already_played was too long for my taste
+    nba_already_played: bool, //no_battery_attached_melody_already_played was too long for my taste
 }
 
 impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     pub fn init(mut pwm: SimplePwm<'static, TIM>, channel: Channel, block: Gpio, pin: usize) -> Self {
-        #[cfg(feature="rev1")]
+        #[cfg(feature = "rev1")]
         pwm.set_duty(Channel::Ch4, pwm.get_max_duty() / 2);
-        #[cfg(not(feature="rev1"))]
+        #[cfg(not(feature = "rev1"))]
         pwm.set_duty(Channel::Ch2, pwm.get_max_duty() / 2);
 
         let buzzer = Self {
@@ -222,48 +328,47 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
             time_note_change: 0,
             repeat: false,
             is_warning: true,
-            nba_already_played: false
+            nba_already_played: false,
         };
         buzzer
     }
 
     fn current_frequency(&self) -> Option<f32> {
-        let melody_note = self.current_melody
-            .map(|m| m.get(self.current_index))
-            .flatten();
+        let melody_note = self.current_melody.map(|m| m.get(self.current_index)).flatten();
 
-        self.current_tone.as_ref()
-            .or(melody_note)
-            .map(|n| n.freq())
-            .flatten()
+        self.current_tone.as_ref().or(melody_note).map(|n| n.freq()).flatten()
     }
 
     //TODO repair so that warn tone length is changable
     pub fn apply_settings(
         &mut self,
         drogue_output_settings: &RecoveryOutputSettings,
-        main_output_settings: &RecoveryOutputSettings
+        main_output_settings: &RecoveryOutputSettings,
     ) {
-        self.drogue_warning_note = Note::frequency(drogue_output_settings.output_warning_frequency, drogue_output_settings.output_warning_time);
-        self.main_warning_note = Note::frequency(main_output_settings.output_warning_frequency, main_output_settings.output_warning_time);
+        self.drogue_warning_note = Note::frequency(
+            drogue_output_settings.output_warning_frequency,
+            drogue_output_settings.output_warning_time,
+        );
+        self.main_warning_note =
+            Note::frequency(main_output_settings.output_warning_frequency, main_output_settings.output_warning_time);
     }
 
     //returns true if just finished playing note
-    fn has_note_just_finished(&mut self, time: u32, note: Option<&Note>) -> bool{
-        if note.is_some(){
-            if time.wrapping_sub(self.time_note_change) > note.unwrap().duration{
+    fn has_note_just_finished(&mut self, time: u32, note: Option<&Note>) -> bool {
+        if note.is_some() {
+            if time.wrapping_sub(self.time_note_change) > note.unwrap().duration {
                 return true;
             }
         }
         return false;
     }
 
-    fn increment_melody(&mut self, time: u32, length: usize){
+    fn increment_melody(&mut self, time: u32, length: usize) {
         self.current_index += 1;
         self.time_note_change = time;
 
-        if self.current_index >= length && !self.repeat{
-            if self.is_warning{
+        if self.current_index >= length && !self.repeat {
+            if self.is_warning {
                 self.is_warning = false;
             }
             self.change_melody(time, None);
@@ -275,17 +380,17 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     }
 
     pub fn tick(&mut self, time: u32, battery_status: Option<BatteryStatus>) {
-        if let Some(status) = battery_status{
+        if let Some(status) = battery_status {
             match status {
                 BatteryStatus::Low => {
-                    self.change_melody(time,Some(&WARNING_MELODY));
+                    self.change_melody(time, Some(&WARNING_MELODY));
                     self.nba_already_played = false;
                     self.is_warning = true;
                 }
                 BatteryStatus::High => {
                     self.nba_already_played = false;
                 }
-                BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning =>{
+                BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning => {
                     self.change_melody(time, Some(&NO_BATTERY_ATTACHED_MELODY));
                     self.is_warning = true;
                     self.nba_already_played = true;
@@ -295,12 +400,12 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
         }
 
         if let Some(melody) = self.current_melody {
-            if self.has_note_just_finished(time, melody.get(self.current_index)){
+            if self.has_note_just_finished(time, melody.get(self.current_index)) {
                 self.increment_melody(time, melody.len());
             }
         }
 
-        if time != self.time_note_change{
+        if time != self.time_note_change {
             return;
         }
 
@@ -320,20 +425,20 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     }
 
     pub fn switch_mode(&mut self, time: u32, mode: FlightMode) {
-        let new_melody:Option<&'static [Note]> = match mode {
+        let new_melody: Option<&'static [Note]> = match mode {
             FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
             FlightMode::HardwareArmed => Some(&HWARMED),
             FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
             FlightMode::Landed => Some(&LANDED),
-            _ => None
+            _ => None,
         };
 
         self.change_melody(time, new_melody);
-        if !self.is_warning && mode == FlightMode::Landed{
+        if !self.is_warning && mode == FlightMode::Landed {
             self.repeat = true;
         }
     }
-    fn change_melody(&mut self, time: u32, new_melody: Option<&'static [Note]>){
+    fn change_melody(&mut self, time: u32, new_melody: Option<&'static [Note]>) {
         if !self.is_warning {
             self.current_melody = new_melody;
             self.current_index = 0;
@@ -368,7 +473,11 @@ impl Note {
     }
 
     const fn pause(duration: u32) -> Self {
-        Self { pitch: None, frequency: None, duration }
+        Self {
+            pitch: None,
+            frequency: None,
+            duration,
+        }
     }
 
     fn freq(&self) -> Option<f32> {

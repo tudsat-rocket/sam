@@ -1,13 +1,13 @@
 use defmt::{error, Debug2Format};
-use embassy_stm32::{gpio::Output, i2c::I2c};
 use embassy_stm32::peripherals::*;
+use embassy_stm32::{gpio::Output, i2c::I2c};
 use embassy_time::{Duration, Ticker};
 
 #[embassy_executor::task]
 pub async fn run_boost_converter(
     mut i2c: I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>,
     target_voltage: u16,
-    mut enable_pin: Output<'static, PB0>
+    mut enable_pin: Output<'static, PB0>,
 ) -> ! {
     const I2C_ADDRESS: u8 = 0b0101111;
     const R_AB: u16 = 5000; // Max resistance (5kOhm)

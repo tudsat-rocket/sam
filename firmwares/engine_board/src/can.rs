@@ -1,7 +1,7 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::can::bxcan::{Frame, Id, StandardId};
+use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::peripherals::CAN;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -13,10 +13,11 @@ pub const NUM_CAN_SUBSCRIBERS: usize = 3; // TODO
 pub const NUM_CAN_PUBLISHERS: usize = 5; // TODO
 
 pub type CanFrame = (u16, [u8; 8]);
-pub type CanInChannel = PubSubChannel::<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper = Subscriber::<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanOutChannel = PubSubChannel::<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
-pub type CanOutPublisher = Publisher::<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanInSubscriper =
+    Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 
 pub static CAN_IN: StaticCell<CanInChannel> = StaticCell::new();
 pub static CAN_OUT: StaticCell<CanOutChannel> = StaticCell::new();

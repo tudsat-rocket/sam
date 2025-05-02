@@ -1,4 +1,4 @@
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
 
 use nalgebra::Vector3;
@@ -36,7 +36,7 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
         for _i in 0..10 {
             whoami = imu.read_u8(LSM6RRegister::WhoAmI).await?;
             if whoami == 0x6b {
-                break
+                break;
             }
 
             Timer::after(Duration::from_micros(100)).await;
@@ -54,7 +54,8 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
             LSM6AccelerometerMode::HighPerformance1660Hz,
             accel_scale,
             false, // TODO
-        ).await?;
+        )
+        .await?;
 
         Ok(imu)
     }
@@ -72,7 +73,24 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
     }
 
     async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
-        let mut payload = [(LSM6RRegister::OutTempL as u8) | 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+        let mut payload = [
+            (LSM6RRegister::OutTempL as u8) | 0x80,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
         self.spi.transfer_in_place(&mut payload).await?;
 
         // TODO: do we need this temp?

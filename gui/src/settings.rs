@@ -1,5 +1,5 @@
-use std::fs::File;
 use std::collections::HashMap;
+use std::fs::File;
 
 use serde::{Deserialize, Serialize};
 
@@ -16,12 +16,12 @@ pub struct AppSettings {
 
 impl AppSettings {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         let config_dir = project_dirs.config_dir();
 
-        #[cfg(target_os="android")]
+        #[cfg(target_os = "android")]
         let config_dir = std::path::Path::new("/data/user/0/space.tudsat.sam/files");
 
         if !config_dir.exists() {
@@ -45,12 +45,12 @@ impl AppSettings {
     }
 
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         let project_dirs = directories::ProjectDirs::from("space", "tudsat", "sam").unwrap();
-        #[cfg(not(target_os="android"))]
+        #[cfg(not(target_os = "android"))]
         let config_dir = project_dirs.config_dir();
 
-        #[cfg(target_os="android")]
+        #[cfg(target_os = "android")]
         let config_dir = std::path::Path::new("/data/user/0/space.tudsat.sam/files");
 
         if !config_dir.exists() {

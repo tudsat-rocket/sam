@@ -9,7 +9,7 @@ const G_TO_MS2: f32 = 9.80665;
 pub struct H3LIS331DL<SPI: SpiDevice<u8>> {
     spi: SPI,
     acc: Option<Vector3<f32>>,
-    offset: Vector3<f32>
+    offset: Vector3<f32>,
 }
 
 impl<SPI: SpiDevice<u8>> H3LIS331DL<SPI> {
@@ -17,7 +17,7 @@ impl<SPI: SpiDevice<u8>> H3LIS331DL<SPI> {
         let mut h3lis = Self {
             spi,
             acc: None,
-            offset: Vector3::default()
+            offset: Vector3::default(),
         };
 
         let mut whoami = 0;

@@ -20,7 +20,6 @@ fn tick(c: &mut Criterion) {
 
 fn complete_sim_100hz(c: &mut Criterion) {
     c.bench_function("complete_sim_1000hz", |b| {
-
         b.iter(|| {
             let mut sim = Simulation::new(&SimulationSettings::default());
             while sim.state.flight_phase != FlightPhase::Touchdown {

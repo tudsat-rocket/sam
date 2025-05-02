@@ -1,15 +1,24 @@
 use egui::{epaint::PathShape, Color32, Shape, Stroke, Ui, Vec2};
 
-use crate::{flow_components::{constants::STROKE_WITH, flow_component::ResponseBounds}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
+use crate::{
+    flow_components::{constants::STROKE_WITH, flow_component::ResponseBounds},
+    utils::{
+        mesh::{create_mesh, ColoredTexture, TextureKey},
+        theme::ThemeColors,
+    },
+};
 
-use super::{constants::{TANK_BULKHEAD_HEIGHT, TANK_BULKHEAD_STEPS}, flow_component::{get_fluid_color, ComponentPainter, FillState}};
+use super::{
+    constants::{TANK_BULKHEAD_HEIGHT, TANK_BULKHEAD_STEPS},
+    flow_component::{get_fluid_color, ComponentPainter, FillState},
+};
 
 pub struct TankPainter {
     pos: Vec2,
     width: f32,
     height: f32,
     //max_pressure: f32,
-    fill_state: FillState
+    fill_state: FillState,
 }
 
 impl TankPainter {
@@ -19,7 +28,7 @@ impl TankPainter {
             width,
             height,
             //max_pressure,
-            fill_state
+            fill_state,
         }
     }
 }
@@ -75,8 +84,8 @@ impl ComponentPainter for TankPainter {
         //     Justification::Process      => JUSTIFICATION_MEASRURED_PATTERN,
         //     Justification::None         => JUSTIFICATION_NONE_PATTERN,
         // };
-        
-        let fluid_texture =  ColoredTexture::new(TextureKey::PatternFull, get_fluid_color(&self.fill_state.fluid));
+
+        let fluid_texture = ColoredTexture::new(TextureKey::PatternFull, get_fluid_color(&self.fill_state.fluid));
         let fluid_mesh = create_mesh(&path_fill, fluid_texture);
 
         // 3. Paint the mesh

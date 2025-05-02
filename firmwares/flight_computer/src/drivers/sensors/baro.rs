@@ -1,6 +1,6 @@
-use heapless::{Vec, Deque};
+use heapless::{Deque, Vec};
 
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
 
 use num_traits::float::Float;
@@ -21,18 +21,18 @@ struct MS5611CalibrationData {
 impl MS5611CalibrationData {
     pub fn valid(&self) -> bool {
         // We assume that every value needs to be non-zero and non-0xffff.
-        self.pressure_sensitivity != 0x0000 &&
-            self.pressure_offset != 0x0000 &&
-            self.temp_coef_pressure_sensitivity != 0x0000 &&
-            self.temp_coef_pressure_offset != 0x0000 &&
-            self.reference_temperature != 0x0000 &&
-            self.temp_coef_temperature != 0x0000 &&
-            self.pressure_sensitivity != 0xffff &&
-            self.pressure_offset != 0xffff &&
-            self.temp_coef_pressure_sensitivity != 0xffff &&
-            self.temp_coef_pressure_offset != 0xffff &&
-            self.reference_temperature != 0xffff &&
-            self.temp_coef_temperature != 0xffff
+        self.pressure_sensitivity != 0x0000
+            && self.pressure_offset != 0x0000
+            && self.temp_coef_pressure_sensitivity != 0x0000
+            && self.temp_coef_pressure_offset != 0x0000
+            && self.reference_temperature != 0x0000
+            && self.temp_coef_temperature != 0x0000
+            && self.pressure_sensitivity != 0xffff
+            && self.pressure_offset != 0xffff
+            && self.temp_coef_pressure_sensitivity != 0xffff
+            && self.temp_coef_pressure_offset != 0xffff
+            && self.reference_temperature != 0xffff
+            && self.temp_coef_temperature != 0xffff
     }
 }
 
@@ -60,7 +60,8 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
             baro_filter: BaroFilter::new(),
         };
 
-        'outer: for _i in 0..3 { // did you know that rust has loop labels?
+        'outer: for _i in 0..3 {
+            // did you know that rust has loop labels?
             baro.reset().await?;
 
             for _j in 0..50 {
@@ -85,8 +86,8 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     async fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8, 32>, SPI::Error> {
         let mut payload = [0x00; 32];
         payload[0] = command.into();
-        self.spi.transfer_in_place(&mut payload[..1+response_len]).await?;
-        Ok(Vec::from_slice(&payload[1..1+response_len]).unwrap_or_default())
+        self.spi.transfer_in_place(&mut payload[..1 + response_len]).await?;
+        Ok(Vec::from_slice(&payload[1..1 + response_len]).unwrap_or_default())
     }
 
     async fn reset(&mut self) -> Result<(), SPI::Error> {
@@ -142,7 +143,8 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
                 let mut off2 = (5 * temp_offset * temp_offset) >> 1;
                 let mut sens2 = off2 >> 1;
 
-                if temp < -1500 { // brrrr
+                if temp < -1500 {
+                    // brrrr
                     let temp_offset = temp + 1500;
                     off2 += 7 * temp_offset * temp_offset;
                     sens2 += (11 * temp_offset * temp_offset) >> 1;
@@ -200,8 +202,7 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     }
 
     pub fn altitude(&self) -> Option<f32> {
-        self.pressure()
-            .map(|p| 44330.769 * (1.0 - (p / 1012.5).powf(0.190223)))
+        self.pressure().map(|p| 44330.769 * (1.0 - (p / 1012.5).powf(0.190223)))
     }
 }
 
@@ -237,14 +238,14 @@ enum MS5611OSR {
     OSR4096 = 0b100,
 }
 
-pub struct BaroFilter{
+pub struct BaroFilter {
     previous_raw_values: Deque<i32, BARO_MEDIAN_FILTER_LENGTH>,
     last_spike_warning_counter: u32,
 }
 
 impl BaroFilter {
-    pub fn new() -> Self{
-        Self{
+    pub fn new() -> Self {
+        Self {
             previous_raw_values: Deque::new(),
             last_spike_warning_counter: 0,
         }

@@ -8,12 +8,12 @@
 
 use heapless::Vec;
 
+use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as SpiDeviceImpl;
 use embassy_stm32::gpio::Output;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as SpiDeviceImpl;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
@@ -34,7 +34,7 @@ const PAGE_SIZE: usize = 256;
 const BUFFER_SIZE: usize = PAGE_SIZE * 2;
 const SECTOR_SIZE: u32 = 4096;
 
-static REQUEST_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FlashRequest, 3>> = StaticCell::new();
+static REQUEST_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, FlashRequest, 3>> = StaticCell::new();
 
 /// Signal for sending flash pointer to flash handle, in order to pass it on via telemetry. There
 /// is probably a better way to do this.
@@ -109,7 +109,7 @@ impl FlashHandle {
         self.request_sender.try_send(FlashRequest::Read(address, size)).map_err(|_e| ())
     }
 
-    pub fn erase(&mut self) -> Result<(), ()>{
+    pub fn erase(&mut self) -> Result<(), ()> {
         self.request_sender.try_send(FlashRequest::Erase).map_err(|_e| ())
     }
 }
@@ -155,7 +155,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
     async fn determine_pointer(&mut self) -> Result<(), FlashError<SPI::Error>> {
         // Determine first unwritten page by binary search
         let (mut a, mut b) = (FLASH_HEADER_SIZE, self.driver.size());
-        while b - a > 2*PAGE_SIZE as u32 {
+        while b - a > 2 * PAGE_SIZE as u32 {
             let mid = (a + b) / 2;
             let mid = mid - (mid % PAGE_SIZE as u32);
             if self.driver.read(mid, 1).await?[0] == 0xff {
@@ -186,30 +186,36 @@ impl<SPI: SpiDevice> Flash<SPI> {
             let crc = X25.checksum(&data);
 
             let mut page = [0x00; PAGE_SIZE];
-            page[1..PAGE_SIZE-2].copy_from_slice(data);
-            page[PAGE_SIZE-2] = (crc >> 8) as u8;
-            page[PAGE_SIZE-1] = crc as u8;
+            page[1..PAGE_SIZE - 2].copy_from_slice(data);
+            page[PAGE_SIZE - 2] = (crc >> 8) as u8;
+            page[PAGE_SIZE - 1] = crc as u8;
 
             const CHUNK_SIZE: usize = 32;
 
             let mut result = Ok(());
-            for i in 0..(PAGE_SIZE/CHUNK_SIZE) {
-                let chunk = &page[(i*CHUNK_SIZE)..((i+1)*CHUNK_SIZE)];
+            for i in 0..(PAGE_SIZE / CHUNK_SIZE) {
+                let chunk = &page[(i * CHUNK_SIZE)..((i + 1) * CHUNK_SIZE)];
 
                 for attempt in 0..3 {
-                    result = self.driver.write((self.pointer as usize) + (i*CHUNK_SIZE), &chunk).await;
+                    result = self.driver.write((self.pointer as usize) + (i * CHUNK_SIZE), &chunk).await;
                     if result.is_err() {
                         continue;
                     }
 
-                    let read_back = self.driver.read(self.pointer + (i*CHUNK_SIZE) as u32, CHUNK_SIZE as u32).await;
+                    let read_back = self.driver.read(self.pointer + (i * CHUNK_SIZE) as u32, CHUNK_SIZE as u32).await;
                     if read_back.map(|b| b == chunk).unwrap_or(false) {
                         break;
                     }
 
                     Timer::after(Duration::from_micros(100)).await;
 
-                    defmt::warn!("Chunk write 0x{:02x}+0x{} failed. ({}/{})", self.pointer, i*CHUNK_SIZE, attempt+1, 3);
+                    defmt::warn!(
+                        "Chunk write 0x{:02x}+0x{} failed. ({}/{})",
+                        self.pointer,
+                        i * CHUNK_SIZE,
+                        attempt + 1,
+                        3
+                    );
                 }
 
                 if result.is_err() {
@@ -293,7 +299,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
 
             // We can only write a single page at a time
             for i in 0..(FLASH_SETTINGS_SIZE as usize / PAGE_SIZE) {
-                self.driver.write(PAGE_SIZE * i, &sector[(PAGE_SIZE * i)..(PAGE_SIZE * (i+1))]).await?;
+                self.driver.write(PAGE_SIZE * i, &sector[(PAGE_SIZE * i)..(PAGE_SIZE * (i + 1))]).await?;
 
                 // Wait for flash to finish writing
                 for _i in 0..10 {
@@ -358,7 +364,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
                     if let Err(e) = self.write_message(msg).await {
                         error!("Failed to write flash msg: {:?}", Debug2Format(&e));
                     }
-                },
+                }
                 FlashRequest::WriteSettings(settings) => {
                     for _i in 0..10 {
                         if self.write_settings(&settings).await.is_ok() {
@@ -368,22 +374,25 @@ impl<SPI: SpiDevice> Flash<SPI> {
 
                     // reboot to apply settings
                     cortex_m::peripheral::SCB::sys_reset();
-                },
+                }
                 FlashRequest::Read(address, size) => {
                     match self.driver.read(address, size).await {
                         Ok(data) => {
                             // split up the data into smaller chunks for USB transfer
                             const CHUNK_SIZE: usize = 256;
                             for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
-                                let msg = DownlinkMessage::FlashContent(address + (i * CHUNK_SIZE) as u32, Vec::from_slice(chunk).unwrap_or_default());
+                                let msg = DownlinkMessage::FlashContent(
+                                    address + (i * CHUNK_SIZE) as u32,
+                                    Vec::from_slice(chunk).unwrap_or_default(),
+                                );
                                 self.usb.send_message(msg).await;
                             }
-                        },
+                        }
                         Err(e) => {
                             error!("Failed to read flash: {:?}", Debug2Format(&e));
                         }
                     }
-                },
+                }
                 FlashRequest::Erase => {
                     info!("Erasing flash.");
                     self.erase().await

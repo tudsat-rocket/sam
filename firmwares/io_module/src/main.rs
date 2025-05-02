@@ -3,15 +3,15 @@
 
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::adc::Adc;
-use embassy_stm32::Config;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
-use embassy_stm32::interrupt::{Priority, InterruptExt};
 use embassy_stm32::interrupt;
+use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_stm32::Config;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -26,12 +26,12 @@ mod roles;
 
 use boost::*;
 use can::*;
-use roles::*;
 use roles::common::*;
+use roles::*;
 
-type OutputStateChannel = PubSubChannel::<CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
-type OutputStateSubscriber = Subscriber::<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
-type OutputStatePublisher = Publisher::<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStateChannel = PubSubChannel<CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStateSubscriber = Subscriber<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
+type OutputStatePublisher = Publisher<'static, CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;
 static OUTPUT_STATE: StaticCell<OutputStateChannel> = StaticCell::new();
 
 // TODO
@@ -92,7 +92,7 @@ enum Input1 {
 enum Input2 {
     Disabled,
     Uart, // TODO
-    Adc, // TODO
+    Adc,  // TODO
 }
 
 // == J4
@@ -127,7 +127,7 @@ struct BoardIo {
     pub input3: Input3,
     pub input4: Input4,
     pub input5: Input5,
-    pub leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>)
+    pub leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
 }
 
 #[embassy_executor::task]
@@ -153,40 +153,55 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
     iwdg.unleash();
 
-    let input0 = match R::input0_mode() { // J7
+    let input0 = match R::input0_mode() {
+        // J7
         _ => Input0::Disabled,
     };
 
-    let (boost_converter, input1) = match (R::boost_converter_voltage(), R::input1_mode()) { // J6
+    let (boost_converter, input1) = match (R::boost_converter_voltage(), R::input1_mode()) {
+        // J6
         (Some(v), InputMode::Disabled) => (
-            Some((I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, Hertz::khz(400), Default::default()), v)),
-            Input1::Disabled
+            Some((
+                I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, Hertz::khz(400), Default::default()),
+                v,
+            )),
+            Input1::Disabled,
         ),
         (Some(_v), _) => unreachable!(),
-        (None, InputMode::Uart(config)) => (None, Input1::Uart(Uart::new(p.USART3, p.PB11, p.PB10, Irqs, p.DMA1_CH2, p.DMA1_CH3, config).unwrap())),
-        (None, InputMode::I2c(freq, config)) => (None, Input1::I2c(I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, freq, config))),
+        (None, InputMode::Uart(config)) => {
+            (None, Input1::Uart(Uart::new(p.USART3, p.PB11, p.PB10, Irqs, p.DMA1_CH2, p.DMA1_CH3, config).unwrap()))
+        }
+        (None, InputMode::I2c(freq, config)) => {
+            (None, Input1::I2c(I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, freq, config)))
+        }
         (None, _) => (None, Input1::Disabled),
     };
 
-    let input2 = match R::input2_mode() { // J5
+    let input2 = match R::input2_mode() {
+        // J5
         InputMode::Uart(_) => todo!(),
         InputMode::Adc => todo!(),
         _ => Input2::Disabled,
     };
 
-    let input3 = match R::input3_mode() { // J4
+    let input3 = match R::input3_mode() {
+        // J4
         InputMode::Uart(_) => todo!(),
-        InputMode::I2c(freq, config) => Input3::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config)),
+        InputMode::I2c(freq, config) => {
+            Input3::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config))
+        }
         InputMode::Gpio(pull) => Input3::Gpio(Input::new(p.PB6, pull), Input::new(p.PB7, pull)),
         _ => Input3::Disabled,
     };
 
-    let input4 = match R::input4_mode() { // J12
+    let input4 = match R::input4_mode() {
+        // J12
         InputMode::Adc => todo!(),
         _ => Input4::Disabled,
     };
 
-    let input5 = match R::input5_mode() { // J13
+    let input5 = match R::input5_mode() {
+        // J13
         InputMode::Adc => todo!(),
         _ => Input5::Disabled,
     };
@@ -214,21 +229,25 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
 
     // Control output state based on received commands, with optional
     // failsafe behaviour if connection to FC is lost.
-    high_priority_spawner.spawn(run_output_control_via_can(
-        can_in.subscriber().unwrap(),
-        output_state.publisher().unwrap(),
-        R::ROLE_ID,
-        R::output_failsafe_duration()
-    )).unwrap();
+    high_priority_spawner
+        .spawn(run_output_control_via_can(
+            can_in.subscriber().unwrap(),
+            output_state.publisher().unwrap(),
+            R::ROLE_ID,
+            R::output_failsafe_duration(),
+        ))
+        .unwrap();
 
     // Run output based on published output state
-    high_priority_spawner.spawn(run_outputs(
-        (Output::new(p.PC7, Level::Low, Speed::Low), Output::new(p.PC6, Level::Low, Speed::Low)),
-        (Output::new(p.PC9, Level::Low, Speed::Low), Output::new(p.PC8, Level::Low, Speed::Low)),
-        (Output::new(p.PB8, Level::Low, Speed::Low), Output::new(p.PB9, Level::Low, Speed::Low)),
-        (Output::new(p.PA0, Level::Low, Speed::Low), Output::new(p.PA1, Level::Low, Speed::Low)),
-        output_state.subscriber().unwrap(),
-    )).unwrap();
+    high_priority_spawner
+        .spawn(run_outputs(
+            (Output::new(p.PC7, Level::Low, Speed::Low), Output::new(p.PC6, Level::Low, Speed::Low)),
+            (Output::new(p.PC9, Level::Low, Speed::Low), Output::new(p.PC8, Level::Low, Speed::Low)),
+            (Output::new(p.PB8, Level::Low, Speed::Low), Output::new(p.PB9, Level::Low, Speed::Low)),
+            (Output::new(p.PA0, Level::Low, Speed::Low), Output::new(p.PA1, Level::Low, Speed::Low)),
+            output_state.subscriber().unwrap(),
+        ))
+        .unwrap();
 
     // Run CAN bus, publishing received messages on can_in and transmitting messages
     // published on can_out.
@@ -238,26 +257,26 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
     low_priority_spawner.spawn(run_iwdg(iwdg)).unwrap();
 
     // Every IO board occasionally reports its temperature, drive voltage and current
-    low_priority_spawner.spawn(run_power_report(
-        can_out.publisher().unwrap(),
-        adc,
-        p.PA7,
-        p.PA6,
-        p.PA5,
-        p.PB1,
-        p.PA4,
-        R::ROLE_ID,
-        R::drive_voltage()
-    )).unwrap();
+    low_priority_spawner
+        .spawn(run_power_report(
+            can_out.publisher().unwrap(),
+            adc,
+            p.PA7,
+            p.PA6,
+            p.PA5,
+            p.PB1,
+            p.PA4,
+            R::ROLE_ID,
+            R::drive_voltage(),
+        ))
+        .unwrap();
 
     // Run a listener that enables all outputs after a certain
     // flight mode if requested by the rol
     if let Some(fm) = R::outputs_on_after_flightmode() {
-        high_priority_spawner.spawn(run_outputs_on_after_flightmode(
-            can_in.subscriber().unwrap(),
-            output_state.publisher().unwrap(),
-            fm
-        )).unwrap();
+        high_priority_spawner
+            .spawn(run_outputs_on_after_flightmode(can_in.subscriber().unwrap(), output_state.publisher().unwrap(), fm))
+            .unwrap();
     }
 
     // Run the boost converter if requested by the role.
@@ -289,23 +308,21 @@ async fn main(spawner: Spawner) {
         let role_sw3 = Input::new(&mut p.PB15, embassy_stm32::gpio::Pull::Down);
         let role_sw4 = Input::new(&mut p.PA8, embassy_stm32::gpio::Pull::Down);
         let role_sw5 = Input::new(&mut p.PA9, embassy_stm32::gpio::Pull::Down);
-        ((role_sw1.is_high() as u8) << 4) |
-            ((role_sw2.is_high() as u8) << 3) |
-            ((role_sw3.is_high() as u8) << 2) |
-            ((role_sw4.is_high() as u8) << 1) |
-            (role_sw5.is_high() as u8)
+        ((role_sw1.is_high() as u8) << 4)
+            | ((role_sw2.is_high() as u8) << 3)
+            | ((role_sw3.is_high() as u8) << 2)
+            | ((role_sw4.is_high() as u8) << 1)
+            | (role_sw5.is_high() as u8)
     };
 
     match IoBoardRole::try_from(dip_switch_setting) {
         Ok(IoBoardRole::Acs) => run_role::<Acs>(p, spawner).await,
         Ok(IoBoardRole::Recovery) => run_role::<Recovery>(p, spawner).await,
         Ok(IoBoardRole::Payload) => run_role::<Payload>(p, spawner).await,
-        Err(id) => {
-            loop {
-                defmt::error!("Unknown role: {:05b}", id);
-                Timer::after(Duration::from_millis(100)).await;
-            }
-        }
+        Err(id) => loop {
+            defmt::error!("Unknown role: {:05b}", id);
+            Timer::after(Duration::from_millis(100)).await;
+        },
     }
 }
 

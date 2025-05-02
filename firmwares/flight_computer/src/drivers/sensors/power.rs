@@ -1,6 +1,6 @@
-use embassy_stm32::adc::{Adc, Temperature, VrefInt, AdcPin, Instance, SampleTime};
+use embassy_stm32::adc::{Adc, AdcPin, Instance, SampleTime, Temperature, VrefInt};
 use embassy_stm32::gpio::low_level::Pin;
-use embassy_time::{Timer, Duration, Instant};
+use embassy_time::{Duration, Instant, Timer};
 
 use shared_types::can::BatteryTelemetryMessage;
 
@@ -11,10 +11,10 @@ const LOW_BATTERY_THRESHOLD: u16 = 7000;
 const NO_BATTERY_THRESHOLD: u16 = 5000;
 
 #[derive(PartialEq, Clone, Copy)]
-pub enum BatteryStatus{
+pub enum BatteryStatus {
     Low,
     High,
-    NoBatteryAttached
+    NoBatteryAttached,
 }
 
 pub struct PowerMonitor<ADC: Instance, H, L, A> {
@@ -34,12 +34,7 @@ pub struct PowerMonitor<ADC: Instance, H, L, A> {
     time_last_can_msg: Option<Instant>,
 }
 
-impl<
-    ADC: Instance,
-    H: Pin + AdcPin<ADC>,
-    L: Pin + AdcPin<ADC>,
-    A: Pin + AdcPin<ADC>,
-> PowerMonitor<ADC, H, L, A>
+impl<ADC: Instance, H: Pin + AdcPin<ADC>, L: Pin + AdcPin<ADC>, A: Pin + AdcPin<ADC>> PowerMonitor<ADC, H, L, A>
 where
     Temperature: AdcPin<ADC>,
     VrefInt: AdcPin<ADC>,
@@ -66,7 +61,7 @@ where
             arm_voltage: None,
             temperature: None,
             last_can_message: None,
-            time_last_can_msg: None
+            time_last_can_msg: None,
         }
     }
 
@@ -106,25 +101,21 @@ where
     }
 
     pub fn battery_voltage(&self) -> Option<u16> {
-        self.current_can_msg()
-            .map(|msg| msg.voltage_battery)
-            .or(self.battery_voltage)
+        self.current_can_msg().map(|msg| msg.voltage_battery).or(self.battery_voltage)
     }
-    pub fn battery_status(&self) -> Option<BatteryStatus>{
+    pub fn battery_status(&self) -> Option<BatteryStatus> {
         self.battery_voltage.map(|n| {
             #[allow(overlapping_range_endpoints)] // we can't use experimental features yet
             match n {
                 LOW_BATTERY_THRESHOLD.. => BatteryStatus::High,
                 NO_BATTERY_THRESHOLD..=LOW_BATTERY_THRESHOLD => BatteryStatus::Low,
-                _ => BatteryStatus::NoBatteryAttached
+                _ => BatteryStatus::NoBatteryAttached,
             }
         })
     }
 
     pub fn battery_current(&self) -> Option<i32> {
-        self.current_can_msg()
-            .map(|msg| msg.current)
-            .or(self.battery_current)
+        self.current_can_msg().map(|msg| msg.current).or(self.battery_current)
     }
 
     pub fn arm_voltage(&self) -> Option<u16> {

@@ -1,13 +1,13 @@
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Output, Input};
+use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
-use embassy_time::{Ticker, Duration};
+use embassy_time::{Duration, Ticker};
 
 use defmt::*;
 
@@ -18,13 +18,17 @@ use crate::lora::*;
 use crate::usb::*;
 
 // TODO
-type RadioHandle = Radio<SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PA1>>, Input<'static, PC0>,Input<'static, PC1>>;
+type RadioHandle = Radio<
+    SpiDevice<'static, CriticalSectionRawMutex, Spi<'static, SPI1, DMA2_CH3, DMA2_CH2>, Output<'static, PA1>>,
+    Input<'static, PC0>,
+    Input<'static, PC1>,
+>;
 
 type LEDs = (Output<'static, PC13>, Output<'static, PC14>, Output<'static, PC15>);
 // TODO
-#[cfg(feature="rev1")]
+#[cfg(feature = "rev1")]
 type Buzzer = BuzzerDriver<TIM4>;
-#[cfg(not(feature="rev1"))]
+#[cfg(not(feature = "rev1"))]
 type Buzzer = BuzzerDriver<TIM3>;
 
 const MAIN_LOOP_FREQUENCY: Hertz = Hertz::hz(1000);
@@ -50,12 +54,7 @@ pub async fn run(mut gcs: GroundControlStation, mut iwdg: IndependentWatchdog<'s
 }
 
 impl GroundControlStation {
-    pub fn init(
-        usb: UsbHandle,
-        radio: RadioHandle,
-        leds: LEDs,
-        buzzer: Buzzer,
-    ) -> Self {
+    pub fn init(usb: UsbHandle, radio: RadioHandle, leds: LEDs, buzzer: Buzzer) -> Self {
         Self {
             time: core::num::Wrapping(0),
             usb,
@@ -72,15 +71,13 @@ impl GroundControlStation {
             match msg {
                 UplinkMessage::Heartbeat => None,
                 // TODO: remove?
-                UplinkMessage::Command(Command::RebootToBootloader) => {
-                    None
-                },
+                UplinkMessage::Command(Command::RebootToBootloader) => None,
                 UplinkMessage::ApplyLoRaSettings(lora_settings) => {
                     self.radio.apply_settings(&lora_settings);
                     None
-                },
+                }
                 UplinkMessage::ReadSettings => None,
-                msg => Some(msg)
+                msg => Some(msg),
             }
         });
 

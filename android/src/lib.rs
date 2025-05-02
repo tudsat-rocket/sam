@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-use std::sync::mpsc::{Sender, Receiver};
 use std::time::Instant;
 
 use log::*;
@@ -10,14 +10,14 @@ use egui_wgpu::wgpu;
 use egui_wgpu::winit::Painter;
 use egui_winit::{winit, State};
 
-use winit::platform::android::activity::AndroidApp;
-use winit::event_loop::{EventLoop, EventLoopBuilder, EventLoopWindowTarget};
 use winit::event::Event::*;
+use winit::event_loop::{EventLoop, EventLoopBuilder, EventLoopWindowTarget};
+use winit::platform::android::activity::AndroidApp;
 
-use shared_types::telemetry::*;
-use sam::Sam;
-use sam::settings::AppSettings;
 use sam::data_source::SerialStatus;
+use sam::settings::AppSettings;
+use sam::Sam;
+use shared_types::telemetry::*;
 
 const INITIAL_WIDTH: u32 = 1920;
 const INITIAL_HEIGHT: u32 = 1080;
@@ -92,17 +92,10 @@ fn _main(event_loop: EventLoop<Event>) {
     ctx.tessellation_options_mut(|options| {
         options.feathering = false;
     });
-    let repaint_signal = RepaintSignal(std::sync::Arc::new(std::sync::Mutex::new(
-        event_loop.create_proxy(),
-    )));
+    let repaint_signal = RepaintSignal(std::sync::Arc::new(std::sync::Mutex::new(event_loop.create_proxy())));
     ctx.set_request_repaint_callback(move |_info| {
         log::debug!("Request Repaint Callback");
-        repaint_signal
-            .0
-            .lock()
-            .unwrap()
-            .send_event(Event::RequestRedraw)
-            .ok();
+        repaint_signal.0.lock().unwrap().send_event(Event::RequestRedraw).ok();
     });
 
     let mut state = State::new(ctx.clone(), ViewportId::ROOT, &event_loop, Some(1.0), None); // TODO
@@ -130,16 +123,12 @@ fn _main(event_loop: EventLoop<Event>) {
     let mut window: Option<Arc<winit::window::Window>> = None;
 
     let settings = AppSettings::load().unwrap_or_default();
-    let mut sam = Sam::init(
-        &ctx.clone(),
-        settings.clone(),
-        None
-    );
+    let mut sam = Sam::init(&ctx.clone(), settings.clone(), None);
 
     event_loop.run(move |event, event_loop| match event {
         Suspended => {
             window = None;
-        },
+        }
         Resumed => match &window {
             None => {
                 window = create_window(event_loop, &mut state, &mut painter);
@@ -162,7 +151,11 @@ fn _main(event_loop: EventLoop<Event>) {
             log::debug!("Window Event: {event:?}");
             match event {
                 winit::event::WindowEvent::Resized(size) => {
-                    painter.on_window_resized(ViewportId::ROOT, NonZeroU32::new(size.width).unwrap(), NonZeroU32::new(size.height).unwrap());
+                    painter.on_window_resized(
+                        ViewportId::ROOT,
+                        NonZeroU32::new(size.width).unwrap(),
+                        NonZeroU32::new(size.height).unwrap(),
+                    );
                 }
                 winit::event::WindowEvent::CloseRequested => {
                     //*control_flow = ControlFlow::Exit;
@@ -213,10 +206,7 @@ fn android_main(app: AndroidApp) {
 
     android_logger::init_once(android_logger::Config::default().with_min_level(log::Level::Debug));
 
-    let event_loop = EventLoopBuilder::with_user_event()
-        .with_android_app(app)
-        .build()
-        .unwrap();
+    let event_loop = EventLoopBuilder::with_user_event().with_android_app(app).build().unwrap();
     _main(event_loop);
 }
 
@@ -239,7 +229,7 @@ pub extern "C" fn Java_space_tudsat_sam_MainActivity_notifyOnNewLocation<'local>
     lat: f64,
     lng: f64,
     alt: f64,
-    acc: f64
+    acc: f64,
 ) {
     info!("{:?}", (lat, lng, alt, acc));
 }
@@ -250,7 +240,7 @@ pub extern "system" fn Java_space_tudsat_sam_MainActivity_notifyOnNewUsbData<'lo
     env: jni::JNIEnv<'local>,
     _class: jni::objects::JClass<'local>,
     bytes: jni::objects::JByteArray<'local>,
-    len: i32
+    len: i32,
 ) {
     let size = env.get_array_length(&bytes).unwrap_or(0) as usize;
     let size = usize::min(size, len as usize);
@@ -298,7 +288,7 @@ pub extern "system" fn Java_space_tudsat_sam_MainActivity_notifyOnNewUsbData<'lo
 pub extern "system" fn Java_space_tudsat_sam_MainActivity_notifyOnNewUsbConnectionStatus<'local>(
     env: jni::JNIEnv<'local>,
     _class: jni::objects::JClass<'local>,
-    connected: bool
+    connected: bool,
 ) {
     unsafe {
         if let Some(sender) = SERIAL_STATUS_SENDER.as_mut() {

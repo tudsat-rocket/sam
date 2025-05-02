@@ -6,8 +6,8 @@ use embedded_hal::digital::OutputPin;
 
 use shared_types::IoBoardRole;
 
-use crate::*;
 use crate::roles::common::*;
+use crate::*;
 
 const OUTPUT_FAILSAFE_TIMEOUT_MILLIS: u64 = 500;
 const SENSOR_SAMPLING_FREQUENCY_HZ: u64 = 20;
@@ -52,17 +52,19 @@ impl crate::roles::BoardRole for Acs {
         // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
         match (io.input1, io.input3) {
             (Input1::I2c(i2c2), Input3::I2c(i2c1)) => {
-                low_priority_spawner.spawn(run_i2c_sensors(
-                    Some(i2c2),
-                    Some(i2c1),
-                    None,
-                    can_out.publisher().unwrap(),
-                    Self::ROLE_ID,
-                    Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
-                )).unwrap();
-            },
+                low_priority_spawner
+                    .spawn(run_i2c_sensors(
+                        Some(i2c2),
+                        Some(i2c1),
+                        None,
+                        can_out.publisher().unwrap(),
+                        Self::ROLE_ID,
+                        Duration::from_hz(SENSOR_SAMPLING_FREQUENCY_HZ),
+                    ))
+                    .unwrap();
+            }
             //_ => unreachable!(),
-            _ => {},
+            _ => {}
         }
 
         // Set the LEDs based on the output state and whether the failsafe

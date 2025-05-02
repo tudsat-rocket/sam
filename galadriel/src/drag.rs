@@ -4,7 +4,7 @@ pub enum DragCoefficient {
     Variable(Vec<(f32, f32)>), // input is speed in m/s
 }
 
-pub fn mach_to_m_s(mach_number: f32) -> f32{
+pub fn mach_to_m_s(mach_number: f32) -> f32 {
     mach_number * 343.0
 }
 
@@ -21,22 +21,17 @@ impl DragCoefficient {
             Self::Variable(coefficients) => {
                 // I assume velocity is given in m/s?
                 self.interpolate_drag(coefficients, velocity)
-            },
+            }
         }
     }
 
-    fn interpolate_drag(&self, mach_drag_table: &[(f32, f32)], velocity: f32) -> f32{
-        for i in 0..mach_drag_table.len() - 1{
+    fn interpolate_drag(&self, mach_drag_table: &[(f32, f32)], velocity: f32) -> f32 {
+        for i in 0..mach_drag_table.len() - 1 {
             let (mach1, drag1) = mach_drag_table[i];
-            let (mach2, drag2) = mach_drag_table[i+1];
+            let (mach2, drag2) = mach_drag_table[i + 1];
 
-            if mach_to_m_s(mach1) <= velocity && velocity <= mach_to_m_s(mach2){
-                return self.interpolate(
-                    mach_to_m_s(mach1),
-                    mach_to_m_s(mach2),
-                    drag1,
-                    drag2,
-                    velocity);
+            if mach_to_m_s(mach1) <= velocity && velocity <= mach_to_m_s(mach2) {
+                return self.interpolate(mach_to_m_s(mach1), mach_to_m_s(mach2), drag1, drag2, velocity);
             }
         }
 
@@ -57,7 +52,7 @@ impl DragCoefficient {
     }
 
     // create linear function f(x) between given set of points (x1, y1) and (x2,y2) and return y=f(x)
-    fn interpolate(&self, x1:f32, x2:f32, y1: f32, y2: f32, x: f32) -> f32{
+    fn interpolate(&self, x1: f32, x2: f32, y1: f32, y2: f32, x: f32) -> f32 {
         let m: f32 = (y2 - y1) / (x2 - x1);
         let b: f32 = y1 - m * x1;
         m * x + b
@@ -72,13 +67,7 @@ impl DragCoefficient {
 impl egui::Widget for &mut DragCoefficient {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
         match self {
-            DragCoefficient::Constant(coef) => {
-                ui.add(
-                    egui::DragValue::new(coef)
-                        .speed(0.001)
-                        .range(0.001..=10.0),
-                )
-            },
+            DragCoefficient::Constant(coef) => ui.add(egui::DragValue::new(coef).speed(0.001).range(0.001..=10.0)),
             DragCoefficient::Variable(coefficients) => {
                 let plot_response = egui_plot::Plot::new("drag_coefficient_plot")
                     .set_margin_fraction(egui::Vec2::new(0.1, 0.3))
@@ -89,7 +78,8 @@ impl egui::Widget for &mut DragCoefficient {
                     .show_axes(false) // these are really big
                     // plot m/s über draf coefficient
                     .show(ui, |plot_ui| {
-                        let points: Vec<_> = coefficients.iter()
+                        let points: Vec<_> = coefficients
+                            .iter()
                             .map(|(speed, coef)| [mach_to_m_s(*speed) as f64, *coef as f64])
                             .collect();
                         plot_ui.line(egui_plot::Line::new(points));

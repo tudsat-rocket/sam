@@ -1,12 +1,12 @@
 use heapless::{String, Vec};
 
 use embassy_embedded_hal::SetConfig;
-use embassy_stm32::peripherals::*;
-use embassy_stm32::usart::{Uart, Error};
 use embassy_stm32::bind_interrupts;
+use embassy_stm32::peripherals::*;
+use embassy_stm32::usart::{Error, Uart};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Sender, Receiver, Channel};
-use embassy_time::{Timer, Duration, Instant};
+use embassy_sync::channel::{Channel, Receiver, Sender};
+use embassy_time::{Duration, Instant, Timer};
 
 use static_cell::StaticCell;
 
@@ -24,7 +24,7 @@ const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 // hardcoded to avoid needing alloc::format
 const DESIRED_BAUD_RATE_MESSAGE: &'static str = "$PUBX,41,1,0007,0003,115200,0*18\r\n";
 
-static CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
+static CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
 pub struct GPS {
     uart: Uart<'static, USART2, DMA1_CH6, DMA1_CH5>,
@@ -115,10 +115,8 @@ impl GPS {
         // Now that the RX is listening for UBX, set the baud rate.
         // Message generated using the ublox crate for baud rate 115200, hardcoded to avoid the dependency
         let baud_rate_msg = [
-            0xb5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00,
-            0x00, 0x00, 0xc0, 0x08, 0x00, 0x00, 0x00, 0xc2,
-            0x01, 0x00, 0x07, 0x00, 0x03, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0xb0, 0x7e
+            0xb5, 0x62, 0x06, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0xc0, 0x08, 0x00, 0x00, 0x00, 0xc2, 0x01, 0x00,
+            0x07, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb0, 0x7e,
         ];
         //let baud_rate_msg = ublox::CfgPrtUartBuilder {
         //        portid: ublox::UartPortId::Uart1,
@@ -179,7 +177,7 @@ impl GPS {
             altitude,
             fix,
             hdop,
-            num_satellites
+            num_satellites,
         };
 
         self.sender.send(datum).await;
@@ -196,8 +194,7 @@ impl GPS {
         info!("Setting measurement frequency");
         // Generated using the ublox crate for 100ms, hardcoded to avoid the dependency
         let measurement_rate_msg = [
-            0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0x64, 0x00,
-            0x01, 0x00, 0x01, 0x00, 0x7a, 0x12
+            0xb5, 0x62, 0x06, 0x08, 0x06, 0x00, 0x64, 0x00, 0x01, 0x00, 0x01, 0x00, 0x7a, 0x12,
         ];
         //let measurement_rate_msg = ublox::CfgRateBuilder {
         //        measure_rate_ms: MEASUREMENT_RATE_MS,
@@ -227,10 +224,8 @@ impl GPSHandle {
         }
 
         // we discard our last value after 1200ms to avoid reporting stale values
-        let value_expired = self.last_datum
-            .as_ref()
-            .map(|(_d, t)| t.elapsed() > Duration::from_millis(1200))
-            .unwrap_or(false);
+        let value_expired =
+            self.last_datum.as_ref().map(|(_d, t)| t.elapsed() > Duration::from_millis(1200)).unwrap_or(false);
         if value_expired {
             self.last_datum = None;
         }

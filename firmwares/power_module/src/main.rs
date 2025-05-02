@@ -6,13 +6,13 @@ use {defmt_rtt as _, panic_probe as _};
 
 use embassy_executor::Spawner;
 use embassy_stm32::adc::{Adc, SampleTime};
-use embassy_stm32::{bind_interrupts, Config};
 use embassy_stm32::can::bxcan::{Frame, StandardId};
 use embassy_stm32::can::{Can, Rx0InterruptHandler, Rx1InterruptHandler, SceInterruptHandler, TxInterruptHandler};
 use embassy_stm32::gpio::{Input, Pull};
 use embassy_stm32::pac::SYSCFG;
 use embassy_stm32::peripherals::CAN;
 use embassy_stm32::time::Hertz;
+use embassy_stm32::{bind_interrupts, Config};
 use embassy_time::{Delay, Duration, Ticker};
 
 use shared_types::can::*;
@@ -56,9 +56,7 @@ async fn main(_spawner: Spawner) {
     let mut can = Can::new(p.CAN, p.PA11, p.PA12, Irqs);
 
     // We don't want to receive anything.
-    can.as_mut()
-        .modify_filters()
-        .clear();
+    can.as_mut().modify_filters().clear();
 
     can.as_mut()
         .modify_config()
@@ -77,8 +75,10 @@ async fn main(_spawner: Spawner) {
     let mut ticker = Ticker::every(Duration::from_hz(MEASUREMENT_FREQUENCY_HZ));
 
     loop {
-        let voltage_charge = (to_millivolts(vref_sample, adc.read(&mut vsense_charge).await) as f32 * (6.1 / 1.0)) as u16;
-        let voltage_battery = (to_millivolts(vref_sample, adc.read(&mut vsense_batt).await) as f32 * (2.8 / 1.0)) as u16;
+        let voltage_charge =
+            (to_millivolts(vref_sample, adc.read(&mut vsense_charge).await) as f32 * (6.1 / 1.0)) as u16;
+        let voltage_battery =
+            (to_millivolts(vref_sample, adc.read(&mut vsense_batt).await) as f32 * (2.8 / 1.0)) as u16;
         let current_raw = (to_millivolts(vref_sample, adc.read(&mut isense).await) as i16) - 1650;
         let current = ((current_raw as f32) / (50.0 * 0.005)) as i32;
 
@@ -89,8 +89,9 @@ async fn main(_spawner: Spawner) {
             voltage_charge,
             current,
             stat0: stat1.is_high(),
-            stat1: stat2.is_high() // TODO
-        }.serialize_with_crc();
+            stat1: stat2.is_high(), // TODO
+        }
+        .serialize_with_crc();
 
         let tx_frame = Frame::new_data(standard_id, msg);
 

@@ -9,7 +9,7 @@ use embassy_stm32::spi::Spi;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Timer, Duration};
+use embassy_time::{Duration, Timer};
 use embedded_hal_async::spi::SpiDevice;
 
 use static_cell::StaticCell;
@@ -51,8 +51,8 @@ type CanRxInst = CanRx<SpiDeviceImplInst>;
 
 static DRIVER_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, MCP2517FD<SpiDeviceImplInst>>> = StaticCell::new();
 
-static INCOMING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>> = StaticCell::new();
-static OUTGOING_CHANNEL: StaticCell<Channel::<CriticalSectionRawMutex, (u16, [u8; 8]), 3>> = StaticCell::new();
+static INCOMING_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>> = StaticCell::new();
+static OUTGOING_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, (u16, [u8; 8]), 3>> = StaticCell::new();
 
 impl CanHandle {
     pub fn receive(&mut self) -> Option<FcReceivedCanBusMessage> {
@@ -66,7 +66,7 @@ impl CanHandle {
     }
 }
 
-#[cfg(not(feature="gcs"))]
+#[cfg(not(feature = "gcs"))]
 impl<SPI: SpiDevice<u8>> CanTx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
@@ -78,7 +78,7 @@ impl<SPI: SpiDevice<u8>> CanTx<SPI> {
     }
 }
 
-#[cfg(not(feature="gcs"))]
+#[cfg(not(feature = "gcs"))]
 impl<SPI: SpiDevice<u8>> CanRx<SPI> {
     async fn run(&mut self) -> ! {
         loop {
@@ -153,7 +153,7 @@ impl<SPI: SpiDevice<u8>> CanRx<SPI> {
 
 pub async fn init(
     spi: SpiDeviceImplInst,
-    data_rate: CanDataRate
+    data_rate: CanDataRate,
 ) -> (CanTx<SpiDeviceImplInst>, CanRx<SpiDeviceImplInst>, CanHandle) {
     let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
     let outgoing_channel = OUTGOING_CHANNEL.init(Channel::new());
@@ -180,13 +180,13 @@ pub async fn init(
     (can_tx, can_rx, handle)
 }
 
-#[cfg(not(feature="gcs"))]
+#[cfg(not(feature = "gcs"))]
 #[embassy_executor::task]
 pub async fn run_tx(mut can_tx: CanTxInst) -> ! {
     can_tx.run().await
 }
 
-#[cfg(not(feature="gcs"))]
+#[cfg(not(feature = "gcs"))]
 #[embassy_executor::task]
 pub async fn run_rx(mut can_rx: CanRxInst) -> ! {
     can_rx.run().await
