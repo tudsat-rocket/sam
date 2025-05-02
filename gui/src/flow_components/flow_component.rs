@@ -7,7 +7,7 @@ pub struct ResponseBounds {
     is_inside: Option<Box<dyn Fn(&Pos2) -> bool>>,
 }
 
-pub struct DisplayValue {
+pub struct DisplayValue{
     desc: String,
     unit: Option<String>,
     val: JustifiedValue,
@@ -83,23 +83,62 @@ impl JustifiedValue {
     }
 }
 
-pub struct FluidType {
-    pub name: &'static str,
-    pub color: Color32,
-}
+macro_rules! define_fluids {
+    (
+        $(
+            $key:ident => ($name:expr, $color:expr)
+        ),* $(,)?
+    ) => {
+        pub enum FluidType {
+            $( $key ),*
+        }
 
-pub struct Fluid {
-    pub fluid_type: FluidType,
-    pub pressure: JustifiedValue,
-}
+        pub fn get_fluid_color(key: &FluidType) -> Color32 {
+            match key {
+                $( FluidType::$key => $color),*
+            }
+        }
 
-impl Fluid {
-    pub fn new(fluid_type: FluidType, pressure: JustifiedValue) -> Self {
-        Self { fluid_type, pressure }
+        pub fn get_fluid_name(key: &FluidType) -> &'static str {
+            match key {
+                $( FluidType::$key => $name),*
+            }
+        }
     }
 }
 
-pub struct ComponentInfo {
+define_fluids! {
+    N2 => ( "N\u{2082}", Color32::LIGHT_GREEN),
+    N2O => ("N\u{2082}O", Color32::LIGHT_BLUE),
+    ETHANOL => ("Ethanol", Color32::RED),
+    UNKNOWN => ("Unknown", Color32::LIGHT_GRAY),
+}
+
+///The fill state of components like tanks. A level of 0.0 corresponds to an empty vessel
+pub struct FillState {
+    pub fluid: FluidType,   
+    pub level: f32,
+}
+
+impl FillState {
+
+    pub fn new(fluid: FluidType, level: f32) -> Self {
+        Self { fluid, level}
+    }
+}
+
+///Specifies the state of any connection, i.e. valves or QDs
+pub enum ConnectionState {
+    Connected(Option<FluidType>),
+    Disconnected,
+}
+
+// pub enum ComponentState {
+//     FillState(FillState),
+//     ConnectionState(ConnectionState),
+// }
+
+pub struct ComponentInfo{
     name: String,
     data: Vec<DisplayValue>,
 }

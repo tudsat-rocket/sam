@@ -1,40 +1,25 @@
 use egui::{epaint::PathShape, Color32, Pos2, Rect, Shape, Stroke, Vec2};
 
-use crate::{
-    flow_components::{
-        constants::STROKE_WITH,
-        flow_component::{ResponseBounds, Value},
-    },
-    utils::{
-        mesh::{create_mesh, ColoredTexture, TextureKey},
-        theme::ThemeColors,
-    },
-};
+use crate::{flow_components::{constants::STROKE_WITH, flow_component::ResponseBounds}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
-use super::{
-    constants::{
-        BOTTLE_BULKHEAD_HEIGHT, BOTTLE_BULKHEAD_STEPS, BOTTLE_CAP_BULKHEAD_HEIGHT, BOTTLE_CAP_BULKHEAD_STEPS,
-        BOTTLE_CAP_TOTAL_HEIGHT, BOTTLE_CAP_WIDTH,
-    },
-    flow_component::{ComponentPainter, Fluid},
-};
+use super::{constants::{BOTTLE_BULKHEAD_HEIGHT, BOTTLE_BULKHEAD_STEPS, BOTTLE_CAP_BULKHEAD_HEIGHT, BOTTLE_CAP_BULKHEAD_STEPS, BOTTLE_CAP_TOTAL_HEIGHT, BOTTLE_CAP_WIDTH}, flow_component::{get_fluid_color, ComponentPainter, FillState}};
 
 pub struct BottlePainter {
     pos: Pos2,
     width: f32,
     height: f32,
-    max_pressure: f32,
-    fluid: Fluid,
+    //max_pressure: f32,
+    fill_state: FillState
 }
 
 impl BottlePainter {
-    pub fn new(pos: Pos2, width: f32, height: f32, max_pressure: f32, fluid: Fluid) -> Self {
+    pub fn new(pos: Pos2, width: f32, height: f32, /*max_pressure: f32,*/ fill_state: FillState) -> Self {
         Self {
             pos,
             width,
             height,
-            max_pressure,
-            fluid,
+            //max_pressure,
+            fill_state
         }
     }
 }
@@ -54,10 +39,7 @@ impl ComponentPainter for BottlePainter {
             color: theme.foreground_weak,
         };
 
-        let fill_percentage = match self.fluid.pressure.value.clone().unwrap_or(Value::F32(self.max_pressure)) {
-            Value::F32(v) => v,
-            _ => -1.0,
-        } / self.max_pressure;
+        let fill_percentage = self.fill_state.level;
 
         let mut path_bulkhead: Vec<_> = (0..=BOTTLE_BULKHEAD_STEPS)
             .map(|i| (90.0 * (i as f32) / (BOTTLE_BULKHEAD_STEPS as f32)).to_radians())
@@ -112,8 +94,8 @@ impl ComponentPainter for BottlePainter {
         // }
 
         // path_fill = path_fill.into_iter().filter(|v| (v.y - pos.y) > (height/2.0 - height * fill_percentage - 1.0)).collect();
-
-        let fluid_texture = ColoredTexture::new(TextureKey::PatternCrosshatch, self.fluid.fluid_type.color);
+        
+        let fluid_texture =  ColoredTexture::new(TextureKey::PatternCrosshatch, get_fluid_color(&self.fill_state.fluid));
         let fluid_mesh = create_mesh(&path_fill, fluid_texture);
 
         // 3. Paint the mesh
