@@ -1,0 +1,22 @@
+{
+  "name": "Sam Ground Station",
+  "short_name": "sam",
+  "icons": [
+    {
+      "src": "./icon-256.png",
+      "sizes": "256x256",
+      "type": "image/png"
+    },
+    {
+      "src": "./icon-1024.png",
+      "sizes": "1024x1024",
+      "type": "image/png"
+    }
+  ],
+  "lang": "en-US",
+  "id": "/index.html",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "black",
+  "theme_color": "black"
+}

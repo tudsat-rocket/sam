@@ -5,15 +5,17 @@ Ground station software for the Sting FC, includes both command line tools and G
 
 ![](https://raw.githubusercontent.com/tudsat-rocket/sam/develop/gui/assets/screenshot.png)
 
-# Running
+# Building
+
+## Running
 
 To run for debugging purposes (`--release` recommended for simulations):
 
 ```
-$ cargo run
+$ cargo run [--release]
 ```
 
-# Installation
+## Installing
 
 (Assuming rust/rustup is already installed)
 
@@ -21,19 +23,13 @@ $ cargo run
 $ cargo install --path gui
 ````
 
-# Building Web Assembly Version
-
-## Setup
+## Building Web Assembly Version
 
 ```
 $ rustup target add wasm32-unknown-unknown
-$ cargo install wasm-pack --features curl/static-curl
-```
-
-## Building
-
-```
-$ wasm-pack build gui --target no-modules
+$ cargo install trunk --locked
+$ cargo trunk build [--release] # to build application to /gui/dist/
+$ cargo trunk serve [--release] # to build, serve and open in browser
 ```
 
 This will store the compiled application in `gui/pkg/`.

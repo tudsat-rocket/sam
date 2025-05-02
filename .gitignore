@@ -10,3 +10,4 @@
 perf.data
 flamegraph.svg
 gui/dist
+!gui/assets/manifest.json

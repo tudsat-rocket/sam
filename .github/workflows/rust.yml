@@ -1,4 +1,4 @@
-name: Rust
+name: Main Rust CI
 
 on: [push, pull_request]
 
@@ -6,27 +6,62 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build_sam_native:
+  cargo-build-and-test-linux:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
     - run: sudo apt-get update && sudo apt-get install -y libglib2.0-dev libgtk-3-dev libudev-dev
-    - uses: actions-rs/toolchain@v1
+    - run: rustup update stable && rustup default stable
+    - uses: actions/checkout@v3
+    - uses: actions/cache@v4
       with:
-          toolchain: stable
-          override: true
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
     - run: cargo build
     - run: cargo test --workspace --exclude "*_firmware" --exclude sam_android
 
-  build_sam_wasm:
+  cargo-build-and-test-windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+    - run: rustup update stable && rustup default stable
+    - uses: actions/checkout@v3
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    - run: cargo build
+    - run: cargo test --workspace --exclude "*_firmware" --exclude sam_android
+
+  cargo-build-wasm:
+    runs-on: ubuntu-latest
+    steps:
+    - run: rustup update stable && rustup default stable
+    - run: rustup target add wasm32-unknown-unknown
+    - run: cargo install trunk --locked
+    - uses: actions/checkout@v3
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo
+          target/
+          gui/target/
+        key: ${{ runner.os }}-trunk-${{ hashFiles('**/Cargo.lock') }}
+    - run: cd gui && trunk build --release
+
+  cargo-fmt:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
+    - run: rustup update stable && rustup default stable
     - uses: actions/checkout@v3
-    - uses: actions-rs/toolchain@v1
-      with:
-          toolchain: stable
-          override: true
-          target: wasm32-unknown-unknown
-    - run: cargo install wasm-pack
-    - run: wasm-pack build --target no-modules
+    - run: cargo fmt --check
