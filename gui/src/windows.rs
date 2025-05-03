@@ -43,6 +43,9 @@ impl Default for ArchiveWindow {
 
 impl ArchiveWindow {
     async fn load_log(ctx: egui::Context, url: &str, progress_sender: Sender<ArchiveLoadProgress>) {
+        let _ = progress_sender.send(ArchiveLoadProgress::Progress((0, 0)));
+        ctx.request_repaint();
+
         let start = Instant::now();
         let response = match reqwest::Client::new().get(url).send().await {
             Ok(res) => res,
