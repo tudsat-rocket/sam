@@ -135,4 +135,5 @@ define_textures! {
     PatternDiagonal => "./../../assets/textures/diagonal_pattern_32x32.png",
     PatternCrosshatch => "./../../assets/textures/crosshatch_pattern_32x32.png",
     PatternDots => "./../../assets/textures/dots_pattern_32x32.png",
+    PatternMissing => "./../../assets/textures/missing_pattern_32x32.png",
 }

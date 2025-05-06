@@ -6,8 +6,7 @@ use crate::{
         burst_disc::BurstDiscPainter,
         flex_tube::FlexTubePainter,
         flow_component::{
-            ComponentInfo, DisplayValue, FillState, FlowComponent, FluidType, Justification, JustifiedValue, Value,
-            TEST_SENSOR,
+            ComponentInfo, DisplayValue, FillState, FlowComponent, FluidType, Justification, JustifiedValue, MissingComponentPainter, Value, TEST_SENSOR
         },
         line::{LinePainter1D, LinePainter2D},
         sensor::SymbolPainter,
@@ -185,6 +184,12 @@ impl HybridSystemDiagram {
                 FlowComponent::new(
                     ComponentInfo::new(String::from("Check valve"), vec![]),
                     Box::new(CheckValvePainter::new(Pos2::new(0.90, 0.25), 0.1, 0.08)),
+                    None,
+                ),
+                //-Check valve-
+                FlowComponent::new(
+                    ComponentInfo::new(String::from("Missign component"), vec![]),
+                    Box::new(MissingComponentPainter::new(Pos2::new(0.6, 0.25), 0.1, 0.08)),
                     None,
                 ),
             ],

@@ -1,6 +1,10 @@
 use std::fmt::{self, Display};
 
-use egui::{Color32, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{epaint::RectShape, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};
+
+use crate::utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors};
+
+use super::constants::STROKE_WITH;
 
 pub struct ResponseBounds {
     bounding_box: Rect,
@@ -258,4 +262,53 @@ impl FlowComponent {
             });
         }
     }
+}
+
+
+pub struct MissingComponentPainter {
+    pos: Pos2,
+    width: f32,
+    height: f32
+}
+
+impl MissingComponentPainter {
+
+    pub fn new(pos: Pos2, width: f32, height: f32) -> Self{
+        Self{pos, width, height}
+    }
+
+}
+
+impl ComponentPainter for MissingComponentPainter {
+
+    fn paint(&self, ui: &mut Ui) -> ResponseBounds {
+        let painter = ui.painter();
+        let theme = ThemeColors::new(ui.ctx());
+        let available_space = ui.available_rect_before_wrap();
+
+        let pos = available_space.lerp_inside(self.pos.to_vec2());
+        let width = available_space.width() * self.width;
+        let height = available_space.height() * self.height;
+
+        let stroke = Stroke {
+            width: STROKE_WITH,
+            color: theme.foreground_weak,
+        };
+
+        let rect = Rect::from_center_size(pos, Vec2::new(width, height));
+        let positions = vec![
+            pos + Vec2::new(-width / 2.0, -height / 2.0),
+            pos + Vec2::new(width / 2.0, -height / 2.0),
+            pos + Vec2::new(width / 2.0, height / 2.0),
+            pos + Vec2::new(-width / 2.0, height / 2.0),
+        ];
+        let mesh = create_mesh(&positions, ColoredTexture::new(TextureKey::PatternMissing, Color32::WHITE));
+        let shape = RectShape::stroke(rect.clone(), CornerRadius::ZERO, stroke, egui::StrokeKind::Middle);
+       
+        painter.add(mesh);
+        painter.add(shape);
+
+        return ResponseBounds::new(rect, None);
+    }
+
 }

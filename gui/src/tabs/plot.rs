@@ -420,7 +420,7 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let top_right = vec![tiles.insert_pane(WidgetPane::Acs), tiles.insert_pane(WidgetPane::Map)];
+        let top_right = vec![tiles.insert_pane(WidgetPane::Hybrid), tiles.insert_pane(WidgetPane::Map)];
 
         let right = vec![
             tiles.insert_horizontal_tile(top_right),
