@@ -189,9 +189,9 @@ impl HybridSystemDiagram {
                 ),
             ],
             new_test_painter: PainterInstance::new(
-                //GenericValve(ConnectionState::Connected(None)),
-                crate::flow_components_new::flow_painter::FlowPainter::Missing,
-                Transform::new(Rotation2::new(45f32.to_radians()), Scale2::new(0.1, 0.1), Translation2::new(0.2, 0.2)))
+                crate::flow_components_new::flow_painter::FlowPainter::TankValve(ConnectionState::Connected(Some(FluidType::N2O))),
+                //crate::flow_components_new::flow_painter::FlowPainter::Missing,
+                Transform::new(Rotation2::new(270f32.to_radians()), Scale2::new(0.1, 0.1), Translation2::new(0.2, 0.2)))
         }
     }
 }

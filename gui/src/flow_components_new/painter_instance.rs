@@ -2,7 +2,7 @@ use nalgebra::Affine2;
 
 use crate::utils::theme::ThemeColors;
 
-use super::{flow_painter::FlowPainter, math::transform::Transform, missing::paint_missing, valves::generic_valve::paint_generic_valve};
+use super::{flow_painter::FlowPainter, math::transform::Transform, missing::paint_missing, valves::{generic_valve::paint_generic_valve, tank_valve::paint_tank_valve}};
 
 pub struct PainterInstance {
     painter_type: FlowPainter,
@@ -19,6 +19,7 @@ impl PainterInstance {
         match &self.painter_type {
             FlowPainter::Missing => paint_missing(&self.local_transform, global_transform, painter),
             FlowPainter::GenericValve(state) => paint_generic_valve(state, &self.local_transform, global_transform, painter, theme),
+            FlowPainter::TankValve(state) => paint_tank_valve(state, &self.local_transform, global_transform, painter, theme),
         }
     }
 
