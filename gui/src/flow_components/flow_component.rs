@@ -1,10 +1,6 @@
 use std::fmt::{self, Display};
 
-use egui::{epaint::RectShape, Color32, CornerRadius, Pos2, Rect, Sense, Stroke, Ui, Vec2};
-
-use crate::utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors};
-
-use super::constants::STROKE_WITH;
+use egui::{Color32, Pos2, Rect, Sense, Ui, Vec2};
 
 pub struct ResponseBounds {
     bounding_box: Rect,
@@ -264,51 +260,249 @@ impl FlowComponent {
     }
 }
 
+// pub struct Transform {
+//     // ///Scaling in x and y direction
+//     // scale: Vec2,
+//     // ///Rotation in radiants
+//     // rotation: f32,
+//     // //Translation 
+//     // translation: Vec2,
 
-pub struct MissingComponentPainter {
-    pos: Pos2,
-    width: f32,
-    height: f32
-}
+//     affine: Affine2<f32>
+// }
 
-impl MissingComponentPainter {
 
-    pub fn new(pos: Pos2, width: f32, height: f32) -> Self{
-        Self{pos, width, height}
-    }
+// impl Transform {
 
-}
+//     pub fn new(scale: Vec2, rotation: f32, translation: Vec2) -> Self {
+//         //Self {scale, rotation, translation}
+//         let matrix = Matrix3::new(
+//             scale.x * f32::cos(rotation), -scale.y * f32::sin(rotation),  translation.x,
+//             scale.x * f32::sin(rotation), scale.y * f32::cos(rotation),translation.y,
+//             0f32, 0f32, 1f32
+//         );
+//         Self {
+//             affine: Affine2::from_matrix_unchecked(matrix)
+//         }
+//     }
 
-impl ComponentPainter for MissingComponentPainter {
+//     // pub fn to_local(&self, ui: & Ui) -> Self{
+//     //     let available_space = ui.available_rect_before_wrap();
+//     //     Transform::new(
+//     //         //available_space.width().min(available_space.height()) * self.scale,
+//     //         available_space.size() * self.scale,
+//     //         self.rotation,
+//     //         available_space.lerp_inside(self.translation).to_vec2())
+//     // }
 
-    fn paint(&self, ui: &mut Ui) -> ResponseBounds {
-        let painter = ui.painter();
-        let theme = ThemeColors::new(ui.ctx());
-        let available_space = ui.available_rect_before_wrap();
+//     pub fn apply_to_transform(&self, other : &Transform) -> Transform {
+//             // Transform::new(
+//             //     self.scale * other.scale,
+//             //     self.rotation + other.rotation,
+//             //     self.translation + other.translation
+//             // )
+//             self.affine * other.affine
+//     }
 
-        let pos = available_space.lerp_inside(self.pos.to_vec2());
-        let width = available_space.width() * self.width;
-        let height = available_space.height() * self.height;
+//     pub fn apply_to_pos(&self, point: Pos2, ui: & Ui) -> Pos2 {
+//         return ui.available_rect_before_wrap().lerp_inside(Vec2::new(
+//             self.scale.x * f32::cos(self.rotation) * point.x - self.scale.y * f32::sin(self.rotation) * point.y + self.translation.x,
+//             self.scale.x * f32::sin(self.rotation) * point.x + self.scale.y * f32::cos(self.rotation) * point.y + self.translation.y
+//         ))
+//     }
 
-        let stroke = Stroke {
-            width: STROKE_WITH,
-            color: theme.foreground_weak,
-        };
+//     pub fn apply_all_to_pos(&self, points: Vec<Pos2>, ui: & Ui) -> Vec<Pos2> {
+//         return points.into_iter().map(|p| self.apply_to_pos(p, ui)).collect();
+//     }
+// }
 
-        let rect = Rect::from_center_size(pos, Vec2::new(width, height));
-        let positions = vec![
-            pos + Vec2::new(-width / 2.0, -height / 2.0),
-            pos + Vec2::new(width / 2.0, -height / 2.0),
-            pos + Vec2::new(width / 2.0, height / 2.0),
-            pos + Vec2::new(-width / 2.0, height / 2.0),
-        ];
-        let mesh = create_mesh(&positions, ColoredTexture::new(TextureKey::PatternMissing, Color32::WHITE));
-        let shape = RectShape::stroke(rect.clone(), CornerRadius::ZERO, stroke, egui::StrokeKind::Middle);
+// pub struct Transform {
+//    rotation: Rotation2<f32>,
+//    scale: Scale2<f32>,
+//    translation: Translation2<f32>,
+// }
+
+// impl Transform {
+
+//     pub fn new(rotation: Rotation2<f32>, scale: Scale2<f32>, translation: Translation2<f32>) -> Self {
+//         Self { rotation, scale, translation }
+//     }
+
+//     pub fn apply_to_point(&self, point: &Point2<f32>) -> Point2<f32> {
+//       return self.translation * (self.scale * (self.rotation * (point - Vector2::new(0.5, 0.5)) + Vector2::new(0.5, 0.5)));
+//     }
+
+//     pub fn apply_to_points(&self, points: &Vec<Point2<f32>>) -> Vec<Point2<f32>> {
+//         return points
+//             .iter()
+//             .map(|p| self.apply_to_point(p))
+//             .collect();
+//     }
+
+// }
+
+// pub fn to_transform(scale: Vec2, rotation: f32, translation: Vec2) -> Affine2<f32> {
+//     //Self {scale, rotation, translation}
+//     let matrix = Matrix3::new(
+//         scale.x * f32::cos(rotation), -scale.y * f32::sin(rotation), translation.x,
+//         scale.x * f32::sin(rotation),  scale.y  * f32::cos(rotation), translation.y,
+//         0f32, 0f32, 1f32
+//     );
+//     return Affine2::from_matrix_unchecked(matrix);
+// }
+
+// pub fn get_identity() -> Affine2<f32> {
+//     let matrix = Matrix3::identity();
+//     return Affine2::from_matrix_unchecked(matrix);
+// }
+
+// pub fn keep_aspect_ratio(affine: &Affine2<f32>) -> Affine2<f32> {
+//     let old= affine.matrix();
+//     let old_scale_x = (old[(0, 0)].powi(2) + old[(1, 0)].powi(2)).sqrt(); //  old.column(0).apply_norm(&EuclideanNorm);
+//     let old_scale_y = (old[(0, 1)].powi(2) + old[(1, 1)].powi(2)).sqrt(); // old.column(1).apply_norm(&EuclideanNorm);
+//     let new_scale = old_scale_x.min(old_scale_y);
+//     let new = Matrix3::new(
+//         old[(0, 0)] / old_scale_x * new_scale, old[(0, 1)] / old_scale_y * new_scale, old[(0, 2)],
+//         old[(1, 0)] / old_scale_x * new_scale, old[(1, 1)] / old_scale_y * new_scale, old[(1, 2)],
+//         0f32, 0f32, 1f32);
+//     return Affine2::from_matrix_unchecked(new);
+// }
+
+// pub fn to_local(point: Point2<f32>, ui: &Ui) -> Pos2 {
+//     return ui.available_rect_before_wrap().lerp_inside(Vec2::new(point.x, point.y));
+// }
+
+// pub fn to_vector(vec: Vec2) -> Vector2<f32> {
+//     return Vector2::new(vec.x, vec.y);
+// }
+
+// pub fn to_vec(vector: Vector2<f32>) -> Vec2 {
+//     return Vec2::new(vector.x, vector.y);
+// }
+
+// pub fn to_pos(point: Point2<f32>) -> Pos2 {
+//     return Pos2::new(point.x, point.y);
+// }
+
+// pub fn emul(vec1: Vector2<f32>, vec2: Vector2<f32>) -> Vector2<f32>{
+//     return Vector2::new(vec1.x * vec2.x, vec1.y * vec2.y);
+// }
+
+
+// pub struct NewCirclePainter {
+//     transform: Transform//Affine2<f32>
+// }
+
+// impl NewCirclePainter {
+
+//     pub fn new(transform: Transform) -> Self {
+//         Self {
+//             transform
+//         }
+//     }
+
+//     fn paint(&self, ui: &mut Ui, transform: &Affine2<f32>) -> ResponseBounds {
+//         let center = to_pos(transform * self.transform * Point2::new(0.5, 0.5));//self.transform.apply_to_transform(transform).apply_to_pos(Pos2::new(0.5, 0.5), ui);
+//         //let radius = ui.available_rect_before_wrap().size() * 0.25;
+//         let radius = (transform * self.transform * Vector2::new(0.5, 0.5)).amin();//to_vec(emul(self.transform * transform * Vector2::new(0.5, 0.1), to_vector(ui.available_rect_before_wrap().size())));
+//         //let radius = ui.available_size().width();
+//         // println!("Center {}", center);
+//         // println!("Radius {}", radius);
+        
+//         let painter = ui.painter();
+//         let theme = ThemeColors::new(ui.ctx());
+//         // let available_space = ui.available_rect_before_wrap();
+
+//         let stroke = Stroke {
+//             width: STROKE_WITH,
+//             color: theme.foreground_weak,
+//         };
+
+//         // let pos = available_space.lerp_inside(self.pos.to_vec2());
+
+//         // let shape: Shape = if self.keep_aspect_ratio {
+//         //     let rad = self.radius * available_space.width().min(available_space.height());
+//         //     Shape::Circle(CircleShape {
+//         //         center: pos,
+//         //         radius: rad,
+//         //         fill: theme.background_weak,
+//         //         stroke,
+//         //     })
+//         // } else {
+//         //     let rad = self.radius * available_space.size();
+//         let shape = Shape::Circle(CircleShape {
+//             center,
+//             radius,
+//             fill: Color32::RED,//theme.background_weak,
+//             stroke,
+//         });
+//         let bb = shape.visual_bounding_rect();
+//         painter.add(shape);
+
+//         return ResponseBounds::new(bb, None); //TODO HR: Add func
+//     }
+
+//}
+
+// pub struct MissingComponentPainter {
+//     transform:Transform,
+//     //circle_painter: NewCirclePainter
+// }
+
+// impl MissingComponentPainter {
+
+//     pub fn new(transform: Transform) -> Self {
+//         Self { 
+//             transform,
+//         }
+//     }
+
+// }
+
+// impl ComponentPainter for MissingComponentPainter {
+
+//     fn paint(&self, ui: &mut Ui) -> ResponseBounds {
+//         let painter = ui.painter();
+//         // let theme = ThemeColors::new(ui.ctx());
+//         let available_space = ui.available_rect_before_wrap();
+
+//         // let pos = available_space.lerp_inside(self.pos.to_vec2());
+//         // let width = available_space.width() * self.width;
+//         // let height = available_space.height() * self.height;
+
+//         // let stroke = Stroke {
+//         //     width: STROKE_WITH,
+//         //     color: theme.foreground_weak,
+//         // };
+
+//         //let rect = Rect::from_center_size(pos, Vec2::new(width, height));
+//         // let positions = vec![
+//         //     pos + Vec2::new(-width / 2.0, -height / 2.0),
+//         //     pos + Vec2::new(width / 2.0, -height / 2.0),
+//         //     pos + Vec2::new(width / 2.0, height / 2.0),
+//         //     pos + Vec2::new(-width / 2.0, height / 2.0),
+//         // ];
+//         //let positions = self.transform.apply_all_to_pos(vec![Pos2::new(0.0, 0.0), Pos2::new(1.0, 0.0), Pos2::new(1.0, 1.0), Pos2::new(0.0, 1.0)], ui);
+
+//         println!("Space: {}, {}", available_space.width(), available_space.height());
+//         let global_transform = to_transform(available_space.size(), 0f32, available_space.min.to_vec2());
+//         //let combined_transform = global_transform * 
+//         let points_raw = vec![Point2::new(0.0, 0.0), Point2::new(1.0, 0.0), Point2::new(1.0, 1.0), Point2::new(0.0, 1.0)];
+//         let positions = self.transform.apply_to_points(&points_raw).into_iter().map(|p| to_pos(global_transform * p)).collect();
+//                                     //.into_iter()
+//                                     //.map(|p| to_pos((global_transform * (self.transform * (Point2::new(p.x, p.y) - Vector2::new(0.5, 0.5)) + Vector2::new(0.05, 0.05)))))
+//                                     //.map(|p| to_pos(global_transform * (self.transform.translation * (self.transform.scale * (self.transform.rotation * (Point2::new(p.x, p.y) - Vector2::new(0.5, 0.5)) + Vector2::new(0.5, 0.5))))))
+//                                     //.collect();//.map(|p| ui.available_rect_before_wrap().lerp_inside(Vec2::new(p.x, p.y))).collect();
+//         //* to_transform(Vec2::new(0.5, 0.5), 30f32.to_radians(), Vec2::new(0.1f32, 0.2f32))
+//         let mesh = create_mesh(&positions, ColoredTexture::new(TextureKey::PatternMissing, Color32::WHITE));
+        
+//         //let shape = RectShape::stroke(rect.clone(), CornerRadius::ZERO, stroke, egui::StrokeKind::Middle);
        
-        painter.add(mesh);
-        painter.add(shape);
+//         painter.add(mesh);
+//         //self.circle_painter.paint(ui, &transform);
+//         //painter.add(shape);
 
-        return ResponseBounds::new(rect, None);
-    }
+//         return ResponseBounds::new(Rect::NOTHING, None);
+//     }
 
-}
+// }

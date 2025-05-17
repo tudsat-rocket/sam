@@ -6,19 +6,20 @@ use crate::{
         burst_disc::BurstDiscPainter,
         flex_tube::FlexTubePainter,
         flow_component::{
-            ComponentInfo, DisplayValue, FillState, FlowComponent, FluidType, Justification, JustifiedValue, MissingComponentPainter, Value, TEST_SENSOR
+            ComponentInfo, ConnectionState, DisplayValue, FillState, FlowComponent, FluidType, Justification, JustifiedValue, Value, TEST_SENSOR
         },
         line::{LinePainter1D, LinePainter2D},
         sensor::SymbolPainter,
         tank::TankPainter,
         valve::{BallValvePainter, CheckValvePainter, TankValvePainter, ValvePainter},
-    },
-    utils::mesh::register_textures,
+    }, flow_components_new::{flow_painter::FlowPainter::GenericValve, math::transform::Transform, painter_instance::PainterInstance}, utils::{mesh::register_textures, theme::ThemeColors}
 };
-
+use nalgebra::{Rotation2, Scale2, Translation2};
 pub struct HybridSystemDiagram {
     components: Vec<FlowComponent>,
+    new_test_painter: PainterInstance
 }
+
 
 impl HybridSystemDiagram {
     pub fn init(ctx: &egui::Context) {
@@ -186,24 +187,30 @@ impl HybridSystemDiagram {
                     Box::new(CheckValvePainter::new(Pos2::new(0.90, 0.25), 0.1, 0.08)),
                     None,
                 ),
-                //-Check valve-
-                FlowComponent::new(
-                    ComponentInfo::new(String::from("Missign component"), vec![]),
-                    Box::new(MissingComponentPainter::new(Pos2::new(0.6, 0.25), 0.1, 0.08)),
-                    None,
-                ),
             ],
+            new_test_painter: PainterInstance::new(
+                //GenericValve(ConnectionState::Connected(None)),
+                crate::flow_components_new::flow_painter::FlowPainter::Missing,
+                Transform::new(Rotation2::new(45f32.to_radians()), Scale2::new(0.1, 0.1), Translation2::new(0.2, 0.2)))
         }
     }
 }
 
 impl egui::Widget for HybridSystemDiagram {
     fn ui(self, ui: &mut egui::Ui) -> egui::Response {
-        ui.vertical(|ui| {
+        let res = ui.vertical(|ui| {
             for comp in self.components {
                 comp.draw_and_respond(ui);
             }
         })
-        .response
+        .response;
+        let available_space = ui.available_rect_before_wrap();
+        let global_transform = Transform::new(
+            Rotation2::new(0f32),
+            Scale2::new(available_space.width(), available_space.height()),
+            Translation2::new(available_space.min.x, available_space.min.y))
+            .to_affine2();
+        self.new_test_painter.paint(&global_transform, ui.painter(), ThemeColors::new(ui.ctx()));
+        return res;
     }
 }

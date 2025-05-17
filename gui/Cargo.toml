@@ -32,7 +32,7 @@ crc = { workspace = true }
 serialport = "4"
 # misc
 mint = { workspace = true }
-nalgebra = { workspace = true }
+nalgebra.workspace = true
 chrono = { workspace = true }
 directories = "4.0"
 colorgrad = "0.6"

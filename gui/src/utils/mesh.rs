@@ -53,7 +53,7 @@ impl ColoredTexture {
     }
 }
 
-pub fn create_mesh(positions: &Vec<Pos2>, colored_texture: ColoredTexture) -> Mesh {
+pub fn create_mesh_from_indices(positions: &Vec<Pos2>, indices: Vec<u32>, colored_texture: ColoredTexture) -> Mesh {
     let min = positions.iter().fold(Pos2::new(f32::MAX, f32::MAX), |a, b| a.min(*b));
     let max = positions.iter().fold(Pos2::new(f32::MIN, f32::MIN), |a, b| a.max(*b));
     let size = max - min;
@@ -67,17 +67,21 @@ pub fn create_mesh(positions: &Vec<Pos2>, colored_texture: ColoredTexture) -> Me
         })
         .collect::<Vec<_>>();
 
+    return Mesh {
+        indices: indices,
+        vertices: vertices,
+        texture_id: get_texture_id(colored_texture.texture_key),
+    };
+}
+
+pub fn create_mesh(positions: &Vec<Pos2>, colored_texture: ColoredTexture) -> Mesh {
     let indices = earcutr::earcut(&positions.iter().map(|p| vec![p.x, p.y]).flatten().collect::<Vec<_>>(), &[], 2)
         .unwrap_or_default()
         .iter()
         .map(|i| *i as u32)
         .collect::<Vec<_>>();
 
-    return Mesh {
-        indices: indices,
-        vertices: vertices,
-        texture_id: get_texture_id(colored_texture.texture_key),
-    };
+    return create_mesh_from_indices(positions, indices, colored_texture);
 }
 
 //All textures loaded using this macro are kept in GPU memory for the whole lifetime of the program, so use this macro responsibly!
