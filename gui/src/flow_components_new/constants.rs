@@ -1,1 +1,0 @@
-pub const STROKE_WIDTH: f32 = 1.8;

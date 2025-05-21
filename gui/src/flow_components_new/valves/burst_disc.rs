@@ -1,0 +1,25 @@
+use nalgebra::{Affine2, Point2};
+
+use crate::{flow_components::flow_component::get_fluid_color, flow_components_new::{core::constants::STROKE_WIDTH, math::{conversions::to_pos, transform::Transform}}, utils::{mesh::{create_mesh_from_indices, ColoredTexture, TextureKey}, theme::ThemeColors}};
+
+use super::valve_state::ValveState;
+
+
+const POSITIONS: [Point2<f32>; 7] = [Point2::new(0f32, 0f32), Point2::new(1f32, 0.5), Point2::new(0f32, 1f32), Point2::new(0f32, 0f32), Point2::new(1f32, 0f32), Point2::new(1f32, 1f32), Point2::new(0f32, 1f32)];
+const MESH_INDICES: [u32; 6] = [3, 4, 5, 5, 6, 0];
+
+pub fn paint(local_transform: &Transform, global_transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: ThemeColors) { 
+    let stroke = egui::Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
+    let positions: Vec<_> = local_transform.apply_to_points(POSITIONS).into_iter().map(|p| to_pos(global_transform * p)).collect();
+    let color = match state {
+        ValveState::Connected(contents) => match contents {
+            Some(fluid) => get_fluid_color(fluid),
+            None => theme.background,
+        },
+        ValveState::Disconnected => theme.background_weak,
+    };
+    let texture = ColoredTexture::new(TextureKey::PatternFull, color);
+    let mesh = create_mesh_from_indices(&positions, MESH_INDICES.to_vec(), texture);
+    painter.add(mesh);
+    painter.line(positions, stroke);
+}
