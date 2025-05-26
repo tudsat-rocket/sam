@@ -14,9 +14,9 @@ const OPEN_BARRIER_HEIGHT: f32 = 0.6;
 const STRETCH_CIRCLE_TO_MAX_HEIGHT: bool = true;
 
 const LINE_SEGMENT_LENGTH: f32 = (1f32 - 2f32 * CIRCLE_DIAMETER - GAP_WIDTH) / 2f32;
-const CLOSED_POSITIONS: [Point2<f32>; 2] = [Point2::new(CIRCLE_DIAMETER, 0.5), Point2::new(1f32 - CIRCLE_DIAMETER, 0.5)];
+const CLOSED_POSITIONS: [Point2<f32>; 4] = [Point2::new(CIRCLE_DIAMETER, 0.5), Point2::new(1f32 - CIRCLE_DIAMETER, 0.5), Point2::new(CIRCLE_DIAMETER + LINE_SEGMENT_LENGTH + 0.5 * GAP_WIDTH, 0.5 - 0.5 * OPEN_BARRIER_HEIGHT), Point2::new(CIRCLE_DIAMETER + LINE_SEGMENT_LENGTH + 0.5 * GAP_WIDTH, 0.5 + 0.5 * OPEN_BARRIER_HEIGHT)];
 const OPEN_POSITIONS: [Point2<f32>; 8] = [Point2::new(CIRCLE_DIAMETER, 0.5), Point2::new(CIRCLE_DIAMETER + LINE_SEGMENT_LENGTH, 0.5), Point2::new(1f32 - CIRCLE_DIAMETER - LINE_SEGMENT_LENGTH, 0.5), Point2::new(1f32 - CIRCLE_DIAMETER, 0.5), Point2::new(CIRCLE_DIAMETER + LINE_SEGMENT_LENGTH, 0.5 - 0.5 * OPEN_BARRIER_HEIGHT), Point2::new(CIRCLE_DIAMETER + LINE_SEGMENT_LENGTH, 0.5 + 0.5 * OPEN_BARRIER_HEIGHT), Point2::new(1f32 - CIRCLE_DIAMETER - LINE_SEGMENT_LENGTH, 0.5 - 0.5 * OPEN_BARRIER_HEIGHT), Point2::new(1f32 - CIRCLE_DIAMETER - LINE_SEGMENT_LENGTH, 0.5 + 0.5 * OPEN_BARRIER_HEIGHT)];
-const CIRCLE_HEIGHT: f32 = if STRETCH_CIRCLE_TO_MAX_HEIGHT {1f32} else {CIRCLE_DIAMETER}; 
+const CIRCLE_HEIGHT: f32 = if STRETCH_CIRCLE_TO_MAX_HEIGHT {1f32} else {CIRCLE_DIAMETER};
 
 //TODO: Implement wedges around circles
 pub fn paint(local_transform: &Transform, global_transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: &ThemeColors) {
@@ -27,7 +27,9 @@ pub fn paint(local_transform: &Transform, global_transform: &Affine2<f32>, state
     match state {
         ValveState::Connected(_) => {
             let positions: Vec<_> = local_transform.apply_to_points(CLOSED_POSITIONS).into_iter().map(|p| to_pos(global_transform * p)).collect();
-            painter.line(positions, stroke);
+            for i in 0..(CLOSED_POSITIONS.len() / 2) {
+                painter.line(vec![positions[2 * i], positions[2 * i + 1]], stroke);
+            }
         }
         ValveState::Disconnected => {
             let positions: Vec<_> = local_transform.apply_to_points(OPEN_POSITIONS).into_iter().map(|p| to_pos(global_transform * p)).collect();

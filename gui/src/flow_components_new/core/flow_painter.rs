@@ -1,4 +1,4 @@
-use nalgebra::Affine2;
+use nalgebra::{Affine2, Point2};
 
 use crate::{flow_components_new::{math::transform::Transform, other::*, storage::{storage_state::StorageState, *}, valves::{valve_state::ValveState, *}}, utils::theme::ThemeColors};
 
@@ -8,12 +8,14 @@ pub enum FlowPainter {
     TankValve(Transform, ValveState),
     BurstDisc(Transform, ValveState),
     QuickDisconnect(Transform, ValveState),
+    PressureRelief(Transform, ValveState),
     //----------------------- Storage ----------------------
     Tank(Transform, StorageState),
     Bottle(Transform, StorageState),
     //----------------------- Other ------------------------
     Missing(Transform),
     FlexTube(Transform),
+    Line1D(Vec<Point2<f32>>),
 }
 
 impl FlowPainter {
@@ -24,6 +26,8 @@ impl FlowPainter {
             FlowPainter::TankValve(local_transform, state) => tank_valve::paint(local_transform, global_transform, state, painter, theme),
             FlowPainter::BurstDisc(local_transform, state) => burst_disc::paint(local_transform, global_transform, state, painter, theme),
             FlowPainter::QuickDisconnect(local_transform, state) => quick_disconnect::paint(local_transform, global_transform, state, painter, &theme),
+            FlowPainter::PressureRelief(local_transform, state) => pressure_relief::paint(local_transform, global_transform, state, painter, theme),
+            
             //----------------------- Storage ----------------------
             FlowPainter::Tank(local_transform, state) => tank::paint(local_transform, global_transform, state, painter, theme),
             FlowPainter::Bottle(local_transform, state) => bottle::paint(local_transform, global_transform, state, painter, theme),
@@ -31,6 +35,7 @@ impl FlowPainter {
             //----------------------- Other ------------------------
             FlowPainter::Missing(local_transform) => missing::paint(local_transform, global_transform, painter),
             FlowPainter::FlexTube(local_transform) => flex_tube::paint(local_transform, global_transform, painter, theme),
+            FlowPainter::Line1D(points) => line1d::paint(points, global_transform, painter, theme),
         }
     }
 }
