@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use egui::{epaint::PathShape, Shape, Stroke};
 use nalgebra::{Affine2, Point2};
 
-use crate::{flow_components::flow_component::get_fluid_color, flow_components_new::{core::constants::STROKE_WIDTH, math::{conversions::to_pos, transform::Transform}}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
+use crate::{flow_components::flow_component::get_fluid_color, flow_components_new::{core::constants::STROKE_WIDTH, math::conversions::to_pos}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
 use super::storage_state::StorageState;
 
@@ -17,11 +17,11 @@ const CAP_BULKHEAD_STEPS: usize = 100;
 static BOTTLE_POSITIONS: LazyLock<Vec<Point2<f32>>> = LazyLock::new(|| get_bottle_positions());
 static CAP_POSITIONS: LazyLock<Vec<Point2<f32>>> = LazyLock::new(|| get_cap_positions());
 
-pub fn paint(local_transform: &Transform, global_transform: &Affine2<f32>, state: &StorageState, painter: &egui::Painter, theme: ThemeColors) {
+pub fn paint(transform: &Affine2<f32>, state: &StorageState, painter: &egui::Painter, theme: &ThemeColors) {
     let stroke = Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
 
-    let bottle_positions: Vec<_> = local_transform.apply_to_points((*BOTTLE_POSITIONS).clone()).into_iter().map(|p| to_pos(global_transform * p)).collect();
-    let cap_positions: Vec<_> = local_transform.apply_to_points((*CAP_POSITIONS).clone()).into_iter().map(|p| to_pos(global_transform * p)).collect();
+    let bottle_positions: Vec<_> = BOTTLE_POSITIONS.iter().map(|p| to_pos(transform * p)).collect();
+    let cap_positions: Vec<_> = CAP_POSITIONS.iter().map(|p| to_pos(transform * p)).collect();
 
     let fluid_texture_cap = ColoredTexture::new(TextureKey::PatternFull, get_fluid_color(&state.fluid));
     let fluid_texture_bottle = ColoredTexture::new(TextureKey::PatternFull, get_fluid_color(&state.fluid));

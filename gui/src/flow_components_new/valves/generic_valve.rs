@@ -1,19 +1,19 @@
 use nalgebra::{Affine2, Point2};
-use crate::{flow_components::flow_component::{get_fluid_color}, flow_components_new::{core::constants::STROKE_WIDTH, math::{conversions::to_pos, transform::Transform, utils::gather}}, utils::{mesh::{create_mesh_from_indices, ColoredTexture, TextureKey}, theme::ThemeColors}};
+use crate::{flow_components::flow_component::{get_fluid_color}, flow_components_new::{core::constants::STROKE_WIDTH, math::{conversions::to_pos, utils::gather}}, utils::{mesh::{create_mesh_from_indices, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
 use super::valve_state::ValveState;
 
-const POSITIONS: [Point2<f32>; 5] = [Point2::new(0f32, 0f32), Point2::new(0.5, 0.5), Point2::new(1f32, 1f32), Point2::new(1f32, 0f32), Point2::new(0f32, 1f32)];
+const POSITIONS: [Point2<f32>; 5] = [Point2::new(-0.5, -0.5), Point2::new(0.0, 0.0), Point2::new(0.5, 0.5), Point2::new(0.5, -0.5), Point2::new(-0.5, 0.5)];
 const MESH_INDICES: [u32; 6] = [0, 1, 4, 1, 2, 3];
 const OUTLINE_INDICES: [usize; 5] = [0, 2, 3, 4, 0];
 
-pub fn paint(local_transform: &Transform, global_transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: ThemeColors) {
+pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: &ThemeColors) {
     let stroke = egui::Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
-    let positions: Vec<_> = local_transform.apply_to_points(POSITIONS).into_iter().map(|p| to_pos(global_transform * p)).collect();
+    let positions = POSITIONS.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     let color = match state {
         ValveState::Connected(contents) => match contents {
             Some(fluid) => get_fluid_color(fluid),
-            None => theme.background,
+            None => theme.background_weak,
         },
         ValveState::Disconnected => theme.foreground_weak,
     };
