@@ -18,9 +18,9 @@ use serde::{Deserialize, Serialize};
 
 use telemetry::*;
 
+use crate::system_diagram_components::diagrams;
 use crate::settings::AppSettings;
-use crate::widgets::acs::*;
-use crate::widgets::hybrid::*;
+use crate::widgets::system_diagram::*;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
 use crate::*;
@@ -78,8 +78,8 @@ impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
                 ui.add(Plot::new(&config, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.backend))
             }
             WidgetPane::Map => ui.add(Map::new(&mut self.global_widget_state.map, self.backend, self.settings)),
-            WidgetPane::Acs => ui.add(AcsSystemDiagram::new(self.backend)),
-            WidgetPane::Hybrid => ui.add(HybridSystemDiagram::new()),
+            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend)),
+            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend)),
         };
 
         egui_tiles::UiResponse::None
@@ -367,7 +367,7 @@ pub struct PlotTab {
 
 impl PlotTab {
     pub fn init(ctx: &egui::Context, settings: &AppSettings) -> Self {
-        HybridSystemDiagram::init(ctx);
+        SystemDiagram::init(ctx);
 
         let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
         let mapbox_token = (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone());
@@ -420,7 +420,7 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let top_right = vec![tiles.insert_pane(WidgetPane::Hybrid), tiles.insert_pane(WidgetPane::Map)];
+        let top_right = vec![tiles.insert_pane(WidgetPane::Acs), /*tiles.insert_pane(WidgetPane::Hybrid),*/ tiles.insert_pane(WidgetPane::Map)];
 
         let right = vec![
             tiles.insert_horizontal_tile(top_right),

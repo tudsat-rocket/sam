@@ -11,8 +11,7 @@ use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 use shared_types::telemetry::*;
 
 pub mod backend;
-pub mod flow_components;
-pub mod flow_components_new;
+pub mod system_diagram_components;
 pub mod panels;
 pub mod settings;
 pub mod tabs;
