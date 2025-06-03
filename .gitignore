@@ -1,4 +1,6 @@
 /target
+result
+.direnv/
 *.log
 *.json
 *.gpx
