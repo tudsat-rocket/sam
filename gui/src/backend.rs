@@ -338,6 +338,14 @@ impl Backend {
         self.data_store().plot_metric(key, bounds, self.end())
     }
 
+    pub fn enum_transitions<'a, E: TryFrom<u8>>(
+        &'a self,
+        key: &Metric,
+        bounds: egui_plot::PlotBounds,
+    ) -> Vec<(f64, E)> {
+        self.data_store().enum_transitions(key, bounds, self.end())
+    }
+
     pub fn timeseries<'a>(
         &'a self,
         metric: &Metric,

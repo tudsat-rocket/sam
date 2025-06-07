@@ -4,6 +4,8 @@ mod metrics;
 mod representation;
 mod schema;
 mod source;
+
+#[cfg(not(target_os = "none"))]
 mod store;
 
 use core::convert::Infallible;
@@ -12,6 +14,8 @@ pub use metrics::*;
 pub use representation::*;
 pub use schema::*;
 pub use source::*;
+
+#[cfg(not(target_os = "none"))]
 pub use store::*;
 
 pub const ALTITUDE_REPRESENTATION: Representation = Representation::fixed(16, -100.0..=10_000.0);
