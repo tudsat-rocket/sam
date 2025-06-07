@@ -50,7 +50,6 @@ impl MetricSource for SimulationWorker {
 
         match metric {
             FlightMode => w.write_enum(repr, self.mode as u8),
-            ApogeeAltitudeASL => w.write_float(repr, self.state_estimator.apogee_asl(0.0).unwrap_or_default()),
             // State estimator
             Orientation(_)
             | Elevation
@@ -61,6 +60,7 @@ impl MetricSource for SimulationWorker {
             | Latitude
             | Longitude
             | GroundAltitudeASL
+            | ApogeeAltitudeASL
             | GroundSpeed
             | KalmanStateCovariance(_, _) => self.state_estimator.write_metric(w, metric, repr),
             // Raw sensor values

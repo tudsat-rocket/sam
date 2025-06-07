@@ -20,7 +20,8 @@ pub enum MainOutputMode {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LoRaSettings {
     /// which of the 14 500kHz LoRa channels from 863-870MHz to use
-    pub channels: [bool; 14],
+    pub downlink_channels: [bool; 14],
+    pub uplink_channel: usize,
     /// binding phrase, used to generate LoRa FHSS sequence
     pub binding_phrase: heapless::String<64>,
     /// key for uplink authentication
@@ -29,8 +30,13 @@ pub struct LoRaSettings {
 
 impl Default for LoRaSettings {
     fn default() -> Self {
+        let mut downlink_channels = [true; 14];
+        downlink_channels[0] = false;
+        downlink_channels[13] = false;
+
         Self {
-            channels: [true; 14],
+            downlink_channels,
+            uplink_channel: 0,
             binding_phrase: heapless::String::new(),
             authentication_key: 0x00000000000000000000000000000000,
         }

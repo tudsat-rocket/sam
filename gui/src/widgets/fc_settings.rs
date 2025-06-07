@@ -28,33 +28,63 @@ impl FcSettingsUiExt for Settings {
                     ui.label("LoRa channel selection (500kHz BW)");
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.toggle_value(&mut self.lora.channels[0], RichText::new("863.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[1], RichText::new("863.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[2], RichText::new("864.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[3], RichText::new("864.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[4], RichText::new("865.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[5], RichText::new("865.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[6], RichText::new("866.25").monospace().size(10.0));
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[0],
+                                RichText::new("863.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[1],
+                                RichText::new("863.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[2],
+                                RichText::new("864.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[3],
+                                RichText::new("864.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[4],
+                                RichText::new("865.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[5],
+                                RichText::new("865.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[6],
+                                RichText::new("866.25").monospace().size(10.0),
+                            );
                             ui.label(RichText::new("MHz").weak().size(10.0));
                         });
                         ui.horizontal(|ui| {
-                            ui.toggle_value(&mut self.lora.channels[7], RichText::new("866.75").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[8], RichText::new("867.25").monospace().size(10.0));
-                            ui.toggle_value(&mut self.lora.channels[9], RichText::new("867.75").monospace().size(10.0));
                             ui.toggle_value(
-                                &mut self.lora.channels[10],
+                                &mut self.lora.downlink_channels[7],
+                                RichText::new("866.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[8],
+                                RichText::new("867.25").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[9],
+                                RichText::new("867.75").monospace().size(10.0),
+                            );
+                            ui.toggle_value(
+                                &mut self.lora.downlink_channels[10],
                                 RichText::new("868.25").monospace().size(10.0),
                             );
                             ui.toggle_value(
-                                &mut self.lora.channels[11],
+                                &mut self.lora.downlink_channels[11],
                                 RichText::new("868.75").monospace().size(10.0),
                             );
                             ui.toggle_value(
-                                &mut self.lora.channels[12],
+                                &mut self.lora.downlink_channels[12],
                                 RichText::new("869.25").monospace().size(10.0),
                             );
                             ui.toggle_value(
-                                &mut self.lora.channels[13],
+                                &mut self.lora.downlink_channels[13],
                                 RichText::new("869.75").monospace().size(10.0),
                             );
                             ui.label(RichText::new("MHz").weak().size(10.0));

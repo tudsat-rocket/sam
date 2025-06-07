@@ -181,6 +181,8 @@ pub fn default_altitude_plot() -> WidgetPane {
             lines: vec![
                 (Metric::GroundAltitudeASL, BR),
                 (Metric::RawBarometricAltitude(BarometerId::MS5611), B1),
+                (Metric::RawBarometricAltitude(BarometerId::LPS22), B1),
+                (Metric::RawBarometricAltitude(BarometerId::BMP580), B1),
                 (Metric::PositionWorldSpace(Dim::Z), B),
                 (Metric::ApogeeAltitudeASL, O1),
                 (Metric::GpsAltitude, G),
@@ -198,6 +200,12 @@ pub fn default_gyroscope_plot() -> WidgetPane {
                 (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::X), R),
                 (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::Y), G),
                 (Metric::RawAngularVelocity(GyroscopeId::LSM6DSR, Dim::Z), B),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::X), R),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::Y), G),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::Z), B),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::X), R),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::Y), G),
+                (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::Z), B),
             ],
             ylimits: (None, None),
         },
@@ -215,6 +223,12 @@ pub fn default_accelerometer_plot() -> WidgetPane {
                 (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::X), R),
                 (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Y), G),
                 (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Z), B),
+                (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::X), R),
+                (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::Y), G),
+                (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::Z), B),
+                (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::X), R),
+                (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::Y), G),
+                (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::Z), B),
             ],
             ylimits: (Some(-10.0), Some(10.0)),
         },
@@ -241,6 +255,8 @@ pub fn default_pressures_plot() -> WidgetPane {
         config: PlotConfig {
             lines: vec![
                 (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::MS5611)), C),
+                (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::LPS22)), C),
+                (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::BMP580)), C),
                 (Metric::Pressure(PressureSensorId::AcsTank), R),
                 (Metric::Pressure(PressureSensorId::AcsPostRegulator), G),
                 (Metric::Pressure(PressureSensorId::AcsValveAccel), O),
@@ -312,6 +328,8 @@ pub fn default_temperatures_plot() -> WidgetPane {
         config: PlotConfig {
             lines: vec![
                 (Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::MS5611)), C),
+                (Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::LPS22)), C),
+                (Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::BMP580)), C),
                 (Metric::Temperature(TemperatureSensorId::Acs), R),
                 (Metric::Temperature(TemperatureSensorId::Recovery), B),
                 (Metric::Temperature(TemperatureSensorId::Payload), O),

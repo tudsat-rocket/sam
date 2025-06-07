@@ -1,13 +1,7 @@
 //! Contains data structures that the flight computer shares with the outside world,
 //! namely the ground station software, as well as common (de)serialization code.
 
-#[cfg(target_os = "none")]
-use alloc::string::{String, ToString};
-#[cfg(target_os = "none")]
-use alloc::vec::Vec;
-
-#[cfg(not(target_os = "none"))]
-use std::vec::Vec;
+use heapless::{String, Vec};
 
 #[cfg(target_os = "none")]
 use core::hash::Hasher;
@@ -268,12 +262,12 @@ impl Command {
 }
 
 pub trait Transmit: Sized {
-    fn serialize(&self) -> Result<Vec<u8>, postcard::Error>;
+    fn serialize(&self) -> Result<Vec<u8, 1032>, postcard::Error>;
 }
 
 impl<M: Serialize + DeserializeOwned> Transmit for M {
-    fn serialize(&self) -> Result<Vec<u8>, postcard::Error> {
+    fn serialize(&self) -> Result<Vec<u8, 1032>, postcard::Error> {
         let mut buf = [0u8; 1024 + 8];
-        postcard::to_slice_cobs(self, &mut buf).map(|s| s.to_vec())
+        postcard::to_slice_cobs(self, &mut buf).map(|s| Vec::from_slice(s).unwrap())
     }
 }

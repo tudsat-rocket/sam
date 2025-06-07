@@ -1,3 +1,4 @@
+use embassy_stm32::mode::Async;
 use heapless::{String, Vec};
 
 use embassy_embedded_hal::SetConfig;
@@ -27,7 +28,7 @@ const DESIRED_BAUD_RATE_MESSAGE: &'static str = "$PUBX,41,1,0007,0003,115200,0*1
 static CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
 pub struct GPS {
-    uart: Uart<'static, USART2, DMA1_CH6, DMA1_CH5>,
+    uart: Uart<'static, Async>,
     sender: Sender<'static, CriticalSectionRawMutex, GPSDatum, 5>,
 }
 

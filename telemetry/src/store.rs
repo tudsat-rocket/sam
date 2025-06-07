@@ -6,9 +6,9 @@ use egui_plot::PlotPoint;
 
 use crate::*;
 
-const DOWNSAMPLING_FACTOR: usize = 8;
+const DOWNSAMPLING_FACTOR: usize = 16;
 const DOWNSAMPLING_LEVELS: usize = 5;
-const DOWNSAMPLING_THRESHOLD: usize = 4000;
+const DOWNSAMPLING_THRESHOLD: usize = 10_000;
 
 #[derive(Default)]
 pub struct DataStore {

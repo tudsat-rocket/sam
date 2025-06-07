@@ -121,43 +121,13 @@ impl StateEstimator {
         ] * settings.std_dev_process.powi(2);
 
         // Measurement Covariance Matrix
-        kalman.R = Matrix6::new(
-            settings.std_dev_barometer.powi(2),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            settings.std_dev_accelerometer.powi(2),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            settings.std_dev_accelerometer.powi(2),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            settings.std_dev_accelerometer.powi(2),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            GPS_NO_FIX_STD_DEV.powi(2),
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            0.0,
-            GPS_NO_FIX_STD_DEV.powi(2),
+        kalman.R = matrix!(
+            settings.std_dev_barometer.powi(2), 0.0, 0.0, 0.0, 0.0, 0.0;
+            0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0, 0.0;
+            0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0, 0.0;
+            0.0, 0.0, 0.0, settings.std_dev_accelerometer.powi(2), 0.0, 0.0;
+            0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2), 0.0;
+            0.0, 0.0, 0.0, 0.0, 0.0, GPS_NO_FIX_STD_DEV.powi(2);
         );
 
         Self {
@@ -365,25 +335,11 @@ impl StateEstimator {
         self.altitude_asl() - self.altitude_ground
     }
 
-    pub fn apogee_asl(&self, acs_tank_pressure: f32) -> Option<f32> {
+    pub fn apogee_asl(&self) -> Option<f32> {
         match self.mode {
             FlightMode::Coast => {
-                let direction: f32 = self.last_valve_state.into();
-                let pressure_offset = f32::min(0.0, acs_tank_pressure - self.settings.acs_nominal_tank_pressure);
-                let thrust = self.settings.acs_nominal_acceleration
-                    + pressure_offset * self.settings.acs_acceleration_pressure_slope;
-                let estimated_thruster_acceleration = direction * f32::max(0.0, thrust);
-
-                let estimated_thruster_acc = match self.last_valve_state {
-                    ThrusterValveState::OpenAccel => estimated_thruster_acceleration,
-                    ThrusterValveState::OpenDecel => -estimated_thruster_acceleration,
-                    _ => 0.0,
-                };
-                let orientation = self.orientation.unwrap_or_default();
-                let thrust = orientation * Vector3::new(0., 0., estimated_thruster_acc);
-
                 // First, figure out the current drag force
-                let drag = self.acceleration_world() - thrust + Vector3::new(0.0, 0.0, GRAVITY);
+                let drag = self.acceleration_world() + Vector3::new(0.0, 0.0, GRAVITY);
 
                 // By how much should we reduce our drag estimate to roughly match the
                 // average over the remaining flight?
@@ -405,8 +361,8 @@ impl StateEstimator {
         }
     }
 
-    pub fn apogee_agl(&self, acs_tank_pressure: f32) -> Option<f32> {
-        self.apogee_asl(acs_tank_pressure).map(|alt| alt - self.altitude_ground)
+    pub fn apogee_agl(&self) -> Option<f32> {
+        self.apogee_asl().map(|alt| alt - self.altitude_ground)
     }
 
     pub fn ground_speed(&self) -> f32 {
@@ -501,52 +457,6 @@ impl StateEstimator {
         }
     }
 
-    pub fn thruster_valve(&mut self, acs_tank_pressure: f32) -> ThrusterValveState {
-        if (self.mode == FlightMode::RecoveryDrogue || self.mode == FlightMode::RecoveryMain)
-            && self.time_in_mode() > 10_000
-        {
-            self.last_valve_state = ThrusterValveState::OpenBoth;
-            return ThrusterValveState::OpenBoth;
-        }
-
-        if self.mode != FlightMode::Coast || self.altitude_agl() < 1500.0 || self.vertical_speed().abs() < 10.0 {
-            self.last_valve_state = ThrusterValveState::Closed;
-            self.last_valve_state_change = self.time;
-            return ThrusterValveState::Closed;
-        }
-
-        // TODO: configuration, etc.
-        let error =
-            (self.apogee_agl(acs_tank_pressure).unwrap_or_default() - 3000.0) + self.settings.apogee_error_offset;
-
-        #[cfg(not(target_os = "none"))]
-        {
-            self.last_apogee_error = error;
-        }
-
-        let threshold = if self.last_valve_state == ThrusterValveState::Closed {
-            2.0
-        } else {
-            1.0
-        };
-        let mut new = match error {
-            _ if error < -threshold => ThrusterValveState::OpenAccel,
-            _ if error > threshold => ThrusterValveState::OpenDecel,
-            _ => ThrusterValveState::Closed,
-        };
-
-        if (self.time - self.last_valve_state_change).0 < 200 {
-            new = self.last_valve_state;
-        }
-
-        if new != self.last_valve_state {
-            self.last_valve_state = new;
-            self.last_valve_state_change = self.time;
-        }
-
-        self.last_valve_state
-    }
-
     fn true_since(&mut self, cond: bool, duration: u32) -> bool {
         self.condition_true_since = match (cond, self.condition_true_since) {
             (true, None) => Some(self.time),
@@ -639,6 +549,7 @@ impl MetricSource for StateEstimator {
             Metric::PositionWorldSpace(dim) => w.write_vector(repr, dim, &self.position_local()),
             Metric::Latitude => w.write_float(repr, self.latitude().unwrap_or_default()),
             Metric::Longitude => w.write_float(repr, self.longitude().unwrap_or_default()),
+            Metric::ApogeeAltitudeASL => w.write_float(repr, self.apogee_asl().unwrap_or_default()),
             Metric::GroundAltitudeASL => w.write_float(repr, self.altitude_ground),
             Metric::GroundSpeed => w.write_float(repr, self.ground_speed()),
             Metric::KalmanStateCovariance(i, j) => w.write_float(repr, self.kalman.P[(i, j)]),

@@ -81,7 +81,7 @@ impl<const N: usize> TelemetryMessageWriter<N> {
                 16 => half::f16::from_f64(f).to_bits() as u64,
                 _ => panic!("non-{{16,32,64}}-bit floating point numbers not supported"),
             },
-            Representation::Enum { bits: _ } => unreachable!(),
+            Representation::Enum { bits: _ } => 0x00,
         };
 
         let mut len = bits / 8;
