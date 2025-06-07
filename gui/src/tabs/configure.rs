@@ -6,10 +6,10 @@ use log::*;
 
 use shared_types::telemetry::*;
 
+use crate::Backend;
 use crate::settings::AppSettings;
 use crate::utils::file::*;
 use crate::widgets::fc_settings::*;
-use crate::Backend;
 
 pub struct ConfigureTab {}
 

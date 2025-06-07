@@ -40,7 +40,8 @@ impl Sam {
     /// such as plots and maps.
     pub fn init(ctx: &egui::Context, settings: AppSettings, default_backend: Option<Backend>) -> Self {
         #[cfg(not(target_arch = "wasm32"))]
-        let backend = default_backend.unwrap_or(Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())));
+        let backend = default_backend.unwrap_or(Backend::Udp(UdpBackend::new(ctx)));
+        //let backend = default_backend.unwrap_or(Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())));
         #[cfg(target_arch = "wasm32")]
         let backend = default_backend.unwrap_or(Backend::Noop(NoopBackend::default()));
 

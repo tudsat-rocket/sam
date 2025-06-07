@@ -25,6 +25,8 @@ pub mod noop;
 pub mod serial;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub mod simulation;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod udp;
 
 pub use log_file::*;
 pub use noop::*;
@@ -32,6 +34,8 @@ pub use noop::*;
 pub use serial::*;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub use simulation::*;
+#[cfg(not(target_arch = "wasm32"))]
+pub use udp::*;
 
 const PLAYBACK_SPEEDS: [(&'static str, f64); 7] = [
     ("1x", 1.0),
@@ -270,6 +274,8 @@ pub trait ReplayableBackendVariant: BackendVariant {
 pub enum Backend {
     #[cfg(not(target_arch = "wasm32"))]
     Serial(SerialBackend),
+    #[cfg(not(target_arch = "wasm32"))]
+    Udp(UdpBackend),
     Noop(NoopBackend),
     Log(LogFileBackend),
     #[cfg(not(target_arch = "wasm32"))]
@@ -281,6 +287,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.update(ctx),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.update(ctx),
             Self::Noop(b) => b.update(ctx),
             Self::Log(b) => b.update(ctx),
             #[cfg(not(target_arch = "wasm32"))]
@@ -292,6 +300,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.data_store(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.data_store(),
             Self::Noop(b) => b.data_store(),
             Self::Log(b) => b.data_store(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -303,6 +313,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.end(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.end(),
             Self::Noop(b) => b.end(),
             Self::Log(b) => b.end(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -349,6 +361,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.fc_settings(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.fc_settings(),
             Self::Noop(b) => b.fc_settings(),
             Self::Log(b) => b.fc_settings(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -360,6 +374,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.fc_settings_mut(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.fc_settings_mut(),
             Self::Noop(b) => b.fc_settings_mut(),
             Self::Log(_b) => None,
             #[cfg(not(target_arch = "wasm32"))]
@@ -371,6 +387,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.send(msg),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.send(msg),
             _ => Ok(()),
         }
     }
@@ -379,6 +397,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.send_command(cmd),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.send_command(cmd),
             _ => Ok(()),
         }
     }
@@ -391,6 +411,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.reset(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.reset(),
             Self::Noop(b) => b.reset(),
             Self::Log(b) => b.reset(),
             #[cfg(not(target_arch = "wasm32"))]
@@ -402,6 +424,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.apply_settings(settings),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.apply_settings(settings),
             Self::Noop(b) => b.apply_settings(settings),
             Self::Log(b) => b.apply_settings(settings),
             #[cfg(not(target_arch = "wasm32"))]
@@ -413,6 +437,8 @@ impl Backend {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
             Self::Serial(b) => b.status_bar_ui(ui),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.status_bar_ui(ui),
             Self::Noop(b) => b.status_bar_ui(ui),
             Self::Log(b) => b.status_bar_ui(ui),
             #[cfg(not(target_arch = "wasm32"))]
