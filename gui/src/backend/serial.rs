@@ -256,6 +256,39 @@ pub fn spawn_downlink_monitor(
         .unwrap()
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum FlightComputer {
+    FC1,
+    FC2,
+}
+
+impl FlightComputer {
+    
+    fn default() -> Self {
+        return FlightComputer::FC1;
+    }
+
+    fn values() -> Vec<Self> {
+        return vec![
+            FlightComputer::FC1,
+            FlightComputer::FC2
+        ];
+    }
+}
+
+impl std::fmt::Display for FlightComputer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                FlightComputer::FC1 => "FC1",
+                FlightComputer::FC2 => "FC2",
+            }
+        )
+    }
+}
+
 pub struct SerialBackend {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     serial_status_uplink_tx: Sender<(SerialStatus, Option<String>)>,
@@ -264,6 +297,7 @@ pub struct SerialBackend {
 
     serial_port: Option<String>,
     serial_status: SerialStatus,
+    selected_fc: FlightComputer,
 
     lora_settings: LoRaSettings,
 
@@ -302,6 +336,7 @@ impl SerialBackend {
             uplink_tx,
             serial_port: None,
             serial_status: SerialStatus::Init,
+            selected_fc: FlightComputer::default(),
             lora_settings,
             telemetry_log_path,
             telemetry_log_file,
@@ -489,15 +524,24 @@ impl BackendVariant for SerialBackend {
 
     fn status_bar_ui(&mut self, ui: &mut egui::Ui) {
         #[cfg(not(target_arch = "wasm32"))]
-        if ui.button("⏮  Reset").clicked() {
-            self.reset();
-        }
-
-        #[cfg(not(target_arch = "wasm32"))]
-        ui.separator();
-
-        #[cfg(not(target_arch = "wasm32"))]
         {
+            if ui.button("⏮  Reset").clicked() {
+                self.reset();
+            }
+
+            ui.separator();
+
+            egui::ComboBox::new("fc_selection", "")
+                .selected_text(format!("{:?}", self.selected_fc))
+                .show_ui(ui, |ui| {
+                    for fc in &FlightComputer::values() {
+                        ui.selectable_value(&mut self.selected_fc, *fc, fc.to_string());
+                    }
+                }
+            );
+
+            ui.separator();
+
             find_serial_ports().iter().for_each(|port| {
                 if ui.selectable_label(self.serial_port.as_ref() == Some(port), port).clicked() {
                     self.serial_port = Some(port.clone());

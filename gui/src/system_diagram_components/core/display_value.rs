@@ -4,9 +4,9 @@ use crate::backend::Backend;
 
 #[derive(Clone)]
 pub struct DisplayValue {
-    desc: String,
-    unit: Option<String>,
-    val: JustifiedValue,
+    pub desc: String,
+    pub unit: Option<String>,
+    pub val: JustifiedValue,
 }
 
 impl DisplayValue {
@@ -59,8 +59,8 @@ impl std::fmt::Display for Sensor {
 #[derive(Clone)]
 pub enum Justification {
     Measured(Sensor),
-    Reasoned,
-    Process,
+    Tested,
+    Datasheet,
     None,
 }
 
@@ -71,8 +71,8 @@ impl std::fmt::Display for Justification {
             "{}",
             match self {
                 Justification::Measured(sensor) => format!("Measured by {sensor}"),
-                Justification::Reasoned => format!("Reasoned"),
-                Justification::Process => format!("Process"),
+                Justification::Tested => format!("Tested"),
+                Justification::Datasheet => format!("Datasheet"),
                 Justification::None => format!("None"),
             }
         )

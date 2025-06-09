@@ -1,12 +1,12 @@
 use nalgebra::{Affine2, Point2};
 
-use crate::{system_diagram_components::{core::display_value::DisplayValue, math::{parallelogram::CENTERED_UNIT_RECT, transform::Transform}, other::*, sensors_and_actuators::{motor, pressure_sensor, temperature_sensor}, storage::{storage_state::StorageState, *}, valves::{valve_state::ValveState, *}}, utils::theme::ThemeColors};
+use crate::{system_diagram_components::{math::{parallelogram::CENTERED_UNIT_RECT, transform::Transform}, other::*, sensors_and_actuators::{motor, pressure_sensor, temperature_sensor}, storage::{storage_state::StorageState, *}, valves::{valve_state::ValveState, *}}, utils::theme::ThemeColors, widgets::system_diagram::Component};
 
 #[derive(Clone)]
 pub struct Symbol {
     painter: Painter,
     local_transform: Affine2<f32>,
-    attached_information: Vec<DisplayValue>,
+    component: Option<Component>
 }
 
 #[derive(Clone)]
@@ -28,8 +28,8 @@ impl Line1D {
 
 impl Symbol {
 
-    pub fn new(painter: Painter, local_transform: Transform, attached_information: Vec<DisplayValue>) -> Self {
-        Self { painter, local_transform: local_transform.to_affine2(), attached_information }
+    pub fn new(painter: Painter, local_transform: Transform, component: Option<Component>) -> Self {
+        Self { painter, local_transform: local_transform.to_affine2(), component }
     }
 
     pub fn paint(&self, global_transform: &Affine2<f32>, painter: &egui::Painter, ctx: &egui::Context) -> egui::Rect{
@@ -60,8 +60,8 @@ impl Symbol {
         return CENTERED_UNIT_RECT.transform(transform).axis_aligned_bounding_box();
     }
 
-    pub fn attached_information(&self) -> &Vec<DisplayValue> {
-        return &self.attached_information;
+    pub fn component(&self) -> &Option<Component> {
+        return &self.component;
     }
 
 }

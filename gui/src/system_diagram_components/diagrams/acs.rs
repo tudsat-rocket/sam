@@ -1,9 +1,25 @@
 use core::f32;
+use std::sync::LazyLock;
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use shared_types::ThrusterValveState;
 use telemetry::Metric;
 
-use crate::{backend::Backend, system_diagram_components::{core::{display_value::DisplayValue, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::system_diagram::SystemDiagram};
+use crate::{backend::Backend, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::system_diagram::{Component, SystemDiagram}};
+
+//TODO MOVE
+static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
+    vec![
+        Component::new(
+            "Compressed Air Tank".to_string(),
+            vec![
+                DisplayValue::new("Max pressure".to_string(), Some("Bar".to_string()), JustifiedValue::new(Some(Value::F32(300f32)), Justification::Datasheet))
+            ], 
+            vec![
+                Metric::Pressure(telemetry::PressureSensorId::AcsTank),
+            ]
+        ),
+    ]
+);
 
 pub fn create_diagram(backend: &Backend) -> SystemDiagram {
 
@@ -21,20 +37,21 @@ pub fn create_diagram(backend: &Backend) -> SystemDiagram {
     };
     SystemDiagram::new(
         vec![
-            Symbol::new(Painter::Tank(StorageState::new(FluidType::CompressedAir, fill_level)), Transform::new(Rotation2::identity(), Scale2::new(0.2, 0.6), Translation2::new(0.25, 0.5)), vec![DisplayValue::from_metric(Metric::Pressure(telemetry::PressureSensorId::AcsTank), backend)]),
-            Symbol::new(Painter::Missing, Transform::new(Rotation2::identity(), Scale2::new(0.1, 0.1), Translation2::new(0.55, 0.5)), vec![DisplayValue::from_metric(Metric::Pressure(telemetry::PressureSensorId::AcsPostRegulator), backend)]),
-            Symbol::new(Painter::GenericValve(decel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.4)), vec![]),
-            Symbol::new(Painter::GenericValve(accel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.6)), vec![]),
-            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.2)), vec![]),
-            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.8)), vec![]),
+            Symbol::new(Painter::Tank(StorageState::new(FluidType::CompressedAir, fill_level)), Transform::new(Rotation2::identity(), Scale2::new(0.2, 0.6), Translation2::new(0.25, 0.5)), Some(ACS_SYSTEM_DEFINITION[0].clone())),
+            Symbol::new(Painter::Missing, Transform::new(Rotation2::identity(), Scale2::new(0.1, 0.1), Translation2::new(0.55, 0.5)), None/*vec![Metric::Pressure(telemetry::PressureSensorId::AcsPostRegulator)]*/),
+            Symbol::new(Painter::GenericValve(decel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.4)), None),
+            Symbol::new(Painter::GenericValve(accel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.6)), None),
+            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.2)), None),
+            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.8)), None),
         ],
         vec![
-            Line1D::new(vec![Point2::new(0.35, 0.5), Point2::new(0.5, 0.5)]),
-            Line1D::new(vec![Point2::new(0.6, 0.5), Point2::new(0.8, 0.5)]),
-            Line1D::new(vec![Point2::new(0.8, 0.5), Point2::new(0.8, 0.45)]),
-            Line1D::new(vec![Point2::new(0.8, 0.5), Point2::new(0.8, 0.55)]),
-            Line1D::new(vec![Point2::new(0.8, 0.35), Point2::new(0.8, 0.25)]),
-            Line1D::new(vec![Point2::new(0.8, 0.65), Point2::new(0.8, 0.75)]),
-        ]
+            Line1D::new(vec![Point2::new(0.35, 0.50), Point2::new(0.5, 0.50)]),
+            Line1D::new(vec![Point2::new(0.60, 0.50), Point2::new(0.8, 0.50)]),
+            Line1D::new(vec![Point2::new(0.80, 0.50), Point2::new(0.8, 0.45)]),
+            Line1D::new(vec![Point2::new(0.80, 0.50), Point2::new(0.8, 0.55)]),
+            Line1D::new(vec![Point2::new(0.80, 0.35), Point2::new(0.8, 0.25)]),
+            Line1D::new(vec![Point2::new(0.80, 0.65), Point2::new(0.8, 0.75)]),
+        ],
+        backend
     )
 }
