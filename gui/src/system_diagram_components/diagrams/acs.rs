@@ -4,7 +4,7 @@ use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use shared_types::ThrusterValveState;
 use telemetry::Metric;
 
-use crate::{backend::Backend, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::system_diagram::{Component, SystemDiagram}};
+use crate::{backend::Backend, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
 
 //TODO MOVE
 static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
@@ -12,16 +12,18 @@ static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(||
         Component::new(
             "Compressed Air Tank".to_string(),
             vec![
-                DisplayValue::new("Max pressure".to_string(), Some("Bar".to_string()), JustifiedValue::new(Some(Value::F32(300f32)), Justification::Datasheet))
+                DisplayValue::new("Max Pressure".to_string(), Some("bar".to_string()), JustifiedValue::new(Some(Value::F32(300f32)), Justification::Datasheet)),
+                DisplayValue::new("Max Capacity".to_string(), Some("l".to_string()), JustifiedValue::new(Some(Value::F32(1.1)), Justification::Datasheet))
             ], 
             vec![
                 Metric::Pressure(telemetry::PressureSensorId::AcsTank),
+                Metric::Temperature(telemetry::TemperatureSensorId::Acs),
             ]
         ),
     ]
 );
 
-pub fn create_diagram(backend: &Backend) -> SystemDiagram {
+pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState) -> SystemDiagram<'a> {
 
     let tank_pressure = backend.current_value(Metric::Pressure(telemetry::PressureSensorId::AcsTank));
     let fill_level = (tank_pressure.unwrap_or_default() / 300f64) as f32;
@@ -52,6 +54,7 @@ pub fn create_diagram(backend: &Backend) -> SystemDiagram {
             Line1D::new(vec![Point2::new(0.80, 0.35), Point2::new(0.8, 0.25)]),
             Line1D::new(vec![Point2::new(0.80, 0.65), Point2::new(0.8, 0.75)]),
         ],
-        backend
+        backend,
+        shared_plot_state
     )
 }

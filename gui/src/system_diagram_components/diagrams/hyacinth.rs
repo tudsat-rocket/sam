@@ -1,8 +1,8 @@
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 
-use crate::{backend::Backend, system_diagram_components::{core::{flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::system_diagram::SystemDiagram};
+use crate::{backend::Backend, system_diagram_components::{core::{flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::SystemDiagram}};
 
-pub fn create_diagram(backend: &Backend) -> SystemDiagram {
+pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState) -> SystemDiagram<'a> {
     SystemDiagram::new(
         vec![
             //GSE
@@ -39,6 +39,7 @@ pub fn create_diagram(backend: &Backend) -> SystemDiagram {
             Line1D::new(vec![Point2::new(0.37, 0.61), Point2::new(0.37, 0.68)]),
             Line1D::new(vec![Point2::new(0.53, 0.61), Point2::new(0.55, 0.61)]),
         ],
-        backend
+        backend,
+        shared_plot_state
     )
 }

@@ -78,8 +78,8 @@ impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
                 ui.add(Plot::new(&config, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.backend))
             }
             WidgetPane::Map => ui.add(Map::new(&mut self.global_widget_state.map, self.backend, self.settings)),
-            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend)),
-            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend)),
+            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut())),
+            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut())),
         };
 
         egui_tiles::UiResponse::None
