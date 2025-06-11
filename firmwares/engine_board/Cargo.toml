@@ -1,29 +1,40 @@
 [package]
 name = "engine_board_firmware"
-version = "0.1.0"
+version = "0.2.0"
+authors = [
+    "TUDSaT e.V.",
+    "Luis Wientgens <windgans@protonmail.com>"
+]
 edition = "2024"
 
 [dependencies]
-defmt = "0.3"
-defmt-rtt = "0.4"
+embassy-stm32 = { version = "0.2.0", features = ["stm32f415rg", "unstable-pac", "memory-x", "time-driver-any", "exti",]  }
+embassy-executor = { version = "0.7.0", features = ["defmt",  "arch-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-embedded-hal = "0.3"
+embassy-sync = "0.7.0"
+embassy-time = { version = "0.4.0", features = ["tick-hz-32_768"] }
+embassy-futures = "0.1"
+embedded-can = "0.4.1"
+embedded-nal-async = "0.8.0"
+embedded-io-async = "0.6.1"
+
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
 #panic-probe = "0.3" # print-defmt is really useful for debugging, but dramatically increases binary size
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
 
-cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
-cortex-m-rt = "0.7"
-alloc-cortex-m = "0.4"
-
-embassy-stm32 = { version = "0.1", features = ["stm32f103rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
-embassy-executor = { version = "0.5", features = ["task-arena-size-2048", "arch-cortex-m", "executor-thread", "executor-interrupt", "integrated-timers"] }
-embassy-time = { version = "0.3", features = ["tick-hz-32_768"] }
-embassy-embedded-hal = "0.1"
-embassy-sync = "0.5"
-embassy-futures = "0.1"
+cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7.0"
+#alloc-cortex-m = "0.4"
 
 static_cell = "2"
 crc = { workspace = true }
+nalgebra = { workspace = true }
 
 shared_types = { workspace = true }
+
+[features]
+guard = []
