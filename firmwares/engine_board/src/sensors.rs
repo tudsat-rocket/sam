@@ -1,10 +1,14 @@
+use embassy_time::{Duration, Ticker};
+use embassy_stm32::peripherals::*;
+use embassy_stm32::i2c::I2c;
+
+/*
 #[embassy_executor::task]
 pub async fn run_i2c_sensors(
     mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
     mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
     mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
     publisher: crate::CanOutPublisher,
-    role: IoBoardRole,
     interval: Duration,
 ) -> ! {
     // ADC101C027 addresses in order: ADR floating, GND, VCC
@@ -37,10 +41,11 @@ pub async fn run_i2c_sensors(
             (None, None, _) => unreachable!(),
         };
 
-        let msg = IoBoardSensorMessage { i2c_sensors };
-        let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardInput(role, 0));
-        publisher.publish_immediate((id, msg));
+        //let msg = IoBoardSensorMessage { i2c_sensors };
+        //#let (id, msg) = msg.to_frame(CanBusMessageId::IoBoardInput(role, 0));
+        //#publisher.publish_immediate((id, msg));
 
         ticker.next().await;
     }
 }
+*/

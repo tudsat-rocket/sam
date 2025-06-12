@@ -1,6 +1,6 @@
 [package]
 name = "engine_board_firmware"
-version = "0.2.0"
+version = "0.1.0"
 authors = [
     "TUDSaT e.V.",
     "Luis Wientgens <windgans@protonmail.com>"
@@ -28,7 +28,7 @@ embedded-hal-async = "1.0"
 
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7.0"
-#alloc-cortex-m = "0.4"
+alloc-cortex-m = "0.4"
 
 static_cell = "2"
 crc = { workspace = true }
