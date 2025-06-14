@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
-use crate::{backend::Backend, system_diagram_components::{core::{constants::{GAMMA_MUL_ON_HOVER, TOOLTIP_DURATION}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::mesh::register_textures, widgets::plot::{Plot, SharedPlotState}};
-use egui::{Color32, Id, Pos2, Rect, RichText, Sense, Vec2};
+use crate::{backend::Backend, system_diagram_components::{core::{constants::{GAMMA_MUL_ON_HOVER, IMG_MISSING_FILE, IMG_OPEN_LINK, TOOLTIP_DURATION}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors}, widgets::plot::{Plot, SharedPlotState}};
+use egui::{Button, Color32, Id, Image, Pos2, Rect, RichText, Sense, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 use telemetry::Metric;
 
@@ -10,17 +10,34 @@ use telemetry::Metric;
 #[derive(Clone)]
 pub struct Component {
     name: String,
+    link: Option<String>,
     properties: Vec<DisplayValue>,
     attached_metrics: Vec<Metric>,
 }
 
 impl Component {
-    pub fn new(name: String, properties: Vec<DisplayValue>, attached_metrics: Vec<Metric>) -> Self {
-        Self { name, properties, attached_metrics }
+    pub fn new(name: String, link: Option<String>, properties: Vec<DisplayValue>, attached_metrics: Vec<Metric>) -> Self {
+        Self { name, link, properties, attached_metrics }
     }
 
     fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, parent_id: Id) {
-        ui.heading(self.name.clone());
+        let theme = &ThemeColors::new(ui.ctx());
+        ui.horizontal(|ui|{
+            ui.heading(self.name.clone());
+            match &self.link {
+                Some(url) => {
+                    if ui.add(Button::image(Image::new(IMG_OPEN_LINK).tint(theme.foreground_weak)).small()).clicked() {
+                        let _ = open::that(url);
+                    }
+                }
+                None => {
+                    if ui.add_enabled(false, Button::image(Image::new(IMG_MISSING_FILE).tint(theme.foreground_weak)).small()).clicked() {
+                        unreachable!();
+                    }
+                }
+            }
+
+        });
         ui.separator();
         ui.add_space(10.0);
 
