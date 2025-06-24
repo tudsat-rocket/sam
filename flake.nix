@@ -26,6 +26,17 @@
         nativeBuildInputs = [
           pkgs.pkg-config
           pkgs.wrapGAppsHook
+
+          pkgs.probe-rs
+          pkgs.cargo-make
+          # NOTE: maybe not needed
+          pkgs.stlink
+          pkgs.cargo-binutils # provides cargo objcopy to create a binary
+          # NOTE: 
+          # check if all needed
+          pkgs.dfu-util # device firmware update
+          # pkgs.dfu-programmer
+          pkgs.flip-link # stack overflow protection by via changing memory layout
         ];
         buildInputs = with pkgs; [
           rustToolchain
