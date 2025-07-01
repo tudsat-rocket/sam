@@ -18,5 +18,5 @@ pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Paint
     let positions = POSITIONS.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     painter.line(positions, stroke);
     generic_valve::paint(transform, state, painter, theme);
-    motor::paint(&Transform::new(Rotation2::identity(), Scale2::new(MOTOR_DIAMETER, MOTOR_DIAMETER), Translation2::new(0f32, -(HANDLE_LENGTH + MOTOR_DIAMETER/2f32))).to_affine2(), painter, ctx);
+    motor::paint(&(transform * Transform::new(Rotation2::identity(), Scale2::new(MOTOR_DIAMETER, MOTOR_DIAMETER), Translation2::new(0f32, -(HANDLE_LENGTH + MOTOR_DIAMETER/2f32))).to_affine2()), painter, ctx);
 }

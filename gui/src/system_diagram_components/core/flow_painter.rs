@@ -1,6 +1,6 @@
 use nalgebra::{Affine2, Point2};
 
-use crate::{system_diagram_components::{math::{parallelogram::CENTERED_UNIT_RECT, transform::Transform}, other::*, sensors_and_actuators::{motor, pressure_sensor, temperature_sensor}, storage::{storage_state::StorageState, *}, valves::{valve_state::ValveState, *}}, utils::theme::ThemeColors, widgets::system_diagram::Component};
+use crate::{system_diagram_components::{math::{parallelogram::CENTERED_UNIT_RECT, transform::Transform}, other::*, sensors_and_actuators::{manometer, motor, pressure_sensor, temperature_sensor}, storage::{storage_state::StorageState, *}, valves::{valve_state::ValveState, *}}, utils::theme::ThemeColors, widgets::system_diagram::Component};
 
 #[derive(Clone)]
 pub struct Symbol {
@@ -47,15 +47,18 @@ impl Symbol {
             //----------------------- Storage ----------------------
             Painter::Tank(state) => tank::paint(transform, state, painter, theme),
             Painter::Bottle(state) => bottle::paint(transform, state, painter, theme),
+            Painter::Atmosphere => atmosphere::paint(transform, painter, ctx),
 
             //--------------- Sensors and Actuators ----------------
             Painter::Motor => motor::paint(transform, painter, ctx),
             Painter::PressureSensor => pressure_sensor::paint(transform, painter, ctx),
             Painter::TemperatureSensor => temperature_sensor::paint(transform, painter, ctx),
+            Painter::Manometer => manometer::paint(transform, painter, ctx),
         
             //----------------------- Other ------------------------
             Painter::Missing => missing::paint(transform, painter),
             Painter::FlexTube => flex_tube::paint(transform, painter, theme),
+            Painter::Thruster => thruster::paint(transform, painter, theme),
         }
         return CENTERED_UNIT_RECT.transform(transform).axis_aligned_bounding_box();
     }
@@ -78,11 +81,14 @@ pub enum Painter {
     //----------------------- Storage ----------------------
     Tank(StorageState),
     Bottle(StorageState),
+    Atmosphere,
     //--------------- Sensors and Actuators ----------------
     Motor,
     PressureSensor,
     TemperatureSensor,
+    Manometer,
     //----------------------- Other ------------------------
     Missing,
     FlexTube,
+    Thruster,
 }

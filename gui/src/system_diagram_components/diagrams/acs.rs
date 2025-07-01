@@ -44,8 +44,8 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
             Symbol::new(Painter::Missing, Transform::new(Rotation2::identity(), Scale2::new(0.1, 0.1), Translation2::new(0.55, 0.5)), None/*vec![Metric::Pressure(telemetry::PressureSensorId::AcsPostRegulator)]*/),
             Symbol::new(Painter::GenericValve(decel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.4)), None),
             Symbol::new(Painter::GenericValve(accel_valve_state), Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.6)), None),
-            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.2)), None),
-            Symbol::new(Painter::Missing, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.8)), None),
+            Symbol::new(Painter::Thruster, Transform::new(Rotation2::new(f32::consts::PI), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.2)), None),
+            Symbol::new(Painter::Thruster, Transform::new(Rotation2::identity(), Scale2::new(0.1, 0.05), Translation2::new(0.8, 0.8)), None),
         ],
         vec![
             Line1D::new(vec![Point2::new(0.35, 0.50), Point2::new(0.5, 0.50)]),
