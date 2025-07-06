@@ -243,7 +243,13 @@ impl eframe::App for Sam {
 /// The main entrypoint for the egui interface.
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Result<(), Box<dyn std::error::Error>> {
-    let app_settings = AppSettings::load().ok().unwrap_or_default();
+    let app_settings = match AppSettings::load() {
+        Ok(settings) => settings,
+        Err(e) => {
+            log::error!("Failed to read app settings, falling back to defaults: {e:?}");
+            AppSettings::default()
+        }
+    };
 
     let data_source: Option<Backend> = if let Some(log) = simulate {
         if let Some(log) = log {
