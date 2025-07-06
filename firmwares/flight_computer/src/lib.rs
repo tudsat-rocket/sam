@@ -21,6 +21,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
 use embassy_time::{Delay, Duration, Instant, Ticker};
+use embassy_sync::signal::Signal;
 
 use embassy_stm32::adc::Adc;
 use embassy_stm32::bind_interrupts;
@@ -38,7 +39,7 @@ use embassy_stm32::rcc::*;
 use embassy_stm32::rng::Rng;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm, SimplePwmChannel};
 use embassy_stm32::timer::Channel;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::{interrupt, Config};
@@ -66,12 +67,14 @@ use lora_phy::{LoRa, RxMode};
 use static_cell::StaticCell;
 
 use shared_types::Settings;
+use shared_types::FlightMode;
 
 //mod can;
 pub mod drivers;
 pub mod ethernet;
 pub mod lora;
 pub mod vehicle;
+pub mod buzzer;
 
 use drivers::sensors::*;
 
@@ -132,6 +135,7 @@ pub struct Board {
     pub ethernet: Ethernet<'static, ETH, GenericSMI>,
     pub rng: Rng<'static, RNG>,
     pub iwdg: IndependentWatchdog<'static, IWDG1>,
+    pub buzzer: (SimplePwm<'static, TIM2>, Channel),
 }
 
 static USB_EP_OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
@@ -144,6 +148,8 @@ static SPI1_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = Sta
 static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI4_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
+
+static FLIGHT_MODE_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal::new();
 
 pub async fn init_board() -> (Board, Settings, u64) {
     // Basic setup, including clocks
@@ -371,15 +377,9 @@ pub async fn init_board() -> (Board, Settings, u64) {
     ////#[cfg(not(feature = "gcs"))]
     ////let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
 
-    //let buzzer = {
-    //    let gpiob_block = {
-    //        use embassy_stm32::gpio::low_level::Pin;
-    //        p.PB10.block()
-    //    };
-    //    let pwm_pin = PwmPin::new_ch3(p.PB10, OutputType::PushPull);
-    //    let pwm = SimplePwm::new(p.TIM2, None, None, Some(pwm_pin), None, Hertz::hz(440), Default::default());
-    //    Buzzer::init(pwm, Channel::Ch3, gpiob_block, 10)
-    //};
+    let buzzer_pin = PwmPin::new_ch3(p.PB10, OutputType::PushPull);
+    let buzzer_pwm = SimplePwm::new(p.TIM2, None, None, Some(buzzer_pin), None, Hertz::hz(440), Default::default());
+    let buzzer_pwm_channel = Channel::Ch3;
 
     let recovery_high = Output::new(p.PE13, Level::Low, Speed::Low);
     let recovery_lows = (
@@ -439,6 +439,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
         ethernet,
         rng,
         iwdg,
+        buzzer: (buzzer_pwm, buzzer_pwm_channel),
     };
 
     (board, Settings::default(), seed)

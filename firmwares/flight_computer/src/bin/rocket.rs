@@ -27,6 +27,7 @@ use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::{interrupt, Config};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Ticker};
 
 use lora_phy::iv::GenericSx126xInterfaceVariant;

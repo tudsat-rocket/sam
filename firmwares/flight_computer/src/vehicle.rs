@@ -183,13 +183,6 @@ impl Vehicle {
         self.outputs.leds.1.set_level((!y).into());
         self.outputs.leds.2.set_level((!g).into());
 
-        //// Send valve commands via CAN bus
-        //self.transmit_output_commands();
-
-        // Update buzzer
-        //self.buzzer.tick(self.time.0, self.power.battery_status());
-        //self.buzzer.tick(self.time.0);
-
         self.transmit_and_store();
 
         // Increase time for next iteration
@@ -293,7 +286,7 @@ impl Vehicle {
         }
 
         self.mode = new_mode;
-        //self.buzzer.switch_mode(self.time.0, new_mode);
+        crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
     }
 }
 
