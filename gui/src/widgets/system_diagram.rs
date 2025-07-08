@@ -1,7 +1,6 @@
-use std::time::{Duration, Instant};
 
-use crate::{backend::Backend, system_diagram_components::{core::{constants::{GAMMA_MUL_ON_HOVER, IMG_MISSING_FILE, IMG_OPEN_LINK, TOOLTIP_DURATION}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::TooltipManager}, widgets::plot::{Plot, SharedPlotState}};
-use egui::{Button, Color32, Id, Image, Pos2, Rect, RichText, Sense, Vec2};
+use crate::{backend::Backend, system_diagram_components::{core::{constants::{IMG_MISSING_FILE, IMG_OPEN_LINK}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::TooltipManager}, widgets::plot::{Plot, SharedPlotState}};
+use egui::{Button, Color32, Image, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 use telemetry::Metric;
 
@@ -20,134 +19,87 @@ impl Component {
         Self { name, link, properties, attached_metrics }
     }
 
-    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut TooltipManager/*, parent_id: Id*/) {
+    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut TooltipManager/*, parent_id: Id*/) -> egui::Response {
+        let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
         let theme = &ThemeColors::new(ui.ctx());
-        //ui.style_mut().interaction.selectable_labels = true;
-        ui.horizontal(|ui|{
-            ui.heading(self.name.clone());
-            match &self.link {
-                Some(url) => {
-                    if ui.add(Button::image(Image::new(IMG_OPEN_LINK).tint(theme.foreground_weak)).small()).clicked() {
-                        let _ = open::that(url);
-                    }
-                }
-                None => {
-                    if ui.add_enabled(false, Button::image(Image::new(IMG_MISSING_FILE).tint(theme.foreground_weak)).small()).clicked() {
-                        unreachable!();
-                    }
-                }
-            }
+        ui.style_mut().interaction.selectable_labels = true;
 
-        });
-        ui.separator();
+        tooltip_response = ui.horizontal(|ui|{
+            let mut inner_tooltip_response = tooltip_response.clone();
+            inner_tooltip_response = ui.heading(self.name.clone()).union(inner_tooltip_response);
+            let click_response = match &self.link {
+                Some(_) => ui.add(Button::image(Image::new(IMG_OPEN_LINK).tint(theme.foreground_weak)).small()),
+                None => ui.add_enabled(false, Button::image(Image::new(IMG_MISSING_FILE).tint(theme.foreground_weak)).small()),
+            };
+            if click_response.clicked() {
+                self.link.clone().map(|url| open::that(url));
+            }
+            tooltip_response = click_response.union(inner_tooltip_response)
+        }).response.union(tooltip_response);
+    
+        tooltip_response = ui.separator().union(tooltip_response);
         ui.add_space(10.0);
 
-        egui::CollapsingHeader::new(RichText::new("Metrics").strong().underline())
-            .default_open(true)
-            .show(ui, |ui| {
-                egui::Grid::new("tooltip_grid_metrics")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for metric in &self.attached_metrics {
-                            let val = backend.current_value(*metric).map(|v| format!("{0:.2}", v)).unwrap_or("N/A".to_string());
-                            let (name, unit) = match metric {
-                                Metric::Pressure(_) => ("Pressure", "bar"),
-                                Metric::Temperature(_) => ("Temperature", "°C"),
-                                _ => todo!(),
+        let metrics_response = egui::CollapsingHeader::new(RichText::new("Metrics").strong().underline()).default_open(true).show(ui, |ui| {
+            tooltip_response = egui::Grid::new("tooltip_grid_metrics").striped(true).show(ui, |ui| {
+                for metric in &self.attached_metrics {
+                    let val = backend.current_value(*metric).map(|v| format!("{0:.2}", v)).unwrap_or("N/A".to_string());
+                    let (name, unit) = match metric {
+                        Metric::Pressure(_) => ("Pressure", "bar"),
+                        Metric::Temperature(_) => ("Temperature", "°C"),
+                        _ => todo!(),
+                    };
+                    ui.label(name);
+                    ui.label(val);
+                    ui.label(unit);
+                
+                    let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
+                    let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
+                    let tooltip_id = ui.make_persistent_id(format!("ID Metric {name}"));
+                    tooltip_manager.show_tooltip(tooltip_id, bounding_box, tooltip_pos, ui, |ui, _tooltip_manager| {
+                        let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                        return ui.vertical(|ui| {
+                            let mut inner_tooltip_response = tooltip_response.clone();
+                            inner_tooltip_response = ui.label(format!("Justification: Missing")).union(inner_tooltip_response);
+                            let config = super::plot::PlotConfig {
+                                lines: vec![
+                                    (*metric, Color32::RED),
+                                ],
+                                ylimits: (None, None),
                             };
-                            ui.label(name);
-                            ui.label(val);
-                            ui.label(unit);
-                        
-                            let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
-                            let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
-                            tooltip_manager.show_tooltip(bounding_box, tooltip_pos, ui, |ui, tooltip_manager| {
-                                ui.vertical(|ui| {
-                                    ui.label(format!("Justification: Missing"));
-                                        let config = super::plot::PlotConfig {
-                                            lines: vec![
-                                                (*metric, Color32::RED),
-                                            ],
-                                            ylimits: (None, None),
-                                        };
-                                        ui.add(Plot::new(&config, shared_plot_state, backend));
-                                });
-                            });
-                            // let parent_id_string = parent_id.short_debug_format();
-                            // let tooltip_id = ui.make_persistent_id(format!("{name}, {parent_id_string}"));// egui::Id::new(name);
-                            // let is_tooltip_open = ui.ctx().data_mut(|d| d.get_temp::<Instant>(tooltip_id)).map(|inst| inst.elapsed().as_secs_f32() < TOOLTIP_DURATION).unwrap_or(false);
-                            // let row_response = ui.interact(Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max), tooltip_id, egui::Sense::click());
-                            // let is_hovered = row_response.hovered();
-                            // if is_hovered || is_tooltip_open {
-                            //     ui.painter().rect_filled(
-                            //         row_response.rect, 
-                            //         0.0, 
-                            //         ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_HOVER)
-                            //     );
-                            //     let nested_tooltip_pos = Pos2::new(row_response.rect.max.x, row_response.rect.min.y);
-                            //     egui::show_tooltip_at(ui.ctx(), ui.layer_id(), tooltip_id, nested_tooltip_pos, |ui| {
-                            //         ui.vertical(|ui| {
-                            //         ui.style_mut().interaction.selectable_labels = true;
-                            //         ui.label(format!("Justification: Missing"));
-                            //             let config = super::plot::PlotConfig {
-                            //                 lines: vec![
-                            //                     (*metric, Color32::RED),
-                            //                 ],
-                            //                 ylimits: (None, None),
-                            //             };
-                            //             ui.add(Plot::new(&config, shared_plot_state, backend));
-                            //         });
-                            //         let tooltip_id_string = tooltip_id.short_debug_format();
-                            //         let tooltip_response = ui.interact(ui.max_rect(), egui::Id::new(format!("Nested with parent {tooltip_id_string}")), Sense::hover());
-                            //         let is_tooltip_hovered = tooltip_response.hovered();
-                            //         //The entry in the IdTypeMap is never deleted, we could do that if necessary
-                            //         if is_hovered || is_tooltip_hovered {
-                            //             ui.ctx().data_mut(|d| d.insert_temp(parent_id, Instant::now()));
-                            //             ui.ctx().data_mut(|d| d.insert_temp(tooltip_id, Instant::now()));
-                            //         }
-                            //     });
-                            //     ui.ctx().request_repaint_after(Duration::from_secs_f32(TOOLTIP_DURATION));
-                            // }   
-                        ui.end_row();
-                    }
-                });
+                            tooltip_response = ui.add(Plot::new(&config, shared_plot_state, backend)).union(inner_tooltip_response);
+                        }).response.union(tooltip_response);
+                    });
+                    ui.end_row();
+                }
+            }).response.union(tooltip_response.clone());
         });
-        egui::CollapsingHeader::new(RichText::new("Properties").strong().underline())
-            .show(ui, |ui| {
-                egui::Grid::new("tooltip_grid_properties")
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for property in &self.properties {
-                            ui.label(property.desc.clone());
-                            ui.label(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string()));
-                            ui.label(property.unit.clone().unwrap_or("N/A".to_string()));
+        tooltip_response = metrics_response.header_response.union(tooltip_response);
+        tooltip_response = metrics_response.body_response.map(|r| r.union(tooltip_response.clone())).unwrap_or(tooltip_response);
 
-                            let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
-                            let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
-                            tooltip_manager.show_tooltip(bounding_box, tooltip_pos, ui, |ui, tooltip_manager| {
-                                ui.vertical(|ui| {
-                                    ui.label(format!("Justification: Missing"));
-                                });                               
-                            });
+        let properties_response = egui::CollapsingHeader::new(RichText::new("Properties").strong().underline()).show(ui, |ui| {
+            tooltip_response = egui::Grid::new("tooltip_grid_properties").striped(true).show(ui, |ui| {
+                for property in &self.properties {
+                    ui.label(property.desc.clone());
+                    ui.label(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string()));
+                    ui.label(property.unit.clone().unwrap_or("N/A".to_string()));
 
-                            // let row_response = ui.interact(Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max), egui::Id::new(property.desc.clone()), egui::Sense::click());
-                            // if row_response.hovered() {
-                            //         ui.painter().rect_filled(
-                            //         row_response.rect, 
-                            //         0.0, 
-                            //         ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_HOVER)
-                            //     );
-                            //     let nested_tooltip_pos = Pos2::new(row_response.rect.max.x, row_response.rect.min.y);
-                            //     egui::show_tooltip_at(ui.ctx(), ui.layer_id(), row_response.id, nested_tooltip_pos, |ui| {
-                            //         ui.vertical(|ui| {
-                            //             ui.label(format!("Justification: Missing"));
-                            //         });
-                            //     });
-                            // }
-                            ui.end_row();
-                        }
-                    })
-            });
+                    let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
+                    let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
+                    let tooltip_id = ui.make_persistent_id(format!("ID Metric {}", property.desc));
+                    tooltip_manager.show_tooltip(tooltip_id, bounding_box, tooltip_pos, ui, |ui, _tooltip_manager| {
+                        let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                        return ui.vertical(|ui| {
+                            tooltip_response = ui.label(format!("Justification: Missing")).union(tooltip_response.clone());
+                        }).response.union(tooltip_response);                               
+                    });
+                    ui.end_row();
+                }
+            }).response.union(tooltip_response.clone());
+        });
+        tooltip_response = properties_response.header_response.union(tooltip_response);
+        tooltip_response = properties_response.body_response.map(|r| r.union(tooltip_response.clone())).unwrap_or(tooltip_response);
+        return tooltip_response;
     }
 }
 
@@ -180,44 +132,19 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
             .to_affine2();
         let mut tooltip_manager = TooltipManager::new(ui);
         return ui.vertical(|ui| {
-            //let painter= ui.painter();
-            //let ctx = ui.ctx();
-            //let mut i = 0;
-            for symbol in self.symbols {
+            for (idx, symbol) in self.symbols.iter().enumerate() {
                 let bounding_box= symbol.paint(&global_transform, ui.painter(), ui.ctx());
-                let tooltip_pos = bounding_box.min + bounding_box.size();// * Vec2::new(0.75, 0.75);
-                tooltip_manager.show_tooltip(bounding_box, tooltip_pos, ui, |ui, tooltip_manager| {
-                    ui.vertical(|ui| {
-                        match symbol.component() {
+                let tooltip_pos = bounding_box.min + bounding_box.size() * Vec2::new(0.9, 0.9);
+                let trigger_id = ui.make_persistent_id(format!("Base Layer Trigger ID {idx}")); //TODO Improve ID
+                tooltip_manager.show_tooltip(trigger_id, bounding_box, tooltip_pos, ui, |ui, tooltip_manager| {
+                    let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                    return ui.vertical(|ui| {
+                        tooltip_response = match symbol.component() {
                             Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, tooltip_manager/*, tooltip_id*/),                       
-                            None =>  {ui.label(RichText::new("N/A").italics());},
-                        }
-                    });
+                            None =>  ui.label(RichText::new("N/A").italics()),
+                        }.union(tooltip_response.clone())
+                    }).response.union(tooltip_response);
                 });
-                // let tooltip_id = ui.make_persistent_id(format!("ID {i}")); //TODO Improve ID
-                // let response = ui.interact(bounding_box, egui::Id::new(tooltip_id), egui::Sense::hover());
-                // let is_hovered = response.hovered();
-                // let is_tooltip_open = ui.ctx().data_mut(|d| d.get_temp::<Instant>(tooltip_id)).map(|inst| inst.elapsed().as_secs_f32() < TOOLTIP_DURATION).unwrap_or(false);
-
-                // if is_hovered || is_tooltip_open {
-                //     let tooltip_pos = bounding_box.min + bounding_box.size() * Vec2::new(0.75, 0.75);
-                //     egui::show_tooltip_at(ui.ctx(), ui.layer_id(), tooltip_id, tooltip_pos, |ui| {
-                //         let tooltip_response = ui.interact(ui.max_rect(), tooltip_id, Sense::click_and_drag());
-                //         let is_tooltip_hovered = tooltip_response.hovered();
-                //         //The entry in the IdTypeMap is never deleted, we could do that if necessary
-                //         if is_hovered || is_tooltip_hovered {
-                //             ui.ctx().data_mut(|d| d.insert_temp(tooltip_id, Instant::now()));
-                //         }
-                //         ui.vertical(|ui| {
-                //             match symbol.component() {
-                //                 Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, tooltip_id),                       
-                //                 None =>  {ui.label(RichText::new("N/A").italics());},
-                //             }
-                //         });
-                //     });
-                //     ui.ctx().request_repaint_after(Duration::from_secs_f32(TOOLTIP_DURATION));
-                // }
-                // i += 1;
             }
             for line in self.lines{
                 line.paint(&global_transform, ui.painter(), ui.ctx());
