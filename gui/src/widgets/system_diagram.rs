@@ -19,7 +19,7 @@ impl Component {
         Self { name, link, properties, attached_metrics }
     }
 
-    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut TooltipManager/*, parent_id: Id*/) -> egui::Response {
+    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut TooltipManager) -> egui::Response {
         let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
         let theme = &ThemeColors::new(ui.ctx());
         ui.style_mut().interaction.selectable_labels = true;
@@ -140,7 +140,7 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
                     let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
                     return ui.vertical(|ui| {
                         tooltip_response = match symbol.component() {
-                            Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, tooltip_manager/*, tooltip_id*/),                       
+                            Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, tooltip_manager),                       
                             None =>  ui.label(RichText::new("N/A").italics()),
                         }.union(tooltip_response.clone())
                     }).response.union(tooltip_response);
