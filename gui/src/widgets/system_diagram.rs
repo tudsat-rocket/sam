@@ -72,7 +72,12 @@ impl Component {
                         }).response.union(tooltip_response);
                     });
                     tooltip_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _tooltip_manager| {
-                        return ui.label("This is a context menu");
+                        let response = ui.button("Copy value to clipboard");
+                        if response.clicked() {
+                            let mut clipboard =  clippers::Clipboard::get();
+                            let _ = clipboard.write_text(backend.current_value(*metric).map(|v| format!("{}", v)).unwrap_or("N/A".to_string()));
+                        }
+                        return response;
                     });
                     ui.end_row();
                 }
@@ -97,6 +102,14 @@ impl Component {
                         return ui.vertical(|ui| {
                             tooltip_response = ui.label(format!("Justification: Missing")).union(tooltip_response.clone());
                         }).response.union(tooltip_response);                               
+                    });
+                    tooltip_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _tooltip_manager| {
+                        let response = ui.button("Copy value to clipboard");
+                        if response.clicked() {
+                            let mut clipboard =  clippers::Clipboard::get();
+                            let _ = clipboard.write_text(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string()));
+                        }
+                        return response;
                     });
                     ui.end_row();
                 }

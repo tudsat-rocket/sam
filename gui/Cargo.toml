@@ -48,6 +48,7 @@ earcutr = "0.4.3"
 puffin = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 puffin_egui = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 open = "5.3.2"
+clippers = "0.1.2"
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]
