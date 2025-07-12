@@ -1,5 +1,5 @@
 
-use crate::{backend::Backend, system_diagram_components::{core::{constants::{IMG_MISSING_FILE, IMG_OPEN_LINK}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::PopupManager}, widgets::plot::{Plot, SharedPlotState}};
+use crate::{backend::Backend, system_diagram_components::{core::{constants::{IMG_MISSING_FILE, IMG_OPEN_LINK}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::{PopupManager, PopupTrigger}}, widgets::plot::{Plot, SharedPlotState}};
 use egui::{Button, Color32, Image, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 use telemetry::Metric;
@@ -56,7 +56,8 @@ impl Component {
                     let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
                     let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
                     let tooltip_id = ui.make_persistent_id(format!("ID Metric {name}"));
-                    tooltip_manager.show_tooltip(tooltip_id, bounding_box, tooltip_pos, ui, |ui, _tooltip_manager| {
+                    let trigger = PopupTrigger::new(ui, tooltip_id, bounding_box);
+                    tooltip_manager.add_tooltip(&trigger, tooltip_pos, ui, |ui, _tooltip_manager| {
                         let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
                         return ui.vertical(|ui| {
                             let mut inner_tooltip_response = tooltip_response.clone();
@@ -69,6 +70,9 @@ impl Component {
                             };
                             tooltip_response = ui.add(Plot::new(&config, shared_plot_state, backend)).union(inner_tooltip_response);
                         }).response.union(tooltip_response);
+                    });
+                    tooltip_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _tooltip_manager| {
+                        return ui.label("This is a context menu");
                     });
                     ui.end_row();
                 }
@@ -87,7 +91,8 @@ impl Component {
                     let bounding_box = Rect::from_min_max(Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y), ui.min_rect().max);
                     let tooltip_pos = Pos2::new(bounding_box.max.x, bounding_box.min.y);
                     let tooltip_id = ui.make_persistent_id(format!("ID Metric {}", property.desc));
-                    tooltip_manager.show_tooltip(tooltip_id, bounding_box, tooltip_pos, ui, |ui, _tooltip_manager| {
+                    let trigger = PopupTrigger::new(ui, tooltip_id, bounding_box);
+                    tooltip_manager.add_tooltip(&trigger, tooltip_pos, ui, |ui, _tooltip_manager| {
                         let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
                         return ui.vertical(|ui| {
                             tooltip_response = ui.label(format!("Justification: Missing")).union(tooltip_response.clone());
@@ -130,26 +135,30 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
             Scale2::new(available_space.width(), available_space.height()),
             Translation2::new(available_space.min.x, available_space.min.y))
             .to_affine2();
-        let mut tooltip_manager = PopupManager::new(ui);
+        let mut popup_manager = PopupManager::new(ui);
         return ui.vertical(|ui| {
             for (idx, symbol) in self.symbols.iter().enumerate() {
                 let bounding_box= symbol.paint(&global_transform, ui.painter(), ui.ctx());
-                let tooltip_pos = bounding_box.min + bounding_box.size() * Vec2::new(0.9, 0.9);
                 let trigger_id = ui.make_persistent_id(format!("Base Layer Trigger ID {idx}")); //TODO Improve ID
-                tooltip_manager.show_tooltip(trigger_id, bounding_box, tooltip_pos, ui, |ui, tooltip_manager| {
+                let popup_trigger = PopupTrigger::new(ui, trigger_id, bounding_box);
+                let popup_pos = bounding_box.min + bounding_box.size() * Vec2::new(0.9, 0.9);
+                popup_manager.add_tooltip(&popup_trigger, popup_pos, ui, |ui, popup_manager| {
                     let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
                     return ui.vertical(|ui| {
                         tooltip_response = match symbol.component() {
-                            Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, tooltip_manager),                       
+                            Some(component) => component.as_tooltip(ui, self.backend, self.shared_plot_state, popup_manager),                       
                             None =>  ui.label(RichText::new("N/A").italics()),
                         }.union(tooltip_response.clone())
                     }).response.union(tooltip_response);
+                });
+                popup_manager.add_context_menu(&popup_trigger, popup_pos, ui, |ui, _popup_manager| {
+                    return ui.label("This is a context menu");
                 });
             }
             for line in self.lines{
                 line.paint(&global_transform, ui.painter(), ui.ctx());
             }
-            tooltip_manager.save_state(ui);
+            popup_manager.save_state(ui);
         })
         .response;
     }
