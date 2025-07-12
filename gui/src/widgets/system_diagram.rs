@@ -164,9 +164,9 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
                         }.union(tooltip_response.clone())
                     }).response.union(tooltip_response);
                 });
-                popup_manager.add_context_menu(&popup_trigger, popup_pos, ui, |ui, _popup_manager| {
-                    return ui.label("This is a context menu");
-                });
+                // popup_manager.add_context_menu(&popup_trigger, popup_pos, ui, |ui, _popup_manager| {
+                //     return ui.label("This is a context menu");
+                // });
             }
             for line in self.lines{
                 line.paint(&global_transform, ui.painter(), ui.ctx());

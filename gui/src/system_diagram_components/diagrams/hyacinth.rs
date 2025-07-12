@@ -52,77 +52,77 @@ pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
         _name: "N₂O Bottle Valve",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(Some(FluidType::N2O))), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.175, 0.61)), None),
+        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(Some(FluidType::N2O))), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.18, 0.61)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Bottle Valve",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(Some(FluidType::N2))), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.175, 0.23)), None),
+        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(Some(FluidType::N2))), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.18, 0.23)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂O Release Valve",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.37, 0.715)), None),
+        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.27, 0.715)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Release Valve",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.37, 0.325)), None),
+        symbol: Symbol::new(Painter::ManualValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.27, 0.325)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Manometer",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::Manometer, Transform::new(Rotation2::new(0f32), Scale2::new(0.04, 0.04), Translation2::new(0.37, 0.16)), None),
+        symbol: Symbol::new(Painter::Manometer, Transform::new(Rotation2::new(0f32), Scale2::new(0.04, 0.04), Translation2::new(0.27, 0.16)), None),
         _ports: vec![ BOT ]
     },
     SysComponent {
         _name: "N₂O Flex Tube",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.05), Translation2::new(0.47, 0.61)), None),
+        symbol: Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.05), Translation2::new(0.37, 0.61)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Flex Tube",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.05), Translation2::new(0.47, 0.23)), None),
+        symbol: Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.05), Translation2::new(0.37, 0.23)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂O Quick Disconnect",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::QuickDisconnect(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.02), Translation2::new(0.585, 0.61)), None),
+        symbol: Symbol::new(Painter::QuickDisconnect(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.02), Translation2::new(0.52, 0.61)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Quick Disconnect",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::QuickDisconnect(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.02), Translation2::new(0.585, 0.23)), None),
+        symbol: Symbol::new(Painter::QuickDisconnect(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.02), Translation2::new(0.52, 0.23)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂ Tank",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::Tank(StorageState::new(FluidType::N2, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.17), Translation2::new(0.71, 0.12)), None),
+        symbol: Symbol::new(Painter::Tank(StorageState::new(FluidType::N2, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.17), Translation2::new(0.72, 0.12)), None),
         _ports: vec![ BOT ]
     },
     SysComponent {
         _name: "N₂ Pressure Regulator",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.71, 0.28)), None),
+        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.72, 0.28)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
@@ -136,35 +136,49 @@ pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
         _name: "N₂ Burst Disc",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::BurstDisc(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.03, 0.03), Translation2::new(0.92, 0.37)), None),
+        symbol: Symbol::new(Painter::BurstDisc(ValveState::Disconnected), Transform::new(Rotation2::identity(), Scale2::new(0.03, 0.03), Translation2::new(0.90, 0.38)), None),
+        _ports: vec![ LEFT, RIGHT ]
+    },
+    SysComponent {
+        _name: "N₂O Vent Valve",
+        _metric: vec![],
+        _constraints: vec![],
+        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.52, 0.33)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂O Tank",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::Tank(StorageState::new(FluidType::N2O, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.17), Translation2::new(0.71, 0.44)), None),
+        symbol: Symbol::new(Painter::Tank(StorageState::new(FluidType::N2O, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.17), Translation2::new(0.72, 0.44)), None),
         _ports: vec![ TOP, BOT ]
+    },
+    SysComponent {
+        _name: "N₂O Fill & Dump Valve",
+        _metric: vec![],
+        _constraints: vec![],
+        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::identity(), Scale2::new(0.07, 0.04), Translation2::new(0.62, 0.61)), None),
+        _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "N₂O Main Valve",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.71, 0.76)), None),
+        symbol: Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.72, 0.76)), None),
         _ports: vec![ LEFT, RIGHT ]
     },
     SysComponent {
         _name: "Igniter",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::Thruster, Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.04, 0.06), Translation2::new(0.61, 0.83)), None),   
+        symbol: Symbol::new(Painter::Thruster, Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.04, 0.06), Translation2::new(0.62, 0.83)), None),   
         _ports: vec![ TOP, BOT ]
     },
     SysComponent {
         _name: "Combustion Chamber",
         _metric: vec![],
         _constraints: vec![],
-        symbol: Symbol::new(Painter::Thruster, Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.18), Translation2::new(0.71, 0.9)), None),   
+        symbol: Symbol::new(Painter::Thruster, Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.18), Translation2::new(0.72, 0.9)), None),   
         _ports: vec![ TOP, BOT ]
     },
 ]);
@@ -172,6 +186,7 @@ pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
 pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState) -> SystemDiagram<'a> {
     SystemDiagram::new(
         HYACINTH_SYSTEM.iter().map(|c| c.symbol.clone()).collect(),
+        vec![],
         // vec![
         //     //GSE
         //     Symbol::new(Painter::Bottle(StorageState::new(FluidType::N2, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.17, 0.24), Translation2::new(0.10, 0.38)), None),
@@ -200,17 +215,17 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
         //     Symbol::new(Painter::MotorizedValve(ValveState::Connected(None)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.07, 0.04), Translation2::new(0.71, 0.76)), None),
         //     Symbol::new(Painter::PressureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.76, 0.78)), None),
         // ],
-        vec![
-            //GSE
-            Line1D::new(vec![Point2::new(0.10, 0.26), Point2::new(0.10, 0.23), Point2::new(0.14, 0.23)]),
-            Line1D::new(vec![Point2::new(0.21, 0.23), Point2::new(0.41, 0.23)]),
-            Line1D::new(vec![Point2::new(0.53, 0.23), Point2::new(0.55, 0.23)]),
-            Line1D::new(vec![Point2::new(0.37, 0.29), Point2::new(0.37, 0.18)]),
-            Line1D::new(vec![Point2::new(0.10, 0.65), Point2::new(0.10, 0.61), Point2::new(0.14, 0.61)]),
-            Line1D::new(vec![Point2::new(0.21, 0.61), Point2::new(0.41, 0.61)]),
-            Line1D::new(vec![Point2::new(0.37, 0.61), Point2::new(0.37, 0.68)]),
-            Line1D::new(vec![Point2::new(0.53, 0.61), Point2::new(0.55, 0.61)]),
-        ],
+        // vec![
+        //     //GSE
+        //     Line1D::new(vec![Point2::new(0.10, 0.26), Point2::new(0.10, 0.23), Point2::new(0.14, 0.23)]),
+        //     Line1D::new(vec![Point2::new(0.21, 0.23), Point2::new(0.41, 0.23)]),
+        //     Line1D::new(vec![Point2::new(0.53, 0.23), Point2::new(0.55, 0.23)]),
+        //     Line1D::new(vec![Point2::new(0.37, 0.29), Point2::new(0.37, 0.18)]),
+        //     Line1D::new(vec![Point2::new(0.10, 0.65), Point2::new(0.10, 0.61), Point2::new(0.14, 0.61)]),
+        //     Line1D::new(vec![Point2::new(0.21, 0.61), Point2::new(0.41, 0.61)]),
+        //     Line1D::new(vec![Point2::new(0.37, 0.61), Point2::new(0.37, 0.68)]),
+        //     Line1D::new(vec![Point2::new(0.53, 0.61), Point2::new(0.55, 0.61)]),
+        // ],
         backend,
         shared_plot_state
     )
