@@ -4,14 +4,14 @@ use crate::system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMM
 
 #[derive(Clone, Copy)]
 struct ActivePopup {
-    tooltip_id: egui::Id,
+    id: egui::Id,
     close_conditon: PopupCloseCondition,
 }
 
 impl ActivePopup {
 
-    fn new(tooltip_id: egui::Id,  close_conditon: PopupCloseCondition) -> Self {
-        Self { tooltip_id, close_conditon }
+    fn new(id: egui::Id,  close_conditon: PopupCloseCondition) -> Self {
+        Self { id, close_conditon }
     }
 
 }
@@ -28,16 +28,6 @@ impl PopupCloseCondition {
         return match self {
             PopupCloseCondition::Timer(instant) => instant.elapsed().as_secs_f32() > TOOLTIP_DURATION,
             PopupCloseCondition::ClickAnywhere => false,
-        }
-    }
-
-    //TODO Hans: Rename
-    pub fn max_without_value_change(self, other: Self) -> Self {
-        match (self, other) {
-            (PopupCloseCondition::Timer(i1), PopupCloseCondition::Timer(i2)) => PopupCloseCondition::Timer(i1.max(i2)),
-            (PopupCloseCondition::Timer(_), PopupCloseCondition::ClickAnywhere) => PopupCloseCondition::Timer(Instant::now()),
-            (PopupCloseCondition::ClickAnywhere, PopupCloseCondition::Timer(_)) => PopupCloseCondition::ClickAnywhere,
-            (PopupCloseCondition::ClickAnywhere, PopupCloseCondition::ClickAnywhere) => PopupCloseCondition::ClickAnywhere,
         }
     }
 
@@ -95,21 +85,13 @@ impl PopupManager {
                                 .rev()
                                 .scan(None, |max, cur| {
                                     *max = Some(PopupCloseCondition::max(max.unwrap_or(cur.close_conditon), cur.close_conditon));
-                                     Some(ActivePopup::new(cur.tooltip_id, max.unwrap_or(cur.close_conditon)))
-                                    //Some(ActivePopup::new(cur.tooltip_id, max.map_or(cur.close_conditon, |m| cur.close_conditon.max_without_value_change(m))))
+                                     Some(ActivePopup::new(cur.id, max.unwrap_or(cur.close_conditon)))
                                 })
                                 .filter(|tooltip| !tooltip.close_conditon.is_triggered())
                                 .collect::<Vec<_>>()
                                 .into_iter()
                                 .rev()
                                 .collect::<Vec<_>>();
-        // for a in &active_tooltips {
-        //     match a.close_conditon {
-        //         PopupCloseCondition::Timer(instant) => print!("INSTANT {}", instant.elapsed().as_secs_f32()),
-        //         PopupCloseCondition::ClickAnywhere => print!("CLICK "),
-        //     }
-        // }
-        // println!("");
         ui.ctx().data_mut(|id_type_map| id_type_map.insert_temp(self.manager_id, active_tooltips));
     }
 
@@ -124,9 +106,10 @@ impl PopupManager {
         let is_trigger_right_clicked = trigger_response.secondary_clicked();
         let is_trigger_hovered = trigger_response.hovered();
         let is_tooltip_still_open = self.active_tooltips.len() > self.layer_counter
-                                        && self.active_tooltips[self.layer_counter].tooltip_id == tooltip.tooltip_id;
+                                        && self.active_tooltips[self.layer_counter].id == tooltip.id;
         let is_context_menu_still_open = self.active_tooltips.len() > self.layer_counter
-                                             && self.active_tooltips[self.layer_counter].tooltip_id == context_menu.tooltip_id;
+                                             && self.active_tooltips[self.layer_counter].id == context_menu.id;
+
         let active_popup_close_condition = 
             if self.active_tooltips.len() > self.layer_counter {
                 Some(self.active_tooltips[self.layer_counter].close_conditon)
@@ -144,46 +127,33 @@ impl PopupManager {
         }
 
         if is_trigger_right_clicked {
-            // Set this tooltip active for the current layer
+            // Set this context menu active for the current layer
             if self.layer_counter >= self.active_tooltips.len() {
                 self.active_tooltips.push(context_menu);
             } else {
                 self.active_tooltips[self.layer_counter] = context_menu;
             }
-
-            // Remove any old higher level tooltips
+            // Remove any old higher level popups
             self.active_tooltips.truncate(self.layer_counter + 1);
         }
 
-
+        //If the context menu should be drawn
         if is_trigger_right_clicked || is_context_menu_still_open {
             // Highlight the trigger to indicate it is clicked
-             ui.painter().rect_filled(
-                bounding_box, 
-                0.0, 
-                ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED)
+            ui.painter().rect_filled(
+            bounding_box, 
+            0.0, 
+            ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED)
             );
-
             //Draw context menu on next popup layer
-            egui::show_tooltip_at(ui.ctx(), ui.layer_id(), context_menu.tooltip_id, tooltip_pos, |ui| {    
+            egui::show_tooltip_at(ui.ctx(), ui.layer_id(), context_menu.id, tooltip_pos, |ui| {    
                 self.layer_counter += 1;
                 let context_menu_response = add_contents(ui, self);
                 self.layer_counter -= 1;
 
-                println!("DRAWING CONTEXT MENU!");
-
+                //When clicking elsewhere, close this popup and its children
                 if trigger_response.clicked_elsewhere() && context_menu_response.clicked_elsewhere() {
                     self.active_tooltips.truncate(self.layer_counter);
-                    println!("CLICKED ELSEWHERE!");
-                    // if self.layer_counter > 0 {
-                    //     match self.active_tooltips[self.layer_counter - 1].close_conditon {
-                    //         PopupCloseCondition::Timer(_) => {
-                    //             self.active_tooltips[self.layer_counter - 1].close_conditon = PopupCloseCondition::Timer(Instant::now());
-                    //             ui.ctx().request_repaint_after(Duration::from_secs_f32(TOOLTIP_DURATION));
-                    //         },
-                    //         PopupCloseCondition::ClickAnywhere => {},
-                    //     }
-                    // }
                 }
             });
 
@@ -192,16 +162,19 @@ impl PopupManager {
 
         //Draw tooltip on next popup layer if its close condition has a higher priority than the active tooltip
         if is_trigger_hovered && active_popup_close_condition.map(|cc| cc < tooltip.close_conditon).unwrap_or(true) || is_tooltip_still_open  {
-            egui::show_tooltip_at(ui.ctx(), ui.layer_id(), tooltip.tooltip_id, tooltip_pos, |ui| {    
+            egui::show_tooltip_at(ui.ctx(), ui.layer_id(), tooltip.id, tooltip_pos, |ui| {    
                 self.layer_counter += 1;
                 let tooltip_response = add_contents(ui, self);
                 self.layer_counter -= 1;
-                println!("DRAWING TOOLTIP!");
+
                 // Set this tooltip active for the current layer if it or its trigger are hovered
+                // Otherwise if this tooltip should close on click and has no children, remove it
                 if self.layer_counter >= self.active_tooltips.len() {
                     self.active_tooltips.push(tooltip);
                 } else if is_trigger_hovered || tooltip_response.hovered(){
                     self.active_tooltips[self.layer_counter] = tooltip;
+                } else if self.active_tooltips[self.layer_counter].close_conditon == PopupCloseCondition::ClickAnywhere && self.layer_counter == self.active_tooltips.len() - 1 {
+                    self.active_tooltips.truncate(self.layer_counter);
                 }
             });
 
