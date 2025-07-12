@@ -1,5 +1,5 @@
 
-use crate::{backend::Backend, system_diagram_components::{core::{constants::{IMG_MISSING_FILE, IMG_OPEN_LINK}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::TooltipManager}, widgets::plot::{Plot, SharedPlotState}};
+use crate::{backend::Backend, system_diagram_components::{core::{constants::{IMG_MISSING_FILE, IMG_OPEN_LINK}, display_value::DisplayValue, flow_painter::{Line1D, Symbol}}, math::transform::Transform}, utils::{mesh::register_textures, theme::ThemeColors, tooltip::PopupManager}, widgets::plot::{Plot, SharedPlotState}};
 use egui::{Button, Color32, Image, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 use telemetry::Metric;
@@ -19,7 +19,7 @@ impl Component {
         Self { name, link, properties, attached_metrics }
     }
 
-    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut TooltipManager) -> egui::Response {
+    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, tooltip_manager: &mut PopupManager) -> egui::Response {
         let mut tooltip_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
         let theme = &ThemeColors::new(ui.ctx());
         ui.style_mut().interaction.selectable_labels = true;
@@ -130,7 +130,7 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
             Scale2::new(available_space.width(), available_space.height()),
             Translation2::new(available_space.min.x, available_space.min.y))
             .to_affine2();
-        let mut tooltip_manager = TooltipManager::new(ui);
+        let mut tooltip_manager = PopupManager::new(ui);
         return ui.vertical(|ui| {
             for (idx, symbol) in self.symbols.iter().enumerate() {
                 let bounding_box= symbol.paint(&global_transform, ui.painter(), ui.ctx());
