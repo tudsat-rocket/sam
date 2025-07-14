@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use crate::system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMMA_MUL_ON_SELECTED, TOOLTIP_DURATION};
+use egui::{Sense, Vec2};
+
+use crate::{system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMMA_MUL_ON_SELECTED, TOOLTIP_DURATION}, widgets::system_diagram::Flatten};
 
 #[derive(Clone, Copy)]
 struct ActivePopup {
@@ -77,12 +79,17 @@ impl PopupTrigger {
         return Self{id, response};
     }
 
+    pub fn response(self) -> egui::Response {
+        return self.response;
+    }
+
 }
 
 pub struct PopupManager {
     manager_id: egui::Id,
     active_popups: Vec<ActivePopup>,
     current_layer: usize,
+    active_frame: egui::Frame,
 }
 
 impl PopupManager {
@@ -93,6 +100,7 @@ impl PopupManager {
             manager_id: id,
             active_popups: ui.ctx().data_mut(|id_type_map| id_type_map.get_temp::<Vec<ActivePopup>>(id)).unwrap_or(vec![]),
             current_layer: 0,
+            active_frame: egui::Frame::NONE,
         }
     }
 
@@ -199,15 +207,24 @@ impl PopupManager {
     }
 
     /// Show the popup in a new layer at the given positions
-    fn show_popup(&mut self, popup: ActivePopup, pos: egui::Pos2, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui, &mut PopupManager) -> egui::Response) -> egui::Response{
-        let mut popup_response = ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
-
-        egui::show_tooltip_at(ui.ctx(), ui.layer_id(), popup.id, pos, |ui| {    
+    fn show_popup(&mut self, popup: ActivePopup, pos: egui::Pos2, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui, &mut PopupManager) -> egui::Response) -> egui::Response{   
             self.current_layer += 1;
-            popup_response = add_contents(ui, self);
+            self.active_frame = egui::Frame::popup(ui.style());
+            let popup_response = egui::Area::new(popup.id)
+                .sense(Sense::click_and_drag())
+                .interactable(true)
+                .fixed_pos(pos - Vec2::new(0.0, self.active_frame.inner_margin.topf()))
+                .order(egui::Order::Foreground)
+                .show(ui.ctx(), |ui| {
+                    return self.active_frame.show(ui, |ui| {
+                        return add_contents(ui, self);
+                    }).flatten();
+            }).flatten();
             self.current_layer -= 1;
-        });
+            return popup_response;
+    }
 
-        return popup_response;
+    pub fn get_active_frame_bounds(&self, content_rect: egui::Rect) -> egui::Rect {
+        return self.active_frame.widget_rect(content_rect);
     }
 }

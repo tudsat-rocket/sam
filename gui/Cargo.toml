@@ -41,6 +41,8 @@ reqwest = { version = "0.11", default-features = false, features = ["rustls-tls"
 itertools = "0.14"
 enum-map = "2.7.3"
 earcutr = "0.4.3"
+cmake = "0.1.54"
+clippers = "0.1.2"
 
 # Used for profiling
 #puffin = { version = "0.19", optional = true }
@@ -48,7 +50,6 @@ earcutr = "0.4.3"
 puffin = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 puffin_egui = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 open = "5.3.2"
-clippers = "0.1.2"
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]

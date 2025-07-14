@@ -2865,6 +2865,7 @@ dependencies = [
  "chrono",
  "clap 3.2.25",
  "clippers",
+ "cmake",
  "colorgrad",
  "console_error_panic_hook",
  "crc",
