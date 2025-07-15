@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::LazyLock};
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use telemetry::Metric;
 
-use crate::{backend::Backend, system_diagram_components::{core::{constraints::Constraint, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::SystemDiagram}};
+use crate::{backend::Backend, frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{constraints::Constraint, flow_painter::{Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::SystemDiagram}};
 
 type ComponentID = u16;
 type PortID = u16;
@@ -183,7 +183,7 @@ pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
     },
 ]);
 
-pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState) -> SystemDiagram<'a> {
+pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor<Metric>) -> SystemDiagram<'a> {
     SystemDiagram::new(
         HYACINTH_SYSTEM.iter().map(|c| c.symbol.clone()).collect(),
         vec![],
@@ -227,6 +227,8 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
         //     Line1D::new(vec![Point2::new(0.53, 0.61), Point2::new(0.55, 0.61)]),
         // ],
         backend,
-        shared_plot_state
+        shared_plot_state,
+        popup_manager,
+        metric_monitor
     )
 }

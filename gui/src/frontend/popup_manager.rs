@@ -86,44 +86,37 @@ impl PopupTrigger {
 }
 
 pub struct PopupManager {
-    manager_id: egui::Id,
     active_popups: Vec<ActivePopup>,
     current_layer: usize,
     active_frame: egui::Frame,
 }
 
+impl Default for PopupManager {
+    fn default() -> Self {
+        Self { active_popups: Default::default(), current_layer: Default::default(), active_frame: Default::default() }
+    }
+}
+
 impl PopupManager {
 
-    pub fn new(ui: &mut egui::Ui) -> Self{
-        let id = ui.make_persistent_id("Tooltip Manager");
-        Self { 
-            manager_id: id,
-            active_popups: ui.ctx().data_mut(|id_type_map| id_type_map.get_temp::<Vec<ActivePopup>>(id)).unwrap_or(vec![]),
-            current_layer: 0,
-            active_frame: egui::Frame::NONE,
-        }
-    }
-
-    pub fn save_state(self, ui: &mut egui::Ui) {
+    pub fn update(&mut self) {
         /*
             Set the last_hover of each active tooltip to the maximum of itself and its childeren to ensure parents stay open when children are hovered
             Afterwards, remove all tooltips with expired timers from the active tooltips list
             Apperantly, it is not possible to reverse the same iterator twice which is why the iterator is collected in the middle of the pipeline
          */
-        let active_tooltips = self.active_popups
-                                .clone()
-                                .iter()
-                                .rev()
-                                .scan(None, |max, cur| {
-                                    *max = Some(PopupCloseCondition::max(max.unwrap_or(cur.close_conditon), cur.close_conditon));
-                                     Some(ActivePopup::new(cur.id, max.unwrap_or(cur.close_conditon)))
-                                })
-                                .filter(|tooltip| !tooltip.close_conditon.is_triggered())
-                                .collect::<Vec<_>>()
-                                .into_iter()
-                                .rev()
-                                .collect::<Vec<_>>();
-        ui.ctx().data_mut(|id_type_map| id_type_map.insert_temp(self.manager_id, active_tooltips));
+        self.active_popups = self.active_popups
+            .iter()
+            .rev()
+            .scan(None, |max, cur| {
+                *max = Some(PopupCloseCondition::max(max.unwrap_or(cur.close_conditon), cur.close_conditon));
+                    Some(ActivePopup::new(cur.id, max.unwrap_or(cur.close_conditon)))
+            })
+            .filter(|tooltip| !tooltip.close_conditon.is_triggered())
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>();
     }
 
     /// Add a tooltip which is displayed on hover

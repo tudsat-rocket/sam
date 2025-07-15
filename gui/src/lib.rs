@@ -9,8 +9,10 @@ use egui::TextStyle::*;
 use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use shared_types::telemetry::*;
+use telemetry::Metric;
 
 pub mod backend;
+pub mod frontend;
 pub mod system_diagram_components;
 pub mod panels;
 pub mod settings;
@@ -20,6 +22,9 @@ pub mod widgets;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::backend::*;
+use crate::frontend::metric_monitor::MetricMonitor;
+use crate::frontend::popup_manager::PopupManager;
+use crate::panels::monitor_bar::MonitorBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
@@ -33,6 +38,8 @@ pub struct Sam {
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
     archive_window: ArchiveWindow,
+    popup_manager: PopupManager,
+    metric_monitor: MetricMonitor<Metric>,
 }
 
 impl Sam {
@@ -68,6 +75,8 @@ impl Sam {
             configure_tab,
 
             archive_window: ArchiveWindow::default(),
+            popup_manager: PopupManager::default(),
+            metric_monitor: MetricMonitor::default(),
         }
     }
 
@@ -218,9 +227,10 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         let backend = self.backends.last_mut().unwrap();
+        MonitorBar::show(ctx, backend, &mut self.metric_monitor);
         match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
-            GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, enabled),
+            GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.popup_manager, &mut self.metric_monitor, enabled),
             GuiTab::Configure => {
                 let changed = self.configure_tab.main_ui(ctx, backend, &mut self.settings, enabled);
                 if changed {
@@ -235,7 +245,8 @@ impl eframe::App for Sam {
     /// Main draw method of the application
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Draw UI
-        self.ui(ctx)
+        self.ui(ctx);
+        self.popup_manager.update();
     }
 }
 

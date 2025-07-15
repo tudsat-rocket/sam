@@ -18,6 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use telemetry::*;
 
+use crate::frontend::metric_monitor::MetricMonitor;
+use crate::frontend::popup_manager::PopupManager;
 use crate::system_diagram_components::diagrams;
 use crate::settings::AppSettings;
 use crate::widgets::system_diagram::*;
@@ -54,6 +56,8 @@ struct TileBehavior<'a> {
     backend: &'a mut Backend,
     settings: &'a AppSettings,
     global_widget_state: &'a mut GlobalWidgetState,
+    popup_manager: &'a mut PopupManager,
+    metric_monitor: &'a mut MetricMonitor<Metric>,
 }
 
 impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
@@ -78,8 +82,8 @@ impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
                 ui.add(Plot::new(&config, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.backend))
             }
             WidgetPane::Map => ui.add(Map::new(&mut self.global_widget_state.map, self.backend, self.settings)),
-            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut())),
-            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut())),
+            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.popup_manager, self.metric_monitor)),
+            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.popup_manager, self.metric_monitor)),
         };
 
         egui_tiles::UiResponse::None
@@ -475,7 +479,7 @@ impl PlotTab {
         deserialized == *tiles
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, enabled: bool) {
+    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor<Metric>, enabled: bool) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -560,6 +564,8 @@ impl PlotTab {
                 backend,
                 global_widget_state: &mut self.global_widget_state,
                 settings,
+                popup_manager,
+                metric_monitor,
             };
 
             self.tile_tree.ui(&mut behavior, ui);

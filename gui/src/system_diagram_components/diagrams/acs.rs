@@ -4,7 +4,7 @@ use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use shared_types::ThrusterValveState;
 use telemetry::Metric;
 
-use crate::{backend::Backend, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
+use crate::{backend::Backend, frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
 
 //TODO MOVE
 static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
@@ -24,7 +24,7 @@ static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(||
     ]
 );
 
-pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState) -> SystemDiagram<'a> {
+pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor<Metric>) -> SystemDiagram<'a> {
 
     let tank_pressure = backend.current_value(Metric::Pressure(telemetry::PressureSensorId::AcsTank));
     let fill_level = (tank_pressure.unwrap_or_default() / 300f64) as f32;
@@ -56,6 +56,8 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
             Line1D::new(vec![Point2::new(0.80, 0.65), Point2::new(0.8, 0.75)]),
         ],
         backend,
-        shared_plot_state
+        shared_plot_state,
+        popup_manager,
+        metric_monitor,
     )
 }
