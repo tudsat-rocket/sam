@@ -45,6 +45,7 @@ impl Component {
                 Some(_) => ui.add(Button::image(Image::new(IMG_OPEN_LINK).tint(theme.foreground_weak)).small()),
                 None => ui.add_enabled(false, Button::image(Image::new(IMG_MISSING_FILE).tint(theme.foreground_weak)).small()),
             };
+            #[cfg(not(target_arch = "wasm32"))]
             if click_response.clicked() {
                 self.link.clone().map(|url| open::that(url));
             }
@@ -83,20 +84,24 @@ impl Component {
                         return ui.add(Plot::new(&config, shared_plot_state, backend)).union(inner_tooltip_response);
                     });
                     popup_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
-                        let to_clipboard_response = ui.button("Copy value to clipboard");
+                        #[cfg(target_arch = "wasm32")]
+                        let to_clipboard_response = ui.add_enabled(false, egui::Button::new("Copy to clipboard"));
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let to_clipboard_response = ui.button("Copy to clipboard");
+                        #[cfg(not(target_arch = "wasm32"))]
                         if to_clipboard_response.clicked() {
                             let mut clipboard =  clippers::Clipboard::get();
                             let _ = clipboard.write_text(backend.current_value(*metric).map(|v| format!("{}", v)).unwrap_or("N/A".to_string()));
                         }
                         let pin_or_unpin_response = 
                         if metric_monitor.is_pinned(metric) {
-                            let unpin_response = ui.button("Unpin value from monitor");
+                            let unpin_response = ui.button("Unpin from Monitor");
                             if unpin_response.clicked() {
                                 metric_monitor.unpin(*metric);
                             }
                             unpin_response
                         } else {
-                            let pin_response = ui.button("Pin value from monitor");
+                            let pin_response = ui.button("Pin to monitor");
                             if pin_response.clicked() {
                                 metric_monitor.pin(*metric);
                             }
@@ -125,12 +130,16 @@ impl Component {
                         return ui.label(format!("Justification: Missing"));
                     });
                     popup_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
-                        let response = ui.button("Copy value to clipboard");
-                        if response.clicked() {
+                        #[cfg(target_arch = "wasm32")]
+                        let to_clipboard_response = ui.add_enabled(false, egui::Button::new("Copy to clipboard"));
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let to_clipboard_response = ui.button("Copy to clipboard");
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if to_clipboard_response.clicked() {
                             let mut clipboard =  clippers::Clipboard::get();
                             let _ = clipboard.write_text(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string()));
                         }
-                        return response;
+                        return to_clipboard_response;
                     });
                     tooltip_response = tooltip_response.union(trigger.response());
                     ui.end_row();
