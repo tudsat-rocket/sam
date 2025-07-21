@@ -3,6 +3,8 @@ name = "frodo_io_module_firmware"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -26,6 +28,13 @@ embassy-sync = "0.5"
 embassy-futures = "0.1"
 
 static_cell = "2"
-crc = { workspace = true }
+crc = "3"
 
-shared_types = { workspace = true }
+shared_types = { path = "../../shared_types" }
+
+[profile.dev]
+opt-level = 1
+overflow-checks = false
+
+[profile.release]
+debug = true

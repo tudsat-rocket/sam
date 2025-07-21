@@ -10,7 +10,7 @@ members = [
     "shared_types",     # Types like telemetry and settings shared between firmware, simulation and GUI
     "telemetry",
     "firmwares/flight_computer",
-    "firmwares/io_module",
+    # "firmwares/io_module",
     "firmwares/power_module",
     "firmwares/fancyfins",
     # "firmwares/engine_board",
