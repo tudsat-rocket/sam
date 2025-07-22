@@ -2,9 +2,9 @@ use core::f32;
 use std::sync::LazyLock;
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use shared_types::ThrusterValveState;
-use telemetry::Metric;
+use telemetry::{Metric, PressureSensorId};
 
-use crate::{backend::Backend, frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
+use crate::{backend::Backend, frontend::{constraints::{Constraint, MaxConstraint, SomeConstraint}, metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
 
 //TODO MOVE
 static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
@@ -24,7 +24,7 @@ static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(||
     ]
 );
 
-pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor<Metric>) -> SystemDiagram<'a> {
+pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor) -> SystemDiagram<'a> {
 
     let tank_pressure = backend.current_value(Metric::Pressure(telemetry::PressureSensorId::AcsTank));
     let fill_level = (tank_pressure.unwrap_or_default() / 300f64) as f32;
@@ -38,6 +38,10 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
         }
         None => (ValveState::Disconnected, ValveState::Disconnected),
     };
+
+    metric_monitor.add_constraint(Constraint::Some(SomeConstraint::new(Metric::Pressure(PressureSensorId::AcsTank), crate::frontend::constraints::ConstraintResult::WARNING)));
+    //metric_monitor.add_constraint(Constraint::Some(SomeConstraint::new(Metric::AcsMode, crate::frontend::constraints::ConstraintResult::DANGER)));
+
     SystemDiagram::new(
         vec![
             Symbol::new(Painter::Tank(StorageState::new(FluidType::CompressedAir, fill_level)), Transform::new(Rotation2::identity(), Scale2::new(0.2, 0.6), Translation2::new(0.25, 0.5)), Some(ACS_SYSTEM_DEFINITION[0].clone())),

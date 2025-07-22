@@ -35,7 +35,7 @@ impl Component {
         Self { name, link, properties, attached_metrics }
     }
 
-    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor<Metric>) -> egui::Response {
+    fn as_tooltip(&self, ui: &mut egui::Ui, backend: &Backend, shared_plot_state: &mut SharedPlotState, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor) -> egui::Response {
         let theme = &ThemeColors::new(ui.ctx());
         ui.style_mut().interaction.selectable_labels = true;
 
@@ -157,7 +157,7 @@ pub struct SystemDiagram<'a> {
     backend: &'a Backend,
     shared_plot_state: &'a mut SharedPlotState,
     popup_manager: &'a mut PopupManager,
-    metric_monitor: &'a mut MetricMonitor<Metric>,
+    metric_monitor: &'a mut MetricMonitor,
 }
 
 
@@ -166,7 +166,7 @@ impl<'a> SystemDiagram<'a> {
         register_textures(ctx);
     }
 
-    pub fn new(symbols: Vec<Symbol>, lines: Vec<Line1D>, backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor<Metric>) -> Self {
+    pub fn new(symbols: Vec<Symbol>, lines: Vec<Line1D>, backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor) -> Self {
         Self { symbols, lines, backend, shared_plot_state, popup_manager, metric_monitor }
     }
 }

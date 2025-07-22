@@ -57,7 +57,7 @@ struct TileBehavior<'a> {
     settings: &'a AppSettings,
     global_widget_state: &'a mut GlobalWidgetState,
     popup_manager: &'a mut PopupManager,
-    metric_monitor: &'a mut MetricMonitor<Metric>,
+    metric_monitor: &'a mut MetricMonitor,
 }
 
 impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
@@ -479,7 +479,7 @@ impl PlotTab {
         deserialized == *tiles
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor<Metric>, enabled: bool) {
+    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor, enabled: bool) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 

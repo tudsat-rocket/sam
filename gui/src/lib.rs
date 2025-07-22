@@ -9,7 +9,6 @@ use egui::TextStyle::*;
 use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
 use shared_types::telemetry::*;
-use telemetry::Metric;
 
 pub mod backend;
 pub mod frontend;
@@ -24,7 +23,7 @@ pub mod windows; // TODO: make this private (it is public because it has ARCHIVE
 use crate::backend::*;
 use crate::frontend::metric_monitor::MetricMonitor;
 use crate::frontend::popup_manager::PopupManager;
-use crate::panels::monitor_bar::MonitorBar;
+use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
@@ -39,7 +38,7 @@ pub struct Sam {
     configure_tab: ConfigureTab,
     archive_window: ArchiveWindow,
     popup_manager: PopupManager,
-    metric_monitor: MetricMonitor<Metric>,
+    metric_monitor: MetricMonitor,
 }
 
 impl Sam {
@@ -227,7 +226,7 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         let backend = self.backends.last_mut().unwrap();
-        MonitorBar::show(ctx, backend, &mut self.metric_monitor);
+        MetricStatusBar::show(ctx, backend, &mut self.metric_monitor);
         match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
             GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.popup_manager, &mut self.metric_monitor, enabled),

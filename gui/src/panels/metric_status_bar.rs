@@ -2,11 +2,11 @@ use telemetry::Metric;
 
 use crate::{backend::Backend, frontend::metric_monitor::MetricMonitor};
 
-pub struct MonitorBar {}
+pub struct MetricStatusBar {}
 
-impl MonitorBar {
-    pub fn show(ctx: &egui::Context, backend: &Backend, metric_monitor: &mut MetricMonitor<Metric>) {
-        let monitored_metrics = metric_monitor.monitored_metrics();
+impl MetricStatusBar {
+    pub fn show(ctx: &egui::Context, backend: &Backend, metric_monitor: &mut MetricMonitor) {
+        let monitored_metrics = metric_monitor.metrics_to_display(backend);
         egui::SidePanel::left("Monitor Panel").show_animated(ctx, monitored_metrics.len() > 0, |ui| {
             ui.vertical_centered(|ui|
                 ui.heading("Monitored Metrics")
