@@ -347,15 +347,7 @@ impl SerialBackend {
         }
     }
 
-    /// No telemetry file needed because serial port does not work on
-    /// web assembly. TODO: maybe create a NoopDataSource for wasm instead?
-    #[cfg(target_arch = "wasm32")]
-    fn new_telemetry_log_path() -> PathBuf {
-        "telem.log".into()
-    }
-
     /// Comes up with a new, unique path for a telemetry log file.
-    #[cfg(not(target_arch = "wasm32"))] // TODO: time doesn't work on wasm
     fn new_telemetry_log_path() -> PathBuf {
         let now: chrono::DateTime<chrono::Utc> = std::time::SystemTime::now().into();
 

@@ -3,11 +3,12 @@
 use eframe::egui;
 use eframe::egui::PointerButton;
 use egui::Vec2b;
-use egui_plot::{Corner, Legend, Line};
+use egui_plot::{Corner, Legend, Line, LineStyle, VLine};
 use serde::{Deserialize, Serialize};
 
 use telemetry::Metric;
 
+use crate::utils::telemetry_ext::ColorExt;
 use crate::*;
 
 /// State shared by all linked plots
@@ -132,7 +133,10 @@ impl<'a> egui::Widget for Plot<'a> {
                 plot_ui.line(line);
             }
 
-            // TODO: flight mode_transitions
+            for (t, mode) in self.backend.enum_transitions::<FlightMode>(&Metric::FlightMode, plot_ui.plot_bounds()) {
+                let line = VLine::new(t).color(mode.color()).style(LineStyle::Dashed { length: 4.0 });
+                plot_ui.vline(line);
+            }
 
             //for vl in cache.borrow_mut().mode_lines(backend) {
             //    plot_ui.vline(vl.style(LineStyle::Dashed { length: 4.0 }));

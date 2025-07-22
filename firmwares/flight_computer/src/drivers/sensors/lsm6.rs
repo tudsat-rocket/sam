@@ -104,8 +104,16 @@ impl<SPI: SpiDevice<u8>> LSM6<SPI> {
 
         // rotate values to match vehicle coordinate system (invert x, swap y and z)
         // and convert to m/s^2 and deg/s
-        self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(gyro_x.saturating_neg(), gyro_z, gyro_y)));
-        self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(accel_x.saturating_neg(), accel_z, accel_y)));
+        self.gyro = Some(self.gyro_scale.scale_raw_values(Vector3::new(
+            gyro_y.saturating_neg(),
+            gyro_z,
+            gyro_x.saturating_neg(),
+        )));
+        self.accel = Some(self.accel_scale.scale_raw_values(Vector3::new(
+            accel_y.saturating_neg(),
+            accel_z,
+            accel_x.saturating_neg(),
+        )));
 
         Ok(())
     }

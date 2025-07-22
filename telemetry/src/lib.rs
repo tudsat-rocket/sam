@@ -4,6 +4,8 @@ mod metrics;
 mod representation;
 mod schema;
 mod source;
+
+#[cfg(not(target_os = "none"))]
 mod store;
 
 use core::convert::Infallible;
@@ -12,6 +14,8 @@ pub use metrics::*;
 pub use representation::*;
 pub use schema::*;
 pub use source::*;
+
+#[cfg(not(target_os = "none"))]
 pub use store::*;
 
 pub const ALTITUDE_REPRESENTATION: Representation = Representation::fixed(16, -100.0..=10_000.0);
@@ -28,6 +32,18 @@ pub const TELEMETRY_RAW_SENSORS: MessageDefinition = MessageDefinition(&[
     (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::X), Representation::float(16)),
     (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Y), Representation::float(16)),
     (Metric::RawAcceleration(AccelerometerId::LSM6DSR, Dim::Z), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::X), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::Y), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42670P, Dim::Z), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::X), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::Y), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42670P, Dim::Z), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::X), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::Y), Representation::float(16)),
+    (Metric::RawAngularVelocity(GyroscopeId::ICM42688P, Dim::Z), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::X), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::Y), Representation::float(16)),
+    (Metric::RawAcceleration(AccelerometerId::ICM42688P, Dim::Z), Representation::float(16)),
     (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::X), Representation::float(16)),
     (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::Y), Representation::float(16)),
     (Metric::RawAcceleration(AccelerometerId::H3LIS331, Dim::Z), Representation::float(16)),
@@ -35,6 +51,8 @@ pub const TELEMETRY_RAW_SENSORS: MessageDefinition = MessageDefinition(&[
     (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Y), Representation::float(16)),
     (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Z), Representation::float(16)),
     (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::MS5611)), Representation::float(32)),
+    (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::LPS22)), Representation::float(32)),
+    (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::BMP580)), Representation::float(32)),
 ]);
 
 pub const TELEMETRY_DIAGNOSTICS: MessageDefinition = MessageDefinition(&[
@@ -46,6 +64,14 @@ pub const TELEMETRY_DIAGNOSTICS: MessageDefinition = MessageDefinition(&[
     (Metric::TransmitPower, Representation::Enum { bits: 8 }),
     (
         Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::MS5611)),
+        Representation::fixed(8, -20.0..=120.0),
+    ),
+    (
+        Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::LPS22)),
+        Representation::fixed(8, -20.0..=120.0),
+    ),
+    (
+        Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::BMP580)),
         Representation::fixed(8, -20.0..=120.0),
     ),
 ]);
@@ -62,6 +88,8 @@ pub const TELEMETRY_MAIN: MessageDefinition = MessageDefinition(&[
     (Metric::VelocityWorldSpace(Dim::Z), Representation::float(16)),
     (Metric::PositionWorldSpace(Dim::Z), ALTITUDE_REPRESENTATION),
     (Metric::RawBarometricAltitude(BarometerId::MS5611), ALTITUDE_REPRESENTATION),
+    (Metric::RawBarometricAltitude(BarometerId::LPS22), ALTITUDE_REPRESENTATION),
+    (Metric::RawBarometricAltitude(BarometerId::BMP580), ALTITUDE_REPRESENTATION),
     (Metric::ApogeeAltitudeASL, ALTITUDE_REPRESENTATION),
     (Metric::BatteryCurrent(BatteryId::Avionics), Representation::fixed(16, -50.0..=50.0)),
     // TODO: acs mode and valve state
@@ -94,9 +122,9 @@ pub const TELEMETRY_FAST_COMPRESSED: MessageDefinition = MessageDefinition(&[
 
 pub const USB_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[
     (TELEMETRY_GPS, 1000, 0),
-    (TELEMETRY_RAW_SENSORS, 50, 0),
-    (TELEMETRY_MAIN, 50, 10),
-    (TELEMETRY_DIAGNOSTICS, 50, 30),
+    (TELEMETRY_RAW_SENSORS, 5, 0),
+    (TELEMETRY_MAIN, 50, 12),
+    (TELEMETRY_DIAGNOSTICS, 50, 32),
 ]);
 
 pub const LORA_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[

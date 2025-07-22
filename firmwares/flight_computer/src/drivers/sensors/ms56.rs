@@ -9,7 +9,13 @@ use defmt::*;
 
 const BARO_MEDIAN_FILTER_LENGTH: usize = 20;
 
-struct MS5611CalibrationData {
+#[derive(PartialEq, Clone, Copy)]
+pub enum MS56Variant {
+    MS5607,
+    MS5611,
+}
+
+struct MS56CalibrationData {
     pressure_sensitivity: u16,
     pressure_offset: u16,
     temp_coef_pressure_sensitivity: u16,
@@ -18,7 +24,7 @@ struct MS5611CalibrationData {
     temp_coef_temperature: u16,
 }
 
-impl MS5611CalibrationData {
+impl MS56CalibrationData {
     pub fn valid(&self) -> bool {
         // We assume that every value needs to be non-zero and non-0xffff.
         self.pressure_sensitivity != 0x0000
@@ -36,9 +42,10 @@ impl MS5611CalibrationData {
     }
 }
 
-pub struct MS5611<SPI: SpiDevice<u8>> {
+pub struct MS56<SPI: SpiDevice<u8>> {
+    variant: MS56Variant,
     spi: SPI,
-    calibration_data: Option<MS5611CalibrationData>,
+    calibration_data: Option<MS56CalibrationData>,
     read_temp: bool,
     dt: Option<i32>,
     temp: Option<i32>,
@@ -47,9 +54,10 @@ pub struct MS5611<SPI: SpiDevice<u8>> {
     baro_filter: BaroFilter,
 }
 
-impl<SPI: SpiDevice<u8>> MS5611<SPI> {
-    pub async fn init(spi: SPI) -> Result<Self, SPI::Error> {
+impl<SPI: SpiDevice<u8>> MS56<SPI> {
+    pub async fn init(variant: MS56Variant, spi: SPI) -> Result<Self, SPI::Error> {
         let mut baro = Self {
+            variant,
             spi,
             calibration_data: None,
             read_temp: true,
@@ -75,15 +83,15 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
         }
 
         if baro.calibration_data.as_ref().map(|d| d.valid()).unwrap_or(false) {
-            info!("MS5611 initialized");
+            info!("MS56xx initialized");
         } else {
-            error!("Failed to initialize MS5611");
+            error!("Failed to initialize MS56xx");
         }
 
         Ok(baro)
     }
 
-    async fn command(&mut self, command: MS5611Command, response_len: usize) -> Result<Vec<u8, 32>, SPI::Error> {
+    async fn command(&mut self, command: MS56Command, response_len: usize) -> Result<Vec<u8, 32>, SPI::Error> {
         let mut payload = [0x00; 32];
         payload[0] = command.into();
         self.spi.transfer_in_place(&mut payload[..1 + response_len]).await?;
@@ -91,19 +99,19 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     }
 
     async fn reset(&mut self) -> Result<(), SPI::Error> {
-        self.command(MS5611Command::Reset, 0).await?;
+        self.command(MS56Command::Reset, 0).await?;
         Ok(())
     }
 
     async fn read_calibration_values(&mut self) -> Result<(), SPI::Error> {
-        let c1 = self.command(MS5611Command::ReadProm(1), 2).await?;
-        let c2 = self.command(MS5611Command::ReadProm(2), 2).await?;
-        let c3 = self.command(MS5611Command::ReadProm(3), 2).await?;
-        let c4 = self.command(MS5611Command::ReadProm(4), 2).await?;
-        let c5 = self.command(MS5611Command::ReadProm(5), 2).await?;
-        let c6 = self.command(MS5611Command::ReadProm(6), 2).await?;
+        let c1 = self.command(MS56Command::ReadProm(1), 2).await?;
+        let c2 = self.command(MS56Command::ReadProm(2), 2).await?;
+        let c3 = self.command(MS56Command::ReadProm(3), 2).await?;
+        let c4 = self.command(MS56Command::ReadProm(4), 2).await?;
+        let c5 = self.command(MS56Command::ReadProm(5), 2).await?;
+        let c6 = self.command(MS56Command::ReadProm(6), 2).await?;
 
-        self.calibration_data = Some(MS5611CalibrationData {
+        self.calibration_data = Some(MS56CalibrationData {
             pressure_sensitivity: ((c1[0] as u16) << 8) + (c1[1] as u16),
             pressure_offset: ((c2[0] as u16) << 8) + (c2[1] as u16),
             temp_coef_pressure_sensitivity: ((c3[0] as u16) << 8) + (c3[1] as u16),
@@ -116,7 +124,7 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     }
 
     async fn read_sensor_data(&mut self) -> Result<(), SPI::Error> {
-        let response = self.command(MS5611Command::ReadAdc, 3).await?;
+        let response = self.command(MS56Command::ReadAdc, 3).await?;
         let value = ((response[0] as i32) << 16) + ((response[1] as i32) << 8) + (response[2] as i32);
         let cal = self.calibration_data.as_ref().unwrap();
 
@@ -156,7 +164,12 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
             }
 
             self.temp = Some(temp as i32);
-            let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> 15;
+
+            let shift = match self.variant {
+                MS56Variant::MS5607 => 14,
+                MS56Variant::MS5611 => 15,
+            };
+            let p = (((raw_pressure as i64 * sens) >> 21) - offset) >> shift;
             self.pressure = Some(p as i32);
         }
 
@@ -164,11 +177,11 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
     }
 
     async fn start_next_conversion(&mut self) -> Result<(), SPI::Error> {
-        let osr = MS5611OSR::OSR256;
+        let osr = MS56OSR::OSR256;
         if self.read_temp {
-            self.command(MS5611Command::StartTempConversion(osr), 0).await?;
+            self.command(MS56Command::StartTempConversion(osr), 0).await?;
         } else {
-            self.command(MS5611Command::StartPressureConversion(osr), 0).await?;
+            self.command(MS56Command::StartPressureConversion(osr), 0).await?;
         }
         Ok(())
     }
@@ -208,15 +221,15 @@ impl<SPI: SpiDevice<u8>> MS5611<SPI> {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-enum MS5611Command {
+enum MS56Command {
     Reset,
-    StartPressureConversion(MS5611OSR),
-    StartTempConversion(MS5611OSR),
+    StartPressureConversion(MS56OSR),
+    StartTempConversion(MS56OSR),
     ReadAdc,
     ReadProm(u8),
 }
 
-impl Into<u8> for MS5611Command {
+impl Into<u8> for MS56Command {
     fn into(self: Self) -> u8 {
         match self {
             Self::Reset => 0x1e,
@@ -230,7 +243,7 @@ impl Into<u8> for MS5611Command {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
-enum MS5611OSR {
+enum MS56OSR {
     OSR256 = 0b000,
     OSR512 = 0b001,
     OSR1024 = 0b010,
@@ -262,7 +275,7 @@ impl BaroFilter {
         let _ = self.previous_raw_values.push_back(input_value);
 
         let mut sorted: Vec<_, BARO_MEDIAN_FILTER_LENGTH> = self.previous_raw_values.iter().collect();
-        sorted.sort();
+        sorted.sort_unstable();
 
         if self.last_spike_warning_counter <= 100 {
             self.last_spike_warning_counter += 1;

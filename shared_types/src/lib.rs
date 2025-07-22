@@ -1,8 +1,5 @@
 #![cfg_attr(target_os = "none", no_std)] // this is imported by the firmware, so no standard library
 
-#[cfg(all(target_os = "none", feature = "serde"))]
-extern crate alloc;
-
 pub mod common;
 pub use common::*;
 

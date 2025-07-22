@@ -10,9 +10,9 @@ members = [
     "shared_types",     # Types like telemetry and settings shared between firmware, simulation and GUI
     "telemetry",
     "firmwares/flight_computer",
-    "firmwares/io_module",
-    "firmwares/power_module",
-    "firmwares/fancyfins",
+    # "firmwares/io_module",
+    # "firmwares/power_module",
+    # "firmwares/fancyfins",
     # "firmwares/engine_board",
 ]
 default-members = ["cli"] # Allows running GUI by simply running `$ cargo run` in root of workspace
@@ -34,7 +34,7 @@ env_logger = "0.10"
 # Math
 mint = "0.5.9"
 half = { version = "2.4.1", default-features = false }
-nalgebra = { version = "0.32", default-features = false, features = ["macros", "mint", "serde-serialize-no-std"] }
+nalgebra = { version = "0.32", default-features = false, features = ["macros", "libm", "mint", "serde-serialize-no-std"] }
 # egui & friends
 egui = { version = "0.31" }
 egui-wgpu = { version = "0.31" }
