@@ -5,8 +5,10 @@ authors = [
     # Feel free to add yourself here
     "Felix Wiegand <felix-wiegand@protonmail.ch>"
 ]
-edition = "2021"
+edition = "2024"
 default-run = "rocket"
+
+[workspace]
 
 [[bin]]
 name = "rocket"
@@ -28,38 +30,39 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 
 embedded-hal = "1.0"
 embedded-hal-async = "1.0"
+embedded-can = "0.4.1"
+embedded-nal-async = "0.8.0"
+embedded-io-async = "0.6.1"
 
 cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7"
 
-embassy-stm32 = { version = "0.2", features = ["stm32h743vi", "unstable-pac", "memory-x", "time-driver-tim15", "exti"]  }
-embassy-executor = { version = "0.7", features = ["defmt", "task-arena-size-131072", "arch-cortex-m", "executor-thread", "executor-interrupt"] }
-embassy-time = { version = "0.4", features = ["tick-hz-1_000_000"] }
-embassy-embedded-hal = "0.3"
-embassy-sync = "0.6"
-embassy-usb = "0.4"
-embassy-futures = "0.1"
-embedded-can = "0.4.1"
-embassy-net = { version = "0.7", features = ["defmt", "udp", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
-embedded-nal-async = "0.8.0"
-embedded-io-async = "0.6.1"
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.2", features = ["stm32h743vi", "unstable-pac", "memory-x", "time-driver-tim15", "exti"]  }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.7", features = ["defmt", "arch-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.4", features = ["tick-hz-1_000_000"] }
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.3" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.7" }
+embassy-usb = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.5" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.1" }
+embassy-net = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.7", features = ["defmt", "udp", "tcp", "dhcpv4", "medium-ethernet", "proto-ipv4", "dns"] }
+
 lora-phy = { git = "https://github.com/lora-rs/lora-rs.git", features = ["defmt-03"] }
 #lorawan-device = { git = "https://github.com/lora-rs/lora-rs.git", default-features = false, features = ["embassy-time", "defmt-03", "region-eu868"] }
 
 static_cell = "2"
 num-traits = { version = "0.2.15", default-features = false }
-heapless = { workspace = true }
-serde = { workspace = true }
-postcard = { workspace = true }
-crc = { workspace = true }
-nalgebra = { workspace = true }
-siphasher = { workspace = true }
-rand = { workspace = true }
+heapless = { version = "0.8.0", features = ["serde"] } ## TODO: serde?
+serde = { version = "1", default-features = false, features = ["derive"] }
+postcard = "1.0"
+crc = "3"
+nalgebra = { version = "0.32", default-features = false, features = ["macros", "libm", "mint", "serde-serialize-no-std"] }
+siphasher = { version = "0.3", default-features = false }
+rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
 
-shared_types = { workspace = true }
-state_estimator = { workspace = true }
-telemetry = { workspace = true }
+shared_types = { path = "../../shared_types" }
+state_estimator = { path = "../../state_estimator" }
+telemetry = { path = "../../telemetry" }
 
 [dev-dependencies]
 defmt-test = "0.3"

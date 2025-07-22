@@ -25,7 +25,7 @@ use embassy_stm32::adc::Adc;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::can::Can;
 use embassy_stm32::can::CanConfigurator;
-use embassy_stm32::eth::generic_smi::GenericSMI;
+use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::exti::Channel as _;
 use embassy_stm32::exti::ExtiInput;
@@ -256,6 +256,6 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, Ethernet<'static, ETH, GenericSMI>>) -> ! {
+async fn net_task(mut runner: embassy_net::Runner<'static, Ethernet<'static, ETH, GenericPhy>>) -> ! {
     runner.run().await
 }

@@ -5,6 +5,7 @@ use embassy_embedded_hal::SetConfig;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{Error, Uart};
+use embassy_stm32::Peri;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::{Duration, Instant, Timer};
@@ -48,9 +49,16 @@ pub async fn run(mut gps: GPS) -> ! {
     }
 }
 
-impl GPS {
+impl<'d> GPS {
     // TODO: dma channels
-    pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
+    // pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
+    pub fn init(
+        p: Peri<'static, USART2>,
+        tx: Peri<'static, PA3>,
+        rx: Peri<'static, PA2>,
+        tx_dma: Peri<'static, DMA1_CH6>,
+        rx_dma: Peri<'static, DMA1_CH5>,
+    ) -> (GPS, GPSHandle) {
         let channel = CHANNEL.init(Channel::new());
 
         let mut uart_config = embassy_stm32::usart::Config::default();

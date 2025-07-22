@@ -5,7 +5,7 @@ use heapless::{String, Vec};
 use embassy_executor::SendSpawner;
 use embassy_futures::select::{select, Either};
 
-use embassy_stm32::eth::generic_smi::GenericSMI;
+use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::peripherals::ETH;
 

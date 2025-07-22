@@ -1,7 +1,7 @@
 use embassy_executor::Spawner;
 use embassy_futures::select::{select, Either};
 
-use embassy_stm32::eth::generic_smi::GenericSMI;
+use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::peripherals::ETH;
 
@@ -22,7 +22,7 @@ static DOWNLINK: StaticCell<Channel<CriticalSectionRawMutex, DownlinkMessage, 3>
 static UPLINK: StaticCell<Channel<CriticalSectionRawMutex, UplinkMessage, 3>> = StaticCell::new();
 
 pub fn start(
-    device: Ethernet<'static, ETH, GenericSMI>,
+    device: Ethernet<'static, ETH, GenericPhy>,
     spawner: Spawner,
     seed: u64,
 ) -> (
@@ -55,7 +55,7 @@ pub fn start(
 }
 
 #[embassy_executor::task]
-async fn run_network(mut runner: embassy_net::Runner<'static, Ethernet<'static, ETH, GenericSMI>>) -> ! {
+async fn run_network(mut runner: embassy_net::Runner<'static, Ethernet<'static, ETH, GenericPhy>>) -> ! {
     runner.run().await
 }
 

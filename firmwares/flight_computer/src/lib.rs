@@ -26,7 +26,7 @@ use embassy_stm32::adc::Adc;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::can::Can;
 use embassy_stm32::can::CanConfigurator;
-use embassy_stm32::eth::generic_smi::GenericSMI;
+use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::exti::Channel as _;
 use embassy_stm32::exti::ExtiInput;
@@ -129,7 +129,7 @@ pub struct Board {
     pub lora1: LoRa<LoraTransceiver, Delay>,
     pub lora2: LoRa<LoraTransceiver, Delay>,
     pub usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>,
-    pub ethernet: Ethernet<'static, ETH, GenericSMI>,
+    pub ethernet: Ethernet<'static, ETH, GenericPhy>,
     pub rng: Rng<'static, RNG>,
     pub iwdg: IndependentWatchdog<'static, IWDG1>,
 }
@@ -244,15 +244,15 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let spi4 = Mutex::<CriticalSectionRawMutex, _>::new(spi4);
     let spi4 = SPI4_SHARED.init(spi4);
 
-    let lora1_cs = Output::new(p.PE7.degrade(), Level::High, Speed::Low);
-    let lora1_reset = Output::new(p.PE9.degrade(), Level::High, Speed::Low);
-    let lora1_irq = ExtiInput::new(p.PE8.degrade(), p.EXTI8.degrade(), Pull::Down);
-    let lora1_busy = ExtiInput::new(p.PE10.degrade(), p.EXTI10.degrade(), Pull::Down);
+    let lora1_cs = Output::new(p.PE7, Level::High, Speed::Low);
+    let lora1_reset = Output::new(p.PE9, Level::High, Speed::Low);
+    let lora1_irq = ExtiInput::new(p.PE8, p.EXTI8, Pull::Down);
+    let lora1_busy = ExtiInput::new(p.PE10, p.EXTI10, Pull::Down);
 
-    let lora2_cs = Output::new(p.PD13.degrade(), Level::High, Speed::Low);
-    let lora2_reset = Output::new(p.PD12.degrade(), Level::High, Speed::Low);
-    let lora2_irq = ExtiInput::new(p.PD14.degrade(), p.EXTI14.degrade(), Pull::Down);
-    let lora2_busy = ExtiInput::new(p.PD15.degrade(), p.EXTI15.degrade(), Pull::Down);
+    let lora2_cs = Output::new(p.PD13, Level::High, Speed::Low);
+    let lora2_reset = Output::new(p.PD12, Level::High, Speed::Low);
+    let lora2_irq = ExtiInput::new(p.PD14, p.EXTI14, Pull::Down);
+    let lora2_busy = ExtiInput::new(p.PD15, p.EXTI15, Pull::Down);
 
     let lora1_config = sx126x::Config {
         chip: Sx1262,
@@ -304,7 +304,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
         p.PB12, // TX_D0: Transmit Bit 0
         p.PB13, // TX_D1: Transmit Bit 1
         p.PB11, // TX_EN: Transmit Enable
-        GenericSMI::new(0),
+        GenericPhy::new(0),
         mac_addr,
     );
 
@@ -423,7 +423,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
             adc1,
             adc2,
             adc3,
-            dma: adc_dma,
+            dma: *adc_dma,
             main_voltage: adc_main_voltage,
             supply_voltage: adc_supply_voltage,
             recovery_voltage: adc_recovery_voltage,
