@@ -67,7 +67,7 @@ indicatif = "0.17"
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = "1.33"
 tokio-serial = "5.4.1"
-clippers = "0.1.2"
+# clippers = "0.1.2"
 open = "5.3.2"
 
 # Web Assembly dependencies
