@@ -5,7 +5,7 @@ use embassy_time::{Duration, Ticker};
 #[embassy_executor::task]
 pub async fn run_servo_check(mut pwm: SimplePwm<'static, TIM3>, toggle_time: Duration) -> ! {
     let mut ticker = Ticker::every(toggle_time);
-    let mut pwm_out = pwm.ch4();
+    let mut pwm_out = pwm.ch3();
     pwm_out.enable();
 
     loop {

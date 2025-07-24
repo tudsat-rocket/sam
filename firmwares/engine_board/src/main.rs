@@ -84,13 +84,13 @@ async fn main(spawner: Spawner) {
     iwdg.unleash();
     spawner.spawn(run_iwdg(iwdg)).unwrap();
 
-    let pwm_pin = PwmPin::new_ch4(p.PB1, OutputType::PushPull);
+    let pwm_pin = PwmPin::new_ch3(p.PB0, OutputType::PushPull);
 
     let toggle_duration = Duration::from_millis(2000);
 
     spawner
         .spawn(actors::run_servo_check(
-            SimplePwm::new(p.TIM3, None, None, None, Some(pwm_pin), Hertz::hz(50), CountingMode::EdgeAlignedUp),
+            SimplePwm::new(p.TIM3, None, None, Some(pwm_pin), None, Hertz::hz(50), CountingMode::EdgeAlignedUp),
             toggle_duration,
         ))
         .unwrap();
