@@ -226,7 +226,10 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         let backend = self.backends.last_mut().unwrap();
-        MetricStatusBar::show(ctx, backend, &mut self.metric_monitor);
+        let _ = self.metric_monitor.evaluate_constraints(backend);
+        let mut active_constraint_mask = self.metric_monitor.active_constraint_mask().clone();
+        MetricStatusBar::show(ctx, backend, &mut self.popup_manager, &mut self.metric_monitor, &mut active_constraint_mask);
+        *self.metric_monitor.active_constraint_mask_mut() = active_constraint_mask;
         match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
             GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.popup_manager, &mut self.metric_monitor, enabled),

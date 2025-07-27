@@ -1,5 +1,5 @@
 use core::f32;
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use telemetry::Metric;
@@ -22,7 +22,7 @@ pub struct Port {
 pub struct SysComponent {
     _name: &'static str,
     _metric: Vec<Metric>,
-    _constraints: Vec<Constraint>,
+    _constraints: Vec<Box<dyn Constraint>>,
     symbol: Symbol,
     _ports: Vec<Port> //TODO TO HASH MAP
 }
@@ -33,7 +33,7 @@ pub struct System {
     _connections: HashMap<(ComponentID, PortID), (ComponentID, PortID)>
 }
 
-pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
+fn system_definition() -> Vec<SysComponent> {vec![
     SysComponent {
         _name: "N₂ Bottle",
         _metric: vec![],
@@ -181,11 +181,11 @@ pub static HYACINTH_SYSTEM: LazyLock<Vec<SysComponent>> = LazyLock::new(|| vec![
         symbol: Symbol::new(Painter::Thruster, Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.18), Translation2::new(0.72, 0.9)), None),   
         _ports: vec![ TOP, BOT ]
     },
-]);
+]}
 
 pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut SharedPlotState, popup_manager: &'a mut PopupManager, metric_monitor: &'a mut MetricMonitor) -> SystemDiagram<'a> {
     SystemDiagram::new(
-        HYACINTH_SYSTEM.iter().map(|c| c.symbol.clone()).collect(),
+        system_definition().iter().map(|c| c.symbol.clone()).collect(),
         vec![],
         // vec![
         //     //GSE

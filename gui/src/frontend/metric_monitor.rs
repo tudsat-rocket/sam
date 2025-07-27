@@ -3,7 +3,7 @@ use std::{collections::HashMap, hash::Hash, sync::LazyLock};
 use bitflags::bitflags;
 use telemetry::Metric;
 
-use crate::{backend::Backend, frontend::constraints::{Constraint, ConstraintResult}};
+use crate::{backend::Backend, frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint}};
 
 bitflags! {
     pub struct MonitorFlags : u8 {
@@ -26,15 +26,17 @@ impl<'a> Default for &'a MonitorFlags {
 
 pub struct MetricMonitor
 {
+    active_constraint_mask: Vec<ConstraintResult>,
     flags: HashMap<Metric, MonitorFlags>,
     //TODO Hans: Should this be in the front or backend?
-    constraints: HashMap<Metric, Vec<Constraint>>
+    constraints: HashMap<Metric, Vec<EvaluatedConstraint>>,
 }
 
-impl Default for MetricMonitor 
+impl Default for MetricMonitor
 {
     fn default() -> Self {
         Self { 
+            active_constraint_mask: vec![ConstraintResult::NOMINAL],
             flags: Default::default(),
             constraints: Default::default(),
         }
@@ -56,24 +58,33 @@ impl MetricMonitor
         self.flags.entry(metric).or_default().remove(MonitorFlags::PINNED);
     }
 
-    fn pinned_metrics(&self) -> impl Iterator<Item = Metric> + use<'_>{
-        return self.flags.iter().filter(|(_m, f)| f.contains(MonitorFlags::PINNED)).map(|(m, _f)| *m);
+    pub fn pinned_metrics(&self) -> Vec<&Metric>{
+        return self.flags.iter().filter(|(_m, f)| f.contains(MonitorFlags::PINNED)).map(|(m, _f)| m).collect();
     }
 
-    pub fn violates_constraint(&self, metric: &Metric, backend: &Backend) -> bool {
-        return self.constraints.get(metric).map(|cs| cs.iter().map(|c| c.check(backend)).any(|r| r != ConstraintResult::NOMINAL)).unwrap_or_default();
+    pub fn evaluate_constraints(&mut self, backend: &Backend) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {
+       let _ = self.constraints.values_mut().map(|ecs| ecs.iter_mut().map(|ec| ec.evaluate(backend)));
+       return &self.constraints;
     } 
 
-    fn metrics_with_violated_constraints<'a>(&self, backend: &'a Backend) -> impl Iterator<Item = Metric> + use<'_, 'a>{
-        return self.constraints.keys().filter(|m| self.violates_constraint(m, backend)).map(|m| *m);
+    pub fn constraint_results(&self) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {
+        return &self.constraints;
     }
 
-    pub fn metrics_to_display(&self, backend: &Backend) -> Vec<Metric>{
-        return self.pinned_metrics().chain(self.metrics_with_violated_constraints(backend)).collect::<Vec<_>>();
+    pub fn active_constraint_mask(&self) -> & Vec<ConstraintResult> {
+        return &self.active_constraint_mask;
     }
 
-    pub fn add_constraint(&mut self, constraint: Constraint) {
-        self.constraints.entry(constraint.metric()).or_default().push(constraint);
+    pub fn active_constraint_mask_mut(&mut self) -> &mut Vec<ConstraintResult> {
+        return &mut self.active_constraint_mask;
+    }
+
+    pub fn add_constraint(&mut self, constraint: Box<dyn Constraint>) {
+        self.constraints.entry(constraint.metric()).or_default().push(EvaluatedConstraint::new(constraint));
+    }
+
+    pub fn strongest_constraint_result(&self, metric: &Metric) -> Option<&EvaluatedConstraint> {
+        return self.constraints.get(metric).map(|res| res.iter().max()).unwrap_or_default();
     }
 
 }

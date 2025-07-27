@@ -7,19 +7,19 @@ use crate::{system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAM
 #[derive(Clone, Copy)]
 struct ActivePopup {
     id: egui::Id,
-    close_conditon: PopupCloseCondition,
+    close_condition: PopupCloseCondition,
 }
 
 impl ActivePopup {
 
-    fn new(id: egui::Id,  close_conditon: PopupCloseCondition) -> Self {
-        Self { id, close_conditon }
+    fn new<T: PopupType>(trigger_id: &egui::Id) -> Self {
+        Self { id: T::make_id(trigger_id), close_condition: T::get_close_condition() }
     }
 
 }
 
 #[derive(Eq, Clone, Copy)]
-enum PopupCloseCondition {
+pub enum PopupCloseCondition {
     Timer(/*start_timer*/ Instant),
     ClickAnywhere
 }
@@ -85,6 +85,42 @@ impl PopupTrigger {
 
 }
 
+pub trait PopupType {
+    fn make_id(trigger_id: &egui::Id) -> egui::Id;
+    fn get_close_condition() -> PopupCloseCondition;
+}
+
+pub struct Tooltip {}
+impl PopupType for Tooltip {
+    fn make_id(trigger_id: &egui::Id) -> egui::Id {
+        return trigger_id.with("Tooltip");  
+    }
+    
+    fn get_close_condition() -> PopupCloseCondition {
+        return PopupCloseCondition::Timer(Instant::now());
+    }
+}
+pub struct ContextMenu {}
+impl PopupType for ContextMenu {
+    fn make_id(trigger_id: &egui::Id) -> egui::Id {
+        return trigger_id.with("ContextMenu");  
+    }
+    
+    fn get_close_condition() -> PopupCloseCondition {
+        return PopupCloseCondition::ClickAnywhere;
+    }
+}
+pub struct DropdownMenu {}
+impl PopupType for DropdownMenu {
+    fn make_id(trigger_id: &egui::Id) -> egui::Id {
+        return trigger_id.with("DropdownMenu");  
+    }
+    
+    fn get_close_condition() -> PopupCloseCondition {
+        return PopupCloseCondition::ClickAnywhere;
+    }
+}
+
 pub struct PopupManager {
     active_popups: Vec<ActivePopup>,
     current_layer: usize,
@@ -109,26 +145,36 @@ impl PopupManager {
             .iter()
             .rev()
             .scan(None, |max, cur| {
-                *max = Some(PopupCloseCondition::max(max.unwrap_or(cur.close_conditon), cur.close_conditon));
-                    Some(ActivePopup::new(cur.id, max.unwrap_or(cur.close_conditon)))
+                *max = Some(PopupCloseCondition::max(max.unwrap_or(cur.close_condition), cur.close_condition));
+                    Some(ActivePopup{id: cur.id, close_condition: max.unwrap_or(cur.close_condition)})
             })
-            .filter(|tooltip| !tooltip.close_conditon.is_triggered())
+            .filter(|tooltip| !tooltip.close_condition.is_triggered())
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect::<Vec<_>>();
     }
 
+    pub fn has_open_popup<T : PopupType>(&self, trigger_id: &egui::Id) -> bool {
+        return self.is_popup_open_in_current_layer(&T::make_id(trigger_id));
+    }
+
+    pub fn has_any_open_popup(&self, trigger_id: &egui::Id) -> bool {
+        return self.is_popup_open_in_current_layer(&Tooltip::make_id(trigger_id))
+            || self.is_popup_open_in_current_layer(&ContextMenu::make_id(trigger_id))
+            || self.is_popup_open_in_current_layer(&DropdownMenu::make_id(trigger_id));
+    }
+
     /// Add a tooltip which is displayed on hover
     pub fn add_tooltip(&mut self, trigger: &PopupTrigger, pos: egui::Pos2, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui, &mut PopupManager) -> egui::Response) {
         
-        let tooltip = ActivePopup::new(ui.make_persistent_id(format!("{} hover", trigger.id.short_debug_format())), PopupCloseCondition::Timer(Instant::now()));
+        let tooltip = ActivePopup::new::<Tooltip>(&trigger.id);
         let is_trigger_hovered = trigger.response.hovered();
-        let is_tooltip_still_open = self.is_popup_open_in_current_layer(&tooltip);
-        let active_close_condition = self.get_active_in_current_layer().map(|popup| popup.close_conditon);
+        let is_tooltip_still_open = self.is_popup_open_in_current_layer(&tooltip.id);
+        let active_close_condition = self.get_active_in_current_layer().map(|popup| popup.close_condition);
 
         //Draw tooltip on next popup layer if its close condition has a higher priority than the active tooltip
-        if is_trigger_hovered && active_close_condition.map_or(true, |cond| cond < tooltip.close_conditon) || is_tooltip_still_open  {
+        if is_trigger_hovered && active_close_condition.map_or(true, |cond| cond < tooltip.close_condition) || is_tooltip_still_open  {
             let tooltip_response = self.show_popup(tooltip, pos, ui, add_contents);
             if is_trigger_hovered || tooltip_response.hovered() {
                 self.activate_in_current_layer(tooltip);
@@ -143,9 +189,9 @@ impl PopupManager {
     /// Add a context menu which can be opened via right click. It then remains open until the user clicks elsewhere
     pub fn add_context_menu(&mut self, trigger: &PopupTrigger, pos: egui::Pos2, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui, &mut PopupManager) -> egui::Response) {
 
-        let context_menu = ActivePopup::new(ui.make_persistent_id(format!("{} right click", trigger.id.short_debug_format())), PopupCloseCondition::ClickAnywhere);
+        let context_menu =  ActivePopup::new::<ContextMenu>(&trigger.id);
         let is_trigger_right_clicked = trigger.response.secondary_clicked();
-        let is_context_menu_still_open = self.is_popup_open_in_current_layer(&context_menu);
+        let is_context_menu_still_open = self.is_popup_open_in_current_layer(&context_menu.id);
 
         //If the context menu should be drawn
         if is_trigger_right_clicked || is_context_menu_still_open {
@@ -167,9 +213,37 @@ impl PopupManager {
         }
     }
 
-    fn is_popup_open_in_current_layer(&self, popup: &ActivePopup) -> bool {
+    /// Add a dropdown menu which can be opened via left click. It then remains open until the user clicks elsewhere
+    pub fn add_dropdown_menu(&mut self, trigger: &PopupTrigger, pos: egui::Pos2, ui: &mut egui::Ui, add_contents: impl FnOnce(&mut egui::Ui, &mut PopupManager) -> egui::Response) {
+
+        let dropdown_menu =  ActivePopup::new::<DropdownMenu>(&trigger.id);
+        let is_trigger_left_clicked = trigger.response.clicked();
+        let is_dropdown_menu_still_open = self.is_popup_open_in_current_layer(&dropdown_menu.id);
+
+        //If the dropdown menu should be drawn
+        if is_trigger_left_clicked || is_dropdown_menu_still_open {
+            println!("{}", dropdown_menu.id.short_debug_format());
+            // Highlight the trigger to indicate it is clicked
+            ui.painter().rect_filled(
+            trigger.response.rect, 
+            0.0, 
+            ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED)
+            );
+            //Draw context menu on next popup layer
+            let dropdown_menu_response = self.show_popup(dropdown_menu, pos, ui, add_contents);
+            //Perform (de)activations
+            if is_trigger_left_clicked && !is_dropdown_menu_still_open {
+                self.activate_in_current_layer(dropdown_menu);
+                //MAYBE Requires removal of higher levels
+            } else if dropdown_menu_response.clicked_elsewhere() {
+                self.deactivate_current_layer();
+            }
+        }
+    }
+
+    fn is_popup_open_in_current_layer(&self, popup_id: &egui::Id) -> bool {
         return self.active_popups.len() > self.current_layer
-            && self.active_popups[self.current_layer].id == popup.id;
+            && self.active_popups[self.current_layer].id == *popup_id;
     }
 
     fn activate_in_current_layer(&mut self, popup: ActivePopup) {

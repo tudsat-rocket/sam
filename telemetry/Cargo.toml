@@ -13,6 +13,7 @@ nalgebra = { workspace = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 egui_plot = { workspace = true, optional = true }
+strum = { version = "0.27.2", features=["derive"] }
 
 [features]
 serde = ["dep:serde", "dep:serde_json", "dep:egui_plot", "half/serde"]

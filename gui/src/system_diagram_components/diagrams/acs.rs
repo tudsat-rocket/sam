@@ -4,7 +4,7 @@ use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use shared_types::ThrusterValveState;
 use telemetry::{Metric, PressureSensorId};
 
-use crate::{backend::Backend, frontend::{constraints::{Constraint, MaxConstraint, SomeConstraint}, metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
+use crate::{backend::Backend, frontend::{constraints::{EqualsConstraint, SomeConstraint}, metric_monitor::MetricMonitor, popup_manager::PopupManager}, system_diagram_components::{core::{display_value::{DisplayValue, Justification, JustifiedValue, Value}, flow_painter::{Line1D, Painter, Symbol}, fluids::FluidType}, math::transform::Transform, storage::storage_state::StorageState, valves::valve_state::ValveState}, widgets::{plot::SharedPlotState, system_diagram::{Component, SystemDiagram}}};
 
 //TODO MOVE
 static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
@@ -39,8 +39,8 @@ pub fn create_diagram<'a>(backend: &'a Backend, shared_plot_state: &'a mut Share
         None => (ValveState::Disconnected, ValveState::Disconnected),
     };
 
-    metric_monitor.add_constraint(Constraint::Some(SomeConstraint::new(Metric::Pressure(PressureSensorId::AcsTank), crate::frontend::constraints::ConstraintResult::WARNING)));
-    //metric_monitor.add_constraint(Constraint::Some(SomeConstraint::new(Metric::AcsMode, crate::frontend::constraints::ConstraintResult::DANGER)));
+    metric_monitor.add_constraint(Box::new(SomeConstraint::new(Metric::Pressure(PressureSensorId::AcsTank), crate::frontend::constraints::ConstraintResult::WARNING)));
+    metric_monitor.add_constraint(Box::new(EqualsConstraint::new(Metric::ThrusterValveState, ThrusterValveState::OpenBoth, crate::frontend::constraints::ConstraintResult::DANGER)));
 
     SystemDiagram::new(
         vec![
