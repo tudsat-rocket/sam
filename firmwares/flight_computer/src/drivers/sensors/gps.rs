@@ -1,9 +1,11 @@
+use embassy_stm32::mode::Async;
 use heapless::{String, Vec};
 
 use embassy_embedded_hal::SetConfig;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{Error, Uart};
+use embassy_stm32::Peri;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::{Duration, Instant, Timer};
@@ -27,7 +29,7 @@ const DESIRED_BAUD_RATE_MESSAGE: &'static str = "$PUBX,41,1,0007,0003,115200,0*1
 static CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
 pub struct GPS {
-    uart: Uart<'static, USART2, DMA1_CH6, DMA1_CH5>,
+    uart: Uart<'static, Async>,
     sender: Sender<'static, CriticalSectionRawMutex, GPSDatum, 5>,
 }
 
@@ -47,9 +49,16 @@ pub async fn run(mut gps: GPS) -> ! {
     }
 }
 
-impl GPS {
+impl<'d> GPS {
     // TODO: dma channels
-    pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
+    // pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
+    pub fn init(
+        p: Peri<'static, USART2>,
+        tx: Peri<'static, PA3>,
+        rx: Peri<'static, PA2>,
+        tx_dma: Peri<'static, DMA1_CH6>,
+        rx_dma: Peri<'static, DMA1_CH5>,
+    ) -> (GPS, GPSHandle) {
         let channel = CHANNEL.init(Channel::new());
 
         let mut uart_config = embassy_stm32::usart::Config::default();

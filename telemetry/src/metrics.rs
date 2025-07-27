@@ -7,12 +7,16 @@ use strum::{EnumDiscriminants, VariantNames};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GyroscopeId {
     LSM6DSR,
+    ICM42670P,
+    ICM42688P,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum AccelerometerId {
     LSM6DSR,
+    ICM42670P,
+    ICM42688P,
     H3LIS331,
 }
 
@@ -26,6 +30,8 @@ pub enum MagnetometerId {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum BarometerId {
     MS5611,
+    LPS22,
+    BMP580,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]

@@ -6,9 +6,9 @@ use egui_plot::PlotPoint;
 
 use crate::*;
 
-const DOWNSAMPLING_FACTOR: usize = 8;
+const DOWNSAMPLING_FACTOR: usize = 16;
 const DOWNSAMPLING_LEVELS: usize = 5;
-const DOWNSAMPLING_THRESHOLD: usize = 4000;
+const DOWNSAMPLING_THRESHOLD: usize = 10_000;
 
 #[derive(Default)]
 pub struct DataStore {
@@ -27,14 +27,12 @@ struct DataStoreFile {
 }
 
 impl DataStore {
-    pub fn ingest_enum(&mut self, metric: Metric, time: f64, value: u8) {
+    fn ingest_enum(&mut self, metric: Metric, time: f64, value: u8) {
         let entry = self.enums.entry(metric).or_default();
         entry.push((time, value));
-
-        self.last_time = Some(time);
     }
 
-    pub fn ingest_float(&mut self, metric: Metric, time: f64, value: impl Into<f64>) {
+    fn ingest_float(&mut self, metric: Metric, time: f64, value: impl Into<f64>) {
         let levels = self.timeseries.entry(metric).or_insert(vec![vec![]; DOWNSAMPLING_LEVELS].try_into().unwrap());
 
         // Extend the first cache level
@@ -48,8 +46,6 @@ impl DataStore {
             let downsampled_tail = Self::downsample_points(&levels[i - 1][j * DOWNSAMPLING_FACTOR..]);
             levels[i].extend(downsampled_tail);
         }
-
-        self.last_time = Some(time);
     }
 
     pub fn ingest_message<const N: usize>(
@@ -58,16 +54,19 @@ impl DataStore {
         time: u32,
         message: heapless::Vec<u8, N>,
     ) {
+        let t = (time as f64) / 1000.0;
         schema
             .receive(time, message, |metric, repr, reader: &mut TelemetryMessageReader<N>| match repr {
                 Representation::Enum { bits: _ } => {
-                    self.ingest_enum(metric, (time as f64) / 1000.0, reader.read_enum(repr).unwrap());
+                    self.ingest_enum(metric, t, reader.read_enum(repr).unwrap());
                 }
                 _ => {
-                    self.ingest_float(metric, (time as f64) / 1000.0, reader.read_float(repr).unwrap());
+                    self.ingest_float(metric, t, reader.read_float(repr).unwrap());
                 }
             })
             .unwrap();
+
+        self.last_time = Some(t);
     }
 
     fn downsample_points(data: &[PlotPoint]) -> Vec<PlotPoint> {
@@ -175,33 +174,45 @@ impl DataStore {
         egui_plot::PlotPoints::Borrowed(&vec[start_i..end_i])
     }
 
-    //pub fn enum_transitions<'a, E>(
-    //    &'a self,
-    //    key: &Metric,
-    //    bounds: Option<egui_plot::PlotBounds>,
-    //    playback_end: Option<f64>,
-    //) -> impl Iterator<Item = (f64, E)> {
-    //    let mut start = self.first_time().unwrap_or_default();
-    //    let mut end = self.first_time().unwrap_or_default();
+    pub fn enum_transitions<'a, E: TryFrom<u8>>(
+        &'a self,
+        key: &Metric,
+        bounds: egui_plot::PlotBounds,
+        playback_end: Option<f64>,
+    ) -> Vec<(f64, E)> {
+        // Since egui gives us the bounds from the last frame, we extend our
+        // "visible" range slightly, to cover the edges while moving.
+        let visible_range = bounds.range_x();
+        let length = visible_range.end() - visible_range.start();
+        let mut new_start = visible_range.start() - length * 0.2;
+        let mut new_end = visible_range.end() + length * 0.2;
 
-    //    if let Some(bounds) = bounds {
-    //        let visible_range = bounds.range_x();
-    //        let length = visible_range.end() - visible_range.start();
-    //        start = visible_range.start() - length * 0.2;
-    //        end = visible_range.end() + length * 0.2;
-    //    }
+        if let Some(end) = playback_end {
+            new_end = f64::min(new_end, end);
+            new_start = f64::min(new_start, end);
+        }
 
-    //    if let Some(playback_end) = playback_end {
-    //        end = f64::min(end, playback_end);
-    //        start = f64::min(start, playback_end);
-    //    }
+        let visible_range = new_start..=new_end;
 
-    //    let visible_range = start..=end;
+        let Some(ints) = self.enums.get(key) else {
+            return vec![];
+        };
 
-    //    let Some(enum_integers) = self.enums.get(key) else {
-    //        return vec![].into_iter();
-    //    };
-    //}
+        let start_i = ints.partition_point(|p| p.0 < *visible_range.start());
+        let end_i = ints.partition_point(|p| p.0 < *visible_range.end());
+        let start_i = usize::max(start_i, 1) - 1;
+        let end_i = usize::min(end_i + 1, usize::max(1, ints.len()) - 1);
+
+        ints[start_i..=end_i]
+            .into_iter()
+            .scan(None, |state: &mut Option<u8>, &(t, i)| {
+                let keep = state.map(|s| s != i).unwrap_or(true);
+                state.replace(i);
+                Some((t, i, keep))
+            })
+            .filter_map(|(t, i, keep)| keep.then_some((t, i)).and_then(|(t, i)| i.try_into().ok().map(|e| (t, e))))
+            .collect()
+    }
 
     pub fn timeseries<'a>(
         &'a self,

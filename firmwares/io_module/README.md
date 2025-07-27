@@ -17,7 +17,7 @@ The outputs of the I/O module can be powered straight from the FC battery, a 5v 
 
 ## Firmware
 
-The firmware for the IO-board is written in rust, uses [embassy](https://github.com/embassy-rs/embassy) and can be found in the `frimware` folder. 
+The firmware for the IO-board is written in rust, uses [embassy](https://github.com/embassy-rs/embassy) and can be found in the `firmware` folder. 
 
 ## Getting started
 

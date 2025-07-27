@@ -23,20 +23,36 @@
         pkgs = nixpkgs.legacyPackages.${system}.extend (import rust-overlay);
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        nativeBuildInputs = [
-          pkgs.pkg-config
-          pkgs.wrapGAppsHook
+        nativeBuildInputs = with pkgs; [
+          # for gui
+          pkg-config
+          wrapGAppsHook
         ];
-        buildInputs = with pkgs; [
-          rustToolchain
-          glib
-          libudev-zero
-          gtk3
-          atkmm
-        ];
+        buildInputs =
+          with pkgs;
+          [
+            # for gui
+            glib
+            libudev-zero
+            gtk3
+            atkmm
+
+            # for embedded
+            cargo-make
+            flip-link # stack overflow protection by via changing memory layout
+
+            # for flashing
+            probe-rs
+            stlink
+            cargo-binutils # provides cargo objcopy to create a binary
+            dfu-util # device firmware update
+            # pkgs.dfu-programmer
+          ]
+          ++ [ rustToolchain ];
         LD_LIBRARY_PATH =
           with pkgs;
           nixpkgs.lib.makeLibraryPath [
+            # for gui
             libGL
             libxkbcommon
           ];

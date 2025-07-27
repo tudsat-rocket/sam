@@ -11,7 +11,7 @@ use num_traits::Float;
 
 use shared_types::*;
 
-use crate::drivers::sensors::BatteryStatus;
+//use crate::drivers::sensors::BatteryStatus;
 use Semitone::*;
 
 #[allow(dead_code)]
@@ -310,10 +310,7 @@ pub struct Buzzer<TIM: 'static> {
 
 impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
     pub fn init(mut pwm: SimplePwm<'static, TIM>, channel: Channel, block: Gpio, pin: usize) -> Self {
-        #[cfg(feature = "rev1")]
-        pwm.set_duty(Channel::Ch4, pwm.get_max_duty() / 2);
-        #[cfg(not(feature = "rev1"))]
-        pwm.set_duty(Channel::Ch2, pwm.get_max_duty() / 2);
+        pwm.set_duty(Channel::Ch3, pwm.get_max_duty() / 2);
 
         let buzzer = Self {
             pwm,
@@ -379,25 +376,26 @@ impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
         }
     }
 
-    pub fn tick(&mut self, time: u32, battery_status: Option<BatteryStatus>) {
-        if let Some(status) = battery_status {
-            match status {
-                BatteryStatus::Low => {
-                    self.change_melody(time, Some(&WARNING_MELODY));
-                    self.nba_already_played = false;
-                    self.is_warning = true;
-                }
-                BatteryStatus::High => {
-                    self.nba_already_played = false;
-                }
-                BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning => {
-                    self.change_melody(time, Some(&NO_BATTERY_ATTACHED_MELODY));
-                    self.is_warning = true;
-                    self.nba_already_played = true;
-                }
-                _ => {}
-            }
-        }
+    //pub fn tick(&mut self, time: u32, battery_status: Option<BatteryStatus>) {
+    pub fn tick(&mut self, time: u32) {
+        //if let Some(status) = battery_status {
+        //    match status {
+        //        BatteryStatus::Low => {
+        //            self.change_melody(time, Some(&WARNING_MELODY));
+        //            self.nba_already_played = false;
+        //            self.is_warning = true;
+        //        }
+        //        BatteryStatus::High => {
+        //            self.nba_already_played = false;
+        //        }
+        //        BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning => {
+        //            self.change_melody(time, Some(&NO_BATTERY_ATTACHED_MELODY));
+        //            self.is_warning = true;
+        //            self.nba_already_played = true;
+        //        }
+        //        _ => {}
+        //    }
+        //}
 
         if let Some(melody) = self.current_melody {
             if self.has_note_just_finished(time, melody.get(self.current_index)) {

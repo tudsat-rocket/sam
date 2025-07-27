@@ -7,6 +7,8 @@ authors = [
 ]
 edition = "2024"
 
+[workspace]
+
 [dependencies]
 embassy-stm32 = { version = "0.2.0", features = ["stm32f415rg", "unstable-pac", "memory-x", "time-driver-any", "exti",]  }
 embassy-executor = { version = "0.7.0", features = ["defmt",  "arch-cortex-m", "executor-thread", "executor-interrupt"] }
@@ -31,10 +33,10 @@ cortex-m-rt = "0.7.0"
 alloc-cortex-m = "0.4"
 
 static_cell = "2"
-crc = { workspace = true }
-nalgebra = { workspace = true }
+crc = "3"
+nalgebra = { version = "0.32", default-features = false, features = ["macros", "libm", "mint", "serde-serialize-no-std"] }
 
-shared_types = { workspace = true }
+shared_types = { path = "../../shared_types" }
 
 [features]
 guard = []
