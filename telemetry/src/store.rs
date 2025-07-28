@@ -58,10 +58,14 @@ impl DataStore {
         schema
             .receive(time, message, |metric, repr, reader: &mut TelemetryMessageReader<N>| match repr {
                 Representation::Enum { bits: _ } => {
-                    self.ingest_enum(metric, t, reader.read_enum(repr).unwrap());
+                    if let Ok(value) = reader.read_enum(repr) {
+                        self.ingest_enum(metric, t, value);
+                    }
                 }
                 _ => {
-                    self.ingest_float(metric, t, reader.read_float(repr).unwrap());
+                    if let Ok(value) = reader.read_float(repr) {
+                        self.ingest_float(metric, t, value);
+                    }
                 }
             })
             .unwrap();
