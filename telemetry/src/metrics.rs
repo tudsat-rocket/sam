@@ -1,5 +1,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
 use strum::{EnumDiscriminants, VariantNames};
 
 // TODO: maybe bitfields so we can do some sort of select-all operation?
@@ -77,8 +78,8 @@ pub enum Dim {
 
 /// This enum serves as an identifier for anything the ground station keeps
 /// track of and displays for a single flight computer / connection.
-#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, VariantNames, EnumDiscriminants)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize, VariantNames, EnumDiscriminants))]
 #[non_exhaustive]
 pub enum Metric {
     FlightMode,
