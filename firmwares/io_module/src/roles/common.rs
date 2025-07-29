@@ -1,9 +1,10 @@
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Output};
-use embassy_stm32::i2c::I2c;
+use embassy_stm32::i2c::{I2c, Master};
+use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
-use embassy_time::{with_timeout, Duration};
-use embassy_time::{Delay, Ticker};
+use embassy_time::Ticker;
+use embassy_time::{Duration, with_timeout};
 use embedded_hal::digital::OutputPin;
 
 use shared_types::*;
@@ -46,10 +47,14 @@ async fn receive_telemetry_message(subscriber: &mut crate::CanInSubscriper) -> T
 
 #[embassy_executor::task]
 pub async fn run_outputs(
-    mut output0: (Output<'static, PC7>, Output<'static, PC6>),
-    mut output1: (Output<'static, PC9>, Output<'static, PC8>),
-    mut output2: (Output<'static, PB8>, Output<'static, PB9>),
-    mut output3: (Output<'static, PA0>, Output<'static, PA1>),
+    // mut output0: (Output<'static, PC7>, Output<'static, PC6>),
+    // mut output1: (Output<'static, PC9>, Output<'static, PC8>),
+    // mut output2: (Output<'static, PB8>, Output<'static, PB9>),
+    // mut output3: (Output<'static, PA0>, Output<'static, PA1>),
+    mut output0: (Output<'static>, Output<'static>),
+    mut output1: (Output<'static>, Output<'static>),
+    mut output2: (Output<'static>, Output<'static>),
+    mut output3: (Output<'static>, Output<'static>),
     mut subscriber: OutputStateSubscriber,
 ) -> ! {
     loop {
@@ -103,9 +108,12 @@ async fn read_i2c_amp_value<I2C: embedded_hal_async::i2c::I2c>(
 
 #[embassy_executor::task]
 pub async fn run_i2c_sensors(
-    mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
-    mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
-    mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
+    // mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
+    // mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
+    // mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
+    mut input1_i2c: Option<I2c<'static, Async, Master>>,
+    mut input3_i2c: Option<I2c<'static, Async, Master>>,
+    mut input3_gpio: Option<(Input<'static>, Input<'static>)>,
     publisher: crate::CanOutPublisher,
     role: IoBoardRole,
     interval: Duration,
@@ -129,7 +137,7 @@ pub async fn run_i2c_sensors(
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[1]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[2]).await.ok(),
-                pins.map(|(p0, p1)| (((p0.is_high() as u16) << 1 | (p1.is_high() as u16), false))),
+                pins.map(|(p0, p1)| ((p0.is_high() as u16) << 1 | (p1.is_high() as u16), false)),
             ],
             (None, Some(i2c1), _) => [
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[0]).await.ok(),
@@ -164,13 +172,14 @@ pub async fn run_power_report(
     role: IoBoardRole,
     drive_voltage: DriveVoltage,
 ) -> ! {
-    let mut vref = adc.enable_vref(&mut Delay);
+    let mut vref = adc.enable_vref();
     const TIMEOUT: Duration = Duration::from_millis(10);
 
     let mut ticker = Ticker::every(Duration::from_millis(200)); // TODO: adjust?
     let vref_sample = with_timeout(TIMEOUT, adc.read(&mut vref)).await.unwrap_or(1490);
 
     loop {
+        // TODO: (embassy upgrade)
         let thermistor_sample = with_timeout(TIMEOUT, adc.read(&mut temperature_sense_pin)).await;
         let thermistor_vsense = (to_millivolts(vref_sample, thermistor_sample.unwrap_or_default()) as f32) / 1000.0;
         let thermistor_resistance = (10e3 * (thermistor_vsense / (3.3 - thermistor_vsense))) as u16;
@@ -224,7 +233,8 @@ pub async fn run_outputs_on_after_flightmode(
 
 #[embassy_executor::task]
 pub async fn run_leds(
-    leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    // leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    leds: (Output<'static>, Output<'static>, Output<'static>),
     mut output_state_subscriber: OutputStateSubscriber,
     id_pattern: [u8; 8],
 ) -> ! {

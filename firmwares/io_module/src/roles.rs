@@ -1,8 +1,6 @@
 use embassy_executor::{SendSpawner, Spawner};
-use embassy_stm32::can::bxcan::Can;
-use embassy_stm32::can::bxcan::{filter, Fifo, StandardId};
-use embassy_stm32::can::BxcanInstance;
-use embassy_stm32::peripherals::CAN;
+use embassy_stm32::can::Can;
+use embassy_stm32::can::{Fifo, StandardId, filter};
 
 use embassy_time::Duration;
 use shared_types::{CanBusMessageId, FlightMode, IoBoardRole};
@@ -24,7 +22,7 @@ pub use payload::*;
 pub trait BoardRole: Sized {
     const ROLE_ID: IoBoardRole;
 
-    fn configure_can(can: &mut Can<BxcanInstance<CAN>>) {
+    fn configure_can(can: &mut Can) {
         let command_prefix = CanBusMessageId::IoBoardCommand(Self::ROLE_ID, 0).into();
         let command_filter = filter::Mask32::frames_with_std_id(
             StandardId::new(command_prefix).unwrap(),

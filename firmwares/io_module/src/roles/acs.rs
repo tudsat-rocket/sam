@@ -76,7 +76,8 @@ impl crate::roles::BoardRole for Acs {
 
 #[embassy_executor::task]
 async fn run_leds(
-    leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    // leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    leds: (Output<'static>, Output<'static>, Output<'static>),
     mut output_state_subscriber: OutputStateSubscriber,
 ) -> ! {
     let (mut led_red, mut led_white, mut led_yellow) = leds;

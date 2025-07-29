@@ -1,8 +1,7 @@
 use defmt::*;
-
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
-use embassy_stm32::peripherals::*;
+use embassy_stm32::mode::Async;
 use embassy_stm32::usart::{UartRx, UartTx};
 use embassy_time::{Duration, Ticker};
 
@@ -46,7 +45,8 @@ impl crate::roles::BoardRole for Payload {
 #[embassy_executor::task]
 pub async fn run_can_to_uart(
     mut subscriber: crate::CanInSubscriper,
-    mut uart_tx: UartTx<'static, USART3, DMA1_CH2>,
+    // mut uart_tx: UartTx<'static, USART3, DMA1_CH2>,
+    mut uart_tx: UartTx<'static, embassy_stm32::mode::Async>,
 ) -> ! {
     loop {
         // These messages are relayed byte-for-byte, including CRC, so we never
@@ -61,7 +61,8 @@ pub async fn run_can_to_uart(
 }
 
 #[embassy_executor::task]
-pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, USART3, DMA1_CH3>) -> ! {
+// pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, USART3, DMA1_CH3>) -> ! {
+pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, Async>) -> ! {
     let message_id: u16 = CanBusMessageId::IoBoardInput(IoBoardRole::Payload, 0).into();
 
     // TODO: convince swiss to stick to 8-byte messages?

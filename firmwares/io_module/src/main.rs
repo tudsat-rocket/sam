@@ -6,13 +6,13 @@ use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::interrupt;
+use embassy_stm32::interrupt::typelevel::UART4;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::Config;
-use embassy_stm32::interrupt::typelevel::{UART4};
+use embassy_stm32::{Config, gpio};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -86,14 +86,14 @@ enum Input0 {
 enum Input1 {
     Disabled,
     Uart(Uart<'static, USART2, DMA1_CH7, DMA1_CH6>),
-    Adc
+    Adc,
 }
 
 // == J12
 #[allow(dead_code)]
 enum Input2 {
     Disabled,
-    Adc,  // TODO
+    Adc, // TODO
 }
 
 // == J6
@@ -109,7 +109,8 @@ enum Input3 {
 #[allow(dead_code)]
 enum Input4 {
     Disabled,
-    Uart(Uart<'static, UART4, DMA2_CH5, DMA2_CH3>),
+    // Uart(Uart<'static, UART4, DMA2_CH5, DMA2_CH3>),
+    Uart(Uart<'static, embassy_stm32::mode::Async>),
 }
 
 // == J13
@@ -128,7 +129,8 @@ struct BoardIo {
     pub input3: Input3,
     pub input4: Input4,
     pub input5: Input5,
-    pub leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    pub leds: (Output<'static>, Output<'static>, Output<'static>),
+    // pub leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
 }
 
 #[embassy_executor::task]
@@ -143,8 +145,8 @@ async fn run_iwdg(mut iwdg: IndependentWatchdog<'static, IWDG>) -> ! {
 async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spawner: Spawner) {
     defmt::info!("Running as role {:?}", defmt::Debug2Format(&R::ROLE_ID));
 
-    let mut adc = Adc::new(p.ADC1, &mut Delay);
-    adc.set_sample_time(embassy_stm32::adc::SampleTime::Cycles239_5);
+    let mut adc = Adc::new(p.ADC1);
+    adc.set_sample_time(embassy_stm32::adc::SampleTime::CYCLES239_5);
 
     let led_red = Output::new(p.PB12, Level::Low, Speed::Low);
     let led_white = Output::new(p.PB13, Level::Low, Speed::Low);
@@ -159,7 +161,7 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
         InputMode::Disabled => Input0::Disabled,
         InputMode::Uart(config) => {
             Input0::Uart(Uart::new(p.USART1, p.PB7, p.PB6, Irqs, p.DMA1_CH4, p.DMA1_CH5, config).unwrap())
-        },
+        }
         InputMode::I2c(freq, config) => {
             Input0::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config))
         }
@@ -188,7 +190,7 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
         InputMode::Disabled => Input3::Disabled,
         InputMode::Uart(config) => {
             Input3::Uart(Uart::new(p.USART3, p.PB11, p.PB10, Irqs, p.DMA1_CH2, p.DMA1_CH3, config).unwrap())
-        },
+        }
         InputMode::I2c(freq, config) => {
             Input3::I2c(I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, freq, config))
         }
@@ -267,10 +269,10 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
         .spawn(run_power_report(
             can_out.publisher().unwrap(),
             adc,
-            p.PA7,
-            p.PA6,
-            p.PB1,
-            p.PA4,
+            *p.PA7,
+            *p.PA6,
+            *p.PB1,
+            *p.PA4,
             R::ROLE_ID,
             R::drive_voltage(),
         ))
@@ -289,24 +291,46 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
 }
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) { //TODO maybe change values?
-    let mut config = Config::default();
-    config.rcc.hse = Some(Hertz::mhz(8));
-    config.rcc.sys_ck = Some(Hertz::mhz(72));
-    config.rcc.hclk = Some(Hertz::mhz(72));
-    config.rcc.pclk1 = Some(Hertz::mhz(36));
-    config.rcc.pclk2 = Some(Hertz::mhz(72));
-    config.rcc.adcclk = Some(Hertz::mhz(14));
+async fn main(spawner: Spawner) {
+    use embassy_stm32::rcc::*;
+
+    //TODO maybe change values?
+    let mut config = embassy_stm32::Config::default();
+    config.rcc.hse = Some(embassy_stm32::rcc::Hse {
+        mode: embassy_stm32::rcc::HseMode::Oscillator,
+        freq: Hertz::mhz(8), // our high-speed external oscillator speed
+    });
+    config.rcc.sys = embassy_stm32::rcc::Sysclk::HSE;
+
+    // 72 MHz
+    config.rcc.pll = Some(embassy_stm32::rcc::Pll {
+        src: PllSource::HSE,
+        prediv: PllPreDiv::DIV1,
+        mul: embassy_stm32::rcc::PllMul::MUL9,
+    });
+
+    // advanced high performace bus: 72 MHz
+    config.rcc.ahb_pre = AHBPrescaler::DIV1;
+
+    // peripheral bus 1: 36 MHz
+    config.rcc.apb1_pre = APBPrescaler::DIV2;
+
+    // peripheral bus 2: 72 MHz
+    config.rcc.apb2_pre = APBPrescaler::DIV1;
+
+    // analog digital converter: 12 MHz (max: 14MHz)
+    config.rcc.adc_pre = ADCPrescaler::DIV6;
     let mut p = embassy_stm32::init(config);
 
     // We need to borrow the peripherals for the pins so we can later pass the
     // entire Peripherals struct to the role function.
     let dip_switch_setting = {
-        let role_sw1 = Input::new(&mut p.PC4, embassy_stm32::gpio::Pull::Down);
-        let role_sw2 = Input::new(&mut p.PC5, embassy_stm32::gpio::Pull::Down);
-        let role_sw3 = Input::new(&mut p.PB15, embassy_stm32::gpio::Pull::Down);
-        let role_sw4 = Input::new(&mut p.PA8, embassy_stm32::gpio::Pull::Down);
-        let role_sw5 = Input::new(&mut p.PA9, embassy_stm32::gpio::Pull::Down);
+        use embassy_stm32::gpio::Pull;
+        let role_sw1 = Input::new(p.PC4.reborrow(), Pull::Down);
+        let role_sw2 = Input::new(p.PC5.reborrow(), Pull::Down);
+        let role_sw3 = Input::new(p.PB15.reborrow(), Pull::Down);
+        let role_sw4 = Input::new(p.PA8.reborrow(), Pull::Down);
+        let role_sw5 = Input::new(p.PA9.reborrow(), Pull::Down);
         ((role_sw1.is_high() as u8) << 4)
             | ((role_sw2.is_high() as u8) << 3)
             | ((role_sw3.is_high() as u8) << 2)
@@ -327,5 +351,6 @@ async fn main(spawner: Spawner) { //TODO maybe change values?
 
 #[interrupt]
 unsafe fn SPI2() {
-    EXECUTOR_HIGH.on_interrupt()
+    // TODO: (embassy upgrade)
+    unsafe { EXECUTOR_HIGH.on_interrupt() }
 }
