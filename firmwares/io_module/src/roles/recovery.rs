@@ -33,6 +33,8 @@ impl crate::roles::BoardRole for Recovery {
         output_state: &'static OutputStateChannel,
     ) {
         // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
+        //TODO change inputs
+        !todo!();
         if let (Input1::I2c(i2c2), Input3::Gpio(p0, p1)) = (io.input1, io.input3) {
             low_priority_spawner
                 .spawn(run_i2c_sensors(

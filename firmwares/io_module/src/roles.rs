@@ -46,10 +46,6 @@ pub trait BoardRole: Sized {
         DriveVoltage::Battery
     }
 
-    fn boost_converter_voltage() -> Option<u16> {
-        None
-    }
-
     fn output_failsafe_duration() -> Option<Duration> {
         None
     }

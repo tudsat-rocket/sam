@@ -12,6 +12,7 @@ use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::Config;
+use embassy_stm32::interrupt::typelevel::{UART4};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -20,11 +21,9 @@ use static_cell::StaticCell;
 
 use {defmt_rtt as _, panic_probe as _};
 
-mod boost;
 mod can;
 mod roles;
 
-use boost::*;
 use can::*;
 use roles::common::*;
 use roles::*;
@@ -52,7 +51,10 @@ embassy_stm32::bind_interrupts!(struct Irqs {
     I2C2_EV => embassy_stm32::i2c::EventInterruptHandler<I2C2>;
     I2C2_ER => embassy_stm32::i2c::ErrorInterruptHandler<I2C2>;
 
+    USART1 => embassy_stm32::usart::InterruptHandler<USART1>;
+    USART2 => embassy_stm32::usart::InterruptHandler<USART2>;
     USART3 => embassy_stm32::usart::InterruptHandler<USART3>;
+    //UART4 => embassy_stm32::interrupt::typelevel::UART4;
 });
 
 #[allow(dead_code)]
@@ -68,54 +70,53 @@ enum InputMode {
 enum DriveVoltage {
     Battery,
     ChargeBus,
-    BoostConverter,
     Regulator5V,
-}
-
-// == J7
-#[allow(dead_code)]
-enum Input0 {
-    Disabled,
-    //Uart(), // TODO: missing embassy support for asynchronous-only?
-}
-
-// == J6
-#[allow(dead_code)]
-enum Input1 {
-    Disabled,
-    Uart(Uart<'static, USART3, DMA1_CH2, DMA1_CH3>),
-    I2c(I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>),
-}
-
-// == J5
-#[allow(dead_code)]
-enum Input2 {
-    Disabled,
-    Uart, // TODO
-    Adc,  // TODO
 }
 
 // == J4
 #[allow(dead_code)]
-enum Input3 {
+enum Input0 {
     Disabled,
-    Uart, // TODO
+    Uart(Uart<'static, USART1, DMA1_CH4, DMA1_CH5>),
     I2c(I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>),
-    Gpio(Input<'static, PB6>, Input<'static, PB7>),
+}
+
+// == J5
+#[allow(dead_code)]
+enum Input1 {
+    Disabled,
+    Uart(Uart<'static, USART2, DMA1_CH7, DMA1_CH6>),
+    Adc
 }
 
 // == J12
 #[allow(dead_code)]
+enum Input2 {
+    Disabled,
+    Adc,  // TODO
+}
+
+// == J6
+#[allow(dead_code)]
+enum Input3 {
+    Disabled,
+    Uart(Uart<'static, USART3, DMA1_CH2, DMA1_CH3>),
+    I2c(I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>),
+    //Gpio(Input<'static, PB6>, Input<'static, PB7>),
+}
+
+// == J7
+#[allow(dead_code)]
 enum Input4 {
     Disabled,
-    Adc, // TODO
+    Uart(Uart<'static, UART4, DMA2_CH5, DMA2_CH3>),
 }
 
 // == J13
 #[allow(dead_code)]
 enum Input5 {
     Disabled,
-    Adc, // TODO
+    Adc,
 }
 
 /// Abstraction for the inputs and outputs. These are the same for all roles.
@@ -154,54 +155,59 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
     iwdg.unleash();
 
     let input0 = match R::input0_mode() {
-        // J7
+        // J4
+        InputMode::Disabled => Input0::Disabled,
+        InputMode::Uart(config) => {
+            Input0::Uart(Uart::new(p.USART1, p.PB7, p.PB6, Irqs, p.DMA1_CH4, p.DMA1_CH5, config).unwrap())
+        },
+        InputMode::I2c(freq, config) => {
+            Input0::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config))
+        }
         _ => Input0::Disabled,
     };
 
-    let (boost_converter, input1) = match (R::boost_converter_voltage(), R::input1_mode()) {
-        // J6
-        (Some(v), InputMode::Disabled) => (
-            Some((
-                I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, Hertz::khz(400), Default::default()),
-                v,
-            )),
-            Input1::Disabled,
-        ),
-        (Some(_v), _) => unreachable!(),
-        (None, InputMode::Uart(config)) => {
-            (None, Input1::Uart(Uart::new(p.USART3, p.PB11, p.PB10, Irqs, p.DMA1_CH2, p.DMA1_CH3, config).unwrap()))
+    let input1 = match R::input1_mode() {
+        // J5
+        InputMode::Disabled => Input1::Disabled,
+        InputMode::Uart(config) => {
+            Input1::Uart(Uart::new(p.USART2, p.PA3, p.PA2, Irqs, p.DMA1_CH7, p.DMA1_CH6, config).unwrap())
         }
-        (None, InputMode::I2c(freq, config)) => {
-            (None, Input1::I2c(I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, freq, config)))
-        }
-        (None, _) => (None, Input1::Disabled),
+        InputMode::Adc => todo!(),
+        _ => Input1::Disabled,
     };
 
     let input2 = match R::input2_mode() {
-        // J5
-        InputMode::Uart(_) => todo!(),
+        // J12
+        InputMode::Disabled => Input2::Disabled,
         InputMode::Adc => todo!(),
         _ => Input2::Disabled,
     };
 
     let input3 = match R::input3_mode() {
-        // J4
-        InputMode::Uart(_) => todo!(),
+        // J6
+        InputMode::Disabled => Input3::Disabled,
+        InputMode::Uart(config) => {
+            Input3::Uart(Uart::new(p.USART3, p.PB11, p.PB10, Irqs, p.DMA1_CH2, p.DMA1_CH3, config).unwrap())
+        },
         InputMode::I2c(freq, config) => {
-            Input3::I2c(I2c::new(p.I2C1, p.PB6, p.PB7, Irqs, p.DMA1_CH6, p.DMA1_CH7, freq, config))
+            Input3::I2c(I2c::new(p.I2C2, p.PB10, p.PB11, Irqs, p.DMA1_CH4, p.DMA1_CH5, freq, config))
         }
-        InputMode::Gpio(pull) => Input3::Gpio(Input::new(p.PB6, pull), Input::new(p.PB7, pull)),
+        //InputMode::Gpio(pull) => Input3::Gpio(Input::new(p.PB6, pull), Input::new(p.PB7, pull)),
         _ => Input3::Disabled,
     };
 
     let input4 = match R::input4_mode() {
-        // J12
-        InputMode::Adc => todo!(),
+        // J7
+        InputMode::Disabled => Input4::Disabled,
+        InputMode::Uart(config) => {
+            Input4::Uart(Uart::new(p.UART4, p.PC10, p.PC11, Irqs, p.DMA2_CH5, p.DMA2_CH3, config).unwrap())
+        }
         _ => Input4::Disabled,
     };
 
     let input5 = match R::input5_mode() {
         // J13
+        InputMode::Disabled => Input5::Disabled,
         InputMode::Adc => todo!(),
         _ => Input5::Disabled,
     };
@@ -263,7 +269,6 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
             adc,
             p.PA7,
             p.PA6,
-            p.PA5,
             p.PB1,
             p.PA4,
             R::ROLE_ID,
@@ -279,18 +284,12 @@ async fn run_role<R: BoardRole>(p: embassy_stm32::Peripherals, low_priority_spaw
             .unwrap();
     }
 
-    // Run the boost converter if requested by the role.
-    if let Some((i2c, target_voltage)) = boost_converter {
-        let enable_output = Output::new(p.PB0, Level::Low, Speed::Low);
-        low_priority_spawner.spawn(run_boost_converter(i2c, target_voltage, enable_output)).unwrap();
-    }
-
     // Allow role to spawn its own tasks
     R::spawn(io, high_priority_spawner, low_priority_spawner, can_in, can_out, output_state);
 }
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(spawner: Spawner) { //TODO maybe change values?
     let mut config = Config::default();
     config.rcc.hse = Some(Hertz::mhz(8));
     config.rcc.sys_ck = Some(Hertz::mhz(72));

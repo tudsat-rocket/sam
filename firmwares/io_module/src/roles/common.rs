@@ -159,7 +159,6 @@ pub async fn run_power_report(
     mut adc: Adc<'static, ADC1>,
     mut battery_voltage_sense_pin: PA7,
     mut charge_bus_voltage_sense_pin: PA6,
-    mut boost_voltage_sense_pin: PA5,
     mut current_sense_pin: PB1,
     mut temperature_sense_pin: PA4,
     role: IoBoardRole,
@@ -185,10 +184,6 @@ pub async fn run_power_report(
             DriveVoltage::ChargeBus => {
                 let sample = with_timeout(TIMEOUT, adc.read(&mut charge_bus_voltage_sense_pin)).await;
                 ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (15.0 + 2.2) / 2.2) as u16
-            }
-            DriveVoltage::BoostConverter => {
-                let sample = with_timeout(TIMEOUT, adc.read(&mut boost_voltage_sense_pin)).await;
-                ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (22.0 + 2.2) / 2.2) as u16
             }
         };
 
