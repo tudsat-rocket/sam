@@ -5,7 +5,7 @@ use itertools::Itertools;
 use strum::{IntoEnumIterator, VariantNames};
 use telemetry::{Metric, MetricDiscriminants};
 
-use crate::{backend::Backend, frontend::{constraints::{ConstraintResult, EvaluatedConstraint}, metric_monitor::MetricMonitor, popup_manager::{PopupManager, PopupTrigger}}, system_diagram_components::core::constants::{IMG_DANGER, IMG_FILTER, IMG_NOMINAL, IMG_WARNING}, utils::theme::ThemeColors};
+use crate::{backend::Backend, frontend::{constraints::{ConstraintResult, EvaluatedConstraint}, metric_monitor::MetricMonitor, popup_manager::{DropdownMenu, TriggerBuilder}, Frontend}, system_diagram_components::core::constants::{IMG_DANGER, IMG_FILTER, IMG_NOMINAL, IMG_WARNING}, utils::theme::ThemeColors};
 
 pub struct MetricStatusBar {}
 
@@ -77,11 +77,11 @@ impl MetricStatusBar {
         return Metric::VARIANTS[d1 as usize].cmp(Metric::VARIANTS[d2 as usize]);
     }
 
-    pub fn show(ctx: &egui::Context, backend: &Backend, popup_manager: &mut PopupManager, metric_monitor: &MetricMonitor, active_constraint_mask: &mut Vec<ConstraintResult>) {
+    pub fn show(ctx: &egui::Context, backend: &Backend, frontend: &mut Frontend, active_constraint_mask: &mut Vec<ConstraintResult>) {
         let theme = &ThemeColors::new(ctx);
-        let constraint_results = Self::filter_constraints(metric_monitor.constraint_results(), active_constraint_mask);
-        let num_metrics_to_display = metric_monitor.pinned_metrics().len() + constraint_results.keys().count();
-        egui::SidePanel::left("Monitor Panel").show_animated(ctx, num_metrics_to_display > 0 || popup_manager.has_any_open_popup(&METRIC_MONITOR_FILTER_BUTTON_ID), |ui| {
+        let num_metrics_to_display = frontend.metric_monitor().pinned_metrics().len() + Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask).keys().count();
+        let has_open_popups = frontend.popup_manager().has_any_open_popup(&METRIC_MONITOR_FILTER_BUTTON_ID);
+        egui::SidePanel::left("Monitor Panel").show_animated(ctx, num_metrics_to_display > 0 || has_open_popups, |ui| {
             let mut dropdown_response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
             ui.horizontal(|ui| {
                 //ui.vertical_centered(|ui| {
@@ -89,8 +89,8 @@ impl MetricStatusBar {
                 //});
                 dropdown_response = ui.add(Button::image(Image::new(IMG_FILTER).tint(theme.foreground_weak)).small())
             });
-            let trigger = PopupTrigger::new(ui, METRIC_MONITOR_FILTER_BUTTON_ID.clone(), dropdown_response.interact_rect);
-            popup_manager.add_dropdown_menu(&trigger, dropdown_response.interact_rect.right_top(), ui, |ui, _popup_manager| {
+            TriggerBuilder::new(METRIC_MONITOR_FILTER_BUTTON_ID.clone(), dropdown_response.interact_rect)
+            .add::<DropdownMenu, _>(dropdown_response.interact_rect.right_top(), |ui, _frontend| {
                 let mut i = 0;
                 let mut response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
                 for constraint_result in ConstraintResult::iter() {
@@ -105,15 +105,15 @@ impl MetricStatusBar {
                     i += 1;
                 };
                 return response;
-            });
+            }).show_active(ui, frontend);
             ui.separator();
             egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
-                for metric in metric_monitor.pinned_metrics() {
-                   display(metric, backend, metric_monitor, ui, theme);
+                for metric in frontend.metric_monitor().pinned_metrics() {
+                   display(metric, backend, frontend.metric_monitor(), ui, theme);
                 }
-                for metric in constraint_results.keys().sorted_by(|m1, m2| Self::cmp_metric_for_display(m1, m2, metric_monitor)) {
-                    if !metric_monitor.is_pinned(metric) {
-                        display(metric, backend, metric_monitor, ui, theme);
+                for metric in Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask).keys().sorted_by(|m1, m2| Self::cmp_metric_for_display(m1, m2, frontend.metric_monitor())) {
+                    if !frontend.metric_monitor().is_pinned(metric) {
+                        display(metric, backend, frontend.metric_monitor(), ui, theme);
                     }
                 }
             })

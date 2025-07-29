@@ -1,8 +1,7 @@
 use crate::{
     backend::Backend,
     frontend::{
-        metric_monitor::MetricMonitor,
-        popup_manager::{PopupManager, PopupTrigger},
+        popup_manager::{ContextMenu, Tooltip, TriggerBuilder}, Frontend
     },
     system_diagram_components::{
         core::{
@@ -13,7 +12,7 @@ use crate::{
         math::transform::Transform,
     },
     utils::{mesh::register_textures, theme::ThemeColors},
-    widgets::plot::{Plot, SharedPlotState},
+    widgets::plot::Plot,
 };
 use egui::{Button, Color32, Image, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
@@ -63,9 +62,7 @@ impl Component {
         &self,
         ui: &mut egui::Ui,
         backend: &Backend,
-        shared_plot_state: &mut SharedPlotState,
-        popup_manager: &mut PopupManager,
-        metric_monitor: &mut MetricMonitor,
+        frontend: &mut Frontend
     ) -> egui::Response {
         let theme = &ThemeColors::new(ui.ctx());
         ui.style_mut().interaction.selectable_labels = true;
@@ -112,51 +109,36 @@ impl Component {
                             Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y),
                             ui.min_rect().max,
                         );
-                        let tooltip_pos =
-                            Pos2::new(popup_manager.get_active_frame_bounds(ui.min_rect()).max.x, bounding_box.min.y);
+                        let popup_pos =
+                            Pos2::new(frontend.popup_manager().get_active_frame_bounds(ui.min_rect()).max.x, bounding_box.min.y);
                         let tooltip_id = ui.make_persistent_id(format!("ID Metric {name}"));
-                        let trigger = PopupTrigger::new(ui, tooltip_id, bounding_box);
-                        popup_manager.add_tooltip(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
+                        TriggerBuilder::new(tooltip_id, bounding_box)
+                        .add::<Tooltip, _>(popup_pos, |ui, frontend| {
                             let inner_tooltip_response = ui.label(format!("Justification: Missing"));
                             let config = super::plot::PlotConfig {
                                 lines: vec![(*metric, Color32::RED)],
                                 ylimits: (None, None),
                             };
                             return ui
-                                .add(Plot::new(&config, shared_plot_state, backend))
+                                .add(Plot::new(&config, frontend.shared_plot_mut(), backend))
                                 .union(inner_tooltip_response);
-                        });
-                        popup_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
-                            // #[cfg(target_arch = "wasm32")]
-                            let to_clipboard_response = ui.add_enabled(false, egui::Button::new("Copy to clipboard"));
-                            // #[cfg(not(target_arch = "wasm32"))]
-                            // let to_clipboard_response = ui.button("Copy to clipboard");
-                            // #[cfg(not(target_arch = "wasm32"))]
-                            // if to_clipboard_response.clicked() {
-                            //     let mut clipboard = clippers::Clipboard::get();
-                            //     let _ = clipboard.write_text(
-                            //         backend
-                            //             .current_value(*metric)
-                            //             .map(|v| format!("{}", v))
-                            //             .unwrap_or("N/A".to_string()),
-                            //     );
-                            // }
-                            let pin_or_unpin_response = if metric_monitor.is_pinned(metric) {
+                        })
+                        .add::<ContextMenu, _>(popup_pos, |ui, frontend| {
+                            return if frontend.metric_monitor().is_pinned(metric) {
                                 let unpin_response = ui.button("Unpin from Monitor");
                                 if unpin_response.clicked() {
-                                    metric_monitor.unpin(*metric);
+                                    frontend.metric_monitor_mut().unpin(*metric);
                                 }
                                 unpin_response
                             } else {
                                 let pin_response = ui.button("Pin to monitor");
                                 if pin_response.clicked() {
-                                    metric_monitor.pin(*metric);
+                                    frontend.metric_monitor_mut().pin(*metric);
                                 }
                                 pin_response
                             };
-                            return to_clipboard_response.union(pin_or_unpin_response);
-                        });
-                        tooltip_response = tooltip_response.union(trigger.response());
+                        })
+                        .show_active(ui, frontend);
                         ui.end_row();
                     }
                 });
@@ -172,33 +154,7 @@ impl Component {
                         tooltip_response = tooltip_response.union(
                             ui.label(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string())),
                         );
-                        tooltip_response =
-                            tooltip_response.union(ui.label(property.unit.clone().unwrap_or("N/A".to_string())));
-
-                        let bounding_box = Rect::from_min_max(
-                            Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y),
-                            ui.min_rect().max,
-                        );
-                        let tooltip_pos =
-                            Pos2::new(popup_manager.get_active_frame_bounds(ui.min_rect()).max.x, bounding_box.min.y);
-                        let tooltip_id = ui.make_persistent_id(format!("ID Metric {}", property.desc));
-                        let trigger = PopupTrigger::new(ui, tooltip_id, bounding_box);
-                        popup_manager.add_tooltip(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
-                            return ui.label(format!("Justification: Missing"));
-                        });
-                        popup_manager.add_context_menu(&trigger, tooltip_pos, ui, |ui, _popup_manager| {
-                            // #[cfg(target_arch = "wasm32")]
-                            let to_clipboard_response = ui.add_enabled(false, egui::Button::new("Copy to clipboard"));
-                            // #[cfg(not(target_arch = "wasm32"))]
-                            // let to_clipboard_response = ui.button("Copy to clipboard");
-                            // #[cfg(not(target_arch = "wasm32"))]
-                            // if to_clipboard_response.clicked() {
-                            //     let mut clipboard =  clippers::Clipboard::get();
-                            //     let _ = clipboard.write_text(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string()));
-                            // }
-                            return to_clipboard_response;
-                        });
-                        tooltip_response = tooltip_response.union(trigger.response());
+                        tooltip_response.union(ui.label(property.unit.clone().unwrap_or("N/A".to_string())));
                         ui.end_row();
                     }
                 });
@@ -213,9 +169,7 @@ pub struct SystemDiagram<'a> {
     symbols: Vec<Symbol>,
     lines: Vec<Line1D>,
     backend: &'a Backend,
-    shared_plot_state: &'a mut SharedPlotState,
-    popup_manager: &'a mut PopupManager,
-    metric_monitor: &'a mut MetricMonitor,
+    frontend: &'a mut Frontend,
 }
 
 impl<'a> SystemDiagram<'a> {
@@ -227,17 +181,13 @@ impl<'a> SystemDiagram<'a> {
         symbols: Vec<Symbol>,
         lines: Vec<Line1D>,
         backend: &'a Backend,
-        shared_plot_state: &'a mut SharedPlotState,
-        popup_manager: &'a mut PopupManager,
-        metric_monitor: &'a mut MetricMonitor,
+        frontend: &'a mut Frontend,
     ) -> Self {
         Self {
             symbols,
             lines,
             backend,
-            shared_plot_state,
-            popup_manager,
-            metric_monitor,
+            frontend
         }
     }
 }
@@ -256,28 +206,24 @@ impl<'a> egui::Widget for SystemDiagram<'a> {
                 for (idx, symbol) in self.symbols.iter().enumerate() {
                     let bounding_box = symbol.paint(&global_transform, ui.painter(), ui.ctx());
                     let trigger_id = ui.make_persistent_id(format!("Base Layer Trigger ID {idx}")); //TODO Improve ID
-                    let popup_trigger = PopupTrigger::new(ui, trigger_id, bounding_box);
                     let popup_pos = bounding_box.min + bounding_box.size() * Vec2::new(1.0, 0.5);
-                    self.popup_manager.add_tooltip(&popup_trigger, popup_pos, ui, |ui, popup_manager| {
-                        let mut tooltip_response =
-                            ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
-                        return ui
-                            .vertical(|ui| {
-                                tooltip_response = match symbol.component() {
-                                    Some(component) => component.as_tooltip(
-                                        ui,
-                                        self.backend,
-                                        self.shared_plot_state,
-                                        popup_manager,
-                                        self.metric_monitor,
-                                    ),
-                                    None => ui.label(RichText::new("N/A").italics()),
-                                }
-                                .union(tooltip_response.clone())
-                            })
-                            .response
-                            .union(tooltip_response);
-                    });
+                    TriggerBuilder::new(trigger_id, bounding_box)
+                        .add::<Tooltip, _>(popup_pos, |ui, frontend| {
+                            let mut tooltip_response =ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                            return ui.vertical(|ui| {
+                                    tooltip_response = match symbol.component() {
+                                        Some(component) => component.as_tooltip(
+                                            ui,
+                                            self.backend,
+                                            frontend,
+                                        ),
+                                        None => ui.label(RichText::new("N/A").italics()),
+                                    }
+                                    .union(tooltip_response.clone())
+                                })
+                                .response
+                                .union(tooltip_response);})
+                        .show_active(ui, self.frontend);
                 }
                 for line in self.lines {
                     line.paint(&global_transform, ui.painter(), ui.ctx());
