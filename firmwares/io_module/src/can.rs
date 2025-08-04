@@ -1,11 +1,13 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::{Can, CanRx, CanTx};
+use embassy_stm32::can::{filter, Can, CanRx, CanTx, Fifo};
 use embassy_stm32::can::{Frame, Id, StandardId};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
+use shared_types::{CanBusMessageId, IoBoardRole};
 use static_cell::StaticCell;
+use crate::roles::BoardRole;
 
 pub const CAN_QUEUE_SIZE: usize = 5; // TODO
 pub const NUM_CAN_SUBSCRIBERS: usize = 3; // TODO
@@ -97,4 +99,21 @@ async fn run_rx(
             }
         }
     }
+}
+
+pub fn configure(can: &mut Can, role: IoBoardRole) {
+    let command_prefix = CanBusMessageId::IoBoardCommand(role, 0).into();
+    let command_filter = filter::Mask32::frames_with_std_id(
+        StandardId::new(command_prefix).unwrap(),
+        StandardId::new(0x7f0).unwrap(),
+    );
+
+    let telemetry_filter = filter::Mask32::frames_with_std_id(
+        StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
+        StandardId::new(0x700).unwrap(),
+    );
+
+    can.modify_filters()
+        .enable_bank(0, Fifo::Fifo0, command_filter)
+        .enable_bank(1, Fifo::Fifo1, telemetry_filter);
 }

@@ -1,7 +1,9 @@
 use embassy_stm32::adc::Adc;
+use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::i2c::{I2c, Master};
 use embassy_stm32::mode::Async;
+use embassy_stm32::peripherals;
 use embassy_stm32::peripherals::*;
 use embassy_time::Ticker;
 use embassy_time::{Duration, with_timeout};
@@ -162,13 +164,13 @@ fn to_millivolts(vref_sample: u16, sample: u16) -> u16 {
 }
 
 #[embassy_executor::task]
-pub async fn run_power_report(
+pub async fn run_power_report( //TODO maybe adjust default pins again
     publisher: crate::CanOutPublisher,
     mut adc: Adc<'static, ADC1>,
     mut battery_voltage_sense_pin: PA7,
     mut charge_bus_voltage_sense_pin: PA6,
-    mut current_sense_pin: PB1,
-    mut temperature_sense_pin: PA4,
+    mut current_sense_pin: PC5, //PB1
+    mut temperature_sense_pin: PC4, //PA4
     role: IoBoardRole,
     drive_voltage: DriveVoltage,
 ) -> ! {

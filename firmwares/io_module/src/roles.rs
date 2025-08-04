@@ -10,34 +10,12 @@ use crate::{BoardIo, CanInChannel, CanOutChannel, DriveVoltage, InputMode};
 
 pub mod common;
 
-mod acs;
-pub use acs::*;
-
-mod recovery;
-pub use recovery::*;
-
 mod payload;
 pub use payload::*;
 
 pub trait BoardRole: Sized {
     const ROLE_ID: IoBoardRole;
 
-    fn configure_can(can: &mut Can) {
-        let command_prefix = CanBusMessageId::IoBoardCommand(Self::ROLE_ID, 0).into();
-        let command_filter = filter::Mask32::frames_with_std_id(
-            StandardId::new(command_prefix).unwrap(),
-            StandardId::new(0x7f0).unwrap(),
-        );
-
-        let telemetry_filter = filter::Mask32::frames_with_std_id(
-            StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-            StandardId::new(0x700).unwrap(),
-        );
-
-        can.modify_filters()
-            .enable_bank(0, Fifo::Fifo0, command_filter)
-            .enable_bank(1, Fifo::Fifo1, telemetry_filter);
-    }
 
     // Determines which voltage sense pin is measured for regular diagnostic messages
     fn drive_voltage() -> DriveVoltage {
