@@ -10,6 +10,29 @@ const DOWNSAMPLING_FACTOR: usize = 16;
 const DOWNSAMPLING_LEVELS: usize = 5;
 const DOWNSAMPLING_THRESHOLD: usize = 10_000;
 
+// trait MetricConsumer {
+//     type MetricRepresentation;
+// }
+
+// struct NewDataStore {
+//     values: HashMap<Metric, Vec<bool>>,
+// }
+
+// impl MetricConsumer for NewDataStore {
+//     type MetricRepresentation = Vec<bool>;
+// }
+
+// //Add additional layer (ConsumableRepresentation) and add it as a generic to the MetricConsumer
+// trait ConsumableMetricRepresentation {}
+// impl ConsumableMetricRepresentation for f32 {}
+// impl ConsumableMetricRepresentation for u8 {}
+// impl ConsumableMetricRepresentation for ! {}
+
+
+
+// struct A {}
+// impl ConsumableMetric<NewDataStore, f32, uom::si::length::kilometer> for A {}
+
 #[derive(Default)]
 pub struct DataStore {
     /// Increasingly downsampled plot data. The first entry is the full data, followed by

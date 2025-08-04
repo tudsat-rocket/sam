@@ -4,6 +4,7 @@ mod metrics;
 mod representation;
 mod schema;
 mod source;
+mod new_safe_metrics;
 
 #[cfg(not(target_os = "none"))]
 mod store;
