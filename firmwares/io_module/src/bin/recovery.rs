@@ -2,18 +2,18 @@
 #![no_main]
 
 use embassy_executor::{InterruptExecutor, Spawner};
-use embassy_stm32::adc::Instance;
 use embassy_stm32::adc::Adc;
+use embassy_stm32::adc::Instance;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::{I2c, Master};
 use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
+use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{Config, gpio};
-use embassy_stm32::mode::Async;
+use embassy_stm32::{Config, Peri, gpio};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -22,13 +22,12 @@ use static_cell::StaticCell;
 
 use {defmt_rtt as _, panic_probe as _};
 
-use io_module_firmware::can::spawn;
 use io_module_firmware::can::CAN_IN;
 use io_module_firmware::can::CAN_OUT;
+use io_module_firmware::can::spawn;
 //use io_module_firmware::Input2::Adc;
 use io_module_firmware::OUTPUT_STATE;
 use io_module_firmware::roles::common::{run_i2c_sensors, run_leds, run_output_control_via_can};
-
 
 const ROLE_ID: IoBoardRole = IoBoardRole::Recovery;
 const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 1, 0];
@@ -65,7 +64,6 @@ async fn main(spawner: Spawner) {
     config.rcc.adc_pre = ADCPrescaler::DIV6;
     let mut p = embassy_stm32::init(config);
 
-
     defmt::info!("Running as role {:?}", defmt::Debug2Format(&ROLE_ID));
 
     let mut adc = Adc::new(p.ADC1);
@@ -85,8 +83,8 @@ async fn main(spawner: Spawner) {
 
     let input0 = I2c::new(p.I2C1, p.PB6, p.PB7, io_module_firmware::Irqs, p.DMA1_CH6, p.DMA1_CH7, i2c_freq, i2c_config);
 
-    let input1 = I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_freq, i2c_config);
-
+    let input1 =
+        I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_freq, i2c_config);
 
     let can_in = CAN_IN.init(PubSubChannel::new());
     let can_out = CAN_OUT.init(PubSubChannel::new());
@@ -114,14 +112,14 @@ async fn main(spawner: Spawner) {
 
     // Run output based on published output state (HC_OUTS) //TODO add
     /*high_priority_spawner
-        .spawn(run_outputs(
-            (Output::new(p.PC7, Level::Low, Speed::Low), Output::new(p.PC6, Level::Low, Speed::Low)),
-            (Output::new(p.PC9, Level::Low, Speed::Low), Output::new(p.PC8, Level::Low, Speed::Low)),
-            (Output::new(p.PB8, Level::Low, Speed::Low), Output::new(p.PB9, Level::Low, Speed::Low)),
-            (Output::new(p.PA0, Level::Low, Speed::Low), Output::new(p.PA1, Level::Low, Speed::Low)),
-            output_state.subscriber().unwrap(),
-        ))
-        .unwrap();*/
+    .spawn(run_outputs(
+        (Output::new(p.PC7, Level::Low, Speed::Low), Output::new(p.PC6, Level::Low, Speed::Low)),
+        (Output::new(p.PC9, Level::Low, Speed::Low), Output::new(p.PC8, Level::Low, Speed::Low)),
+        (Output::new(p.PB8, Level::Low, Speed::Low), Output::new(p.PB9, Level::Low, Speed::Low)),
+        (Output::new(p.PA0, Level::Low, Speed::Low), Output::new(p.PA1, Level::Low, Speed::Low)),
+        output_state.subscriber().unwrap(),
+    ))
+    .unwrap();*/
 
     // Run CAN bus, publishing received messages on can_in and transmitting messages
     // published on can_out.
@@ -133,18 +131,18 @@ async fn main(spawner: Spawner) {
     // Every IO board occasionally reports its temperature, drive voltage and current
     spawner //TODO change pins
         .spawn(io_module_firmware::roles::common::run_power_report(
-                                 can_out.publisher().unwrap(),
-                                 adc,
-                                 *p.PA7,
-                                 *p.PA6,
-                                 *p.PC5,
-                                 *p.PC4,
-                                 ROLE_ID,
-                                 io_module_firmware::DriveVoltage::Battery,
+            can_out.publisher().unwrap(),
+            adc,
+            p.PA7.into(),
+            p.PA6.into(),
+            p.PC5.into(),
+            p.PC4.into(),
+            ROLE_ID,
+            io_module_firmware::DriveVoltage::Battery,
         ))
         .unwrap();
-
-    let test = adc.read(&mut p.PA7).await;
+    // TODO: (embassy upgrade)
+    // let test = adc.read(&mut p.PA7).await;
 
     // Allow role to spawn its own tasks
     // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
@@ -160,11 +158,7 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-
-
     // Set the LEDs based on the output state.
     let led_output_state_sub = output_state.subscriber().unwrap();
     spawner.spawn(run_leds(leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();
 }
-
-
