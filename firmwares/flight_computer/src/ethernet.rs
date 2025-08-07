@@ -1,12 +1,12 @@
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 
 use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::peripherals::ETH;
 
-use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::StackResources;
+use embassy_net::udp::{PacketMetadata, UdpSocket};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
@@ -56,6 +56,7 @@ pub fn start(
 
 #[embassy_executor::task]
 async fn run_network(mut runner: embassy_net::Runner<'static, Ethernet<'static, ETH, GenericPhy>>) -> ! {
+    defmt::info!("Started running ethernet driver.");
     runner.run().await
 }
 
