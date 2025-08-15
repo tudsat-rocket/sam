@@ -9,7 +9,7 @@ use super::storage_state::StorageState;
 
 const BULKHEAD_HEIGHT: f32 = 0.15;
 const BULKHEAD_STEPS: usize = 100;
-const CAP_TOTAL_HEIGHT: f32 = 0.3;
+const CAP_TOTAL_HEIGHT: f32 = 0.2;
 const CAP_WIDTH: f32 = 0.4; 
 const CAP_BULKHEAD_HEIGHT: f32 = 0.15;
 const CAP_BULKHEAD_STEPS: usize = 100;

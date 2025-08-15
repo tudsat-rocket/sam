@@ -43,7 +43,9 @@ impl Symbol {
             Painter::BurstDisc(state) => burst_disc::paint(transform, state, painter, theme),
             Painter::QuickDisconnect(state) => quick_disconnect::paint(transform, state, painter, theme),
             Painter::PressureReliefValve(state) => pressure_relief_valve::paint(transform, state, painter, theme),
-            
+            Painter::SolenoidValve(state) => solenoid_valve::paint(transform, state, painter, ctx),
+            Painter::CheckValve => check_valve::paint(transform, painter, theme),
+
             //----------------------- Storage ----------------------
             Painter::Tank(state) => tank::paint(transform, state, painter, theme),
             Painter::Bottle(state) => bottle::paint(transform, state, painter, theme),
@@ -78,6 +80,8 @@ pub enum Painter {
     BurstDisc(ValveState),
     QuickDisconnect(ValveState),
     PressureReliefValve(ValveState),
+    SolenoidValve(ValveState),
+    CheckValve,
     //----------------------- Storage ----------------------
     Tank(StorageState),
     Bottle(StorageState),

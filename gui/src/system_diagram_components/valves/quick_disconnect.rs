@@ -13,9 +13,17 @@ const OPEN_BARRIER_HEIGHT: f32 = 0.6;
 ///If true, sets the y-scale of the circle to 1. May look much better for some scalings TODO: Make instance dependent?
 const STRETCH_CIRCLE_TO_MAX_HEIGHT: bool = true;
 
-const CLOSED_POSITIONS: [Point2<f32>; 4] =  [Point2::new(-0.5 + CIRCLE_DIAMETER, 0f32), Point2::new(0.5 - CIRCLE_DIAMETER, 0f32), Point2::new(0f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(0f32, OPEN_BARRIER_HEIGHT/2f32)];
-const OPEN_POSITIONS: [Point2<f32>; 8] =    [Point2::new(-0.5 + CIRCLE_DIAMETER, 0f32), Point2::new(-GAP_WIDTH/2f32, 0f32), Point2::new(GAP_WIDTH/2f32, 0f32), Point2::new(0.5 - CIRCLE_DIAMETER, 0f32),
-                                             Point2::new(-GAP_WIDTH/2f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(-GAP_WIDTH/2f32, OPEN_BARRIER_HEIGHT/2f32), Point2::new(GAP_WIDTH/2f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(GAP_WIDTH/2f32, OPEN_BARRIER_HEIGHT/2f32)];
+const CLOSED_POSITIONS: [Point2<f32>; 7] =  [
+    Point2::new(-0.5 + CIRCLE_DIAMETER, 0f32), Point2::new(0.5 - CIRCLE_DIAMETER, 0f32), //Horizonal
+    Point2::new(0f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(0f32, OPEN_BARRIER_HEIGHT/2f32), //Vertical
+    Point2::new(-0.5, -0.5), Point2::new(-0.5 + CIRCLE_DIAMETER, 0.0), Point2::new(0.5, -0.5) // Left Spike
+];
+const OPEN_POSITIONS: [Point2<f32>; 8] = [
+    Point2::new(-0.5 + CIRCLE_DIAMETER, 0f32), Point2::new(-GAP_WIDTH/2f32, 0f32),
+    Point2::new(GAP_WIDTH/2f32, 0f32), Point2::new(0.5 - CIRCLE_DIAMETER, 0f32),
+    Point2::new(-GAP_WIDTH/2f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(-GAP_WIDTH/2f32, OPEN_BARRIER_HEIGHT/2f32),
+    Point2::new(GAP_WIDTH/2f32, -OPEN_BARRIER_HEIGHT/2f32), Point2::new(GAP_WIDTH/2f32, OPEN_BARRIER_HEIGHT/2f32)
+];
 const CIRCLE_HEIGHT: f32 = if STRETCH_CIRCLE_TO_MAX_HEIGHT {1f32} else {CIRCLE_DIAMETER};
 
 //TODO: Implement wedges around circles

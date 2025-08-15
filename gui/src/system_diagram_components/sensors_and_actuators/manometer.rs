@@ -11,5 +11,5 @@ pub fn paint(transform: &Affine2<f32>, painter: &egui::Painter, ctx: &egui::Cont
     let points = circle::POINTS.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     painter.add(Shape::convex_polygon(points, theme.background_weak, stroke));
     let arrow_transform = Transform::new(Rotation2::new(-f32::consts::FRAC_PI_4 * 3f32), Scale2::new(0.6, 1.0), Translation2::identity()).to_affine2();
-    arrow::paint(&(transform * arrow_transform), painter, ctx);
+    arrow::paint(&(transform * arrow_transform), painter, &theme);
 }
