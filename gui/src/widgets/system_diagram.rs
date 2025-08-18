@@ -11,7 +11,6 @@ use crate::{
 };
 use egui::{Color32, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
-use telemetry::Metric;
 
 pub trait Flatten {
     fn flatten(self) -> egui::Response;
@@ -59,22 +58,20 @@ fn as_tooltip<Comp: SystemComponent>(
     tooltip_response = ui.separator().union(tooltip_response);
     ui.add_space(10.0);
 
-    tooltip_response = egui::CollapsingHeader::new(RichText::new("Metrics").strong().underline())
+    
+    if comp.metrics().len() > 0 {
+        tooltip_response = egui::CollapsingHeader::new(RichText::new("Metrics").strong().underline())
         .default_open(true)
         .show(ui, |ui| {
             egui::Grid::new("tooltip_grid_metrics").striped(true).show(ui, |ui| {
                 for metric in comp.metrics() {
                     let val =
                         backend.current_value(metric).map(|v| format!("{0:.2}", v)).unwrap_or("N/A".to_string());
-                    let (name, unit) = match metric {
-                        Metric::Pressure(_) => ("Pressure", "bar"),
-                        Metric::Temperature(_) => ("Temperature", "°C"),
-                        _ => todo!(),
-                    };
+                    let name = format!("{metric}");
 
-                    tooltip_response = tooltip_response.union(ui.label(name));
+                    tooltip_response = tooltip_response.union(ui.label(name.clone()));
                     tooltip_response = tooltip_response.union(ui.label(val));
-                    tooltip_response = tooltip_response.union(ui.label(unit));
+                    //tooltip_response = tooltip_response.union(ui.label(unit));
 
                     let bounding_box = Rect::from_min_max(
                         Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y),
@@ -116,6 +113,10 @@ fn as_tooltip<Comp: SystemComponent>(
         })
         .header_response
         .union(tooltip_response);
+    } else {
+        tooltip_response = ui.label(RichText::new("No metrics available").italics()).union(tooltip_response);
+    }
+
 
     // tooltip_response = egui::CollapsingHeader::new(RichText::new("Properties").strong().underline())
     //     .show(ui, |ui| {

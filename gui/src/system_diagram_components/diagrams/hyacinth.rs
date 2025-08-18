@@ -141,6 +141,7 @@ static RESERVOIR_TO_COMPONENTS: LazyLock<EnumMap<HyacinthReservoir, Vec<Hyacinth
             },
         }
     }
+    map[HyacinthReservoir::Atmosphere] = vec![];
     return map;
 });
 
@@ -149,10 +150,24 @@ enum_map![
     HyacinthReservoir::N2Bottle => vec![],
     HyacinthReservoir::N2Filling => vec![],
     HyacinthReservoir::N2OBottle => vec![],
-    HyacinthReservoir::N2OFilling => vec![],
-    HyacinthReservoir::N2Tank => vec![Metric::Pressure(telemetry::PressureSensorId::AcsTank)],
-    HyacinthReservoir::N2OTank => vec![],
-    HyacinthReservoir::CombustionChamber => vec![],
+    HyacinthReservoir::N2OFilling => vec![
+        Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
+    ],
+    HyacinthReservoir::N2Tank => vec![
+        Metric::Pressure(telemetry::PressureSensorId::NitrogenTank),
+        Metric::ValveState(telemetry::ValveId::PressureRegulator),
+    ],
+    HyacinthReservoir::N2OTank => vec![
+        Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
+        Metric::Temperature(telemetry::TemperatureSensorId::OxidizerTank),
+        Metric::ValveState(telemetry::ValveId::MainValve),
+        Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
+        Metric::ValveState(telemetry::ValveId::PressureRegulator),
+    ],
+    HyacinthReservoir::CombustionChamber => vec![
+        Metric::Pressure(telemetry::PressureSensorId::CombustionChamber),
+        Metric::ValveState(telemetry::ValveId::MainValve),
+    ],
     HyacinthReservoir::Atmosphere => vec![],
 ]);
 
