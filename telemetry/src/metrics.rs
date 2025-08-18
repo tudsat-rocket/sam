@@ -56,6 +56,10 @@ pub enum PressureSensorId {
     RecoveryChamberDrogue,
     RecoveryChamberMain,
     MainRelease,
+    //Hybrid
+    CombustionChamber,
+    OxidizerTank,
+    NitrogenTank,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -66,6 +70,17 @@ pub enum TemperatureSensorId {
     Acs,
     Recovery,
     Payload,
+    //Hybrid
+    OxidizerTank
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ValveId {
+    PressureRegulator,
+    MainValve,
+    VentValve,
+    FillAndDumpValve
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -86,6 +101,7 @@ pub enum Metric {
     TransmitPower,
     AcsMode,
     ThrusterValveState,
+    ValveState(ValveId),
 
     // TODO: bit-fields: camera state, fin presence
     Orientation(usize),

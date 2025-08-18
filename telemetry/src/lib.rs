@@ -108,13 +108,13 @@ pub const TELEMETRY_PRESSURES: MessageDefinition = MessageDefinition(&[
 // split out ereg, ox tank, cc to higher rate telemetry 
 pub const TELEMETRY_HYBRID: MessageDefinition = MessageDefinition(&[
     (Metric::Pressure(PressureSensorId::CombustionChamber), Representation::fixed(16, 0.0..=40.0)),
-    (Metric::Pressure(PressureSensorId::Oxidizer), Representation::fixed(8, 0.0..=100.0)),
-    (Metric::Pressure(PressureSensorId::Nitrogen), Representation::fixed(16, 0.0..=300.0)),
-    (Metric::ValveState(ValveId::Regulator), Representation::fixed(8, 0.0..=1.0)),
-    (Metric::ValveState(ValveId::Main), Representation::fixed(8, 0.0..=1.0)),
-    (Metric::ValveState(ValveId::OxVent), Representation::fixed(8, 0.0..=1.0)),
-    (Metric::ValveState(ValveId::OxFill), Representation::fixed(8, 0.0..=1.0)),
-    (Metric::Temperature(TemperatureSensorId::OxTemp), Representation::fixed(8, -80.0..=40.0)),
+    (Metric::Pressure(PressureSensorId::OxidizerTank), Representation::fixed(8, 0.0..=100.0)),
+    (Metric::Pressure(PressureSensorId::NitrogenTank), Representation::fixed(16, 0.0..=300.0)),
+    (Metric::ValveState(ValveId::PressureRegulator), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::MainValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::VentValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::FillAndDumpValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::Temperature(TemperatureSensorId::OxidizerTank), Representation::fixed(8, -80.0..=40.0)),
 ]);
 
 
@@ -134,7 +134,7 @@ pub const TELEMETRY_FAST_COMPRESSED: MessageDefinition = MessageDefinition(&[
     (Metric::ApogeeAltitudeASL, ALTITUDE_REPRESENTATION),
     (Metric::BatteryCurrent(BatteryId::Acs), ALTITUDE_REPRESENTATION),
     (Metric::Pressure(PressureSensorId::CombustionChamber), Representation::fixed(16, 0.0..=40.0)),
-    (Metric::Pressure(PressureSensorId::Oxidizer), Representation::fixed(8, 0.0..=100.0)),
+    (Metric::Pressure(PressureSensorId::OxidizerTank), Representation::fixed(8, 0.0..=100.0)),
 ]);
 
 pub const USB_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[
