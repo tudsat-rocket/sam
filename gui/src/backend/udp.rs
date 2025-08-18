@@ -13,7 +13,7 @@ use log::*;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::{DataStore, LORA_SCHEMA, USB_SCHEMA};
+use telemetry::{DataStore, USB_SCHEMA};
 
 use crate::backend::BackendVariant;
 use crate::settings::AppSettings;

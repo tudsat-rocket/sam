@@ -15,6 +15,10 @@ impl Circle {
         Ellipse::from(self).transform(transform)
     }
 
+    pub fn center(&self) -> Point2<f32> {
+        return self.center;
+    }
+
     pub fn radius(&self) -> f32 {
         return self.radius;
     }

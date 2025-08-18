@@ -1,7 +1,7 @@
 //! Contains data structures that the flight computer shares with the outside world,
 //! namely the ground station software, as well as common (de)serialization code.
 
-use heapless::{String, Vec};
+use heapless::Vec;
 
 #[cfg(target_os = "none")]
 use core::hash::Hasher;

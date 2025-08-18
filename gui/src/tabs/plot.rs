@@ -16,6 +16,7 @@ use telemetry::*;
 
 use crate::system_diagram_components::diagrams;
 use crate::settings::AppSettings;
+use crate::system_diagram_components::diagrams::hyacinth::HyacinthComponent;
 use crate::widgets::system_diagram::*;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
@@ -375,7 +376,7 @@ pub struct PlotTab {
 
 impl PlotTab {
     pub fn init(ctx: &egui::Context) -> Self {
-        SystemDiagram::init(ctx);
+        SystemDiagram::<HyacinthComponent>::init(ctx);
         Self {
             tile_tree: Self::tree_default(),
             show_view_settings: false,
@@ -420,7 +421,7 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let top_right = vec![/*tiles.insert_pane(WidgetPane::Acs), */tiles.insert_pane(WidgetPane::Hybrid), tiles.insert_pane(WidgetPane::Map)];
+        let top_right = vec![/*tiles.insert_pane(WidgetPane::Acs),*/ tiles.insert_pane(WidgetPane::Hybrid), tiles.insert_pane(WidgetPane::Map)];
 
         let right = vec![
             tiles.insert_horizontal_tile(top_right),
