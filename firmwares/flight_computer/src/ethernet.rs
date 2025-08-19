@@ -1,12 +1,12 @@
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 
 use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::peripherals::ETH;
 
-use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::StackResources;
+use embassy_net::udp::{PacketMetadata, UdpSocket};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
@@ -77,8 +77,8 @@ async fn run_socket(
                 socket.send_to(&serialized, remote_endpoint).await.unwrap();
             }
             Either::Second(res) => {
-                if let Ok((len, peer)) = res {
-                    let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..(len as usize)]) else {
+                if let Ok((len, _peer)) = res {
+                    let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..len]) else {
                         continue;
                     };
 

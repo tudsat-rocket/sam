@@ -3,6 +3,7 @@
 #![allow(dead_code)]
 #![allow(unused_mut)]
 
+use core::borrow::Borrow;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
 use core::net::SocketAddrV4;
@@ -11,12 +12,13 @@ use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::adc::AnyAdcChannel;
 use embassy_stm32::usb::Driver;
 use embassy_usb::UsbDevice;
+use flash_task::FlashOp;
 use rand::RngCore;
 
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_futures::join::join;
-use embassy_futures::select::select;
 use embassy_futures::select::Either;
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
@@ -38,10 +40,10 @@ use embassy_stm32::rcc::*;
 use embassy_stm32::rng::Rng;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::Channel;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::{Config, interrupt};
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embedded_io_async::Write;
@@ -50,17 +52,17 @@ use embedded_nal_async::TcpConnect;
 use embedded_can::Id;
 use embedded_can::StandardId;
 
-use embassy_net::tcp::client::TcpClient;
-use embassy_net::tcp::client::TcpClientState;
 use embassy_net::Ipv4Cidr;
 use embassy_net::StackResources;
+use embassy_net::tcp::client::TcpClient;
+use embassy_net::tcp::client::TcpClientState;
 
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
 use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::PacketStatus;
 use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::sx126x::{self, Sx1262, Sx126x};
+use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use lora_phy::{LoRa, RxMode};
 
 use static_cell::StaticCell;
@@ -71,9 +73,15 @@ use shared_types::Settings;
 pub mod drivers;
 pub mod ethernet;
 pub mod lora;
+pub mod storage;
+pub mod usb;
 pub mod vehicle;
 
+mod flash_task;
+// mod storage_new;
+
 use drivers::sensors::*;
+use storage::{Flash, FlashHandle, FlashType};
 
 bind_interrupts!(struct Irqs {
     FDCAN1_IT0 => embassy_stm32::can::IT0InterruptHandler<FDCAN1>;
@@ -128,17 +136,15 @@ pub struct Board {
     pub can2: Can<'static>,
     pub lora1: LoRa<LoraTransceiver, Delay>,
     pub lora2: LoRa<LoraTransceiver, Delay>,
-    pub usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>,
+    pub flash: FlashType,
+    pub flash_handle: FlashHandle,
+    pub usb_driver: Driver<'static, USB_OTG_FS>,
     pub ethernet: Ethernet<'static, ETH, GenericPhy>,
     pub rng: Rng<'static, RNG>,
     pub iwdg: IndependentWatchdog<'static, IWDG1>,
 }
 
 static USB_EP_OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_CONFIG_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_BOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_MSOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_CONTROL_BUFFER: StaticCell<[u8; 128]> = StaticCell::new();
 
 static SPI1_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
@@ -200,10 +206,12 @@ pub async fn init_board() -> (Board, Settings, u64) {
     config.rcc.apb4_pre = APBPrescaler::DIV2; // 100 Mhz
     config.rcc.voltage_scale = VoltageScale::Scale1;
     config.rcc.mux.fdcansel = embassy_stm32::rcc::mux::Fdcansel::HSE;
+    // usbsel clock was chosen by trial and error
+    config.rcc.mux.usbsel = embassy_stm32::rcc::mux::Usbsel::HSI48;
 
     let p = embassy_stm32::init(config);
 
-    //let (usb, usb_flash) = UsbHandle::init(p.USB_OTG_FS, p.PA12, p.PA11).await;
+    // let (usb, usb_flash) = UsbHandle::init(p.USB_OTG_FS, p.PA12, p.PA11).await;
 
     let mut spi1_config = embassy_stm32::spi::Config::default();
     spi1_config.frequency = Hertz::mhz(10);
@@ -321,7 +329,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
 
     let mut config = embassy_stm32::usb::Config::default();
     config.vbus_detection = true;
-    let driver = embassy_stm32::usb::Driver::new_fs(
+    let usb_driver = embassy_stm32::usb::Driver::new_fs(
         p.USB_OTG_FS,
         Irqs,
         p.PA12,
@@ -329,38 +337,40 @@ pub async fn init_board() -> (Board, Settings, u64) {
         USB_EP_OUT_BUFFER.init([0; 256]),
         config,
     );
-
-    let mut config = embassy_usb::Config::new(0x0483, 0x5740);
-    config.manufacturer = Some("TUDSaT");
-    config.product = Some("Sting FC"); // TODO
-    config.serial_number = Some("12345678"); // TODO
-    config.device_class = 0xEF;
-    config.device_sub_class = 0x02;
-    config.device_protocol = 0x01;
-    config.composite_with_iads = true;
-
-    let mut builder = embassy_usb::Builder::new(
-        driver,
-        config,
-        USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_CONTROL_BUFFER.init([0; 128]),
-    );
-    let usb = builder.build();
-    //let usb_class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
+    //
+    // let mut config = embassy_usb::Config::new(0x0483, 0x5740);
+    // config.manufacturer = Some("TUDSaT");
+    // config.product = Some("Sting FC"); // TODO
+    // config.serial_number = Some("12345678"); // TODO
+    // config.device_class = 0xEF;
+    // config.device_sub_class = 0x02;
+    // config.device_protocol = 0x01;
+    // config.composite_with_iads = true;
+    //
+    // let mut builder = embassy_usb::Builder::new(
+    //     driver,
+    //     config,
+    //     USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_CONTROL_BUFFER.init([0; 128]),
+    // );
+    // let usb = builder.build();
+    // let usb_class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
 
     //// SPI 3
-    //let mut spi3_config = embassy_stm32::spi::Config::default();
-    //spi3_config.frequency = Hertz::mhz(20);
-    //let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
-    //let spi3 = Mutex::<CriticalSectionRawMutex, _>::new(spi3);
-    //let spi3 = SPI3_SHARED.init(spi3);
+    let mut spi3_config = embassy_stm32::spi::Config::default();
+    spi3_config.frequency = Hertz::mhz(20);
+    let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
+    let spi3 = Mutex::<CriticalSectionRawMutex, _>::new(spi3);
+    let spi3 = SPI3_SHARED.init(spi3);
 
-    //let spi3_cs_flash = Output::new(p.PD2, Level::High, Speed::VeryHigh);
-    //#[cfg(not(feature = "gcs"))]
-    //let (flash, flash_handle, settings) =
-    //    Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
+    use storage::{Flash, FlashHandle};
+
+    let spi3_cs_flash = Output::new(p.PD6, Level::High, Speed::VeryHigh);
+    #[cfg(not(feature = "gcs"))]
+    let (flash, flash_handle, settings) =
+        Flash::init(SpiDevice::new(spi3, spi3_cs_flash)).await.map_err(|_e| ()).unwrap();
 
     //// Initialize GPS
     //#[cfg(not(feature = "gcs"))]
@@ -435,11 +445,13 @@ pub async fn init_board() -> (Board, Settings, u64) {
         lora2,
         can1,
         can2,
-        usb,
+        flash,
+        flash_handle,
+        usb_driver,
         ethernet,
         rng,
         iwdg,
     };
 
-    (board, Settings::default(), seed)
+    (board, settings, seed)
 }

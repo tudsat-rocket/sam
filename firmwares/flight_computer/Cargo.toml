@@ -33,6 +33,7 @@ embedded-hal-async = "1.0"
 embedded-can = "0.4.1"
 embedded-nal-async = "0.8.0"
 embedded-io-async = "0.6.1"
+embedded-storage-async = "0.4.1"
 
 cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7"
@@ -59,6 +60,7 @@ nalgebra = { version = "0.32", default-features = false, features = ["macros", "
 siphasher = { version = "0.3", default-features = false }
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
+bitflags = "2.9.1"
 
 shared_types = { path = "../../shared_types" }
 state_estimator = { path = "../../state_estimator" }

@@ -4,6 +4,7 @@ use core::convert::Infallible;
 use core::num::Wrapping;
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use embassy_futures::join::{join_array, join3, join5};
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
@@ -23,14 +24,14 @@ use shared_types::{
 };
 use state_estimator::StateEstimator;
 use telemetry::{
-    AccelerometerId, BarometerId, BatteryId, GyroscopeId, MagnetometerId, Metric, MetricSource, PressureSensorId,
-    Representation, TelemetryMessageWriter, TemperatureSensorId, FLASH_SCHEMA, LORA_SCHEMA, USB_SCHEMA,
+    AccelerometerId, BarometerId, BatteryId, FLASH_SCHEMA, GyroscopeId, LORA_SCHEMA, MagnetometerId, Metric,
+    MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA,
 };
 
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
+use crate::storage::*;
 use crate::{BoardOutputs, BoardSensors};
-//use crate::flash::*;
 //use crate::lora::*;
 //use crate::usb::*;
 //use crate::{can::*, BoardOutputs, BoardSensors};
@@ -49,7 +50,10 @@ pub struct Vehicle {
     can1: ((), ()),
     can2: ((), ()),
 
-    usb: ((), ()),
+    usb: (
+        Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+        Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
+    ),
     eth: (
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -65,7 +69,7 @@ pub struct Vehicle {
 
     //usb: UsbHandle,
     //radio: RadioHandle,
-    //flash: FlashHandle,
+    flash: FlashHandle,
     //can: CanHandle,
 }
 
@@ -81,12 +85,16 @@ pub async fn run(mut vehicle: Vehicle, mut iwdg: IndependentWatchdog<'static, IW
 }
 
 impl Vehicle {
+    #[allow(clippy::too_many_arguments)]
     pub fn init(
         mut sensors: BoardSensors,
         outputs: BoardOutputs,
         can1: ((), ()),
         can2: ((), ()),
-        usb: ((), ()),
+        usb: (
+            Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+            Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
+        ),
         eth: (
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -97,7 +105,7 @@ impl Vehicle {
         ),
         //gps: GPSHandle,
         ////power: Power,
-        //flash: FlashHandle,
+        flash: FlashHandle,
         //mut buzzer: Buzzer,
         settings: Settings,
     ) -> Self {
@@ -125,7 +133,7 @@ impl Vehicle {
 
             //gps,
             //power,
-            //flash,
+            flash,
             loop_runtime: 0.0,
         }
     }
@@ -135,15 +143,19 @@ impl Vehicle {
 
         // Query core sensors
         // TODO: should we separate these into separate tasks?
-        self.sensors.imu1.tick().await;
-        self.sensors.imu2.tick().await;
-        self.sensors.imu3.tick().await;
-        self.sensors.highg.tick().await;
-        self.sensors.mag.tick().await;
-        self.sensors.baro1.tick().await;
-        self.sensors.baro2.tick().await;
-        self.sensors.baro3.tick().await;
-        //self.power.tick();
+        // TODO: test and decide on correct future joining
+
+        join5(
+            self.sensors.imu1.tick(),
+            self.sensors.imu2.tick(),
+            self.sensors.imu3.tick(),
+            self.sensors.highg.tick(),
+            self.sensors.mag.tick(),
+        )
+        .await;
+
+        join3(self.sensors.baro1.tick(), self.sensors.baro2.tick(), self.sensors.baro3.tick()).await;
+        // self.power.tick();
 
         // Update state estimator
         // TODO: incorporate new sensors
@@ -158,9 +170,8 @@ impl Vehicle {
             //self.sensors.gps.new_datum(),
             None,
         );
-
         // Switch to new mode if necessary
-        //let arm_voltage = self.power.arm_voltage().unwrap_or(0);
+        // let arm_voltage = self.power.arm_voltage().unwrap_or(0);
         let arm_voltage = 0;
         if let Some(fm) = self.state_estimator.new_mode(arm_voltage) {
             self.switch_mode(fm);
@@ -190,13 +201,14 @@ impl Vehicle {
         //self.buzzer.tick(self.time.0, self.power.battery_status());
         //self.buzzer.tick(self.time.0);
 
-        self.transmit_and_store();
+        self.transmit_and_store().await;
 
         // Increase time for next iteration
         self.time += 1_000 / MAIN_LOOP_FREQUENCY.0;
 
         // get CPU usage
         self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
+        // defmt::info!("loop_runtime: {}", self.loop_runtime);
     }
 
     fn receive(&mut self) {
@@ -248,20 +260,30 @@ impl Vehicle {
         }
     }
 
-    fn transmit_and_store(&mut self) {
+    async fn transmit_and_store(&mut self) {
         let usb_msg =
             USB_SCHEMA.message(self, self.time.0).map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
         let lora_msg =
             LORA_SCHEMA.message(self, self.time.0).map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
-        let _flash_msg = FLASH_SCHEMA
+        let flash_msg = FLASH_SCHEMA
             .message(self, self.time.0)
             .map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
-        // Send telemetry via USB
+        // Send telemetry via Ethernet
+        if let Some(ref msg) = usb_msg {
+            let _ = self.eth.0.try_send(msg.clone());
+        }
+
+        // Send telemetry via Usb
+
         if let Some(msg) = usb_msg {
-            let _ = self.eth.0.try_send(msg);
+            let _res = self.usb.0.try_send(msg);
+            // match res {
+            //     Ok(_) => defmt::info!("usb telemetry send successful"),
+            //     Err(_) => defmt::info!("usb telemetry send failed"),
+            // }
         }
 
         // Send telemetry via Lora
@@ -269,13 +291,13 @@ impl Vehicle {
             let _ = self.lora.0.try_send(msg);
         }
 
-        //// Store data in flash
-        //self.flash.tick().await;
-        //if self.mode >= FlightMode::ArmedLaunchImminent {
-        //    if let Some(msg) = self.next_flash_telem() {
-        //        let _ = self.flash.write_message(msg);
-        //    }
-        //}
+        // Store data in flash
+        self.flash.tick().await;
+        if self.mode >= FlightMode::ArmedLaunchImminent {
+            if let Some(msg) = flash_msg {
+                let _ = self.flash.write_message(msg);
+            }
+        }
 
         //// Broadcast telemetry to payloads
         //self.broadcast_can_telemetry();

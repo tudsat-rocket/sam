@@ -747,6 +747,7 @@ dependencies = [
 name = "flight_computer_firmware"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.9.1",
  "cortex-m",
  "cortex-m-rt",
  "crc",
@@ -766,6 +767,7 @@ dependencies = [
  "embedded-hal-async",
  "embedded-io-async",
  "embedded-nal-async",
+ "embedded-storage-async",
  "heapless 0.8.0",
  "lora-phy",
  "nalgebra",
