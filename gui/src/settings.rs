@@ -5,13 +5,25 @@ use serde::{Deserialize, Serialize};
 
 use shared_types::settings::LoRaSettings;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub mapbox_access_token: String,
     pub lora: LoRaSettings,
     pub tile_presets: Option<HashMap<String, egui_tiles::Tiles<crate::tabs::plot::WidgetPane>>>,
     pub lora_bookmarks: Option<Vec<LoRaSettings>>,
     pub ground_station_position: Option<(f64, f64)>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            mapbox_access_token: String::default(),
+            lora: LoRaSettings::default(),
+            tile_presets: None,
+            lora_bookmarks: None,
+            ground_station_position: Some((39.394602516358944, -8.292601298676217)),
+        }
+    }
 }
 
 impl AppSettings {

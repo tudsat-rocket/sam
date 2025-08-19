@@ -196,11 +196,6 @@ impl Vehicle {
 
         //// Send valve commands via CAN bus
         //self.transmit_output_commands();
-
-        // Update buzzer
-        //self.buzzer.tick(self.time.0, self.power.battery_status());
-        //self.buzzer.tick(self.time.0);
-
         self.transmit_and_store().await;
 
         // Increase time for next iteration
@@ -315,7 +310,7 @@ impl Vehicle {
         }
 
         self.mode = new_mode;
-        //self.buzzer.switch_mode(self.time.0, new_mode);
+        crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
     }
 }
 
