@@ -6,7 +6,7 @@ authors = [
     "Felix Wiegand <felix-wiegand@protonmail.ch>"
 ]
 edition = "2024"
-default-run = "rocket"
+default-run = "recovery_test"
 
 [workspace]
 
@@ -21,6 +21,10 @@ path = "src/bin/gcs.rs"
 [[bin]]
 name = "selftest"
 path = "src/bin/selftest.rs"
+
+[[bin]]
+name = "recovery_test"
+path = "src/bin/recovery_test.rs"
 
 [dependencies]
 defmt = "0.3"

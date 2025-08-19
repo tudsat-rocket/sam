@@ -23,8 +23,8 @@ use shared_types::{
 };
 use state_estimator::StateEstimator;
 use telemetry::{
-    AccelerometerId, BarometerId, BatteryId, GyroscopeId, MagnetometerId, Metric, MetricSource, PressureSensorId,
-    Representation, TelemetryMessageWriter, TemperatureSensorId, FLASH_SCHEMA, LORA_SCHEMA, USB_SCHEMA,
+    AccelerometerId, BarometerId, BatteryId, FLASH_SCHEMA, GyroscopeId, LORA_SCHEMA, MagnetometerId, Metric,
+    MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA,
 };
 
 //use crate::buzzer::Buzzer as BuzzerDriver;
@@ -168,7 +168,7 @@ impl Vehicle {
 
         self.receive();
 
-        self.outputs.recovery_high.set_level((self.mode >= FlightMode::Armed).into());
+        self.outputs.recovery_voltage_toggle.set_level((self.mode >= FlightMode::Armed).into());
 
         let elapsed = self.state_estimator.time_in_mode();
         let drogue_high =

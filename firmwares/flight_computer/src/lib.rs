@@ -15,8 +15,8 @@ use rand::RngCore;
 
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_futures::join::join;
-use embassy_futures::select::select;
 use embassy_futures::select::Either;
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::Timer;
@@ -38,10 +38,10 @@ use embassy_stm32::rcc::*;
 use embassy_stm32::rng::Rng;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::Channel;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::{Config, interrupt};
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embedded_io_async::Write;
@@ -50,17 +50,17 @@ use embedded_nal_async::TcpConnect;
 use embedded_can::Id;
 use embedded_can::StandardId;
 
-use embassy_net::tcp::client::TcpClient;
-use embassy_net::tcp::client::TcpClientState;
 use embassy_net::Ipv4Cidr;
 use embassy_net::StackResources;
+use embassy_net::tcp::client::TcpClient;
+use embassy_net::tcp::client::TcpClientState;
 
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
 use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::PacketStatus;
 use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::sx126x::{self, Sx1262, Sx126x};
+use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use lora_phy::{LoRa, RxMode};
 
 use static_cell::StaticCell;
@@ -102,7 +102,7 @@ pub struct BoardSensors {
 
 pub struct BoardOutputs {
     pub leds: (Output<'static>, Output<'static>, Output<'static>),
-    pub recovery_high: Output<'static>,
+    pub recovery_voltage_toggle: Output<'static>,
     pub recovery_lows: (Output<'static>, Output<'static>, Output<'static>, Output<'static>),
     pub continuity_check: Output<'static>,
 }
@@ -128,7 +128,7 @@ pub struct Board {
     pub can2: Can<'static>,
     pub lora1: LoRa<LoraTransceiver, Delay>,
     pub lora2: LoRa<LoraTransceiver, Delay>,
-    pub usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>,
+    // pub usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>,
     pub ethernet: Ethernet<'static, ETH, GenericPhy>,
     pub rng: Rng<'static, RNG>,
     pub iwdg: IndependentWatchdog<'static, IWDG1>,
@@ -308,8 +308,8 @@ pub async fn init_board() -> (Board, Settings, u64) {
         mac_addr,
     );
 
-    let mut led_red = Output::new(p.PA8, Level::Low, Speed::Low);
-    let mut led_yellow = Output::new(p.PA10, Level::Low, Speed::Low);
+    let mut led_red = Output::new(p.PA8, Level::High, Speed::Low);
+    let mut led_yellow = Output::new(p.PA10, Level::High, Speed::Low);
     let mut led_green = Output::new(p.PA15, Level::Low, Speed::Low);
     let leds = (led_red, led_yellow, led_green);
 
@@ -319,35 +319,36 @@ pub async fn init_board() -> (Board, Settings, u64) {
     // appropriately
     let iwdg = IndependentWatchdog::new(p.IWDG1, 512_000); // 512ms timeout
 
-    let mut config = embassy_stm32::usb::Config::default();
-    config.vbus_detection = true;
-    let driver = embassy_stm32::usb::Driver::new_fs(
-        p.USB_OTG_FS,
-        Irqs,
-        p.PA12,
-        p.PA11,
-        USB_EP_OUT_BUFFER.init([0; 256]),
-        config,
-    );
+    // let mut config = embassy_stm32::usb::Config::default();
+    // config.vbus_detection = true;
+    // let driver = embassy_stm32::usb::Driver::new_fs(
+    //     p.USB_OTG_FS,
+    //     Irqs,
+    //     p.PA12,
+    //     p.PA11,
+    //     USB_EP_OUT_BUFFER.init([0; 256]),
+    //     config,
+    // );
+    //
+    // let mut config = embassy_usb::Config::new(0x0483, 0x5740);
+    // config.manufacturer = Some("TUDSaT");
+    // config.product = Some("Sting FC"); // TODO
+    // config.serial_number = Some("12345678"); // TODO
+    // config.device_class = 0xEF;
+    // config.device_sub_class = 0x02;
+    // config.device_protocol = 0x01;
+    // config.composite_with_iads = true;
+    //
+    // let mut builder = embassy_usb::Builder::new(
+    //     driver,
+    //     config,
+    //     USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_CONTROL_BUFFER.init([0; 128]),
+    // );
+    // let usb = builder.build();
 
-    let mut config = embassy_usb::Config::new(0x0483, 0x5740);
-    config.manufacturer = Some("TUDSaT");
-    config.product = Some("Sting FC"); // TODO
-    config.serial_number = Some("12345678"); // TODO
-    config.device_class = 0xEF;
-    config.device_sub_class = 0x02;
-    config.device_protocol = 0x01;
-    config.composite_with_iads = true;
-
-    let mut builder = embassy_usb::Builder::new(
-        driver,
-        config,
-        USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_CONTROL_BUFFER.init([0; 128]),
-    );
-    let usb = builder.build();
     //let usb_class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
 
     //// SPI 3
@@ -381,10 +382,13 @@ pub async fn init_board() -> (Board, Settings, u64) {
     //    Buzzer::init(pwm, Channel::Ch3, gpiob_block, 10)
     //};
 
-    let recovery_high = Output::new(p.PE13, Level::Low, Speed::Low);
+    // Toggle pin for recovery
+    let recovery_voltage_toggle = Output::new(p.PE13, Level::Low, Speed::Low);
     let recovery_lows = (
+        // Recovery1
         Output::new(p.PC9, Level::Low, Speed::Low),
         Output::new(p.PC8, Level::Low, Speed::Low),
+        // Recovery3
         Output::new(p.PC7, Level::Low, Speed::Low),
         Output::new(p.PC6, Level::Low, Speed::Low),
     );
@@ -415,7 +419,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
         },
         outputs: BoardOutputs {
             leds,
-            recovery_high,
+            recovery_voltage_toggle,
             recovery_lows,
             continuity_check,
         },
@@ -435,7 +439,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
         lora2,
         can1,
         can2,
-        usb,
+        // usb,
         ethernet,
         rng,
         iwdg,
