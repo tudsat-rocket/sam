@@ -108,17 +108,18 @@ async fn main(low_priority_spawner: Spawner) {
 
 #[embassy_executor::task]
 async fn run_recovery_test(mut outputs: BoardOutputs) -> ! {
+    // arm recovery
     outputs.recovery_voltage_toggle.set_high();
-    loop {
-        embassy_time::Timer::after(Duration::from_secs(2)).await;
-        outputs.recovery_lows.2.set_high();
-        outputs.leds.0.set_low();
-        defmt::info!("recovery high");
-        embassy_time::Timer::after(Duration::from_secs(2)).await;
-        outputs.recovery_lows.2.set_low();
-        outputs.leds.0.set_high();
-        defmt::info!("recovery low");
-    }
+
+    embassy_time::Timer::after(Duration::from_secs(5)).await;
+    outputs.recovery_lows.2.set_high();
+    outputs.leds.0.set_low();
+    defmt::info!("recovery high");
+    embassy_time::Timer::after(Duration::from_secs(12)).await;
+    outputs.recovery_lows.2.set_low();
+    outputs.leds.0.set_high();
+    defmt::info!("recovery low");
+    loop {}
 }
 
 #[embassy_executor::task]
