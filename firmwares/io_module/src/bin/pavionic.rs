@@ -1,27 +1,35 @@
 #![no_std]
 #![no_main]
 
-use embassy_executor::Spawner;
+use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::adc::Adc;
+use embassy_stm32::adc::Instance;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
-use embassy_stm32::i2c::I2c;
-use embassy_stm32::{can, interrupt};
+use embassy_stm32::i2c::{I2c, Master};
+use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
-use embassy_stm32::rcc::*;
+use embassy_stm32::mode::Async;
+use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
+use embassy_stm32::usart::Uart;
+use embassy_stm32::rcc::*;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_sync::pubsub::{PubSubChannel};
-use embassy_time::{Duration};
-use shared_types::{CanBusMessage, CanBusMessageId, FinBoardDataMessage, IoBoardRole, IoBoardSensorMessage};
+use embassy_stm32::{Config, Peri, gpio};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
+use embassy_time::{Delay, Duration, Ticker, Timer};
+use shared_types::IoBoardRole;
+use static_cell::StaticCell;
 
 use {defmt_rtt as _, panic_probe as _};
 
-use io_module_firmware::can::{configure, spawn, CAN_OUT, CAN_IN};
-use io_module_firmware::common::{run_i2c_sensors, run_leds, run_output_control_via_can};
+use io_module_firmware::can::{configure, spawn, CAN_IN, CAN_OUT};
 use io_module_firmware::OUTPUT_STATE;
+use io_module_firmware::common::{run_i2c_sensors, run_leds, run_output_control_via_can, run_can_to_uart, run_uart_to_can};
 
-const ROLE_ID: IoBoardRole = IoBoardRole::Recovery;
-const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 1, 0];
+const ROLE_ID: IoBoardRole = IoBoardRole::Payload; //TODO change in sam::shared_types to Pavionic
+const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
+
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -56,27 +64,24 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Running as role {:?}", defmt::Debug2Format(&ROLE_ID));
 
+    
     //configure p.watchdog and p.pins
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
     iwdg.unleash();
-    spawner.spawn(io_module_firmware::run_iwdg(iwdg)).err();
 
     let mut adc = Adc::new(p.ADC1);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::CYCLES239_5);
-
 
     let led_red = Output::new(p.PC7, Level::Low, Speed::Low);
     let led_yellow = Output::new(p.PC8, Level::Low, Speed::Low);
     let led_green = Output::new(p.PC9, Level::Low, Speed::Low);
     let leds = (led_red, led_yellow, led_green);
 
-    let mut i2c_config = embassy_stm32::i2c::Config::default();
-    i2c_config.timeout = Duration::from_millis(10);
-    let i2c_freq = Hertz::khz(100);
-
-    let input0 = I2c::new(p.I2C1, p.PB6, p.PB7, io_module_firmware::Irqs, p.DMA1_CH6, p.DMA1_CH7, i2c_freq, i2c_config);
-    let input1 =
-        I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_freq, i2c_config);
+    //input0 = UART
+    let uart_config = embassy_stm32::usart::Config::default();
+    let input0 = Uart::new(p.USART1, p.PB7, p.PB6, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, uart_config);
+    let (uart_tx, uart_rx) = input0.unwrap().split();
+    //maybe e.g. input1 = i2c ...
 
 
     //configure CANs
@@ -90,40 +95,29 @@ async fn main(spawner: Spawner) {
     io_module_firmware::can::configure(&mut can2, ROLE_ID);
 
 
+    // Start high priority executor
     interrupt::SPI2.set_priority(Priority::P6);
     let high_priority_spawner = io_module_firmware::EXECUTOR_HIGH.start(interrupt::SPI2);
 
-    // Control output state based on received commands, with optional
+    // Receive CAN message and forward it via UART
     // failsafe behaviour if connection to FC is lost.
-    high_priority_spawner
-        .spawn(run_output_control_via_can(
-            can_in.subscriber().unwrap(),
-            output_state.publisher().unwrap(),
-            ROLE_ID,
-            None,
-        ))
-        .unwrap();
+    high_priority_spawner.spawn(run_can_to_uart(can_in.subscriber().unwrap(), uart_tx)).unwrap();
+    
+    //Receive UART-data and forward it via CAN //TODO "spawner" right? and why spawner instead of high_priority_spawner?
+    spawner.spawn(run_uart_to_can(can_out.publisher().unwrap(), uart_rx)).unwrap();
 
-    // Run output based on published output state (HC_OUTS) //TODO apparently not needed
-    /*high_priority_spawner
-    .spawn(run_outputs(
-        (Output::new(p.PC7, Level::Low, Speed::Low), Output::new(p.PC6, Level::Low, Speed::Low)),
-        (Output::new(p.PC9, Level::Low, Speed::Low), Output::new(p.PC8, Level::Low, Speed::Low)),
-        (Output::new(p.PB8, Level::Low, Speed::Low), Output::new(p.PB9, Level::Low, Speed::Low)),
-        (Output::new(p.PA0, Level::Low, Speed::Low), Output::new(p.PA1, Level::Low, Speed::Low)),
-        output_state.subscriber().unwrap(),
-    ))
-    .unwrap();*/
 
     // Run CAN bus, publishing received messages on can_in and transmitting messages
-    // published on can_out.
+    // published on can_out. //TODO does pavionic need this?
     io_module_firmware::can::spawn(can1, spawner, can_in.publisher().unwrap(), can_out.subscriber().unwrap()).await;
 
+    // Run the independent watchdog TODO what does an independent watchdog do?
+    spawner.spawn(io_module_firmware::run_iwdg(iwdg)).unwrap();
 
     // Every IO board occasionally reports its temperature, drive voltage and current
     //TODO currently deactivated because of CAN error
     /*
-    spawner //TODO change pins
+    spawner //TODO change pins;
         .spawn(io_module_firmware::common::run_power_report(
             can_out.publisher().unwrap(),
             adc,
@@ -133,23 +127,11 @@ async fn main(spawner: Spawner) {
             p.PC4.into(),
             ROLE_ID,
             io_module_firmware::DriveVoltage::Battery,
-        )).unwrap();
-
-
-    // Allow role to spawn its own tasks
-    // Run I2C ADC inputs on COM1 & COM3, with 2 sensors on each.
-    spawner
-        .spawn(run_i2c_sensors(
-            Some(input0),
-            Some(input1),
-            None, //Some((p0, p1)),
-            can_out.publisher().unwrap(),
-            ROLE_ID,
-            Duration::from_hz(i2c_freq.0 as u64),
         ))
         .unwrap();
-    */
+     */
 
+    
     // Set the LEDs based on the output state.
     let led_output_state_sub = output_state.subscriber().unwrap();
     spawner.spawn(run_leds(leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();

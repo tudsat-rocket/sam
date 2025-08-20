@@ -6,8 +6,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use shared_types::{CanBusMessageId, IoBoardRole};
+use shared_types::IoBoardRole::Recovery;
 use static_cell::StaticCell;
-use crate::roles::BoardRole;
 
 pub const CAN_QUEUE_SIZE: usize = 5; // TODO
 pub const NUM_CAN_SUBSCRIBERS: usize = 3; // TODO
@@ -15,7 +15,7 @@ pub const NUM_CAN_PUBLISHERS: usize = 5; // TODO
 
 pub type CanFrame = (u16, [u8; 8]);
 pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper =
+pub type CanInSubscriper = //TODO change spelling
     Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
 pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
@@ -54,15 +54,12 @@ async fn run_tx(
 ) -> ! {
     loop {
         let (address, data) = subscriber.next_message_pure().await;
-        let Some(sid) = StandardId::new(address) else {
-            continue;
+        if let Some(sid) = StandardId::new(address) {
+            // TODO: (embassy upgrade) handle error
+            if let Ok(frame) = Frame::new_data(sid, &data) {
+                let _status: embassy_stm32::can::TransmitStatus = can_tx.write(&frame).await;
+            }
         };
-
-        // TODO: (embassy upgrade) handle error
-        if let Ok(frame) = Frame::new_data(sid, &data) {
-            can_tx.write(&frame).await;
-            can_tx.flush_all().await;
-        }
     }
 }
 

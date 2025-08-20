@@ -1,17 +1,21 @@
+use defmt::{error, Debug2Format};
+use embassy_futures::join::join;
 use embassy_stm32::Peri;
 use embassy_stm32::adc::Adc;
-use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::i2c::{I2c, Master};
 use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
+use embassy_stm32::usart::{UartRx, UartTx};
 use embassy_time::Ticker;
 use embassy_time::{Duration, with_timeout};
 use embedded_hal::digital::OutputPin;
 
+use {defmt_rtt as _, panic_probe as _};
 use shared_types::*;
 
 use crate::{CanInSubscriper, DriveVoltage, OutputStatePublisher, OutputStateSubscriber};
+
 
 async fn receive_output_message(
     subscriber: &mut crate::CanInSubscriper,
@@ -110,9 +114,6 @@ async fn read_i2c_amp_value<I2C: embedded_hal_async::i2c::I2c>(
 
 #[embassy_executor::task]
 pub async fn run_i2c_sensors(
-    // mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
-    // mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
-    // mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
     mut input1_i2c: Option<I2c<'static, Async, Master>>,
     mut input3_i2c: Option<I2c<'static, Async, Master>>,
     mut input3_gpio: Option<(Input<'static>, Input<'static>)>,
@@ -263,5 +264,45 @@ pub async fn run_leds(
 
         i = (i + 1) % id_pattern.len();
         ticker.next().await;
+    }
+}
+
+
+#[embassy_executor::task]
+pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, Async>) -> ! {
+    const UART_TO_CAN_TELEMETRY_FREQUENCY_HZ: u64 = 1;
+    let message_id: u16 = CanBusMessageId::IoBoardInput(IoBoardRole::Payload, 0).into();
+
+    // TODO: convince swiss to stick to 8-byte messages?
+    let mut ticker_interval = Ticker::every(Duration::from_hz(UART_TO_CAN_TELEMETRY_FREQUENCY_HZ));
+    let mut buffer: [u8; 8] = [0x00; 8];
+    loop {
+        // This effectively limits us to the ticker frequency.
+        match join(uart_rx.read(&mut buffer), ticker_interval.next()).await {
+            (Ok(()), _) => {
+                publisher.publish_immediate((message_id, buffer));
+            }
+            (Err(e), _) => {
+                error!("Failed to read payload telemetry message from UART: {:?}", Debug2Format(&e));
+            }
+        }
+    }
+}
+
+
+#[embassy_executor::task]
+pub async fn run_can_to_uart(
+    mut subscriber: crate::CanInSubscriper,
+    mut uart_tx: UartTx<'static, embassy_stm32::mode::Async>,
+) -> ! {
+    loop {
+        // These messages are relayed byte-for-byte, including CRC, so we never
+        // have to parse them.
+        let (sid, data) = subscriber.next_message_pure().await;
+        if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
+            if let Err(e) = uart_tx.write(&data).await {
+                error!("Failed to write message to UART: {:?}", Debug2Format(&e));
+            }
+        }
     }
 }
