@@ -468,4 +468,14 @@ impl Backend {
             Self::Simulation(b) => b.status_bar_ui(ui),
         }
     }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Backend::Serial(_) => "Serial",
+            Backend::Udp(_) => "Udp",
+            Backend::Noop(_) => "Noop",
+            Backend::Log(_) => "Log",
+            Backend::Simulation(_) => "Simulation",
+        }
+    }
 }

@@ -217,6 +217,8 @@ impl Sam {
                 ui.separator();
 
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.label(format!("Current Backend: {}", self.backend().name()));
+                    ui.separator();
                     self.backend_mut().status_bar_ui(ui);
                 })
             });
