@@ -67,11 +67,6 @@ async fn main(low_priority_spawner: Spawner) {
     // let (usb_downlink, usb_uplink) = ((), ());
     let (usb_downlink, usb_uplink) = fw::usb::start(board.usb_driver, low_priority_spawner);
     let (eth_downlink, eth_uplink) = fw::ethernet::start(board.ethernet, low_priority_spawner, seed);
-    // TODO: medium priority
-    let lora_downlink =
-        fw::lora::start_rocket_downlink(board.lora1, settings.lora.clone(), low_priority_spawner.make_send());
-    let lora_uplink =
-        fw::lora::start_rocket_uplink(board.lora2, settings.lora.clone(), low_priority_spawner.make_send());
 
     let vehicle = Vehicle::init(
         board.sensors,
