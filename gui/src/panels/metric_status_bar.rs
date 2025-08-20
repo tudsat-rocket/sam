@@ -77,7 +77,7 @@ impl MetricStatusBar {
         return Metric::VARIANTS[d1 as usize].cmp(Metric::VARIANTS[d2 as usize]);
     }
 
-    pub fn show(ctx: &egui::Context, backend: &Backend, frontend: &mut Frontend, active_constraint_mask: &mut Vec<ConstraintResult>) {
+    pub fn show(ctx: &egui::Context, backend: &mut Backend, frontend: &mut Frontend, active_constraint_mask: &mut Vec<ConstraintResult>) {
         let theme = &ThemeColors::new(ctx);
         let num_metrics_to_display = frontend.metric_monitor().pinned_metrics().len() + Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask).keys().count();
         let has_open_popups = frontend.popup_manager().has_any_open_popup(&METRIC_MONITOR_FILTER_BUTTON_ID);
@@ -90,7 +90,7 @@ impl MetricStatusBar {
                 dropdown_response = ui.add(Button::image(Image::new(IMG_FILTER).tint(theme.foreground_weak)).small())
             });
             TriggerBuilder::new(METRIC_MONITOR_FILTER_BUTTON_ID.clone(), dropdown_response.interact_rect)
-            .add::<DropdownMenu, _>(dropdown_response.interact_rect.right_top(), |ui, _frontend| {
+            .add::<DropdownMenu, _>(dropdown_response.interact_rect.right_top(), |ui, _frontend, _backend| {
                 let mut i = 0;
                 let mut response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
                 for constraint_result in ConstraintResult::iter() {
@@ -105,7 +105,7 @@ impl MetricStatusBar {
                     i += 1;
                 };
                 return response;
-            }).show_active(ui, frontend);
+            }).show_active(ui, frontend, backend);
             ui.separator();
             egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
                 for metric in frontend.metric_monitor().pinned_metrics() {

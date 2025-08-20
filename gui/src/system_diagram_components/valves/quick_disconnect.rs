@@ -29,8 +29,8 @@ const OPEN_POSITIONS: [Point2<f32>; 14] = [
 pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: &ThemeColors) {
     let stroke = egui::Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
     let mut positions =  match state {
-        ValveState::Connected(_) => CLOSED_POSITIONS.as_slice(),
-        ValveState::Disconnected => OPEN_POSITIONS.as_slice(),
+        ValveState::Open => OPEN_POSITIONS.as_slice(),
+        ValveState::Closed => CLOSED_POSITIONS.as_slice(),
     }.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     painter.line(positions.split_off(positions.len() - 3), stroke);
     painter.line(positions.split_off(positions.len() - 3), stroke);

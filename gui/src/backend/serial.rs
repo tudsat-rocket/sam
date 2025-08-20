@@ -445,6 +445,10 @@ impl BackendVariant for SerialBackend {
         &self.data_store
     }
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
+    }
+
     fn fc_settings(&mut self) -> Option<&Settings> {
         self.fc_settings.as_ref()
     }

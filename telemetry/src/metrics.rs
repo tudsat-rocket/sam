@@ -155,6 +155,15 @@ pub enum Metric {
     TrueDrag(Dim),
     TrueThrust(Dim),
     ApogeeError,
+
+    //These Metrics are only used by SAM, e.g., for visualization and constraint purposes
+    LocalMetric(LocalMetric)
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum LocalMetric {
+    MaxPressureN2Tank,
 }
 
 #[cfg(not(target_os = "none"))]

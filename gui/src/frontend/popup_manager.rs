@@ -2,7 +2,7 @@ use std::{marker::PhantomData, time::{Duration, Instant}};
 
 use egui::{Id, Pos2, Rect, Response, Sense, Ui, Vec2};
 
-use crate::{frontend::Frontend, system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMMA_MUL_ON_SELECTED, TOOLTIP_DURATION}, widgets::system_diagram::Flatten};
+use crate::{backend::Backend, frontend::Frontend, system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMMA_MUL_ON_SELECTED, TOOLTIP_DURATION}, widgets::system_diagram::Flatten};
 
 #[derive(Clone, Copy)]
 struct ActivePopup {
@@ -80,7 +80,7 @@ impl NotEqual<DropdownMenu> for Tooltip {}
 impl NotEqual<DropdownMenu> for ContextMenu {}
 
 pub trait PopupList: Sized {
-    fn show_if_active(self, response: Response, trigger_id: Id, ui: &mut Ui, frontend: &mut Frontend);
+    fn show_if_active(self, response: Response, trigger_id: Id, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend);
     fn add<P : DisplayablePopup>(self, popup: P) -> (P, Self) 
     {
         return (popup, self);
@@ -88,7 +88,7 @@ pub trait PopupList: Sized {
 }
 
 impl PopupList for () {
-    fn show_if_active(self, _response: Response, _trigger_id: Id, _ui: &mut Ui, _frontend: &mut Frontend) {}
+    fn show_if_active(self, _response: Response, _trigger_id: Id, _ui: &mut Ui, _frontend: &mut Frontend, _backend: &mut Backend) {}
 }
 
 impl<H, T> PopupList for (H, T)
@@ -96,9 +96,9 @@ where
     H: DisplayablePopup,
     T: PopupList,
 {
-    fn show_if_active(self, response: Response, trigger_id: Id, ui: &mut Ui, frontend: &mut Frontend) {
-        NewPopupTrigger::new(self.0, &response, &trigger_id).show_if_active(ui, frontend);
-        self.1.show_if_active(response, trigger_id, ui, frontend);
+    fn show_if_active(self, response: Response, trigger_id: Id, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) {
+        NewPopupTrigger::new(self.0, &response, &trigger_id).show_if_active(ui, frontend, backend);
+        self.1.show_if_active(response, trigger_id, ui, frontend, backend);
     }
 }
 
@@ -119,8 +119,8 @@ impl<'a, P> NewPopupTrigger<'a, P>
         Self { popup, response, id }
     }
 
-    fn show_if_active(self, ui: &mut Ui, frontend: &mut Frontend) {
-        return P::Kind::show_if_active(self, ui, frontend);        
+    fn show_if_active(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) {
+        return P::Kind::show_if_active(self, ui, frontend, backend);        
     }
 
 }
@@ -142,7 +142,7 @@ impl<L: PopupList> TriggerBuilder<L> {
     pub fn add<K, F> (self, position: Pos2, add_contents: F) -> TriggerBuilder<(PrimedPopup<K, F>, L)>
         where 
             K: PopupKind + NotInPopupList<L>,
-            F: FnOnce(&mut egui::Ui, &mut Frontend) -> Response,
+            F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
     {
         return TriggerBuilder{
             id: self.id, 
@@ -151,7 +151,7 @@ impl<L: PopupList> TriggerBuilder<L> {
         };
     }
     
-    pub fn show_active(self, ui: &mut Ui, frontend: &mut Frontend) {
+    pub fn show_active(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) {
         // Allocate Response
         let response = ui.interact(
             self.bounding_box, 
@@ -167,7 +167,7 @@ impl<L: PopupList> TriggerBuilder<L> {
             );
         }
         // Show active popups
-        self.popups.show_if_active(response, self.id, ui, frontend);
+        self.popups.show_if_active(response, self.id, ui, frontend, backend);
     } 
 
 }
@@ -175,7 +175,7 @@ impl<L: PopupList> TriggerBuilder<L> {
 pub struct PrimedPopup<K, F> 
     where 
         K: PopupKind, 
-        F: FnOnce(&mut egui::Ui, &mut Frontend) -> Response,
+        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
 {
     popup_kind: PhantomData<K>,
     position: Pos2,
@@ -184,7 +184,7 @@ pub struct PrimedPopup<K, F>
 impl<K, F> PrimedPopup<K, F>
     where 
         K: PopupKind,
-        F: FnOnce(&mut egui::Ui, &mut Frontend) -> Response,
+        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
 {
     pub fn new(position: Pos2, add_contents: F) -> Self {
         Self { position, add_contents, popup_kind: PhantomData}
@@ -194,12 +194,12 @@ impl<K, F> PrimedPopup<K, F>
 pub trait DisplayablePopup {
     type Kind : PopupKind;
     fn position(&self) -> &Pos2;
-    fn show(self, ui: &mut Ui, frontend: &mut Frontend) -> Response;
+    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> Response;
 }
 impl<K, F> DisplayablePopup for PrimedPopup<K, F>
     where 
         K: PopupKind,
-        F: FnOnce(&mut egui::Ui, &mut Frontend) -> Response
+        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response
  {
     type Kind = K;
     
@@ -207,8 +207,8 @@ impl<K, F> DisplayablePopup for PrimedPopup<K, F>
         return &self.position;
     }
     
-    fn show(self, ui: &mut Ui, frontend: &mut Frontend) -> Response {
-        return (self.add_contents)(ui, frontend);
+    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> Response {
+        return (self.add_contents)(ui, frontend, backend);
     }
     
 }
@@ -216,7 +216,7 @@ impl<K, F> DisplayablePopup for PrimedPopup<K, F>
 pub trait PopupKind : Sized{
     fn id(trigger_id: &egui::Id) -> egui::Id;
     fn close_condition() -> PopupCloseCondition;
-    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend)
+    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend)
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<Self>;
@@ -233,11 +233,11 @@ impl PopupKind for Tooltip {
         return PopupCloseCondition::Timer(Instant::now());
     }
     
-    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend)
+    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend)
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<Self> {
-        PopupManager::add_tooltip(trigger, ui, frontend);
+        PopupManager::add_tooltip(trigger, ui, frontend, backend);
     }
 }
 
@@ -252,11 +252,11 @@ impl PopupKind for ContextMenu
         return PopupCloseCondition::ClickAnywhere;
     }
 
-    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend)
+    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend)
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<Self> {
-        PopupManager::add_context_menu(trigger, ui, frontend);
+        PopupManager::add_context_menu(trigger, ui, frontend, backend);
     }
 }
 pub struct DropdownMenu {}
@@ -269,11 +269,11 @@ impl PopupKind for DropdownMenu {
         return PopupCloseCondition::ClickAnywhere;
     }
 
-    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend)
+    fn show_if_active<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend)
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<Self> {
-        PopupManager::add_dropdown_menu(trigger, ui, frontend);
+        PopupManager::add_dropdown_menu(trigger, ui, frontend, backend);
     }
 }
 
@@ -322,7 +322,7 @@ impl PopupManager {
     }
 
     /// Add a tooltip which is displayed on hover
-    fn add_tooltip<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend) 
+    fn add_tooltip<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend, backend: &mut Backend) 
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<Tooltip>
@@ -335,7 +335,7 @@ impl PopupManager {
 
         //Draw tooltip on next popup layer if its close condition has a higher priority than the active tooltip
         if is_trigger_hovered && active_close_condition.map_or(true, |cond| cond < tooltip.close_condition) || is_tooltip_still_open  {
-            let tooltip_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend);
+            let tooltip_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend, backend);
             if is_trigger_hovered || tooltip_response.hovered() {
                 frontend.popup_manager.activate_in_current_layer(tooltip);
             } else if active_close_condition.map_or(false, |cond| cond == PopupCloseCondition::ClickAnywhere) && frontend.popup_manager.is_current_layer_final() {
@@ -347,7 +347,7 @@ impl PopupManager {
     }
 
     /// Add a context menu which can be opened via right click. It then remains open until the user clicks elsewhere
-    fn add_context_menu<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend) 
+    fn add_context_menu<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend, backend: &mut Backend) 
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<ContextMenu>
@@ -365,7 +365,7 @@ impl PopupManager {
             ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED)
             );
             //Draw context menu on next popup layer
-            let context_menu_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend);
+            let context_menu_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend, backend);
             //Perform (de)activations
             if is_trigger_right_clicked {
                 frontend.popup_manager.activate_in_current_layer(context_menu);
@@ -376,7 +376,7 @@ impl PopupManager {
     }
 
     /// Add a dropdown menu which can be opened via left click. It then remains open until the user clicks elsewhere
-    fn add_dropdown_menu<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend) 
+    fn add_dropdown_menu<'a, P>(trigger: NewPopupTrigger<'a, P>, ui: &mut egui::Ui, frontend: &mut Frontend, backend: &mut Backend) 
         where 
             P: DisplayablePopup,
             P::Kind: IsEqual<DropdownMenu>
@@ -394,7 +394,7 @@ impl PopupManager {
             ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED)
             );
             //Draw context menu on next popup layer
-            let dropdown_menu_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend);
+            let dropdown_menu_response = Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend, backend);
             //Perform (de)activations
             if is_trigger_left_clicked && !is_dropdown_menu_still_open {
                 frontend.popup_manager.activate_in_current_layer(dropdown_menu);
@@ -437,7 +437,7 @@ impl PopupManager {
     }
 
     /// Show the popup in a new layer at the given positions
-    fn show_popup<P: DisplayablePopup>(popup: P, id: Id, ui: &mut Ui, frontend: &mut Frontend) -> Response
+    fn show_popup<P: DisplayablePopup>(popup: P, id: Id, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> Response
     {   
             frontend.popup_manager.current_layer += 1;
             frontend.popup_manager.active_frame = egui::Frame::popup(ui.style());
@@ -448,7 +448,7 @@ impl PopupManager {
                 .order(egui::Order::Foreground)
                 .show(ui.ctx(), |ui| {
                     return frontend.popup_manager.active_frame.show(ui, |ui| {
-                        return popup.show(ui, frontend);
+                        return popup.show(ui, frontend, backend);
                     }).flatten();
             }).flatten();
             frontend.popup_manager.current_layer -= 1;

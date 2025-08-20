@@ -32,8 +32,8 @@ pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Paint
     //TODO Hans: I hardcoded this transform to look good, should be calculated correctly instead
     circle::paint(&(transform * Transform::new(Rotation2::identity(), Scale2::new(incircle.radius() * 0.55, incircle.radius()), Translation2::new(incircle.center().x - 0.225, 0f32)).to_affine2()), painter, theme);
     let mut positions =  match state {
-        ValveState::Connected(_) => CLOSED_POSITIONS.as_slice(),
-        ValveState::Disconnected => OPEN_POSITIONS.as_slice(),
+        ValveState::Open => OPEN_POSITIONS.as_slice(),
+        ValveState::Closed => CLOSED_POSITIONS.as_slice(),
     }.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     painter.line(positions.split_off(positions.len() - 3), stroke);
     painter.line(positions.split_off(positions.len() - 3), stroke);

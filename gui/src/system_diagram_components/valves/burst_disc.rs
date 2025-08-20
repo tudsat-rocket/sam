@@ -1,6 +1,6 @@
 use nalgebra::{Affine2, Point2};
 
-use crate::{system_diagram_components::{core::{constants::STROKE_WIDTH, fluids::get_fluid_color}, math::conversions::to_pos}, utils::{mesh::{create_mesh_from_indices, ColoredTexture, TextureKey}, theme::ThemeColors}};
+use crate::{system_diagram_components::{core::constants::STROKE_WIDTH, math::conversions::to_pos}, utils::{mesh::{create_mesh_from_indices, ColoredTexture, TextureKey}, theme::ThemeColors}};
 
 use super::valve_state::ValveState;
 
@@ -12,11 +12,8 @@ pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Paint
     let stroke = egui::Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
     let positions = POSITIONS.iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
     let color = match state {
-        ValveState::Connected(contents) => match contents {
-            Some(fluid) => get_fluid_color(fluid),
-            None => theme.background,
-        },
-        ValveState::Disconnected => theme.background_weak,
+        ValveState::Open => theme.background,
+        ValveState::Closed => theme.background_weak,
     };
     let texture = ColoredTexture::new(TextureKey::PatternFull, color);
     let mesh = create_mesh_from_indices(&positions, MESH_INDICES.to_vec(), texture);

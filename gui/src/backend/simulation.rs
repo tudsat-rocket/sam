@@ -246,6 +246,10 @@ impl BackendVariant for SimulationBackend {
     fn data_store<'a>(&'a self) -> &'a DataStore {
         &self.data_store
     }
+     
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
+    }
 
     fn reset(&mut self) {
         let (sender, receiver) = channel::<(u32, heapless::Vec<u8, TELEMETRY_BUFFER_SIZE>)>();

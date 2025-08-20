@@ -34,6 +34,10 @@ impl SystemComponent for TODO {
     fn metrics(&self) -> Vec<Metric> {
         todo!()
     }
+    
+    fn interactions(&self) -> Vec<super::hyacinth::ComponentInteraction> {
+        todo!()
+    }
 }
 
 pub fn create_diagram<'a>(_backend: &'a Backend, _frontend: &'a mut Frontend) -> SystemDiagram<'a, TODO> {

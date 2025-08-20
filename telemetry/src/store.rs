@@ -14,10 +14,21 @@ const DOWNSAMPLING_THRESHOLD: usize = 10_000;
 pub struct DataStore {
     /// Increasingly downsampled plot data. The first entry is the full data, followed by
     /// smaller and smaller vectors.
-    timeseries: HashMap<Metric, [Vec<PlotPoint>; DOWNSAMPLING_LEVELS]>,
+    timeseries: HashMap<Metric, Data>,
     enums: HashMap<Metric, Vec<(f64, u8)>>,
     first_time: Option<f64>,
     last_time: Option<f64>,
+}
+
+enum Data{
+    Timeseries([Vec<PlotPoint>; DOWNSAMPLING_LEVELS]),
+    Constant(f64),
+}
+
+impl Default for Data {
+    fn default() -> Self {
+        return Data::Timeseries(vec![vec![]; DOWNSAMPLING_LEVELS].try_into().unwrap());
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,13 +38,24 @@ struct DataStoreFile {
 }
 
 impl DataStore {
+
+
+    pub fn set_const_float(&mut self, metric: Metric, values: f64) {
+        self.timeseries.entry(metric).or_insert(Data::Constant(values));
+    }
+
     fn ingest_enum(&mut self, metric: Metric, time: f64, value: u8) {
         let entry = self.enums.entry(metric).or_default();
         entry.push((time, value));
     }
 
     fn ingest_float(&mut self, metric: Metric, time: f64, value: impl Into<f64>) {
-        let levels = self.timeseries.entry(metric).or_insert(vec![vec![]; DOWNSAMPLING_LEVELS].try_into().unwrap());
+        let data = self.timeseries.entry(metric).or_insert(Data::default());
+
+        let levels = match data {
+            Data::Timeseries(timeseries) => timeseries,
+            Data::Constant(_) => return,
+        };
 
         // Extend the first cache level
         levels[0].push(PlotPoint::new(time, value));
@@ -91,18 +113,24 @@ impl DataStore {
     }
 
     pub fn current_float_value(&self, metric: Metric, end: Option<f64>) -> Option<f64> {
-        let Some(timeseries) = self.timeseries.get(&metric) else {
+        let Some(data) = self.timeseries.get(&metric) else {
             return None;
         };
 
-        end.or(timeseries[0].last().map(|p| p.x)).map(|end| {
-            if end >= timeseries[0].last().unwrap().x {
-                timeseries[0].last().unwrap().y
-            } else {
-                let partition_point = timeseries[0].partition_point(|p| p.x < end);
-                timeseries[0][usize::min(partition_point, timeseries[0].len() - 1)].y
-            }
-        })
+        return match data {
+            Data::Timeseries(timeseries) => {
+                end.or(timeseries[0].last().map(|p| p.x)).map(|end| {
+                    if end >= timeseries[0].last().unwrap().x {
+                        timeseries[0].last().unwrap().y
+                    } else {
+                        let partition_point = timeseries[0].partition_point(|p| p.x < end);
+                        timeseries[0][usize::min(partition_point, timeseries[0].len() - 1)].y
+                    }
+                })
+            },
+            Data::Constant(constant) => Some(*constant),
+        }
+
     }
 
     pub fn current_enum_value<E: TryFrom<u8>>(&self, metric: Metric, end: Option<f64>) -> Option<E>
@@ -134,6 +162,7 @@ impl DataStore {
     ) -> egui_plot::PlotPoints<'a> {
         // Since egui gives us the bounds from the last frame, we extend our
         // "visible" range slightly, to cover the edges while moving.
+
         let visible_range = bounds.range_x();
         let length = visible_range.end() - visible_range.start();
         let mut new_start = visible_range.start() - length * 0.2;
@@ -146,32 +175,38 @@ impl DataStore {
 
         let visible_range = new_start..=new_end;
 
-        let Some(levels) = self.timeseries.get(key) else {
+        let Some(data) = self.timeseries.get(key) else {
             return egui_plot::PlotPoints::Borrowed(&[]);
         };
 
-        // We start with our first cache level, the original data
-        let mut vec = &levels[0];
-        let mut start_i = vec.partition_point(|p| p.x < *visible_range.start());
-        let mut end_i = vec.partition_point(|p| p.x < *visible_range.end());
+        match data {
+            Data::Timeseries(levels) => {
+                // We start with our first cache level, the original data
+                let mut vec = &levels[0];
+                let mut start_i = vec.partition_point(|p| p.x < *visible_range.start());
+                let mut end_i = vec.partition_point(|p| p.x < *visible_range.end());
 
-        // As long as we have too many points, we go up in cache levels.
-        for i in 1..DOWNSAMPLING_LEVELS {
-            if end_i - start_i < DOWNSAMPLING_THRESHOLD {
-                break;
-            }
+                // As long as we have too many points, we go up in cache levels.
+                for i in 1..DOWNSAMPLING_LEVELS {
+                    if end_i - start_i < DOWNSAMPLING_THRESHOLD {
+                        break;
+                    }
 
-            vec = &levels[i];
-            start_i /= DOWNSAMPLING_FACTOR;
-            end_i /= DOWNSAMPLING_FACTOR;
+                    vec = &levels[i];
+                    start_i /= DOWNSAMPLING_FACTOR;
+                    end_i /= DOWNSAMPLING_FACTOR;
+                }
+
+                // Extend by one in either direction so the line from the last point
+                // onscreen to the next point offscreen is still drawn.
+                let start_i = usize::max(start_i, 1) - 1;
+                let end_i = usize::min(end_i + 1, usize::max(1, vec.len()) - 1);
+
+                egui_plot::PlotPoints::Borrowed(&vec[start_i..end_i])
+            },
+            Data::Constant(value) => egui_plot::PlotPoints::Owned(vec![PlotPoint::new(new_start, *value), PlotPoint::new(new_end, *value)]),
         }
 
-        // Extend by one in either direction so the line from the last point
-        // onscreen to the next point offscreen is still drawn.
-        let start_i = usize::max(start_i, 1) - 1;
-        let end_i = usize::min(end_i + 1, usize::max(1, vec.len()) - 1);
-
-        egui_plot::PlotPoints::Borrowed(&vec[start_i..end_i])
     }
 
     pub fn enum_transitions<'a, E: TryFrom<u8>>(
@@ -222,6 +257,11 @@ impl DataStore {
         let Some(vec) = self
             .timeseries
             .get(metric)
+            .map(|data| match data {
+                Data::Timeseries(levels) => Some(levels),
+                Data::Constant(_) => None,
+            })
+            .flatten()
             .map(|levels| levels[0].iter().map(|pp| (pp.x, pp.y)).collect::<Vec<_>>())
             .or(self.enums.get(metric).map(|series| series.iter().map(|(x, y)| (*x, *y as f64)).collect::<Vec<_>>()))
         else {
@@ -255,6 +295,11 @@ impl DataStore {
             timeseries: self
                 .timeseries
                 .iter()
+                .map(|(k, d)| match d {
+                    Data::Timeseries(timeseries) => Some((k, timeseries)),
+                    Data::Constant(_) => None,
+                })
+                .flatten()
                 .map(|(k, v)| (*k, v[0].iter().map(|pp| (pp.x, pp.y)).collect()))
                 .collect(),
         };
@@ -267,7 +312,7 @@ impl DataStore {
     pub fn from_bytes(bytes: &[u8]) -> Self {
         let raw: DataStoreFile = serde_json::from_slice(bytes).unwrap();
 
-        let timeseries: HashMap<Metric, [Vec<PlotPoint>; DOWNSAMPLING_LEVELS]> = raw
+        let timeseries: HashMap<Metric, Data> = raw
             .timeseries
             .into_iter()
             .map(|(k, v)| {
@@ -276,19 +321,29 @@ impl DataStore {
                 for i in 1..DOWNSAMPLING_LEVELS {
                     levels[i] = Self::downsample_points(&levels[i - 1]);
                 }
-                (k, levels)
+                (k, Data::Timeseries(levels))
             })
             .collect();
 
         let first_time = timeseries
             .iter()
-            .filter_map(|(_k, v)| v[0].first())
+            .map(|(_k, d)| match d {
+                Data::Timeseries(timeseries) => Some(timeseries),
+                Data::Constant(_) => None,
+            })
+            .flatten()
+            .filter_map(|v| v[0].first())
             .map(|pp| pp.x)
             .fold(f64::INFINITY, |a, b| f64::min(a, b));
 
         let last_time = timeseries
             .iter()
-            .filter_map(|(_k, v)| v[0].last())
+            .map(|(_k, d)| match d {
+                Data::Timeseries(timeseries) => Some(timeseries),
+                Data::Constant(_) => None,
+            })
+            .flatten()
+            .filter_map(|v| v[0].last())
             .map(|pp| pp.x)
             .fold(f64::NEG_INFINITY, |a, b| f64::max(a, b));
 
