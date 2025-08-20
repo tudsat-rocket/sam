@@ -12,9 +12,9 @@ use shared_types::telemetry::*;
 
 pub mod backend;
 pub mod frontend;
-pub mod system_diagram_components;
 pub mod panels;
 pub mod settings;
+pub mod system_diagram_components;
 pub mod tabs;
 pub mod utils;
 pub mod widgets;

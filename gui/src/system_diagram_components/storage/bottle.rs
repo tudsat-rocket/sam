@@ -1,16 +1,25 @@
 use std::sync::LazyLock;
 
-use egui::{epaint::PathShape, Shape, Stroke};
+use egui::{Shape, Stroke, epaint::PathShape};
 use nalgebra::{Affine2, Point2};
 
-use crate::{system_diagram_components::{core::{constants::STROKE_WIDTH, fluids::get_fluid_color}, math::conversions::to_pos}, utils::{mesh::{create_mesh, ColoredTexture, TextureKey}, theme::ThemeColors}};
+use crate::{
+    system_diagram_components::{
+        core::{constants::STROKE_WIDTH, fluids::get_fluid_color},
+        math::conversions::to_pos,
+    },
+    utils::{
+        mesh::{ColoredTexture, TextureKey, create_mesh},
+        theme::ThemeColors,
+    },
+};
 
 use super::storage_state::StorageState;
 
 const BULKHEAD_HEIGHT: f32 = 0.15;
 const BULKHEAD_STEPS: usize = 100;
 const CAP_TOTAL_HEIGHT: f32 = 0.2;
-const CAP_WIDTH: f32 = 0.4; 
+const CAP_WIDTH: f32 = 0.4;
 const CAP_BULKHEAD_HEIGHT: f32 = 0.15;
 const CAP_BULKHEAD_STEPS: usize = 100;
 
@@ -18,7 +27,10 @@ static BOTTLE_POSITIONS: LazyLock<Vec<Point2<f32>>> = LazyLock::new(|| get_bottl
 static CAP_POSITIONS: LazyLock<Vec<Point2<f32>>> = LazyLock::new(|| get_cap_positions());
 
 pub fn paint(transform: &Affine2<f32>, state: &StorageState, painter: &egui::Painter, theme: &ThemeColors) {
-    let stroke = Stroke { width: STROKE_WIDTH, color: theme.foreground_weak };
+    let stroke = Stroke {
+        width: STROKE_WIDTH,
+        color: theme.foreground_weak,
+    };
 
     let bottle_positions: Vec<_> = BOTTLE_POSITIONS.iter().map(|p| to_pos(transform * p)).collect();
     let cap_positions: Vec<_> = CAP_POSITIONS.iter().map(|p| to_pos(transform * p)).collect();
@@ -37,34 +49,29 @@ pub fn paint(transform: &Affine2<f32>, state: &StorageState, painter: &egui::Pai
     painter.add(fluid_mesh_bottle);
 }
 
-fn get_bottle_positions() -> Vec<Point2<f32>>{
+fn get_bottle_positions() -> Vec<Point2<f32>> {
     let mut path_bulkhead: Vec<_> = (0..=BULKHEAD_STEPS)
-            .map(|i| (90.0 * (i as f32) / (BULKHEAD_STEPS as f32)).to_radians())
-            .map(|r| Point2::new(-0.5 * r.cos(), BULKHEAD_HEIGHT * (1.0 - r.sin())))
-            .collect();
+        .map(|i| (90.0 * (i as f32) / (BULKHEAD_STEPS as f32)).to_radians())
+        .map(|r| Point2::new(-0.5 * r.cos(), BULKHEAD_HEIGHT * (1.0 - r.sin())))
+        .collect();
     path_bulkhead.extend(path_bulkhead.clone().into_iter().rev().map(|v| Point2::new(-v.x, v.y)));
 
-    let mut path_complete: Vec<_> = path_bulkhead
-        .iter()
-        .map(|v| Point2::new(v.x, -0.5 + v.y + CAP_TOTAL_HEIGHT))
-        .collect();
+    let mut path_complete: Vec<_> =
+        path_bulkhead.iter().map(|v| Point2::new(v.x, -0.5 + v.y + CAP_TOTAL_HEIGHT)).collect();
     path_complete.push(Point2::new(0.5, 0.5));
     path_complete.push(Point2::new(-0.5, 0.5));
-    return  path_complete;
+    return path_complete;
 }
 
-fn get_cap_positions() -> Vec<Point2<f32>>{
+fn get_cap_positions() -> Vec<Point2<f32>> {
     let mut path_cap_bulkhead: Vec<_> = (0..=CAP_BULKHEAD_STEPS)
         .map(|i| (90.0 * (i as f32) / (CAP_BULKHEAD_STEPS as f32)).to_radians())
         .map(|r| Point2::new(-CAP_WIDTH / 2.0 * r.cos(), CAP_BULKHEAD_HEIGHT * (1.0 - r.sin())))
         .collect();
     path_cap_bulkhead.extend(path_cap_bulkhead.clone().into_iter().rev().map(|v| Point2::new(-v.x, v.y)));
 
-    let mut path_cap_complete: Vec<_> =
-        path_cap_bulkhead.iter().map(|v| Point2::new(v.x, -0.5 + v.y)).collect();
-    path_cap_complete
-        .push(Point2::new(CAP_WIDTH / 2.0, -0.5 + CAP_TOTAL_HEIGHT + BULKHEAD_HEIGHT));
-    path_cap_complete
-        .push(Point2::new(-CAP_WIDTH / 2.0, -0.5 + CAP_TOTAL_HEIGHT + BULKHEAD_HEIGHT));
-    return  path_cap_complete;
+    let mut path_cap_complete: Vec<_> = path_cap_bulkhead.iter().map(|v| Point2::new(v.x, -0.5 + v.y)).collect();
+    path_cap_complete.push(Point2::new(CAP_WIDTH / 2.0, -0.5 + CAP_TOTAL_HEIGHT + BULKHEAD_HEIGHT));
+    path_cap_complete.push(Point2::new(-CAP_WIDTH / 2.0, -0.5 + CAP_TOTAL_HEIGHT + BULKHEAD_HEIGHT));
+    return path_cap_complete;
 }

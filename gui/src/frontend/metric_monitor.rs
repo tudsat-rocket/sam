@@ -3,12 +3,15 @@ use std::{collections::HashMap, hash::Hash, sync::LazyLock};
 use bitflags::bitflags;
 use telemetry::Metric;
 
-use crate::{backend::Backend, frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint}};
+use crate::{
+    backend::Backend,
+    frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint},
+};
 
 bitflags! {
     pub struct MonitorFlags : u8 {
         const PINNED = 1 << 0;
-    } 
+    }
 }
 
 impl Default for MonitorFlags {
@@ -24,18 +27,16 @@ impl<'a> Default for &'a MonitorFlags {
     }
 }
 
-pub struct MetricMonitor
-{
+pub struct MetricMonitor {
     active_constraint_mask: Vec<ConstraintResult>,
     flags: HashMap<Metric, MonitorFlags>,
     //TODO Hans: Should this be in the front or backend?
     constraints: HashMap<Metric, Vec<EvaluatedConstraint>>,
 }
 
-impl Default for MetricMonitor
-{
+impl Default for MetricMonitor {
     fn default() -> Self {
-        Self { 
+        Self {
             active_constraint_mask: vec![ConstraintResult::NOMINAL],
             flags: Default::default(),
             constraints: Default::default(),
@@ -43,9 +44,7 @@ impl Default for MetricMonitor
     }
 }
 
-impl MetricMonitor
-{
-
+impl MetricMonitor {
     pub fn is_pinned(&self, metric: &Metric) -> bool {
         return self.flags.get(metric).unwrap_or_default().contains(MonitorFlags::PINNED);
     }
@@ -58,20 +57,20 @@ impl MetricMonitor
         self.flags.entry(metric).or_default().remove(MonitorFlags::PINNED);
     }
 
-    pub fn pinned_metrics(&self) -> Vec<&Metric>{
+    pub fn pinned_metrics(&self) -> Vec<&Metric> {
         return self.flags.iter().filter(|(_m, f)| f.contains(MonitorFlags::PINNED)).map(|(m, _f)| m).collect();
     }
 
     pub fn evaluate_constraints(&mut self, backend: &Backend) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {
-       let _ = self.constraints.values_mut().map(|ecs| ecs.iter_mut().map(|ec| ec.evaluate(backend)));
-       return &self.constraints;
-    } 
+        let _ = self.constraints.values_mut().map(|ecs| ecs.iter_mut().map(|ec| ec.evaluate(backend)));
+        return &self.constraints;
+    }
 
     pub fn constraint_results(&self) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {
         return &self.constraints;
     }
 
-    pub fn active_constraint_mask(&self) -> & Vec<ConstraintResult> {
+    pub fn active_constraint_mask(&self) -> &Vec<ConstraintResult> {
         return &self.active_constraint_mask;
     }
 
@@ -86,5 +85,4 @@ impl MetricMonitor
     pub fn strongest_constraint_result(&self, metric: &Metric) -> Option<&EvaluatedConstraint> {
         return self.constraints.get(metric).map(|res| res.iter().max()).unwrap_or_default();
     }
-
 }

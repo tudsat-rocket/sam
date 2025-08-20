@@ -3,8 +3,8 @@ use egui::{Align, CollapsingHeader, Layout, Vec2};
 use shared_types::telemetry::*;
 use telemetry::{BarometerId, BatteryId, Dim, Metric, TemperatureSensorId};
 
-use crate::widgets::top_bar::*;
 use crate::Backend;
+use crate::widgets::top_bar::*;
 
 pub struct HeaderPanel {}
 

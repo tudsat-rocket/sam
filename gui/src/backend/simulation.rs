@@ -1,9 +1,9 @@
 //! A simulation data source
 
 use std::convert::Infallible;
-use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::channel;
 use std::thread::JoinHandle;
 
 use archive::ArchivedLog;
@@ -246,7 +246,7 @@ impl BackendVariant for SimulationBackend {
     fn data_store<'a>(&'a self) -> &'a DataStore {
         &self.data_store
     }
-     
+
     fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
         &mut self.data_store
     }

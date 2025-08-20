@@ -20,7 +20,7 @@ pub struct DataStore {
     last_time: Option<f64>,
 }
 
-enum Data{
+enum Data {
     Timeseries([Vec<PlotPoint>; DOWNSAMPLING_LEVELS]),
     Constant(f64),
 }
@@ -38,8 +38,6 @@ struct DataStoreFile {
 }
 
 impl DataStore {
-
-
     pub fn set_const_float(&mut self, metric: Metric, values: f64) {
         self.timeseries.entry(metric).or_insert(Data::Constant(values));
     }
@@ -118,19 +116,16 @@ impl DataStore {
         };
 
         return match data {
-            Data::Timeseries(timeseries) => {
-                end.or(timeseries[0].last().map(|p| p.x)).map(|end| {
-                    if end >= timeseries[0].last().unwrap().x {
-                        timeseries[0].last().unwrap().y
-                    } else {
-                        let partition_point = timeseries[0].partition_point(|p| p.x < end);
-                        timeseries[0][usize::min(partition_point, timeseries[0].len() - 1)].y
-                    }
-                })
-            },
+            Data::Timeseries(timeseries) => end.or(timeseries[0].last().map(|p| p.x)).map(|end| {
+                if end >= timeseries[0].last().unwrap().x {
+                    timeseries[0].last().unwrap().y
+                } else {
+                    let partition_point = timeseries[0].partition_point(|p| p.x < end);
+                    timeseries[0][usize::min(partition_point, timeseries[0].len() - 1)].y
+                }
+            }),
             Data::Constant(constant) => Some(*constant),
-        }
-
+        };
     }
 
     pub fn current_enum_value<E: TryFrom<u8>>(&self, metric: Metric, end: Option<f64>) -> Option<E>
@@ -203,10 +198,11 @@ impl DataStore {
                 let end_i = usize::min(end_i + 1, usize::max(1, vec.len()) - 1);
 
                 egui_plot::PlotPoints::Borrowed(&vec[start_i..end_i])
-            },
-            Data::Constant(value) => egui_plot::PlotPoints::Owned(vec![PlotPoint::new(new_start, *value), PlotPoint::new(new_end, *value)]),
+            }
+            Data::Constant(value) => {
+                egui_plot::PlotPoints::Owned(vec![PlotPoint::new(new_start, *value), PlotPoint::new(new_end, *value)])
+            }
         }
-
     }
 
     pub fn enum_transitions<'a, E: TryFrom<u8>>(

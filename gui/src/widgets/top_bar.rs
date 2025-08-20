@@ -7,10 +7,10 @@ use eframe::egui;
 use egui::widgets::{Button, ProgressBar};
 use egui::{Color32, Label, Rect, RichText, SelectableLabel, Stroke, Vec2};
 
-use shared_types::{telemetry::*, IoBoardRole};
+use shared_types::{IoBoardRole, telemetry::*};
 
-use crate::utils::telemetry_ext::*;
 use crate::Backend;
+use crate::utils::telemetry_ext::*;
 
 // TODO: move to telemetry_ext?
 fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {

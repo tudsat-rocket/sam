@@ -1,7 +1,11 @@
-use crate::{frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager}, settings::AppSettings, widgets::{map::MapState, plot::SharedPlotState}};
+use crate::{
+    frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager},
+    settings::AppSettings,
+    widgets::{map::MapState, plot::SharedPlotState},
+};
 
-pub mod popup_manager;
 pub mod metric_monitor;
+pub mod popup_manager;
 //TODO Hans: Probably should not be here
 pub mod constraints;
 
@@ -13,10 +17,9 @@ pub struct Frontend {
 }
 
 impl Frontend {
-
     pub fn new(ctx: &egui::Context, settings: &AppSettings) -> Self {
         let mapbox_token = (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone());
-        return Self{
+        return Self {
             popup_manager: Default::default(),
             metric_monitor: Default::default(),
             map: MapState::new(ctx, mapbox_token),

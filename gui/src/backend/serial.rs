@@ -4,13 +4,13 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use std::time::Instant;
 
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};

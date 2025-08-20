@@ -14,12 +14,12 @@ use serde::{Deserialize, Serialize};
 
 use telemetry::*;
 
-use crate::system_diagram_components::diagrams;
 use crate::settings::AppSettings;
+use crate::system_diagram_components::diagrams;
 use crate::system_diagram_components::diagrams::hyacinth::HyacinthComponent;
-use crate::widgets::system_diagram::*;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
+use crate::widgets::system_diagram::*;
 use crate::*;
 
 const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
@@ -421,7 +421,10 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let top_right = vec![/*tiles.insert_pane(WidgetPane::Acs),*/ tiles.insert_pane(WidgetPane::Hybrid), tiles.insert_pane(WidgetPane::Map)];
+        let top_right = vec![
+            /*tiles.insert_pane(WidgetPane::Acs),*/ tiles.insert_pane(WidgetPane::Hybrid),
+            tiles.insert_pane(WidgetPane::Map),
+        ];
 
         let right = vec![
             tiles.insert_horizontal_tile(top_right),
@@ -476,7 +479,14 @@ impl PlotTab {
         deserialized == *tiles
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, frontend: &mut Frontend, enabled: bool) {
+    pub fn main_ui(
+        &mut self,
+        ctx: &egui::Context,
+        backend: &mut Backend,
+        settings: &mut AppSettings,
+        frontend: &mut Frontend,
+        enabled: bool,
+    ) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -560,7 +570,7 @@ impl PlotTab {
             let mut behavior = TileBehavior {
                 backend,
                 settings,
-                frontend
+                frontend,
             };
 
             self.tile_tree.ui(&mut behavior, ui);

@@ -71,7 +71,7 @@ pub enum TemperatureSensorId {
     Recovery,
     Payload,
     //Hybrid
-    OxidizerTank
+    OxidizerTank,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -80,7 +80,7 @@ pub enum ValveId {
     PressureRegulator,
     MainValve,
     VentValve,
-    FillAndDumpValve
+    FillAndDumpValve,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -157,7 +157,7 @@ pub enum Metric {
     ApogeeError,
 
     //These Metrics are only used by SAM, e.g., for visualization and constraint purposes
-    LocalMetric(LocalMetric)
+    LocalMetric(LocalMetric),
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
