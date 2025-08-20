@@ -1,5 +1,5 @@
-use gui::settings::AppSettings;
 use gui::Sam;
+use gui::settings::AppSettings;
 
 // When compiling to web using trunk:
 #[cfg(target_arch = "wasm32")]

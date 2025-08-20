@@ -54,6 +54,8 @@ pub trait BackendVariant {
 
     fn data_store<'a>(&'a self) -> &'a DataStore;
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore;
+
     /// Return the current flight computer settings, if known.
     fn fc_settings(&mut self) -> Option<&Settings> {
         None
@@ -309,6 +311,19 @@ impl Backend {
         }
     }
 
+    pub fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Serial(b) => b.data_store_mut(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.data_store_mut(),
+            Self::Noop(b) => b.data_store_mut(),
+            Self::Log(b) => b.data_store_mut(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Simulation(b) => b.data_store_mut(),
+        }
+    }
+
     pub fn end(&self) -> Option<f64> {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
@@ -451,6 +466,16 @@ impl Backend {
             Self::Log(b) => b.status_bar_ui(ui),
             #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.status_bar_ui(ui),
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Backend::Serial(_) => "Serial",
+            Backend::Udp(_) => "Udp",
+            Backend::Noop(_) => "Noop",
+            Backend::Log(_) => "Log",
+            Backend::Simulation(_) => "Simulation",
         }
     }
 }

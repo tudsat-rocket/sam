@@ -1,9 +1,14 @@
 use telemetry::Metric;
 
-use crate::{backend::Backend, frontend::Frontend, system_diagram_components::{core::flow_painter::Symbol, diagrams::hyacinth::SystemComponent}, widgets::system_diagram::SystemDiagram};
+use crate::{
+    backend::Backend,
+    frontend::Frontend,
+    system_diagram_components::{core::flow_painter::Symbol, diagrams::hyacinth::SystemComponent},
+    widgets::system_diagram::SystemDiagram,
+};
 
 // //TODO MOVE
-// static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(|| 
+// static ACS_SYSTEM_DEFINITION: LazyLock<Vec<Component>> = LazyLock::new(||
 //     vec![
 //         Component::new(
 //             "Compressed Air Tank".to_string(),
@@ -11,7 +16,7 @@ use crate::{backend::Backend, frontend::Frontend, system_diagram_components::{co
 //             vec![
 //                 DisplayValue::new("Max Pressure".to_string(), Some("bar".to_string()), JustifiedValue::new(Some(Value::F32(300f32)), Justification::Datasheet)),
 //                 DisplayValue::new("Max Capacity".to_string(), Some("l".to_string()), JustifiedValue::new(Some(Value::F32(1.1)), Justification::Datasheet))
-//             ], 
+//             ],
 //             vec![
 //                 Metric::Pressure(telemetry::PressureSensorId::AcsTank),
 //                 Metric::Temperature(telemetry::TemperatureSensorId::Acs),
@@ -20,7 +25,7 @@ use crate::{backend::Backend, frontend::Frontend, system_diagram_components::{co
 //     ]
 // );
 
-pub struct TODO{}
+pub struct TODO {}
 
 impl SystemComponent for TODO {
     fn symbol(&self) -> &'static Symbol {
@@ -32,6 +37,10 @@ impl SystemComponent for TODO {
     }
 
     fn metrics(&self) -> Vec<Metric> {
+        todo!()
+    }
+
+    fn interactions(&self) -> Vec<super::hyacinth::ComponentInteraction> {
         todo!()
     }
 }

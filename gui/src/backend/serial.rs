@@ -4,13 +4,13 @@ use std::collections::VecDeque;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::pin::{pin, Pin};
+use std::pin::{Pin, pin};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 use std::time::Instant;
 
-use futures::{select, FutureExt};
+use futures::{FutureExt, select};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -256,39 +256,6 @@ pub fn spawn_downlink_monitor(
         .unwrap()
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum FlightComputer {
-    FC1,
-    FC2,
-}
-
-impl FlightComputer {
-    
-    fn default() -> Self {
-        return FlightComputer::FC1;
-    }
-
-    fn values() -> Vec<Self> {
-        return vec![
-            FlightComputer::FC1,
-            FlightComputer::FC2
-        ];
-    }
-}
-
-impl std::fmt::Display for FlightComputer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                FlightComputer::FC1 => "FC1",
-                FlightComputer::FC2 => "FC2",
-            }
-        )
-    }
-}
-
 pub struct SerialBackend {
     serial_status_rx: Receiver<(SerialStatus, Option<String>)>,
     serial_status_uplink_tx: Sender<(SerialStatus, Option<String>)>,
@@ -297,7 +264,6 @@ pub struct SerialBackend {
 
     serial_port: Option<String>,
     serial_status: SerialStatus,
-    selected_fc: FlightComputer,
 
     lora_settings: LoRaSettings,
 
@@ -336,7 +302,6 @@ impl SerialBackend {
             uplink_tx,
             serial_port: None,
             serial_status: SerialStatus::Init,
-            selected_fc: FlightComputer::default(),
             lora_settings,
             telemetry_log_path,
             telemetry_log_file,
@@ -445,6 +410,10 @@ impl BackendVariant for SerialBackend {
         &self.data_store
     }
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
+    }
+
     fn fc_settings(&mut self) -> Option<&Settings> {
         self.fc_settings.as_ref()
     }
@@ -520,17 +489,6 @@ impl BackendVariant for SerialBackend {
             if ui.button("⏮  Reset").clicked() {
                 self.reset();
             }
-
-            ui.separator();
-
-            egui::ComboBox::new("fc_selection", "")
-                .selected_text(format!("{:?}", self.selected_fc))
-                .show_ui(ui, |ui| {
-                    for fc in &FlightComputer::values() {
-                        ui.selectable_value(&mut self.selected_fc, *fc, fc.to_string());
-                    }
-                }
-            );
 
             ui.separator();
 
