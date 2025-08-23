@@ -72,10 +72,12 @@ async fn run_socket(
     loop {
         let mut recv_buffer = [0; 1024];
         match select(downlink_receiver.receive(), socket.recv_from(&mut recv_buffer)).await {
-            Either::First(uplink_msg) => {
-                let serialized = uplink_msg.serialize().unwrap();
+            // send downlink message via udp
+            Either::First(downlink_msg) => {
+                let serialized = downlink_msg.serialize().unwrap();
                 socket.send_to(&serialized, remote_endpoint).await.unwrap();
             }
+            // receive udp packet from PC
             Either::Second(res) => {
                 if let Ok((len, _peer)) = res {
                     let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..len]) else {

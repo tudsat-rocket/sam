@@ -12,7 +12,7 @@ impl HeaderPanel {
     fn text_telemetry(ui: &mut egui::Ui, backend: &mut Backend) {
         let spacing = 3.0; // TODO: this is ugly
 
-        let time = backend.end().map(|time| format!("{:10.3}", time));
+        let time = backend.fc_time().map(|time| format!("{:10.3}", time));
         let mode = backend.current_enum::<FlightMode>(Metric::FlightMode).map(|s| format!("{:?}", s));
 
         let alt_ground = backend.current_value(Metric::GroundAltitudeASL).unwrap_or(0.0);

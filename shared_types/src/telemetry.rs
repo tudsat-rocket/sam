@@ -208,18 +208,21 @@ pub struct TelemetryGCS {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownlinkMessage {
     Telemetry(u32, heapless::Vec<u8, 256>),
+    /// Does not originate from the FC, but from GCS.
     TelemetryGCS(TelemetryGCS),
     FlashContent(u32, heapless::Vec<u8, 256>),
+    /// A copy of the settings currently active one the FC.
     Settings(Settings),
 }
 
 impl DownlinkMessage {
-    pub fn time(&self) -> u32 {
+    // Returns the time when the message was produced by the FC.
+    pub fn time_produced(&self) -> Option<u32> {
         match self {
-            DownlinkMessage::Telemetry(time, _) => *time,
-            DownlinkMessage::TelemetryGCS(tm) => tm.time,
-            DownlinkMessage::FlashContent(_, _) => 0,
-            DownlinkMessage::Settings(_) => 0,
+            DownlinkMessage::Telemetry(time, _) => Some(*time),
+            DownlinkMessage::TelemetryGCS(tm) => Some(tm.time),
+            DownlinkMessage::FlashContent(_, _) => None,
+            DownlinkMessage::Settings(_) => None,
         }
     }
 }

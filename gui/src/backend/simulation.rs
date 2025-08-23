@@ -270,7 +270,7 @@ impl BackendVariant for SimulationBackend {
         self.data_store = DataStore::default();
     }
 
-    fn end(&self) -> Option<f64> {
+    fn fc_time(&self) -> Option<f64> {
         self.playback_end()
     }
 

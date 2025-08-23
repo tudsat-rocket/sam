@@ -26,6 +26,8 @@ pub struct TelemetryMessageReader<const N: usize> {
 }
 
 impl Representation {
+    // TODO: (felix) check documentation
+    /// Returns the number of bits this representation occupies.
     pub fn bits(&self) -> usize {
         match self {
             Self::Enum { bits } => *bits,
@@ -135,6 +137,7 @@ impl<const N: usize> TelemetryMessageReader<N> {
             self.bit_pointer += 8 - self.bit_pointer % 8;
         }
 
+        // TODO: (felix) what does this mean?
         assert_eq!(repr.bits() % 8, 0);
 
         let bytes = &self.buffer[(self.bit_pointer / 8)..((self.bit_pointer + repr.bits()) / 8)];

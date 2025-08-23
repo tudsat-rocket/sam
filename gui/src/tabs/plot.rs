@@ -560,7 +560,7 @@ impl PlotTab {
             });
         }
 
-        frontend.shared_plot_mut().set_end(backend.end());
+        frontend.shared_plot_mut().set_end(backend.fc_time());
 
         CentralPanel::default().show(ctx, |ui| {
             if !enabled {

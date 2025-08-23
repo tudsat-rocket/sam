@@ -386,7 +386,9 @@ impl BackendVariant for SerialBackend {
             // TODO
             if let DownlinkMessage::TelemetryGCS(..) = msg {
             } else {
-                self.message_receipt_times.push_back((t, msg.time()));
+                if let Some(fc_time) = msg.time_produced() {
+                    self.message_receipt_times.push_back((t, fc_time));
+                }
             }
 
             match msg {
@@ -401,7 +403,7 @@ impl BackendVariant for SerialBackend {
             }
         }
 
-        if self.fc_settings.is_none() && self.end().is_some() {
+        if self.fc_settings.is_none() && self.fc_time().is_some() {
             self.send(UplinkMessage::ReadSettings).unwrap();
         }
     }
@@ -457,7 +459,7 @@ impl BackendVariant for SerialBackend {
         self.send(UplinkMessage::Command(cmd))
     }
 
-    fn end(&self) -> Option<f64> {
+    fn fc_time(&self) -> Option<f64> {
         let postroll = Duration::from_secs_f64(10.0);
         // TODO: postroll
         let Some((time_received, time_message)) = self.message_receipt_times.front() else {

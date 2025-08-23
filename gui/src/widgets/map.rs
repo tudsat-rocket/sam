@@ -159,7 +159,7 @@ impl MapState {
         &mut self,
         backend: &mut Backend,
     ) -> Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))> {
-        let Some(last) = backend.end() else {
+        let Some(last) = backend.fc_time() else {
             return Vec::new();
         };
 

@@ -1,9 +1,9 @@
 use core::hash::Hasher;
-use embassy_time::{with_timeout, Delay, Duration, Ticker};
+use embassy_time::{Delay, Duration, Ticker, with_timeout};
 use heapless::{String, Vec};
 
 use embassy_executor::SendSpawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 
 use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
@@ -23,7 +23,7 @@ use rand_chacha::ChaCha20Rng;
 use serde::de::DeserializeOwned;
 use siphasher::sip::SipHasher;
 
-use shared_types::{LoRaSettings, LORA_MESSAGE_INTERVAL};
+use shared_types::{LORA_MESSAGE_INTERVAL, LoRaSettings};
 
 use defmt::*;
 
@@ -132,7 +132,8 @@ async fn run_rocket_downlink(
         let serialized = serialize_and_hmac::<_, DOWNLINK_HMAC_LEN>(&key, &msg);
         tx_buffer[..serialized.len()].copy_from_slice(&serialized);
 
-        let t = msg.time();
+        // TODO: figure out how to handle time:None
+        let t = msg.time_produced().unwrap_or(0);
         let freq = downlink_frequency(&sequence, t);
 
         let mod_params = lora.create_modulation_params(DOWNLINK_SF, DOWNLINK_BW, DOWNLINK_CR, freq).unwrap();
@@ -178,22 +179,20 @@ async fn run_gcs_downlink(
 ) -> ! {
     let key = settings.authentication_key.to_be_bytes();
 
+    // try to find the signal by sweeping through frequencies slowly
+    let mut ticker = Ticker::every(Duration::from_millis(1111));
+    let mut i = 0;
     loop {
-        // try to find the signal by sweeping through frequencies slowly
-        let mut ticker = Ticker::every(Duration::from_millis(1111));
-        let mut i = 0;
-        loop {
-            let f = CHANNELS[i];
-            println!("{:?}", f);
-            let t = Duration::from_millis(1000);
-            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, t).await {
-                println!("{}", Debug2Format(&msg));
-                downlink_sender.send(msg).await;
-            }
-
-            i = (i + 1) % CHANNELS.len();
-            ticker.next().await;
+        let f = CHANNELS[i];
+        println!("{:?}", f);
+        let t = Duration::from_millis(1000);
+        if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, t).await {
+            println!("{}", Debug2Format(&msg));
+            downlink_sender.send(msg).await;
         }
+
+        i = (i + 1) % CHANNELS.len();
+        ticker.next().await;
     }
 }
 

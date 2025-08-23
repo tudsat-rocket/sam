@@ -232,7 +232,12 @@ impl Vehicle {
             //UplinkMessage::ReadFlash(adress, size) => {
             //    let _ = self.flash.read(adress, size);
             //}
-            //UplinkMessage::ReadSettings => self.usb.send_message(DownlinkMessage::Settings(self.settings.clone())),
+            UplinkMessage::ReadSettings => {
+                info!("UplinkMessage: ReadSettings");
+                // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                // let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+            }
             //UplinkMessage::WriteSettings(settings) => {
             //    let _ = self.flash.write_settings(settings);
             //}

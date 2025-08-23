@@ -19,7 +19,7 @@ impl BackendVariant for NoopBackend {
 
     fn reset(&mut self) {}
 
-    fn end(&self) -> Option<f64> {
+    fn fc_time(&self) -> Option<f64> {
         None
     }
 }

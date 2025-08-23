@@ -240,11 +240,14 @@ fn extract_flash_logs(path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
         .split_mut(|b| *b == 0x00)
         .filter_map(|b| postcard::from_bytes_cobs::<DownlinkMessage>(b).ok())
         .scan((0, 1), |(time, flight_id), msg| {
-            if msg.time() < *time {
-                *flight_id += 1;
-            }
+            // TODO: figure out how to react to time:None
+            if let Some(time_produced) = msg.time_produced() {
+                if time_produced < *time {
+                    *flight_id += 1;
+                }
 
-            *time = msg.time();
+                *time = time_produced;
+            }
 
             Some((*flight_id, msg))
         })

@@ -13,7 +13,6 @@ use embassy_stm32::adc::AnyAdcChannel;
 use embassy_stm32::timer::simple_pwm::PwmPinConfig;
 use embassy_stm32::usb::Driver;
 use embassy_usb::UsbDevice;
-use flash_task::FlashOp;
 use rand::RngCore;
 
 use embassy_executor::{InterruptExecutor, Spawner};
@@ -80,9 +79,6 @@ pub mod lora;
 pub mod storage;
 pub mod usb;
 pub mod vehicle;
-
-mod flash_task;
-// mod storage_new;
 
 use drivers::sensors::*;
 use storage::{Flash, FlashHandle, FlashType};
