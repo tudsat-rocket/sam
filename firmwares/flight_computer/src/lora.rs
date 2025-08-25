@@ -1,5 +1,5 @@
 use core::hash::Hasher;
-use embassy_time::{Delay, Duration, Ticker, with_timeout};
+use embassy_time::{Delay, Duration, Instant, Ticker, with_timeout};
 use heapless::{String, Vec};
 
 use embassy_executor::SendSpawner;
@@ -36,7 +36,9 @@ const DOWNLINK_BW: Bandwidth = Bandwidth::_500KHz;
 const DOWNLINK_CR: CodingRate = CodingRate::_4_8;
 const DOWNLINK_MSG_LEN: usize = 32; // TODo
 const DOWNLINK_HMAC_LEN: usize = 2; // TODo
+const DOWNLINK_PACKET_INTERVAL_MILLIS: u64 = 50;
 
+const UPLINK_TX_POWER: u16 = 10;
 const UPLINK_SF: SpreadingFactor = SpreadingFactor::_7;
 const UPLINK_BW: Bandwidth = Bandwidth::_250KHz;
 const UPLINK_CR: CodingRate = CodingRate::_4_8;
@@ -73,6 +75,8 @@ pub fn start_rocket_downlink(
 
     if let Some(sequence) = generate_downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
         spawner.spawn(run_rocket_downlink(lora, settings, sequence, downlink.receiver())).unwrap();
+    } else {
+        info!("Not transmitting anything.");
     }
 
     downlink.sender()
@@ -161,7 +165,7 @@ async fn run_rocket_uplink(
     loop {
         let mut rx_buffer = [0; UPLINK_MSG_LEN];
         lora.prepare_for_rx(RxMode::Continuous, &mod_params, &packet_params).await.unwrap();
-        let (len, status) = lora.rx(&packet_params, &mut rx_buffer).await.unwrap();
+        let (len, _status) = lora.rx(&packet_params, &mut rx_buffer).await.unwrap();
 
         if let Some(msg) = decode_and_verify::<_, UPLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]) {
             info!("Got uplink msg: {}", Debug2Format(&msg));
@@ -183,16 +187,47 @@ async fn run_gcs_downlink(
     let mut ticker = Ticker::every(Duration::from_millis(1111));
     let mut i = 0;
     loop {
-        let f = CHANNELS[i];
-        println!("{:?}", f);
-        let t = Duration::from_millis(1000);
-        if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, t).await {
-            println!("{}", Debug2Format(&msg));
-            downlink_sender.send(msg).await;
+        // try to find the signal by sweeping through frequencies slowly
+        let mut ticker = Ticker::every(Duration::from_millis(1111));
+        let mut i = 0;
+        let msg = loop {
+            let f = CHANNELS[i];
+            info!("Listening on {:?}kHz.", f / 1000);
+            let timeout = Duration::from_millis(1000);
+            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout).await {
+                break msg;
+            }
+
+            i = (i + 1) % CHANNELS.len();
+            ticker.next().await;
+        };
+
+        let mut t = msg.time_produced().unwrap_or(0);
+        let mut ticker = Ticker::every(Duration::from_millis(DOWNLINK_PACKET_INTERVAL_MILLIS));
+
+        info!("Received message with t={}, following sequence.", t);
+        downlink_sender.send(msg).await;
+
+        let mut failure_counter = 0;
+        loop {
+            t += DOWNLINK_PACKET_INTERVAL_MILLIS as u32;
+
+            let f = downlink_frequency(&sequence, t);
+            let timeout = Duration::from_millis(DOWNLINK_PACKET_INTERVAL_MILLIS - 10);
+            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout).await {
+                downlink_sender.send(msg).await;
+                failure_counter = 0;
+            } else {
+                failure_counter += 1;
+                if failure_counter > (10000 / DOWNLINK_PACKET_INTERVAL_MILLIS) {
+                    break;
+                }
+            }
+
+            ticker.next().await;
         }
 
-        i = (i + 1) % CHANNELS.len();
-        ticker.next().await;
+        info!("Lost connection, reverting to channel sweep.");
     }
 }
 
@@ -210,7 +245,7 @@ async fn attempt_receive_downlink(
     lora.prepare_for_rx(RxMode::Continuous, &mod_params, &packet_params).await.unwrap();
 
     match with_timeout(timeout, lora.rx(&packet_params, &mut rx_buffer)).await {
-        Ok(Ok((len, status))) => decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]),
+        Ok(Ok((len, _status))) => decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]),
         _ => None,
     }
 }
@@ -224,12 +259,24 @@ async fn run_gcs_uplink(
     let key = settings.authentication_key.to_be_bytes();
     let frequency = CHANNELS[settings.uplink_channel];
 
-    let mod_params = lora.create_modulation_params(UPLINK_SF, UPLINK_BW, UPLINK_CR, frequency).unwrap();
-    let packet_params = lora.create_rx_packet_params(4, false, UPLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();
-
     loop {
         let msg = uplink_receiver.receive().await;
-        //TODO
+        info!("Sending uplink message: {:?}", Debug2Format(&msg));
+
+        let mut tx_buffer = [0; UPLINK_MSG_LEN];
+
+        let serialized = serialize_and_hmac::<_, UPLINK_HMAC_LEN>(&key, &msg);
+        tx_buffer[..serialized.len()].copy_from_slice(&serialized);
+
+        let mod_params = lora.create_modulation_params(UPLINK_SF, UPLINK_BW, UPLINK_CR, frequency).unwrap();
+        let mut packet_params =
+            lora.create_rx_packet_params(4, false, UPLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();
+
+        lora.prepare_for_tx(&mod_params, &mut packet_params, UPLINK_TX_POWER.into(), &tx_buffer)
+            .await
+            .unwrap();
+        lora.tx().await.unwrap();
+        lora.sleep(false).await.unwrap();
     }
 }
 
@@ -294,7 +341,6 @@ fn serialize_and_hmac<M: Transmit, const H: usize>(key: &[u8; 16], msg: &M) -> V
 }
 
 fn decode_and_verify<M: Transmit + DeserializeOwned, const H: usize>(key: &[u8; 16], buffer: &mut [u8]) -> Option<M> {
-    println!("{:#}", buffer);
     let (hmac, serialized) = buffer.split_at_mut(H);
     let serialized_end = serialized.iter().position(|b| *b == 0).map(|i| i + 1).unwrap_or(serialized.len());
 

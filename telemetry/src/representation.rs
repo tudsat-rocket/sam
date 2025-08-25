@@ -143,7 +143,10 @@ impl<const N: usize> TelemetryMessageReader<N> {
         // TODO: (felix) what does this mean?
         assert_eq!(repr.bits() % 8, 0);
 
-        // Bytes of this float or fixed point number.
+        if ((self.bit_pointer + repr.bits()) / 8) >= self.buffer.len() {
+            return Err(());
+        }
+
         let bytes = &self.buffer[(self.bit_pointer / 8)..((self.bit_pointer + repr.bits()) / 8)];
         // println!("bytes are: {:?}", bytes);
         let value = match repr {
