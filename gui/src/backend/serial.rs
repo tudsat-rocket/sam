@@ -404,7 +404,7 @@ impl BackendVariant for SerialBackend {
         }
 
         if self.fc_settings.is_none() && self.fc_time().is_some() {
-            self.send(UplinkMessage::ReadSettings).unwrap();
+            // self.send(UplinkMessage::ReadSettings).unwrap();
         }
     }
 

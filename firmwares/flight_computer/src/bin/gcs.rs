@@ -20,22 +20,22 @@ use embassy_stm32::rcc::{
 };
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::Channel;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::{Config, interrupt};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::channel::Sender;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Duration, Instant, Ticker};
 
+use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
 use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::sx126x::{self, Sx1262, Sx126x};
-use lora_phy::LoRa;
+use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use shared_types::{DownlinkMessage, UplinkMessage};
 use static_cell::StaticCell;
 
@@ -77,6 +77,8 @@ async fn run_uplink(
 ) -> ! {
     loop {
         let msg = eth_rx.receive().await;
+        defmt::info!("received uplinkmessage");
         lora_tx.send(msg).await;
+        defmt::info!("sent uplinkmessage");
     }
 }

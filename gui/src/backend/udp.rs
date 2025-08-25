@@ -13,7 +13,7 @@ use log::*;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::{DataStore, USB_SCHEMA};
+use telemetry::{DataStore, LORA_SCHEMA, USB_SCHEMA};
 
 use crate::backend::BackendVariant;
 use crate::settings::AppSettings;
@@ -136,10 +136,10 @@ impl BackendVariant for UdpBackend {
                     self.fc_settings = Some(settings);
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
-                    info!("Telemetry message");
-                    self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    // self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    // FIXME: change schema
+                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
 
-                    info!("Telemetry message data store ingestion successful");
                     //self.data_store.ingest_message(&LORA_SCHEMA, time, message);
                 }
                 _ => {
@@ -151,7 +151,7 @@ impl BackendVariant for UdpBackend {
         }
 
         if self.fc_settings.is_none() && self.fc_time().is_some() {
-            self.send(UplinkMessage::ReadSettings).unwrap();
+            // self.send(UplinkMessage::ReadSettings).unwrap();
         }
     }
 

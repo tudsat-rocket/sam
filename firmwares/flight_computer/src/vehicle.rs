@@ -208,6 +208,7 @@ impl Vehicle {
 
     fn receive(&mut self) {
         if let Ok(msg) = self.lora.1.try_receive() {
+            info!("receive lora uplink message");
             self.handle_uplink_message(msg);
         }
 
@@ -236,7 +237,7 @@ impl Vehicle {
                 info!("UplinkMessage: ReadSettings");
                 // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
                 let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
-                // let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
             }
             //UplinkMessage::WriteSettings(settings) => {
             //    let _ = self.flash.write_settings(settings);
@@ -314,6 +315,10 @@ impl Vehicle {
             // TODO:
         }
 
+        info!("SWITCHED FLIGHT MODE TO OTHER");
+        if new_mode == FlightMode::RecoveryDrogue {
+            info!("========== SWITCHED FLIGHT MODE TO Drouge ==========");
+        }
         self.mode = new_mode;
         crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
     }

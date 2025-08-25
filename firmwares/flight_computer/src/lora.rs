@@ -71,7 +71,7 @@ pub fn start_rocket_downlink(
 ) -> Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3> {
     let downlink = DOWNLINK.init(Channel::new());
 
-    if let Some(sequence) = downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
+    if let Some(sequence) = generate_downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
         spawner.spawn(run_rocket_downlink(lora, settings, sequence, downlink.receiver())).unwrap();
     }
 
@@ -97,7 +97,7 @@ pub fn start_gcs_downlink(
 ) -> Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3> {
     let downlink = DOWNLINK.init(Channel::new());
 
-    if let Some(sequence) = downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
+    if let Some(sequence) = generate_downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
         spawner.spawn(run_gcs_downlink(lora, settings, sequence, downlink.sender())).unwrap();
     }
 
@@ -233,9 +233,16 @@ async fn run_gcs_uplink(
     }
 }
 
-fn downlink_sequence(channels: [bool; CHANNELS.len()], binding_phrase: &String<64>) -> Option<[usize; CHANNELS.len()]> {
-    let mut available: Vec<_, 16> = channels.iter().enumerate().filter_map(|(i, x)| x.then(|| i)).collect();
-    if available.len() == 0 {
+// Generates a list of active channel indices that represents the channel hopping sequence.
+// Returns None, if no channels are active.
+// The channel sequence is deterministically derived from the binding_phrase.
+fn generate_downlink_sequence(
+    channels: [bool; CHANNELS.len()],
+    binding_phrase: &String<64>,
+) -> Option<[usize; CHANNELS.len()]> {
+    let mut available: Vec<usize, 16> =
+        channels.iter().enumerate().filter(|&(_, active)| *active).map(|(i, _)| i).collect();
+    if available.is_empty() {
         return None;
     }
 
@@ -256,15 +263,20 @@ fn downlink_sequence(channels: [bool; CHANNELS.len()], binding_phrase: &String<6
     Some(sequence[..CHANNELS.len()].try_into().unwrap())
 }
 
+// TODO: (Felix) check if documentation correct
+/// Gives the frequency of the next downlink channel, calculated from the static channel hopping
+/// sequence and the current time [ms] (or main loop invocations).
 fn downlink_frequency(sequence: &[usize; CHANNELS.len()], t: u32) -> u32 {
     let i = (t / LORA_MESSAGE_INTERVAL) as usize % CHANNELS.len();
     CHANNELS[sequence[i]]
 }
 
+// TODO: (Felix) documentation
 fn start_of_interval(t: u32) -> u32 {
     t.wrapping_sub(t % LORA_MESSAGE_INTERVAL)
 }
 
+/// Generates the ready to transmit downlink message bytes by prepending the message's hash.
 fn serialize_and_hmac<M: Transmit, const H: usize>(key: &[u8; 16], msg: &M) -> Vec<u8, DOWNLINK_MSG_LEN> {
     let serialized = msg.serialize().unwrap_or_default();
 
@@ -275,6 +287,7 @@ fn serialize_and_hmac<M: Transmit, const H: usize>(key: &[u8; 16], msg: &M) -> V
     siphasher.write(&serialized);
     let hash = &siphasher.finish().to_be_bytes()[..H];
 
+    // NOTE: think about unwrap
     let mut msg = Vec::from_slice(hash).unwrap();
     let _ = msg.extend_from_slice(serialized.as_slice());
     msg
