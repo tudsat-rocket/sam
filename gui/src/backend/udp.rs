@@ -13,7 +13,7 @@ use log::*;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::{DataStore, USB_SCHEMA};
+use telemetry::{DataStore, LORA_SCHEMA};
 
 use crate::backend::BackendVariant;
 use crate::settings::AppSettings;
@@ -137,10 +137,10 @@ impl BackendVariant for UdpBackend {
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
                     info!("Telemetry message");
-                    self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    //self.data_store.ingest_message(&USB_SCHEMA, time, message);
 
                     info!("Telemetry message data store ingestion successful");
-                    //self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
                 }
                 _ => {
                     // TODO: metrics via downlink message

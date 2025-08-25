@@ -140,6 +140,10 @@ impl<const N: usize> TelemetryMessageReader<N> {
         // TODO: (felix) what does this mean?
         assert_eq!(repr.bits() % 8, 0);
 
+        if ((self.bit_pointer + repr.bits()) / 8) >= self.buffer.len() {
+            return Err(());
+        }
+
         let bytes = &self.buffer[(self.bit_pointer / 8)..((self.bit_pointer + repr.bits()) / 8)];
         let value = match repr {
             Representation::FixedPoint { bits, min, max } => {
