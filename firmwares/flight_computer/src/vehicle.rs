@@ -10,8 +10,10 @@ use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
+use embassy_sync::signal::Signal;
 use embassy_time::Instant;
 use embassy_time::{Duration, Ticker};
 
@@ -28,10 +30,11 @@ use telemetry::{
     MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA,
 };
 
+use crate::board::load_outputs;
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
 use crate::storage::*;
-use crate::{BoardOutputs, BoardSensors};
+use crate::{BoardOutputs, BoardSensors, LoadOutputs};
 //use crate::lora::*;
 //use crate::usb::*;
 //use crate::{can::*, BoardOutputs, BoardSensors};
@@ -45,7 +48,8 @@ pub struct Vehicle {
     settings: Settings,
 
     sensors: BoardSensors,
-    outputs: BoardOutputs,
+    load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
+    board_leds: (Output<'static>, Output<'static>, Output<'static>),
 
     can1: ((), ()),
     can2: ((), ()),
@@ -62,6 +66,8 @@ pub struct Vehicle {
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
     ),
+    main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+    parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 
     loop_runtime: f32,
     //gps: GPSHandle,
@@ -88,7 +94,9 @@ impl Vehicle {
     #[allow(clippy::too_many_arguments)]
     pub fn init(
         mut sensors: BoardSensors,
-        outputs: BoardOutputs,
+        // outputs: BoardOutputs,
+        board_leds: (Output<'static>, Output<'static>, Output<'static>),
+        load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
         can1: ((), ()),
         can2: ((), ()),
         usb: (
@@ -103,6 +111,10 @@ impl Vehicle {
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
+
+        main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+        parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+
         //gps: GPSHandle,
         ////power: Power,
         flash: FlashHandle,
@@ -123,13 +135,16 @@ impl Vehicle {
             settings,
 
             sensors,
-            outputs,
+            board_leds,
+            load_outputs,
 
             can1,
             can2,
             usb,
             eth,
             lora,
+            main_recovery_sig,
+            parabreaks_sig,
 
             //gps,
             //power,
@@ -177,22 +192,26 @@ impl Vehicle {
             self.switch_mode(fm);
         }
 
-        self.receive();
+        self.receive_uplink_message();
 
-        self.outputs.recovery_high.set_level((self.mode >= FlightMode::Armed).into());
+        // TODO: check arm
+        unsafe {
+            self.load_outputs.lock_mut(|o| o.arm());
+        }
+        // self.outputs.load_output_arm.set_level((self.mode >= FlightMode::Armed).into());
 
-        let elapsed = self.state_estimator.time_in_mode();
-        let drogue_high =
-            self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed);
-        let main_high =
-            self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed);
-        self.outputs.recovery_lows.0.set_level(drogue_high.into());
-        self.outputs.recovery_lows.1.set_level(main_high.into());
-
+        // TODO: re-enable timing checks for recovery // recovery invocation moved to fn switch_mode
+        let _elapsed = self.state_estimator.time_in_mode();
+        // if self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed) {
+        //     self.parabreaks_sig.signal(true);
+        // }
+        // if self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed) {
+        //     self.main_recovery_sig.signal(true);
+        // }
         let (r, y, g) = self.mode.led_state(self.time.0);
-        self.outputs.leds.0.set_level((!r).into());
-        self.outputs.leds.1.set_level((!y).into());
-        self.outputs.leds.2.set_level((!g).into());
+        self.board_leds.0.set_level((!r).into());
+        self.board_leds.1.set_level((!y).into());
+        self.board_leds.2.set_level((!g).into());
 
         //// Send valve commands via CAN bus
         //self.transmit_output_commands();
@@ -206,7 +225,7 @@ impl Vehicle {
         // defmt::info!("loop_runtime: {}", self.loop_runtime);
     }
 
-    fn receive(&mut self) {
+    fn receive_uplink_message(&mut self) {
         if let Ok(msg) = self.lora.1.try_receive() {
             info!("receive lora uplink message");
             self.handle_uplink_message(msg);
@@ -314,11 +333,14 @@ impl Vehicle {
             //self.radio.set_max_transmit_power();
             // TODO:
         }
-
-        info!("SWITCHED FLIGHT MODE TO OTHER");
-        if new_mode == FlightMode::RecoveryDrogue {
-            info!("========== SWITCHED FLIGHT MODE TO Drouge ==========");
+        // TODO:: move maybe
+        if self.mode == FlightMode::RecoveryDrogue {
+            self.parabreaks_sig.signal(true);
         }
+        if self.mode == FlightMode::RecoveryMain {
+            self.main_recovery_sig.signal(true);
+        }
+
         self.mode = new_mode;
         crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
     }

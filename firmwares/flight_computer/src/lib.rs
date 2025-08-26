@@ -4,6 +4,7 @@
 #![allow(unused_mut)]
 
 use core::borrow::Borrow;
+use core::cell::RefCell;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
 use core::net::SocketAddrV4;
@@ -12,6 +13,7 @@ use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::adc::AnyAdcChannel;
 use embassy_stm32::timer::simple_pwm::PwmPinConfig;
 use embassy_stm32::usb::Driver;
+use embassy_sync::blocking_mutex;
 use embassy_usb::UsbDevice;
 use rand::RngCore;
 
@@ -72,14 +74,17 @@ use shared_types::FlightMode;
 use shared_types::Settings;
 
 //mod can;
+pub mod board;
 pub mod buzzer;
 pub mod drivers;
 pub mod ethernet;
 pub mod lora;
+pub mod recovery;
 pub mod storage;
 pub mod usb;
 pub mod vehicle;
 
+use board::load_outputs::LoadOutputs;
 use drivers::sensors::*;
 use storage::{Flash, FlashHandle, FlashType};
 
@@ -110,9 +115,10 @@ pub struct BoardSensors {
 
 pub struct BoardOutputs {
     pub leds: (Output<'static>, Output<'static>, Output<'static>),
-    pub recovery_high: Output<'static>,
-    pub recovery_lows: (Output<'static>, Output<'static>, Output<'static>, Output<'static>),
-    pub continuity_check: Output<'static>,
+    // pub load_outputs: embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, RefCell<LoadOutputs>>,
+    // pub load_output_arm: Output<'static>,
+    // pub recovery_lows: (Output<'static>, Output<'static>, Output<'static>, Output<'static>),
+    // pub continuity_check: Output<'static>,
 }
 
 pub struct BoardAdc {
@@ -131,6 +137,7 @@ pub struct BoardAdc {
 pub struct Board {
     pub sensors: BoardSensors,
     pub outputs: BoardOutputs,
+    // pub load_outputs: embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, RefCell<LoadOutputs>>,
     pub adc: BoardAdc,
     pub can1: Can<'static>,
     pub can2: Can<'static>,
@@ -154,7 +161,11 @@ static SPI4_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = Sta
 
 static FLIGHT_MODE_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal::new();
 
-pub async fn init_board() -> (Board, Settings, u64) {
+static LOAD_OUTPUTS: StaticCell<embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>> =
+    StaticCell::new();
+
+pub async fn init_board()
+-> (Board, &'static mut embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>, Settings, u64) {
     // Basic setup, including clocks
     // Divider values taken from STM32CubeMx
     let mut config = Config::default();
@@ -219,7 +230,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi1_config = embassy_stm32::spi::Config::default();
     spi1_config.frequency = Hertz::mhz(10);
     let spi1 = Spi::new(p.SPI1, p.PA5, p.PD7, p.PB4, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
-    let spi1 = Mutex::<CriticalSectionRawMutex, _>::new(spi1);
+    let spi1 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi1);
     let spi1 = SPI1_SHARED.init(spi1);
 
     let spi1_cs_imu1 = Output::new(p.PD4, Level::High, Speed::VeryHigh);
@@ -230,7 +241,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi2_config = embassy_stm32::spi::Config::default();
     spi2_config.frequency = Hertz::mhz(10);
     let spi2 = Spi::new(p.SPI2, p.PD3, p.PB15, p.PB14, p.DMA1_CH4, p.DMA1_CH3, spi2_config);
-    let spi2 = Mutex::<CriticalSectionRawMutex, _>::new(spi2);
+    let spi2 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi2);
     let spi2 = SPI2_SHARED.init(spi2);
 
     let spi2_cs_imu2 = Output::new(p.PD8, Level::High, Speed::VeryHigh);
@@ -252,7 +263,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi4_config = embassy_stm32::spi::Config::default();
     spi4_config.frequency = Hertz::mhz(10);
     let spi4 = Spi::new(p.SPI4, p.PE2, p.PE6, p.PE5, p.DMA1_CH1, p.DMA1_CH2, spi4_config);
-    let spi4 = Mutex::<CriticalSectionRawMutex, _>::new(spi4);
+    let spi4 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi4);
     let spi4 = SPI4_SHARED.init(spi4);
 
     let lora1_cs = Output::new(p.PE7, Level::High, Speed::Low);
@@ -365,7 +376,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi3_config = embassy_stm32::spi::Config::default();
     spi3_config.frequency = Hertz::mhz(20);
     let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
-    let spi3 = Mutex::<CriticalSectionRawMutex, _>::new(spi3);
+    let spi3 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi3);
     let spi3 = SPI3_SHARED.init(spi3);
 
     use storage::{Flash, FlashHandle};
@@ -375,9 +386,9 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let (flash, flash_handle, settings) =
         Flash::init(SpiDevice::new(spi3, spi3_cs_flash)).await.map_err(|_e| ()).unwrap();
 
-    //// Initialize GPS
-    //#[cfg(not(feature = "gcs"))]
-    //let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);
+    // Initialize GPS
+    #[cfg(not(feature = "gcs"))]
+    let (gps, gps_handle) = GPS::init(p.USART2, p.PE1, p.PE0, p.DMA1_CH6, p.DMA1_CH5);
 
     //#[cfg(not(feature = "gcs"))]
     //let adc = Adc::new(p.ADC1, &mut Delay);
@@ -395,15 +406,16 @@ pub async fn init_board() -> (Board, Settings, u64) {
     );
     let buzzer_pwm = SimplePwm::new(p.TIM2, None, None, Some(buzzer_pin), None, Hertz::hz(440), Default::default());
     let buzzer_pwm_channel = Channel::Ch3;
-
-    let recovery_high = Output::new(p.PE13, Level::Low, Speed::Low);
-    let recovery_lows = (
+    let load_outputs = LoadOutputs::new(
+        Output::new(p.PE13, Level::Low, Speed::Low),
         Output::new(p.PC9, Level::Low, Speed::Low),
         Output::new(p.PC8, Level::Low, Speed::Low),
         Output::new(p.PC7, Level::Low, Speed::Low),
         Output::new(p.PC6, Level::Low, Speed::Low),
     );
-    let continuity_check = Output::new(p.PE14, Level::High, Speed::Low);
+    let load_outputs = LOAD_OUTPUTS.init(embassy_sync::blocking_mutex::Mutex::new(load_outputs));
+
+    let _continuity_check = Output::new(p.PE14, Level::High, Speed::Low);
 
     let adc1 = Adc::new(p.ADC1);
     let adc2 = Adc::new(p.ADC2);
@@ -416,7 +428,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let adc_main_current = p.PA0.degrade_adc();
     let adc_recovery_current = p.PA6.degrade_adc();
     let adc_continuity_check = p.PC0.degrade_adc();
-
+    use embassy_sync::blocking_mutex::Mutex;
     let board = Board {
         sensors: BoardSensors {
             imu1,
@@ -430,9 +442,10 @@ pub async fn init_board() -> (Board, Settings, u64) {
         },
         outputs: BoardOutputs {
             leds,
-            recovery_high,
-            recovery_lows,
-            continuity_check,
+            // load_outputs: Mutex::new(RefCell::new(load_outputs)),
+            // load_output_arm: recovery_high,
+            // recovery_lows,
+            // continuity_check,
         },
         adc: BoardAdc {
             adc1,
@@ -459,5 +472,5 @@ pub async fn init_board() -> (Board, Settings, u64) {
         buzzer: (buzzer_pwm, buzzer_pwm_channel),
     };
 
-    (board, settings, seed)
+    (board, load_outputs, settings, seed)
 }

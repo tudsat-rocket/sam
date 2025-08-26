@@ -28,8 +28,9 @@ use embassy_stm32::{Config, interrupt};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use embassy_time::{Delay, Duration, Instant, Ticker};
+use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 
+use flight_computer_firmware::board::load_outputs;
 use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
@@ -42,14 +43,15 @@ use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 use flight_computer_firmware as fw;
+use fw::recovery::{MAIN_RECOVERY_SIG, PARABREAKS_SIG, start_recovery_task};
 use fw::vehicle::*;
 
 static EXECUTOR_HIGH: InterruptExecutor = InterruptExecutor::new();
 static EXECUTOR_MEDIUM: InterruptExecutor = InterruptExecutor::new();
 
 #[embassy_executor::main]
-async fn main(low_priority_spawner: Spawner) {
-    let (mut board, settings, seed) = fw::init_board().await;
+async fn main(low_priority_spawner: Spawner) -> ! {
+    let (mut board, load_outputs, settings, seed) = fw::init_board().await;
 
     // Start high priority executor
     interrupt::I2C3_EV.set_priority(Priority::P6);
@@ -68,14 +70,19 @@ async fn main(low_priority_spawner: Spawner) {
     let (usb_downlink, usb_uplink) = fw::usb::start(board.usb_driver, low_priority_spawner);
     let (eth_downlink, eth_uplink) = fw::ethernet::start(board.ethernet, low_priority_spawner, seed);
 
+    fw::recovery::start_recovery_task(load_outputs, high_priority_spawner, &MAIN_RECOVERY_SIG, &PARABREAKS_SIG).await;
+
     let vehicle = Vehicle::init(
         board.sensors,
-        board.outputs,
+        board.outputs.leds,
+        load_outputs,
         (can1_tx, can1_rx),
         (can2_tx, can2_rx),
         (usb_downlink, usb_uplink),
         (eth_downlink, eth_uplink),
         (lora_downlink, lora_uplink),
+        &MAIN_RECOVERY_SIG,
+        &PARABREAKS_SIG,
         board.flash_handle,
         settings,
     );
@@ -91,16 +98,19 @@ async fn main(low_priority_spawner: Spawner) {
 
     low_priority_spawner.spawn(fw::buzzer::run(board.buzzer.0, board.buzzer.1)).unwrap();
     low_priority_spawner.spawn(guard_task()).unwrap();
+    loop {
+        Timer::after_secs(1_000_000).await;
+    }
 }
 
 #[interrupt]
 unsafe fn I2C3_EV() {
-    EXECUTOR_HIGH.on_interrupt()
+    unsafe { EXECUTOR_HIGH.on_interrupt() }
 }
 
 #[interrupt]
 unsafe fn I2C3_ER() {
-    EXECUTOR_MEDIUM.on_interrupt()
+    unsafe { EXECUTOR_MEDIUM.on_interrupt() }
 }
 
 #[embassy_executor::task]
