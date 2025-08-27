@@ -70,7 +70,7 @@ pub struct Vehicle {
     parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 
     loop_runtime: f32,
-    //gps: GPSHandle,
+    gps: GPSHandle,
     //power: Power,
 
     //usb: UsbHandle,
@@ -115,7 +115,7 @@ impl Vehicle {
         main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
         parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 
-        //gps: GPSHandle,
+        gps: GPSHandle,
         ////power: Power,
         flash: FlashHandle,
         //mut buzzer: Buzzer,
@@ -146,7 +146,7 @@ impl Vehicle {
             main_recovery_sig,
             parabreaks_sig,
 
-            //gps,
+            gps,
             //power,
             flash,
             loop_runtime: 0.0,
@@ -182,8 +182,8 @@ impl Vehicle {
             self.sensors.highg.accelerometer(),
             self.sensors.mag.magnetometer(),
             self.sensors.baro1.altitude(),
-            //self.sensors.gps.new_datum(),
-            None,
+            self.gps.new_datum(),
+            // None,
         );
         // Switch to new mode if necessary
         // let arm_voltage = self.power.arm_voltage().unwrap_or(0);
@@ -425,8 +425,8 @@ impl ::telemetry::MetricSource for Vehicle {
             Temperature(TemperatureSensorId::Barometer(BarometerId::BMP580)) => {
                 w.write_float(repr, self.sensors.baro3.temperature().unwrap_or_default())
             }
-            //GpsFix => w.write_enum(repr, self.gps.fix().unwrap_or_default() as u8),
-            //GpsAltitude => w.write_float(repr, self.gps.altitude().unwrap_or_default()),
+            GpsFix => w.write_enum(repr, self.gps.fix().unwrap_or_default() as u8),
+            GpsAltitude => w.write_float(repr, self.gps.altitude().unwrap_or_default()),
             // Pressures
             // Temperatures
             Temperature(TemperatureSensorId::Battery(BatteryId::Avionics)) => {

@@ -43,6 +43,7 @@ use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 use flight_computer_firmware as fw;
+use fw::drivers::sensors::gps;
 use fw::recovery::{MAIN_RECOVERY_SIG, PARABREAKS_SIG, start_recovery_task};
 use fw::vehicle::*;
 
@@ -51,7 +52,7 @@ static EXECUTOR_MEDIUM: InterruptExecutor = InterruptExecutor::new();
 
 #[embassy_executor::main]
 async fn main(low_priority_spawner: Spawner) -> ! {
-    let (mut board, load_outputs, settings, seed) = fw::init_board().await;
+    let (mut board, load_outputs, gps, gps_handle, settings, seed) = fw::init_board().await;
 
     // Start high priority executor
     interrupt::I2C3_EV.set_priority(Priority::P6);
@@ -83,6 +84,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         (lora_downlink, lora_uplink),
         &MAIN_RECOVERY_SIG,
         &PARABREAKS_SIG,
+        gps_handle,
         board.flash_handle,
         settings,
     );
@@ -93,7 +95,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
 
     //medium_priority_spawner.spawn(can::run_tx(can_tx)).unwrap();
     //medium_priority_spawner.spawn(can::run_rx(can_rx)).unwrap();
-    //medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
+    medium_priority_spawner.spawn(gps::run(gps)).unwrap(); // TODO: priority?
     //medium_priority_spawner.spawn(flash::run(flash)).unwrap();
 
     low_priority_spawner.spawn(fw::buzzer::run(board.buzzer.0, board.buzzer.1)).unwrap();

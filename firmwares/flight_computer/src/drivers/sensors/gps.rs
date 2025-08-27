@@ -2,10 +2,10 @@ use embassy_stm32::mode::Async;
 use heapless::{String, Vec};
 
 use embassy_embedded_hal::SetConfig;
+use embassy_stm32::Peri;
 use embassy_stm32::bind_interrupts;
 use embassy_stm32::peripherals::*;
-use embassy_stm32::usart::{Error, Uart};
-use embassy_stm32::Peri;
+use embassy_stm32::usart::{self, Error, RxDma, RxPin, TxDma, TxPin, Uart};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use embassy_time::{Duration, Instant, Timer};
@@ -17,14 +17,14 @@ use defmt::*;
 use shared_types::*;
 
 bind_interrupts!(struct Irqs {
-    USART2 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART2>;
+    UART8 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::UART8>;
 });
 
 const DESIRED_BAUD_RATE: u32 = 115_200;
 const BAUD_RATE_OPTIONS: [u32; 2] = [115_200, 9600];
 
 // hardcoded to avoid needing alloc::format
-const DESIRED_BAUD_RATE_MESSAGE: &'static str = "$PUBX,41,1,0007,0003,115200,0*18\r\n";
+const DESIRED_BAUD_RATE_MESSAGE: &str = "$PUBX,41,1,0007,0003,115200,0*18\r\n";
 
 static CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, GPSDatum, 5>> = StaticCell::new();
 
@@ -42,6 +42,7 @@ pub struct GPSHandle {
 #[embassy_executor::task]
 pub async fn run(mut gps: GPS) -> ! {
     loop {
+        info!("GPS task running...");
         if let Err(e) = gps.run().await {
             error!("{:?}", Debug2Format(&e));
             Timer::after(Duration::from_millis(100)).await;
@@ -49,22 +50,29 @@ pub async fn run(mut gps: GPS) -> ! {
     }
 }
 
-impl<'d> GPS {
+impl GPS {
     // TODO: dma channels
     // pub fn init(p: USART2, tx: PA3, rx: PA2, tx_dma: DMA1_CH6, rx_dma: DMA1_CH5) -> (GPS, GPSHandle) {
     pub fn init(
-        p: Peri<'static, USART2>,
-        tx: Peri<'static, PA3>,
-        rx: Peri<'static, PA2>,
-        tx_dma: Peri<'static, DMA1_CH6>,
-        rx_dma: Peri<'static, DMA1_CH5>,
+        // p: Peri<'static, USART2>,
+        // tx: Peri<'static, PA3>,
+        // rx: Peri<'static, PA2>,
+        // tx_dma: Peri<'static, DMA1_CH6>,
+        // rx_dma: Peri<'static, DMA1_CH5>,
+        p: Peri<'static, UART8>,
+        rx: Peri<'static, impl RxPin<UART8>>,
+        tx: Peri<'static, impl TxPin<UART8>>,
+        // rx_dma: Peri<'static, DMA1_CH6>,
+        rx_dma: Peri<'static, impl RxDma<UART8>>,
+        tx_dma: Peri<'static, impl TxDma<UART8>>,
+        // tx_dma: Peri<'static, DMA1_CH5>,
     ) -> (GPS, GPSHandle) {
         let channel = CHANNEL.init(Channel::new());
 
         let mut uart_config = embassy_stm32::usart::Config::default();
         uart_config.baudrate = BAUD_RATE_OPTIONS[0];
 
-        let uart = Uart::new(p, tx, rx, Irqs, tx_dma, rx_dma, uart_config).unwrap();
+        let uart = Uart::new(p, rx, tx, Irqs, tx_dma, rx_dma, uart_config).unwrap();
 
         let gps = GPS {
             uart,
@@ -82,7 +90,9 @@ impl<'d> GPS {
 
     async fn read_gps_packet(&mut self) -> Result<String<512>, Error> {
         let mut buffer: [u8; 512] = [0x00; 512];
+        info!("gps uart packet read started");
         let n = self.uart.read_until_idle(&mut buffer).await?;
+        info!("gps uart packet read finished");
         let buffer: Vec<u8, 512> = Vec::from_slice(&buffer[..n]).unwrap_or_default();
         Ok(String::from_utf8(buffer).unwrap_or_default())
     }
@@ -214,11 +224,15 @@ impl<'d> GPS {
         self.uart.write(&measurement_rate_msg).await?;
 
         loop {
+            info!("reading gps packet");
             if let Ok(str) = self.read_gps_packet().await {
-                for line in str.split("\r\n").filter(|str| str.len() > 0) {
+                info!("reading gps packet successful");
+                for line in str.split("\r\n").filter(|str| !str.is_empty()) {
+                    info!("processing gps nmea line");
                     self.process_nmea_line(line).await;
                 }
             } else {
+                info!("reading gps packet unsuccessful");
                 Timer::after(Duration::from_millis(1)).await;
             }
         }

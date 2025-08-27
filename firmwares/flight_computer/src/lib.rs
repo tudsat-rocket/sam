@@ -164,8 +164,14 @@ static FLIGHT_MODE_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal:
 static LOAD_OUTPUTS: StaticCell<embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>> =
     StaticCell::new();
 
-pub async fn init_board()
--> (Board, &'static mut embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>, Settings, u64) {
+pub async fn init_board() -> (
+    Board,
+    &'static mut embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>,
+    GPS,
+    GPSHandle,
+    Settings,
+    u64,
+) {
     // Basic setup, including clocks
     // Divider values taken from STM32CubeMx
     let mut config = Config::default();
@@ -388,7 +394,7 @@ pub async fn init_board()
 
     // Initialize GPS
     #[cfg(not(feature = "gcs"))]
-    let (gps, gps_handle) = GPS::init(p.USART2, p.PE1, p.PE0, p.DMA1_CH6, p.DMA1_CH5);
+    let (gps, gps_handle) = GPS::init(p.UART8, p.PE0, p.PE1, p.DMA1_CH6, p.DMA1_CH5);
 
     //#[cfg(not(feature = "gcs"))]
     //let adc = Adc::new(p.ADC1, &mut Delay);
@@ -472,5 +478,5 @@ pub async fn init_board()
         buzzer: (buzzer_pwm, buzzer_pwm_channel),
     };
 
-    (board, load_outputs, settings, seed)
+    (board, load_outputs, gps, gps_handle, settings, seed)
 }
