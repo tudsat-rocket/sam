@@ -488,9 +488,9 @@ pub fn create_diagram<'a>(
     frontend: &'a mut Frontend,
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
-    backend
-        .data_store_mut()
-        .set_const_float(Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank), 50f64);
+    // backend
+    //     .data_store_mut()
+    //     .set_const_float(Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank), 50f64);
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),
         system_definition.connections.iter().map(|c| Line1D::new(c.points.clone())).collect(),

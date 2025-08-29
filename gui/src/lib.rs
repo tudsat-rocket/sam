@@ -1,5 +1,6 @@
 //! Main GUI code, included by cli, wasm and android entrypoints
 
+use core::f32;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -8,6 +9,7 @@ use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
 use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
+use nalgebra::Rotation2;
 use shared_types::telemetry::*;
 
 pub mod backend;
@@ -26,6 +28,7 @@ use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
+use crate::widgets::time_line::{Milestone, Timeline};
 use crate::windows::*;
 
 /// Main state object of our GUI application
@@ -195,6 +198,30 @@ impl Sam {
 
         // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.backend_mut(), enabled);
+        egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
+            //ui.label("Hello World!");
+            ui.add(Timeline::new(
+                vec![
+                    Milestone::new("Testing"),
+                    Milestone::new("IdlePacified"),
+                    Milestone::new("N₂ Filling"),
+                    Milestone::new("IdleActive"),
+                    Milestone::new("HarwareArmed"),
+                    Milestone::new("N₂O Filling"),
+                    Milestone::new("SoftwareArmed"),
+                    Milestone::new("Ignition"),
+                    Milestone::new("BurnPhase"),
+                    Milestone::new("CoastPhase"),
+                    Milestone::new("DroguePhase"),
+                    Milestone::new("MainPhase"),
+                    Milestone::new("LandedActive"),
+                    Milestone::new("Passivation"),
+                    Milestone::new("LandedPacified"),
+                ],
+                5,
+                Rotation2::new(0f32), //f32::consts::PI / 2f32),
+            ));
+        });
 
         let tab = self.tab.clone();
 
