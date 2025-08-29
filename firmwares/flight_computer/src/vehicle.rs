@@ -5,6 +5,7 @@ use core::num::Wrapping;
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embassy_futures::join::{join_array, join3, join5};
+use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
@@ -33,7 +34,7 @@ use telemetry::{
 use crate::board::load_outputs;
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
-use crate::storage::*;
+use crate::{BoardAdc, storage::*};
 use crate::{BoardOutputs, BoardSensors, LoadOutputs};
 //use crate::lora::*;
 //use crate::usb::*;
@@ -48,6 +49,7 @@ pub struct Vehicle {
     settings: Settings,
 
     sensors: BoardSensors,
+    adc_s: BoardAdc,
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
     board_leds: (Output<'static>, Output<'static>, Output<'static>),
 
@@ -77,6 +79,7 @@ pub struct Vehicle {
     //radio: RadioHandle,
     flash: FlashHandle,
     //can: CanHandle,
+    recovery_current: Option<u16>,
 }
 
 #[embassy_executor::task]
@@ -94,6 +97,7 @@ impl Vehicle {
     #[allow(clippy::too_many_arguments)]
     pub fn init(
         mut sensors: BoardSensors,
+        mut adc_s: BoardAdc,
         // outputs: BoardOutputs,
         board_leds: (Output<'static>, Output<'static>, Output<'static>),
         load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
@@ -135,6 +139,7 @@ impl Vehicle {
             settings,
 
             sensors,
+            adc_s,
             board_leds,
             load_outputs,
 
@@ -150,6 +155,7 @@ impl Vehicle {
             //power,
             flash,
             loop_runtime: 0.0,
+            recovery_current: None,
         }
     }
 
@@ -170,6 +176,11 @@ impl Vehicle {
         .await;
 
         join3(self.sensors.baro1.tick(), self.sensors.baro2.tick(), self.sensors.baro3.tick()).await;
+        if self.time.0 % 100 == 0 {
+            self.recovery_current = Some(self.measure_recovery_current());
+        }
+        let current = self.recovery_current.unwrap_or(0);
+        // warn!("Current: {}", current);
         // self.power.tick();
 
         // Update state estimator
@@ -223,6 +234,36 @@ impl Vehicle {
         // get CPU usage
         self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
         // defmt::info!("loop_runtime: {}", self.loop_runtime);
+    }
+
+    // Returns recovery current in mA
+    fn measure_recovery_current(&mut self) -> u16 {
+        let sample = self.adc_s.adc1.blocking_read(&mut self.adc_s.recovery_current);
+        self.adc_s.adc1.set_resolution(embassy_stm32::adc::Resolution::BITS12);
+        // sample = 500;
+        // let mut internal_vref = self.adc_s.adc1.enable_vrefint();
+        // let vref_sample = self.adc_s.adc1.blocking_read(&mut internal_vref);
+        // warn!("vref_sample: {}", vref_sample);
+
+        // 6.3.5 https://www.st.com/resource/en/datasheet/stm32h743vi.pdf
+        const VREFINT_MV: u32 = 1216; // mV
+        // let measured_voltage_mv = u32::from(sample) * VREFINT_MV / u32::from(vref_sample);
+        // warn!("Voltage: {}", measured_voltage_mv);
+        // let shunt_voltage_uv = (1000 * measured_voltage_mv) / 20;
+
+        // I = U / R
+        // A = mV / mOhm
+        // mA = 10^-3 mV / mOhm
+        // mA = uV / mOhm
+        // let current = shunt_voltage_uv / 5;
+        // current as u16
+
+        let u_meas_mv = (VREFINT_MV * sample as u32) / 2_u32.pow(12);
+
+        let i_shunt_ma = (1000 * u_meas_mv) / (20 * 5);
+
+        warn!("sample: {}, I: {}", sample, i_shunt_ma);
+        i_shunt_ma as u16
     }
 
     fn receive_uplink_message(&mut self) {
@@ -425,6 +466,7 @@ impl ::telemetry::MetricSource for Vehicle {
             Temperature(TemperatureSensorId::Barometer(BarometerId::BMP580)) => {
                 w.write_float(repr, self.sensors.baro3.temperature().unwrap_or_default())
             }
+            RecoveryCurrent => w.write_float(repr, self.recovery_current.unwrap_or_default()),
             //GpsFix => w.write_enum(repr, self.gps.fix().unwrap_or_default() as u8),
             //GpsAltitude => w.write_float(repr, self.gps.altitude().unwrap_or_default()),
             // Pressures

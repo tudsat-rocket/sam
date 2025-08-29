@@ -74,6 +74,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
 
     let vehicle = Vehicle::init(
         board.sensors,
+        board.adc,
         board.outputs.leds,
         load_outputs,
         (can1_tx, can1_rx),
