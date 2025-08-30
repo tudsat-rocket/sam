@@ -35,6 +35,8 @@ pub struct UdpBackend {
     // The last command sent to the FC, we use this the rudimentarily prevent fast command
     // repetitions
     last_command: Option<(Instant, Command)>,
+    // TODO: fix
+    last_read_settings: Option<Instant>,
 }
 
 impl UdpBackend {
@@ -65,6 +67,7 @@ impl UdpBackend {
             fc_settings: None,
             message_receipt_times: VecDeque::new(),
             last_command: None,
+            last_read_settings: None,
         }
     }
 
@@ -98,6 +101,14 @@ impl UdpBackend {
             }
         }
     }
+
+    fn send_ignore_error(&mut self, msg: UplinkMessage) {
+        log::info!("Sending {:?}", msg);
+        match self.send(msg) {
+            Ok(..) => (),
+            Err(e) => log::warn!("Failed to send uplink message: {}", e),
+        }
+    }
 }
 
 impl BackendVariant for UdpBackend {
@@ -112,10 +123,10 @@ impl BackendVariant for UdpBackend {
         }
 
         for (t, msg) in msgs.into_iter() {
-            log::info!("received message: {:?}", msg);
+            // log::info!("received message: {:?}", msg);
             if let (Some(last_time), Some(msg_time)) = (self.message_receipt_times.back(), msg.time_produced()) {
                 if msg_time < last_time.1 {
-                    log::warn!("recieved out of order downlink message, dropping.\nMsg: {:?}", msg);
+                    log::warn!("Recieved out of order downlink message, dropping.\nMsg: {:?}", msg);
                     continue;
                 }
             }
@@ -150,8 +161,16 @@ impl BackendVariant for UdpBackend {
             }
         }
 
+        // FIXME: add rate limiting
         if self.fc_settings.is_none() && self.fc_time().is_some() {
-            // self.send(UplinkMessage::ReadSettings).unwrap();
+            if let Some(last_instant) = self.last_read_settings {
+                if last_instant.elapsed() < Duration::from_secs(1) {
+                    // TODO: early return ugly
+                    return;
+                }
+            }
+            self.send_ignore_error(UplinkMessage::ReadSettings);
+            self.last_read_settings = Some(Instant::now());
         }
     }
 
@@ -267,17 +286,22 @@ pub async fn run_socket(
             },
             // receive message via udp
             result = socket.recv_from(&mut buf) => {
-                info!("Received udp message");
+                // info!("Received udp message");
                 let (len, addr) = result.unwrap();
                 peer = Some(addr);
 
                 let Ok(msg) = postcard::from_bytes_cobs(&mut buf[..(len as usize)]) else {
-                    info!("Postcard serialization of message failed");
+                    // info!("Postcard serialization of message failed");
                     continue;
                 };
-                    info!("Postcard serialization of message successful");
+                    // info!("Postcard serialization of message successful");
 
-                downlink_tx.send((Instant::now(), msg)).await.unwrap();
+                    // TODO: remove unwrap
+                // downlink_tx.send((Instant::now(), msg)).await.unwrap();
+                match downlink_tx.send((Instant::now(), msg)).await {
+                    Ok(..) => (),
+                    Err(e) => log::warn!("Could not send message between threads: {}", e),
+                }
 
                 if let Some(ctx) = &ctx {
                     ctx.request_repaint();

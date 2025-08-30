@@ -31,6 +31,8 @@ use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 
 use flight_computer_firmware::board::load_outputs;
+use flight_computer_firmware::lora;
+use flight_computer_firmware::lora::TypedLoraLinkSettings;
 use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
@@ -44,6 +46,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 use flight_computer_firmware as fw;
 use fw::recovery::{MAIN_RECOVERY_SIG, PARABREAKS_SIG, start_recovery_task};
+use fw::storage;
 use fw::vehicle::*;
 
 static EXECUTOR_HIGH: InterruptExecutor = InterruptExecutor::new();
@@ -61,8 +64,10 @@ async fn main(low_priority_spawner: Spawner) -> ! {
     interrupt::I2C3_ER.set_priority(Priority::P7);
     let medium_priority_spawner = EXECUTOR_MEDIUM.start(interrupt::I2C3_ER);
 
-    let lora_downlink = fw::lora::start_rocket_downlink(board.lora1, settings.lora.clone(), medium_priority_spawner);
-    let lora_uplink = fw::lora::start_rocket_uplink(board.lora2, settings.lora.clone(), medium_priority_spawner);
+    let (lora_downlink, downlink_settings) =
+        fw::lora::start_rocket_downlink(board.lora1, settings.lora.clone(), medium_priority_spawner);
+    let (lora_uplink, rssi_glob) =
+        fw::lora::start_rocket_uplink(board.lora2, settings.lora.clone(), medium_priority_spawner);
 
     let (can1_tx, can1_rx) = ((), ());
     let (can2_tx, can2_rx) = ((), ());
@@ -85,6 +90,8 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         &PARABREAKS_SIG,
         board.flash_handle,
         settings,
+        downlink_settings,
+        rssi_glob,
     );
 
     board.iwdg.unleash();
@@ -94,7 +101,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
     //medium_priority_spawner.spawn(can::run_tx(can_tx)).unwrap();
     //medium_priority_spawner.spawn(can::run_rx(can_rx)).unwrap();
     //medium_priority_spawner.spawn(drivers::sensors::gps::run(gps)).unwrap(); // TODO: priority?
-    //medium_priority_spawner.spawn(flash::run(flash)).unwrap();
+    medium_priority_spawner.spawn(storage::run(board.flash)).unwrap();
 
     low_priority_spawner.spawn(fw::buzzer::run(board.buzzer.0, board.buzzer.1)).unwrap();
     low_priority_spawner.spawn(guard_task()).unwrap();

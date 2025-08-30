@@ -11,6 +11,7 @@ use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::Mutex as BlMutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embassy_sync::signal::Signal;
@@ -33,6 +34,7 @@ use telemetry::{
 use crate::board::load_outputs;
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
+use crate::lora::TypedLoraLinkSettings;
 use crate::storage::*;
 use crate::{BoardOutputs, BoardSensors, LoadOutputs};
 //use crate::lora::*;
@@ -46,6 +48,8 @@ pub struct Vehicle {
     mode: FlightMode,
     state_estimator: StateEstimator,
     settings: Settings,
+    lora_downlink_settings:
+        &'static embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
 
     sensors: BoardSensors,
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
@@ -66,6 +70,8 @@ pub struct Vehicle {
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
     ),
+    // lora_power_sig: &'static Signal<CriticalSectionRawMutex, u8>,
+    lora_uplink_rssi: &'static BlMutex<CriticalSectionRawMutex, i16>,
     main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
     parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 
@@ -120,6 +126,9 @@ impl Vehicle {
         flash: FlashHandle,
         //mut buzzer: Buzzer,
         settings: Settings,
+        lora_downlink_settings: &'static BlMutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
+        rssi_glob: &'static BlMutex<CriticalSectionRawMutex, i16>,
+        // lora_power_sig: &'static Signal<CriticalSectionRawMutex, u8>,
     ) -> Self {
         //buzzer.apply_settings(&settings.drogue_output_settings, &settings.main_output_settings);
 
@@ -133,7 +142,9 @@ impl Vehicle {
             mode: FlightMode::Idle,
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQUENCY.0 as f32, settings.clone()),
             settings,
-
+            lora_downlink_settings,
+            lora_uplink_rssi: rssi_glob,
+            // lora_power_sig,
             sensors,
             board_leds,
             load_outputs,
@@ -256,11 +267,13 @@ impl Vehicle {
                 info!("UplinkMessage: ReadSettings");
                 // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
                 let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
-                let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                // FIXME: remember to re-enable
+                // let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
             }
-            //UplinkMessage::WriteSettings(settings) => {
-            //    let _ = self.flash.write_settings(settings);
-            //}
+            UplinkMessage::WriteSettings(settings) => {
+                info!("UplinkMessage: WriteSettings");
+                let _ = self.flash.write_settings(settings);
+            }
             //UplinkMessage::ApplyLoRaSettings(_) => {}
             _ => {}
         }
@@ -443,6 +456,7 @@ impl ::telemetry::MetricSource for Vehicle {
             // Misc.
             CpuUtilization => w.write_float(repr, self.loop_runtime),
             //FlashPointer => w.write_float(repr, self.flash.pointer),
+            UplinkRssi => w.write_float(repr, self.lora_uplink_rssi.lock(|x| *x)),
             _ => w.write_float(repr, 0.0),
         }
     }
