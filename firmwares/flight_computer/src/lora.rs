@@ -11,7 +11,7 @@ use embassy_stm32::peripherals::ETH;
 
 use lora_phy::{LoRa, RxMode};
 
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::{Mutex, raw::CriticalSectionRawMutex};
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use lora_phy::mod_params::{Bandwidth, CodingRate, SpreadingFactor};
 use num_traits::ToBytes;
@@ -30,15 +30,51 @@ use defmt::*;
 static DOWNLINK: StaticCell<Channel<CriticalSectionRawMutex, DownlinkMessage, 3>> = StaticCell::new();
 static UPLINK: StaticCell<Channel<CriticalSectionRawMutex, UplinkMessage, 3>> = StaticCell::new();
 
-const DOWNLINK_TX_POWER: u16 = 10;
-const DOWNLINK_SF: SpreadingFactor = SpreadingFactor::_7;
-const DOWNLINK_BW: Bandwidth = Bandwidth::_500KHz;
-const DOWNLINK_CR: CodingRate = CodingRate::_4_8;
+static DOWNLINK_LORA_SETTINGS: StaticCell<Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>> = StaticCell::new();
+static RSSI_GLOB: StaticCell<Mutex<CriticalSectionRawMutex, i16>> = StaticCell::new();
+
+#[derive(Clone, Copy)]
+pub struct TypedLoraLinkSettings {
+    tx_power: u16,
+    spreading_factor: SpreadingFactor,
+    bandwidth: Bandwidth,
+    coding_rate: CodingRate,
+    // message_len: usize, <- must be constant
+    // hmac_len: usize, <- still needs to be constant
+}
+impl TypedLoraLinkSettings {
+    pub fn default_downlink() -> Self {
+        Self {
+            tx_power: 22,
+            spreading_factor: SpreadingFactor::_7,
+            bandwidth: Bandwidth::_500KHz,
+            coding_rate: CodingRate::_4_8,
+            // message_len: 32,
+            // hmac_len: 2,
+        }
+    }
+    // NOTE: not in use yet
+    pub fn default_uplink() -> Self {
+        Self {
+            tx_power: 10,
+            spreading_factor: SpreadingFactor::_7,
+            bandwidth: Bandwidth::_250KHz,
+            coding_rate: CodingRate::_4_8,
+            // hmac_len: 8,
+        }
+    }
+}
+
+// const DOWNLINK_TX_POWER: u16 = 10;
+// const DOWNLINK_SF: SpreadingFactor = SpreadingFactor::_7;
+// const DOWNLINK_BW: Bandwidth = Bandwidth::_500KHz;
+// const DOWNLINK_CR: CodingRate = CodingRate::_4_8;
+
 const DOWNLINK_MSG_LEN: usize = 32; // TODo
 const DOWNLINK_HMAC_LEN: usize = 2; // TODo
 const DOWNLINK_PACKET_INTERVAL_MILLIS: u64 = 50;
 
-const UPLINK_TX_POWER: u16 = 10;
+const UPLINK_TX_POWER: u16 = 22;
 const UPLINK_SF: SpreadingFactor = SpreadingFactor::_7;
 const UPLINK_BW: Bandwidth = Bandwidth::_250KHz;
 const UPLINK_CR: CodingRate = CodingRate::_4_8;
@@ -69,43 +105,58 @@ const CHANNELS: [u32; 14] = [
 pub fn start_rocket_downlink(
     lora: LoRa<crate::LoraTransceiver, Delay>,
     settings: LoRaSettings,
+    // downlink_settings: &'static Mutex<CriticalSectionRawMutex, LoraLinkSettings>,
     spawner: SendSpawner,
-) -> Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3> {
+) -> (
+    Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    &'static Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
+) {
     let downlink = DOWNLINK.init(Channel::new());
+    let downlink_settings = DOWNLINK_LORA_SETTINGS.init(Mutex::new(TypedLoraLinkSettings::default_downlink()));
 
     if let Some(sequence) = generate_downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
-        spawner.spawn(run_rocket_downlink(lora, settings, sequence, downlink.receiver())).unwrap();
+        spawner
+            .spawn(run_rocket_downlink(lora, settings, sequence, downlink.receiver(), downlink_settings))
+            .unwrap();
     } else {
         info!("Not transmitting anything.");
     }
 
-    downlink.sender()
+    (downlink.sender(), downlink_settings)
 }
 
 pub fn start_rocket_uplink(
     lora: LoRa<crate::LoraTransceiver, Delay>,
     settings: LoRaSettings,
     spawner: SendSpawner,
-) -> Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3> {
+) -> (Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>, &'static Mutex<CriticalSectionRawMutex, i16>) {
     let uplink = UPLINK.init(Channel::new());
+    let rssi_glob = RSSI_GLOB.init(Mutex::new(0));
 
-    spawner.spawn(run_rocket_uplink(lora, settings, uplink.sender())).unwrap();
+    spawner.spawn(run_rocket_uplink(lora, settings, rssi_glob, uplink.sender())).unwrap();
 
-    uplink.receiver()
+    (uplink.receiver(), rssi_glob)
 }
 
 pub fn start_gcs_downlink(
     lora: LoRa<crate::LoraTransceiver, Delay>,
     settings: LoRaSettings,
+    // downlink_settings: &'static Mutex<CriticalSectionRawMutex, LoraLinkSettings>,
     spawner: SendSpawner,
-) -> Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3> {
+) -> (
+    Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    &'static Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
+) {
     let downlink = DOWNLINK.init(Channel::new());
+    let downlink_settings = DOWNLINK_LORA_SETTINGS.init(Mutex::new(TypedLoraLinkSettings::default_downlink()));
 
     if let Some(sequence) = generate_downlink_sequence(settings.downlink_channels, &settings.binding_phrase) {
-        spawner.spawn(run_gcs_downlink(lora, settings, sequence, downlink.sender())).unwrap();
+        spawner
+            .spawn(run_gcs_downlink(lora, settings, sequence, downlink.sender(), downlink_settings))
+            .unwrap();
     }
 
-    downlink.receiver()
+    (downlink.receiver(), downlink_settings)
 }
 
 pub fn start_gcs_uplink(
@@ -126,10 +177,12 @@ async fn run_rocket_downlink(
     settings: LoRaSettings,
     sequence: [usize; CHANNELS.len()],
     downlink_receiver: Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    downlink_settings: &'static Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
 ) -> ! {
     let key = settings.authentication_key.to_be_bytes();
 
     loop {
+        let local_settings: TypedLoraLinkSettings = downlink_settings.lock(|s| *s);
         let mut tx_buffer = [0; DOWNLINK_MSG_LEN];
 
         let msg = downlink_receiver.receive().await;
@@ -140,9 +193,17 @@ async fn run_rocket_downlink(
         let t = msg.time_produced().unwrap_or(0);
         let freq = downlink_frequency(&sequence, t);
 
-        let mod_params = lora.create_modulation_params(DOWNLINK_SF, DOWNLINK_BW, DOWNLINK_CR, freq).unwrap();
+        // TODO: remove unwrap
+        let mod_params = lora
+            .create_modulation_params(
+                local_settings.spreading_factor,
+                local_settings.bandwidth,
+                local_settings.coding_rate,
+                freq,
+            )
+            .unwrap();
         let mut packet_params = lora.create_tx_packet_params(4, false, true, false, &mod_params).unwrap();
-        lora.prepare_for_tx(&mod_params, &mut packet_params, DOWNLINK_TX_POWER.into(), &tx_buffer)
+        lora.prepare_for_tx(&mod_params, &mut packet_params, local_settings.tx_power.into(), &tx_buffer)
             .await
             .unwrap();
         lora.tx().await.unwrap();
@@ -154,6 +215,7 @@ async fn run_rocket_downlink(
 async fn run_rocket_uplink(
     mut lora: LoRa<crate::LoraTransceiver, Delay>,
     settings: LoRaSettings,
+    rssi_glob: &'static Mutex<CriticalSectionRawMutex, i16>,
     uplink_sender: Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
 ) -> ! {
     let key = settings.authentication_key.to_be_bytes();
@@ -166,6 +228,11 @@ async fn run_rocket_uplink(
         let mut rx_buffer = [0; UPLINK_MSG_LEN];
         lora.prepare_for_rx(RxMode::Continuous, &mod_params, &packet_params).await.unwrap();
         let (len, _status) = lora.rx(&packet_params, &mut rx_buffer).await.unwrap();
+
+        let rssi = lora.get_rssi().await.unwrap_or(0);
+        unsafe {
+            rssi_glob.lock_mut(|rssi_glob| *rssi_glob = rssi);
+        }
 
         if let Some(msg) = decode_and_verify::<_, UPLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]) {
             info!("Got uplink msg: {}", Debug2Format(&msg));
@@ -180,13 +247,13 @@ async fn run_gcs_downlink(
     settings: LoRaSettings,
     sequence: [usize; CHANNELS.len()],
     downlink_sender: Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+    downlink_settings: &'static Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
 ) -> ! {
     let key = settings.authentication_key.to_be_bytes();
 
     // try to find the signal by sweeping through frequencies slowly
-    let mut ticker = Ticker::every(Duration::from_millis(1111));
-    let mut i = 0;
     loop {
+        let local_settings = downlink_settings.lock(|s| *s);
         // try to find the signal by sweeping through frequencies slowly
         let mut ticker = Ticker::every(Duration::from_millis(1111));
         let mut i = 0;
@@ -194,7 +261,7 @@ async fn run_gcs_downlink(
             let f = CHANNELS[i];
             info!("Listening on {:?}kHz.", f / 1000);
             let timeout = Duration::from_millis(1000);
-            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout).await {
+            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
                 break msg;
             }
 
@@ -214,7 +281,7 @@ async fn run_gcs_downlink(
 
             let f = downlink_frequency(&sequence, t);
             let timeout = Duration::from_millis(DOWNLINK_PACKET_INTERVAL_MILLIS - 10);
-            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout).await {
+            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
                 downlink_sender.send(msg).await;
                 failure_counter = 0;
             } else {
@@ -236,8 +303,16 @@ async fn attempt_receive_downlink(
     key: &[u8; 16],
     frequency: u32,
     timeout: Duration,
+    downlink_settings: &TypedLoraLinkSettings,
 ) -> Option<DownlinkMessage> {
-    let mod_params = lora.create_modulation_params(DOWNLINK_SF, DOWNLINK_BW, DOWNLINK_CR, frequency).unwrap();
+    let mod_params = lora
+        .create_modulation_params(
+            downlink_settings.spreading_factor,
+            downlink_settings.bandwidth,
+            downlink_settings.coding_rate,
+            frequency,
+        )
+        .unwrap();
     let packet_params =
         lora.create_rx_packet_params(4, false, DOWNLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();
 

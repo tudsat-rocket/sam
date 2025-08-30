@@ -17,6 +17,109 @@ pub enum MainOutputMode {
     Never,
 }
 
+//
+// --- Lora settings ---
+//
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraCodingRate {
+    _4_5,
+    _4_6,
+    _4_7,
+    _4_8,
+}
+impl LoraCodingRate {
+    pub fn default_downlink() -> Self {
+        LoraCodingRate::_4_8
+    }
+    pub fn default_uplink() -> Self {
+        LoraCodingRate::_4_8
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraSpreadingFactor {
+    _5,
+    _6,
+    _7,
+    _8,
+    _9,
+    _10,
+    _11,
+    _12,
+}
+impl LoraSpreadingFactor {
+    pub fn default_downlink() -> Self {
+        LoraSpreadingFactor::_7
+    }
+    pub fn default_uplink() -> Self {
+        LoraSpreadingFactor::_7
+    }
+}
+/*
+impl ToString for LoraSpreadingFactor {
+    fn to_string(&self) -> String {
+        match self {
+            LoraSpreadingFactor::_5 => String::from("5"),
+            LoraSpreadingFactor::_6 => String::from("6"),
+            LoraSpreadingFactor::_7 => String::from("7"),
+            LoraSpreadingFactor::_8 => String::from("8"),
+            LoraSpreadingFactor::_9 => String::from("9"),
+            LoraSpreadingFactor::_10 => String::from("10"),
+            LoraSpreadingFactor::_11 => String::from("11"),
+            LoraSpreadingFactor::_12 => String::from("12"),
+        }
+    }
+}
+*/
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraBandwidth {
+    _7KHz,
+    _10KHz,
+    _15KHz,
+    _20KHz,
+    _31KHz,
+    _41KHz,
+    _62KHz,
+    _125KHz,
+    _250KHz,
+    _500KHz,
+}
+impl LoraBandwidth {
+    pub fn default_downlink() -> Self {
+        LoraBandwidth::_500KHz
+    }
+    pub fn default_uplink() -> Self {
+        LoraBandwidth::_250KHz
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// Settings for specific lora link, must be the same on both rocket and gcs to work.
+pub struct LoraLinkSettings {
+    // TODO: restrict output power to useful values
+    pub tx_power: u16,
+    pub spreading_factor: LoraSpreadingFactor,
+    pub bandwidth: LoraBandwidth,
+    pub coding_rate: LoraCodingRate,
+}
+impl LoraLinkSettings {
+    pub fn default_downlink() -> Self {
+        Self {
+            tx_power: 10,
+            spreading_factor: LoraSpreadingFactor::default_downlink(),
+            bandwidth: LoraBandwidth::default_downlink(),
+            coding_rate: LoraCodingRate::default_downlink(),
+        }
+    }
+    pub fn default_uplink() -> Self {
+        Self {
+            tx_power: 10,
+            spreading_factor: LoraSpreadingFactor::default_uplink(),
+            bandwidth: LoraBandwidth::default_uplink(),
+            coding_rate: LoraCodingRate::default_uplink(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LoRaSettings {
     /// which of the 14 500kHz LoRa channels from 863-870MHz to use
@@ -164,13 +267,15 @@ pub struct Settings {
     pub main_output_settings: RecoveryOutputSettings,
     /// LoRa settings
     pub lora: LoRaSettings,
+    pub lora_uplink_settings: LoraLinkSettings,
+    pub lora_downlink_settings: LoraLinkSettings,
     /// Telemetry data rate
     pub default_data_rate: TelemetryDataRate,
     /// Time after drogue deployment in which main deployment will not be triggered
     pub min_time_to_main: u32,
     /// Mounting orientation of the flight computer
     pub orientation: Orientation,
-    ///
+    //
     pub acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
@@ -221,6 +326,8 @@ impl Default for Settings {
                 ..Default::default()
             },
             lora: LoRaSettings::default(),
+            lora_downlink_settings: LoraLinkSettings::default_downlink(),
+            lora_uplink_settings: LoraLinkSettings::default_uplink(),
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZDown,

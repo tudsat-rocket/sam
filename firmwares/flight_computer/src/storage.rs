@@ -359,10 +359,12 @@ impl<SPI: SpiDevice> Flash<SPI> {
                 }
             }
         }
-        info!("written settings");
+        info!("Written settings");
 
         // Read back what we have written to make sure the changes are persisted.
         if &self.read_settings().await? != settings {
+            warn!("Settings Flash read back failed");
+            Timer::after(Duration::from_micros(2000)).await;
             Err(StorageError::Crc)
         } else {
             Ok(())
@@ -418,6 +420,7 @@ impl<SPI: SpiDevice> Flash<SPI> {
                     }
                 }
                 FlashRequest::WriteSettings(settings) => {
+                    info!("Processing FlashRequest::WriteSettings");
                     for _i in 0..10 {
                         if self.write_settings(&settings).await.is_ok() {
                             break;

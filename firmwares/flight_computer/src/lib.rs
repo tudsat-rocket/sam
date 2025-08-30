@@ -387,8 +387,8 @@ pub async fn init_board()
         Flash::init(SpiDevice::new(spi3, spi3_cs_flash)).await.map_err(|_e| ()).unwrap();
 
     // Initialize GPS
-    #[cfg(not(feature = "gcs"))]
-    let (gps, gps_handle) = GPS::init(p.USART2, p.PE1, p.PE0, p.DMA1_CH6, p.DMA1_CH5);
+    // #[cfg(not(feature = "gcs"))]
+    // let (gps, gps_handle) = GPS::init(p.USART2, p.PE1, p.PE0, p.DMA1_CH6, p.DMA1_CH5);
 
     //#[cfg(not(feature = "gcs"))]
     //let adc = Adc::new(p.ADC1, &mut Delay);

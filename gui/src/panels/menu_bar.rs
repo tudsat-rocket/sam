@@ -57,6 +57,7 @@ impl MenuBarPanel {
                 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
                 if ui.selectable_label(false, "🗁  Open Log File").clicked() {
                     if let Some(log) = open_log_file() {
+                        println!("Opened logfile successfully");
                         sam.open_backend(Backend::Log(log));
                     }
                 }

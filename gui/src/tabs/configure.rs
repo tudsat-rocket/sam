@@ -9,7 +9,7 @@ use shared_types::telemetry::*;
 use crate::Backend;
 use crate::settings::AppSettings;
 use crate::utils::file::*;
-use crate::widgets::fc_settings::*;
+use crate::widgets::fc_settings::{self, *};
 
 pub struct ConfigureTab {}
 
@@ -237,7 +237,13 @@ impl ConfigureTab {
             if ui.add_enabled(backend.fc_settings().is_some(), Button::new("🖹 Load from File")).clicked() {
                 if let Some(settings) = open_fc_settings_file() {
                     info!("Loaded settings: {:?}", settings);
-                    *backend.fc_settings_mut().unwrap() = settings;
+
+                    // TODO: remove unwrap / is correct?
+                    // *backend.fc_settings_mut().unwrap() = settings;
+                    match backend.fc_settings_mut() {
+                        Some(fc_settings) => *fc_settings = settings,
+                        None => (),
+                    }
                 }
             }
 

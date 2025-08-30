@@ -134,6 +134,7 @@ pub enum Metric {
     BatteryChargerState(BatteryId),
     SupplyVoltage,
     SupplyCurrent,
+    RecoveryCurrent,
     CpuUtilization,
     FlashPointer,
     UplinkRssi,

@@ -16,6 +16,13 @@ use shared_types::*;
 //use crate::drivers::sensors::BatteryStatus;
 use Semitone::*;
 
+const IDLE_AGAIN: [Note; 4] = [
+    Note::note(E, 4, 150),
+    Note::pause(10),
+    Note::note(C, 4, 150),
+    Note::pause(10),
+];
+
 #[allow(dead_code)]
 const STARTUP: [Note; 6] = [
     Note::note(C, 4, 150),
@@ -392,6 +399,7 @@ pub async fn run_b(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>
                     FlightMode::HardwareArmed => Some(&HWARMED),
                     FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
                     FlightMode::Landed => Some(&LANDED),
+                    FlightMode::Idle => Some(&IDLE_AGAIN),
                     _ => None,
                 };
             }
