@@ -90,7 +90,7 @@ async fn main(spawner: Spawner) {
     
     spawner.spawn(actors::run_servo_check(
             SimplePwm::new(p.TIM3, None, None, None, Some(pwm_pin), 
-                Hertz::hz(100), CountingMode::EdgeAlignedUp), 
+                Hertz::hz(2000), CountingMode::EdgeAlignedUp), 
             toggle_duration)).unwrap();
 
     #[cfg(feature = "guard")]

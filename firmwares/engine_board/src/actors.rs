@@ -1,3 +1,5 @@
+use {defmt_rtt as _, panic_probe as _};
+
 use embassy_time::{Duration, Ticker};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::timer::simple_pwm::{SimplePwmChannel, SimplePwm};
@@ -14,7 +16,9 @@ pub async fn run_servo_check(
     
     loop{
         
-        pwm_out.set_duty_cycle_percent(33);
+        defmt::info!("Servo loop");
+
+        pwm_out.set_duty_cycle_percent(66);
         
         ticker.next().await;
         

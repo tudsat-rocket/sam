@@ -2,6 +2,7 @@
 #![no_main]
 
 use embassy_executor::{InterruptExecutor, Spawner};
+use embassy_stm32::Config;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
@@ -11,7 +12,6 @@ use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::Config;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -319,6 +319,7 @@ async fn main(spawner: Spawner) {
         Ok(IoBoardRole::Acs) => run_role::<Acs>(p, spawner).await,
         Ok(IoBoardRole::Recovery) => run_role::<Recovery>(p, spawner).await,
         Ok(IoBoardRole::Payload) => run_role::<Payload>(p, spawner).await,
+        Ok(IoBoardRole::Regulator) => run_role::<Regulator>(p, spawner).await,
         Err(id) => loop {
             defmt::error!("Unknown role: {:05b}", id);
             Timer::after(Duration::from_millis(100)).await;

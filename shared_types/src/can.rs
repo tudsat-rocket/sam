@@ -27,6 +27,7 @@ pub enum IoBoardRole {
     Acs = 1,
     Recovery = 2,
     Payload = 8,
+    Regulator = 16,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -119,6 +120,7 @@ impl TryFrom<u8> for IoBoardRole {
             1 => Ok(IoBoardRole::Acs),
             2 => Ok(IoBoardRole::Recovery),
             8 => Ok(IoBoardRole::Payload),
+            16 => Ok(IoBoardRole::Regulator),
             _ => Err(value),
         }
     }
