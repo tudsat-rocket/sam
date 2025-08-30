@@ -236,6 +236,9 @@ async fn run_rocket_uplink(
 
         if let Some(msg) = decode_and_verify::<_, UPLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]) {
             info!("Got uplink msg: {}", Debug2Format(&msg));
+            // Triple burst uplink 
+            uplink_sender.send(msg).await;
+            uplink_sender.send(mgs).await;
             uplink_sender.send(msg).await;
         }
     }
