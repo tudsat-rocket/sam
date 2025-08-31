@@ -200,9 +200,8 @@ impl TryFrom<u8> for BatteryChargerState {
 // TODO: metrics for this
 pub struct TelemetryGCS {
     pub time: u32,
-    pub lora_rssi: u8,
-    pub lora_rssi_signal: u8,
-    pub lora_snr: i8,
+    pub lora_rssi: i32,
+    pub lora_snr: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

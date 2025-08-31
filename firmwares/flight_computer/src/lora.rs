@@ -236,9 +236,6 @@ async fn run_rocket_uplink(
 
         if let Some(msg) = decode_and_verify::<_, UPLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]) {
             info!("Got uplink msg: {}", Debug2Format(&msg));
-            // Triple burst uplink 
-            uplink_sender.send(msg).await;
-            uplink_sender.send(mgs).await;
             uplink_sender.send(msg).await;
         }
     }
@@ -260,12 +257,12 @@ async fn run_gcs_downlink(
         // try to find the signal by sweeping through frequencies slowly
         let mut ticker = Ticker::every(Duration::from_millis(1111));
         let mut i = 0;
-        let msg = loop {
+        let (msg, _) = loop {
             let f = CHANNELS[i];
             info!("Listening on {:?}kHz.", f / 1000);
             let timeout = Duration::from_millis(1000);
-            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
-                break msg;
+            if let Some((msg, status)) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
+                break (msg, status);
             }
 
             i = (i + 1) % CHANNELS.len();
@@ -284,8 +281,13 @@ async fn run_gcs_downlink(
 
             let f = downlink_frequency(&sequence, t);
             let timeout = Duration::from_millis(DOWNLINK_PACKET_INTERVAL_MILLIS - 10);
-            if let Some(msg) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
-                downlink_sender.send(msg).await;
+            if let Some((msg, status)) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
+                downlink_sender.send(msg.clone()).await;
+                downlink_sender.send(DownlinkMessage::TelemetryGCS(shared_types::telemetry::TelemetryGCS {
+                    time: msg.time_produced().unwrap_or(0),
+                    lora_rssi: status.rssi as i32,
+                    lora_snr: status.snr as i32,
+                })).await;
                 failure_counter = 0;
             } else {
                 failure_counter += 1;
@@ -307,7 +309,7 @@ async fn attempt_receive_downlink(
     frequency: u32,
     timeout: Duration,
     downlink_settings: &TypedLoraLinkSettings,
-) -> Option<DownlinkMessage> {
+) -> Option<(DownlinkMessage, lora_phy::mod_params::PacketStatus)> {
     let mod_params = lora
         .create_modulation_params(
             downlink_settings.spreading_factor,
@@ -323,7 +325,7 @@ async fn attempt_receive_downlink(
     lora.prepare_for_rx(RxMode::Continuous, &mod_params, &packet_params).await.unwrap();
 
     match with_timeout(timeout, lora.rx(&packet_params, &mut rx_buffer)).await {
-        Ok(Ok((len, _status))) => decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]),
+        Ok(Ok((len, status))) => decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]).map(|msg| (msg, status)),
         _ => None,
     }
 }
@@ -345,16 +347,18 @@ async fn run_gcs_uplink(
 
         let serialized = serialize_and_hmac::<_, UPLINK_HMAC_LEN>(&key, &msg);
         tx_buffer[..serialized.len()].copy_from_slice(&serialized);
+        
+        for _ in 0..3 { 
+            let mod_params = lora.create_modulation_params(UPLINK_SF, UPLINK_BW, UPLINK_CR, frequency).unwrap();
+            let mut packet_params =
+                lora.create_rx_packet_params(4, false, UPLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();
 
-        let mod_params = lora.create_modulation_params(UPLINK_SF, UPLINK_BW, UPLINK_CR, frequency).unwrap();
-        let mut packet_params =
-            lora.create_rx_packet_params(4, false, UPLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();
-
-        lora.prepare_for_tx(&mod_params, &mut packet_params, UPLINK_TX_POWER.into(), &tx_buffer)
-            .await
-            .unwrap();
-        lora.tx().await.unwrap();
-        lora.sleep(false).await.unwrap();
+            lora.prepare_for_tx(&mod_params, &mut packet_params, UPLINK_TX_POWER.into(), &tx_buffer)
+                .await
+                .unwrap();
+            lora.tx().await.unwrap();
+            lora.sleep(false).await.unwrap();
+        }
     }
 }
 
