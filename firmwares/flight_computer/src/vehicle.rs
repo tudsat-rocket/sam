@@ -268,6 +268,7 @@ impl Vehicle {
                 info!("UplinkMessage: ReadSettings");
                 // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
                 let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+
                 // FIXME: tried re-enabling, but did not work
                 let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
             }
