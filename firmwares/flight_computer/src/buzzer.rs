@@ -340,7 +340,8 @@ pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, 
                     FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
                     FlightMode::HardwareArmed => Some(&HWARMED),
                     FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
-                    FlightMode::Landed => Some(&LANDED),
+                    // FlightMode::Landed =>#[cfg(feature = "std")] Some(&LANDED),
+                    FlightMode::Idle => Some(&IDLE_AGAIN),
                     _ => None,
                 };
             }

@@ -362,15 +362,15 @@ impl FcSettingsUiExt for Settings {
                         "pulses of"
                     });
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_high_time)
+                        DragValue::new(&mut self.drogue_output_settings.pulse_high_duration)
                             .suffix(" ms")
                             .speed(1)
-                            .range(0..=10000),
+                            .range(0..=100000),
                     );
                     if self.drogue_output_settings.num_pulses > 1 {
                         ui.weak("with");
                         ui.add(
-                            DragValue::new(&mut self.drogue_output_settings.output_low_time)
+                            DragValue::new(&mut self.drogue_output_settings.pause_duration)
                                 .suffix(" ms")
                                 .speed(1)
                                 .range(0..=10000),
@@ -380,7 +380,7 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_warning_time)
+                        DragValue::new(&mut self.drogue_output_settings.forewarning_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),
@@ -405,7 +405,7 @@ impl FcSettingsUiExt for Settings {
                         "pulses of"
                     });
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_high_time)
+                        DragValue::new(&mut self.main_output_settings.pulse_high_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),
@@ -413,7 +413,7 @@ impl FcSettingsUiExt for Settings {
                     if self.main_output_settings.num_pulses > 1 {
                         ui.weak("with");
                         ui.add(
-                            DragValue::new(&mut self.main_output_settings.output_low_time)
+                            DragValue::new(&mut self.main_output_settings.pause_duration)
                                 .suffix(" ms")
                                 .speed(1)
                                 .range(0..=10000),
@@ -423,7 +423,7 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_warning_time)
+                        DragValue::new(&mut self.main_output_settings.forewarning_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),
