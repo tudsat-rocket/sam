@@ -1,9 +1,9 @@
 //! A simulation data source
 
 use std::convert::Infallible;
-use std::sync::mpsc::channel;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::channel;
 use std::thread::JoinHandle;
 
 use archive::ArchivedLog;
@@ -247,6 +247,10 @@ impl BackendVariant for SimulationBackend {
         &self.data_store
     }
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
+    }
+
     fn reset(&mut self) {
         let (sender, receiver) = channel::<(u32, heapless::Vec<u8, TELEMETRY_BUFFER_SIZE>)>();
         let settings = self.settings.clone();
@@ -266,7 +270,7 @@ impl BackendVariant for SimulationBackend {
         self.data_store = DataStore::default();
     }
 
-    fn end(&self) -> Option<f64> {
+    fn fc_time(&self) -> Option<f64> {
         self.playback_end()
     }
 

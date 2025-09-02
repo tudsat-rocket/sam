@@ -1,8 +1,10 @@
+pub mod burst_disc;
+pub mod check_valve;
 pub mod generic_valve;
 pub mod manual_valve;
-pub mod valve_state;
-pub mod burst_disc;
-pub mod quick_disconnect;
-pub mod pressure_relief_valve;
 pub mod motorized_valve;
-pub mod dump_valve;
+pub mod pressure_relief_valve;
+pub mod quick_disconnect;
+pub mod quick_disconnect_with_check_valve;
+pub mod solenoid_valve;
+pub mod valve_state;

@@ -1,5 +1,6 @@
 //! Main GUI code, included by cli, wasm and android entrypoints
 
+use core::f32;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -8,37 +9,37 @@ use egui::FontFamily::Proportional;
 use egui::TextStyle::*;
 use egui::{Align, Color32, FontFamily, FontId, Key, Layout, Modifiers, Vec2};
 
+use nalgebra::Rotation2;
 use shared_types::telemetry::*;
 
 pub mod backend;
 pub mod frontend;
-pub mod system_diagram_components;
 pub mod panels;
 pub mod settings;
+pub mod system_diagram_components;
 pub mod tabs;
 pub mod utils;
 pub mod widgets;
 pub mod windows; // TODO: make this private (it is public because it has ARCHIVE)
 
 use crate::backend::*;
-use crate::frontend::metric_monitor::MetricMonitor;
-use crate::frontend::popup_manager::PopupManager;
+use crate::frontend::Frontend;
 use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
+use crate::widgets::time_line::{Milestone, Timeline};
 use crate::windows::*;
 
 /// Main state object of our GUI application
 pub struct Sam {
-    settings: AppSettings,
     backends: Vec<Backend>,
+    frontend: Frontend,
+    settings: AppSettings,
     tab: GuiTab,
     plot_tab: PlotTab,
     configure_tab: ConfigureTab,
     archive_window: ArchiveWindow,
-    popup_manager: PopupManager,
-    metric_monitor: MetricMonitor,
 }
 
 impl Sam {
@@ -61,22 +62,21 @@ impl Sam {
 
         ctx.set_fonts(fonts);
 
-        let plot_tab = PlotTab::init(ctx, &settings);
+        let plot_tab = PlotTab::init(ctx);
         let configure_tab = ConfigureTab::init();
 
         egui_extras::install_image_loaders(ctx);
 
         Self {
-            settings,
             backends: vec![backend],
+            frontend: Frontend::new(ctx, &settings),
+            settings,
 
             tab: GuiTab::Plot,
             plot_tab,
             configure_tab,
 
             archive_window: ArchiveWindow::default(),
-            popup_manager: PopupManager::default(),
-            metric_monitor: MetricMonitor::default(),
         }
     }
 
@@ -198,6 +198,30 @@ impl Sam {
 
         // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.backend_mut(), enabled);
+        egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
+            //ui.label("Hello World!");
+            ui.add(Timeline::new(
+                vec![
+                    Milestone::new("Testing"),
+                    Milestone::new("IdlePacified"),
+                    Milestone::new("N₂ Filling"),
+                    Milestone::new("IdleActive"),
+                    Milestone::new("HarwareArmed"),
+                    Milestone::new("N₂O Filling"),
+                    Milestone::new("SoftwareArmed"),
+                    Milestone::new("Ignition"),
+                    Milestone::new("BurnPhase"),
+                    Milestone::new("CoastPhase"),
+                    Milestone::new("DroguePhase"),
+                    Milestone::new("MainPhase"),
+                    Milestone::new("LandedActive"),
+                    Milestone::new("Passivation"),
+                    Milestone::new("LandedPacified"),
+                ],
+                5,
+                Rotation2::new(0f32), //f32::consts::PI / 2f32),
+            ));
+        });
 
         let tab = self.tab.clone();
 
@@ -220,6 +244,8 @@ impl Sam {
                 ui.separator();
 
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                    ui.label(format!("Current Backend: {}", self.backend().name()));
+                    ui.separator();
                     self.backend_mut().status_bar_ui(ui);
                 })
             });
@@ -227,10 +253,13 @@ impl Sam {
 
         // Everything else. This has to be called after all the other panels are created.
         let backend = self.backends.last_mut().unwrap();
-        MetricStatusBar::show(ctx, backend, &mut self.metric_monitor);
+        let _ = self.frontend.metric_monitor_mut().evaluate_constraints(backend);
+        let mut active_constraint_mask = self.frontend.metric_monitor().active_constraint_mask().clone();
+        MetricStatusBar::show(ctx, backend, &mut self.frontend, &mut active_constraint_mask);
+        *self.frontend.metric_monitor_mut().active_constraint_mask_mut() = active_constraint_mask;
         match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
-            GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.popup_manager, &mut self.metric_monitor, enabled),
+            GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.frontend, enabled),
             GuiTab::Configure => {
                 let changed = self.configure_tab.main_ui(ctx, backend, &mut self.settings, enabled);
                 if changed {
@@ -246,14 +275,20 @@ impl eframe::App for Sam {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Draw UI
         self.ui(ctx);
-        self.popup_manager.update();
+        self.frontend.popup_manager_mut().update();
     }
 }
 
 /// The main entrypoint for the egui interface.
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub fn main(log_file: Option<PathBuf>, simulate: Option<Option<String>>) -> Result<(), Box<dyn std::error::Error>> {
-    let app_settings = AppSettings::load().ok().unwrap_or_default();
+    let app_settings = match AppSettings::load() {
+        Ok(settings) => settings,
+        Err(e) => {
+            log::error!("Failed to read app settings, falling back to defaults: {e:?}");
+            AppSettings::default()
+        }
+    };
 
     let data_source: Option<Backend> = if let Some(log) = simulate {
         if let Some(log) = log {

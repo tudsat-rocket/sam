@@ -10,18 +10,23 @@ pub struct DisplayValue {
 }
 
 impl DisplayValue {
-
     pub fn new(desc: String, unit: Option<String>, val: JustifiedValue) -> Self {
         Self { desc, unit, val }
     }
 
     pub fn from_metric(metric: Metric, backend: &Backend) -> Self {
         match metric {
-            Metric::Pressure(sensor_id) => DisplayValue::new("Pressure".to_string(), Some("bar".to_string()), JustifiedValue::new(backend.current_value(metric).map(|val| Value::F64(val)), Justification::Measured(Sensor::Pressure(sensor_id)))),
+            Metric::Pressure(sensor_id) => DisplayValue::new(
+                "Pressure".to_string(),
+                Some("bar".to_string()),
+                JustifiedValue::new(
+                    backend.current_value(metric).map(|val| Value::F64(val)),
+                    Justification::Measured(Sensor::Pressure(sensor_id)),
+                ),
+            ),
             _ => todo!(),
         }
     }
-
 }
 
 impl std::fmt::Display for DisplayValue {
@@ -92,9 +97,9 @@ impl std::fmt::Display for Value {
             f,
             "{}",
             match self {
-                Value::F32(v) => format!{"{0:.1}",v},
-                Value::U32(v) => format!{"{0:.1}",v},
-                Value::F64(v) => format!("{0:.1}",v),
+                Value::F32(v) => format! {"{0:.1}",v},
+                Value::U32(v) => format! {"{0:.1}",v},
+                Value::F64(v) => format!("{0:.1}", v),
             }
         )
     }

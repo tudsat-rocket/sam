@@ -1,12 +1,12 @@
 use embassy_executor::Spawner;
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{Either, select};
 
 use embassy_stm32::eth::GenericPhy;
 use embassy_stm32::eth::{Ethernet, PacketQueue};
 use embassy_stm32::peripherals::ETH;
 
-use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::StackResources;
+use embassy_net::udp::{PacketMetadata, UdpSocket};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
@@ -72,13 +72,15 @@ async fn run_socket(
     loop {
         let mut recv_buffer = [0; 1024];
         match select(downlink_receiver.receive(), socket.recv_from(&mut recv_buffer)).await {
-            Either::First(uplink_msg) => {
-                let serialized = uplink_msg.serialize().unwrap();
+            // send downlink message via udp
+            Either::First(downlink_msg) => {
+                let serialized = downlink_msg.serialize().unwrap();
                 socket.send_to(&serialized, remote_endpoint).await.unwrap();
             }
+            // receive udp packet from PC
             Either::Second(res) => {
-                if let Ok((len, peer)) = res {
-                    let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..(len as usize)]) else {
+                if let Ok((len, _peer)) = res {
+                    let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..len]) else {
                         continue;
                     };
 

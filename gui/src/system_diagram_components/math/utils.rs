@@ -1,7 +1,7 @@
 use core::f32;
 
 use egui::{Pos2, Rect};
-use nalgebra::Point2;
+use nalgebra::{Affine2, Point2, Vector2};
 
 use super::conversions::to_pos;
 
@@ -12,12 +12,23 @@ where
     J: IntoIterator<Item = usize>,
 {
     let vec: Vec<T> = values.into_iter().collect();
-    indices
-        .into_iter()
-        .map(|i| vec[i].clone())
-        .collect()
+    indices.into_iter().map(|i| vec[i].clone()).collect()
 }
 
 pub fn calculate_aabb(points: &Vec<Point2<f32>>) -> egui::Rect {
-    points.iter().fold(egui::Rect::from_min_max(Pos2::new(f32::MAX, f32::MAX), Pos2::new(f32::MIN, f32::MIN)), |r, p| Rect::from_min_max(r.min.min(to_pos(*p)), r.max.max(to_pos(*p))))
+    points
+        .iter()
+        .fold(egui::Rect::from_min_max(Pos2::new(f32::MAX, f32::MAX), Pos2::new(f32::MIN, f32::MIN)), |r, p| {
+            Rect::from_min_max(r.min.min(to_pos(*p)), r.max.max(to_pos(*p)))
+        })
+}
+
+pub fn get_basis_x(transform: &Affine2<f32>) -> Vector2<f32> {
+    let mat = transform.matrix();
+    return Vector2::new(mat[(0, 0)], mat[(1, 0)]);
+}
+
+pub fn get_basis_y(transform: &Affine2<f32>) -> Vector2<f32> {
+    let mat = transform.matrix();
+    return Vector2::new(mat[(0, 1)], mat[(1, 1)]);
 }

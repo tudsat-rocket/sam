@@ -1,7 +1,3 @@
-use std::cell::RefCell;
-use std::ops::DerefMut;
-use std::rc::Rc;
-
 use egui::Align;
 use egui::CentralPanel;
 use egui::Color32;
@@ -18,13 +14,12 @@ use serde::{Deserialize, Serialize};
 
 use telemetry::*;
 
-use crate::frontend::metric_monitor::MetricMonitor;
-use crate::frontend::popup_manager::PopupManager;
-use crate::system_diagram_components::diagrams;
 use crate::settings::AppSettings;
-use crate::widgets::system_diagram::*;
+use crate::system_diagram_components::diagrams;
+use crate::system_diagram_components::diagrams::hyacinth::HyacinthComponent;
 use crate::widgets::map::*;
 use crate::widgets::plot::*;
+use crate::widgets::system_diagram::*;
 use crate::*;
 
 const R: Color32 = Color32::from_rgb(0xfb, 0x49, 0x34);
@@ -39,11 +34,6 @@ const BR: Color32 = Color32::from_rgb(0x61, 0x48, 0x1c);
 const P: Color32 = Color32::from_rgb(0xb1, 0x62, 0x86);
 const C: Color32 = Color32::from_rgb(0x68, 0x9d, 0x6a);
 
-pub struct GlobalWidgetState {
-    map: MapState,
-    shared_plot: Rc<RefCell<SharedPlotState>>,
-}
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WidgetPane {
     Plot { title: String, config: PlotConfig },
@@ -54,10 +44,8 @@ pub enum WidgetPane {
 
 struct TileBehavior<'a> {
     backend: &'a mut Backend,
+    frontend: &'a mut Frontend,
     settings: &'a AppSettings,
-    global_widget_state: &'a mut GlobalWidgetState,
-    popup_manager: &'a mut PopupManager,
-    metric_monitor: &'a mut MetricMonitor,
 }
 
 impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
@@ -79,11 +67,11 @@ impl<'a> egui_tiles::Behavior<WidgetPane> for TileBehavior<'a> {
     ) -> egui_tiles::UiResponse {
         match pane {
             WidgetPane::Plot { title: _, config } => {
-                ui.add(Plot::new(&config, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.backend))
+                ui.add(Plot::new(&config, self.frontend.shared_plot_mut(), self.backend))
             }
-            WidgetPane::Map => ui.add(Map::new(&mut self.global_widget_state.map, self.backend, self.settings)),
-            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.popup_manager, self.metric_monitor)),
-            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend, self.global_widget_state.shared_plot.borrow_mut().deref_mut(), self.popup_manager, self.metric_monitor)),
+            WidgetPane::Map => ui.add(Map::new(self.frontend.map_mut(), self.backend, self.settings)),
+            WidgetPane::Acs => ui.add(diagrams::acs::create_diagram(self.backend, self.frontend)),
+            WidgetPane::Hybrid => ui.add(diagrams::hyacinth::create_diagram(self.backend, self.frontend)),
         };
 
         egui_tiles::UiResponse::None
@@ -384,24 +372,15 @@ pub struct PlotTab {
     tile_tree: egui_tiles::Tree<WidgetPane>,
     show_view_settings: bool,
     new_preset_name: String,
-    global_widget_state: GlobalWidgetState,
 }
 
 impl PlotTab {
-    pub fn init(ctx: &egui::Context, settings: &AppSettings) -> Self {
-        SystemDiagram::init(ctx);
-
-        let shared_plot = Rc::new(RefCell::new(SharedPlotState::new()));
-        let mapbox_token = (!settings.mapbox_access_token.is_empty()).then_some(settings.mapbox_access_token.clone());
-        let map = MapState::new(ctx, mapbox_token);
-
-        let global_widget_state = GlobalWidgetState { map, shared_plot };
-
+    pub fn init(ctx: &egui::Context) -> Self {
+        SystemDiagram::<HyacinthComponent>::init(ctx);
         Self {
             tile_tree: Self::tree_default(),
             show_view_settings: false,
             new_preset_name: String::new(),
-            global_widget_state,
         }
     }
 
@@ -442,7 +421,10 @@ impl PlotTab {
             //tiles.insert_pane(PlotCell::IoSensors),
         ];
 
-        let top_right = vec![tiles.insert_pane(WidgetPane::Acs), /*tiles.insert_pane(WidgetPane::Hybrid),*/ tiles.insert_pane(WidgetPane::Map)];
+        let top_right = vec![
+            /*tiles.insert_pane(WidgetPane::Acs),*/ tiles.insert_pane(WidgetPane::Hybrid),
+            tiles.insert_pane(WidgetPane::Map),
+        ];
 
         let right = vec![
             tiles.insert_horizontal_tile(top_right),
@@ -497,7 +479,14 @@ impl PlotTab {
         deserialized == *tiles
     }
 
-    pub fn main_ui(&mut self, ctx: &egui::Context, backend: &mut Backend, settings: &mut AppSettings, popup_manager: &mut PopupManager, metric_monitor: &mut MetricMonitor, enabled: bool) {
+    pub fn main_ui(
+        &mut self,
+        ctx: &egui::Context,
+        backend: &mut Backend,
+        settings: &mut AppSettings,
+        frontend: &mut Frontend,
+        enabled: bool,
+    ) {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
@@ -509,7 +498,7 @@ impl PlotTab {
 
                 ui.vertical(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.checkbox(&mut self.global_widget_state.shared_plot.borrow_mut().show_stats, "Show Stats");
+                    ui.checkbox(&mut frontend.shared_plot_mut().show_stats, "Show Stats");
                     ui.separator();
                     ui.weak("Presets");
 
@@ -571,7 +560,7 @@ impl PlotTab {
             });
         }
 
-        self.global_widget_state.shared_plot.borrow_mut().set_end(backend.end());
+        frontend.shared_plot_mut().set_end(backend.fc_time());
 
         CentralPanel::default().show(ctx, |ui| {
             if !enabled {
@@ -580,10 +569,8 @@ impl PlotTab {
 
             let mut behavior = TileBehavior {
                 backend,
-                global_widget_state: &mut self.global_widget_state,
                 settings,
-                popup_manager,
-                metric_monitor,
+                frontend,
             };
 
             self.tile_tree.ui(&mut behavior, ui);

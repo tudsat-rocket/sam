@@ -17,6 +17,109 @@ pub enum MainOutputMode {
     Never,
 }
 
+//
+// --- Lora settings ---
+//
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraCodingRate {
+    _4_5,
+    _4_6,
+    _4_7,
+    _4_8,
+}
+impl LoraCodingRate {
+    pub fn default_downlink() -> Self {
+        LoraCodingRate::_4_8
+    }
+    pub fn default_uplink() -> Self {
+        LoraCodingRate::_4_8
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraSpreadingFactor {
+    _5,
+    _6,
+    _7,
+    _8,
+    _9,
+    _10,
+    _11,
+    _12,
+}
+impl LoraSpreadingFactor {
+    pub fn default_downlink() -> Self {
+        LoraSpreadingFactor::_7
+    }
+    pub fn default_uplink() -> Self {
+        LoraSpreadingFactor::_7
+    }
+}
+/*
+impl ToString for LoraSpreadingFactor {
+    fn to_string(&self) -> String {
+        match self {
+            LoraSpreadingFactor::_5 => String::from("5"),
+            LoraSpreadingFactor::_6 => String::from("6"),
+            LoraSpreadingFactor::_7 => String::from("7"),
+            LoraSpreadingFactor::_8 => String::from("8"),
+            LoraSpreadingFactor::_9 => String::from("9"),
+            LoraSpreadingFactor::_10 => String::from("10"),
+            LoraSpreadingFactor::_11 => String::from("11"),
+            LoraSpreadingFactor::_12 => String::from("12"),
+        }
+    }
+}
+*/
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum LoraBandwidth {
+    _7KHz,
+    _10KHz,
+    _15KHz,
+    _20KHz,
+    _31KHz,
+    _41KHz,
+    _62KHz,
+    _125KHz,
+    _250KHz,
+    _500KHz,
+}
+impl LoraBandwidth {
+    pub fn default_downlink() -> Self {
+        LoraBandwidth::_500KHz
+    }
+    pub fn default_uplink() -> Self {
+        LoraBandwidth::_250KHz
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+/// Settings for specific lora link, must be the same on both rocket and gcs to work.
+pub struct LoraLinkSettings {
+    // TODO: restrict output power to useful values
+    pub tx_power: u16,
+    pub spreading_factor: LoraSpreadingFactor,
+    pub bandwidth: LoraBandwidth,
+    pub coding_rate: LoraCodingRate,
+}
+impl LoraLinkSettings {
+    pub fn default_downlink() -> Self {
+        Self {
+            tx_power: 10,
+            spreading_factor: LoraSpreadingFactor::default_downlink(),
+            bandwidth: LoraBandwidth::default_downlink(),
+            coding_rate: LoraCodingRate::default_downlink(),
+        }
+    }
+    pub fn default_uplink() -> Self {
+        Self {
+            tx_power: 10,
+            spreading_factor: LoraSpreadingFactor::default_uplink(),
+            bandwidth: LoraBandwidth::default_uplink(),
+            coding_rate: LoraCodingRate::default_uplink(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct LoRaSettings {
     /// which of the 14 500kHz LoRa channels from 863-870MHz to use
@@ -51,41 +154,64 @@ pub enum Orientation {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct RecoveryOutputSettings {
-    /// time to enable recovery outputs (after warning tone, ms)
-    pub output_high_time: u32,
-    /// time delay between recovery output pulses (ms)
-    pub output_low_time: u32,
+    /// Duration for each pulse.
+    pub pulse_high_duration: u32,
+    /// Time delay between recovery output pulses (ms)
+    pub pause_duration: u32,
     /// number of recovery output pulses
     pub num_pulses: u32,
     // TODO: unused for actual sound duration
-    /// duration of warning tone to play before enabling outputs (ms)
-    pub output_warning_time: u32,
+    /// Duration of warning tone to play before enabling outputs (ms)
+    pub forewarning_duration: u32,
     /// Warning sound frequency
     pub output_warning_frequency: f32,
 }
 
+// FIXME: fix/remove this
 impl RecoveryOutputSettings {
     pub fn total_duration(&self) -> u32 {
-        self.output_warning_time
-            + self.num_pulses * self.output_high_time
-            + (self.num_pulses - 1) * self.output_low_time
+        self.forewarning_duration
+            + self.num_pulses * self.pulse_high_duration
+            + (self.num_pulses - 1) * self.pause_duration
     }
 
     pub fn currently_high(&self, time_in_mode: u32) -> bool {
-        let phase_duration = self.output_high_time + self.output_low_time;
-        time_in_mode > self.output_warning_time
+        let phase_duration = self.pulse_high_duration + self.pause_duration;
+        time_in_mode > self.forewarning_duration
             && time_in_mode < self.total_duration()
-            && (time_in_mode - self.output_warning_time) % phase_duration < self.output_high_time
+            && (time_in_mode - self.forewarning_duration) % phase_duration < self.pulse_high_duration
     }
 }
-
+/*
 impl Default for RecoveryOutputSettings {
     fn default() -> Self {
         Self {
-            output_high_time: 500,
-            output_low_time: 0,
+            pulse_high_duration: 500,
+            pause_duration: 0,
             num_pulses: 1,
-            output_warning_time: 500,
+            forewarning_duration: 500,
+            output_warning_frequency: 500.0,
+        }
+    }
+}
+
+*/
+impl RecoveryOutputSettings {
+    fn default_main() -> Self {
+        Self {
+            pulse_high_duration: 200,
+            pause_duration: 500,
+            num_pulses: 2,
+            forewarning_duration: 500,
+            output_warning_frequency: 500.0,
+        }
+    }
+    fn default_parabreaks() -> Self {
+        Self {
+            pulse_high_duration: 16_000,
+            pause_duration: 0,
+            num_pulses: 1,
+            forewarning_duration: 500,
             output_warning_frequency: 500.0,
         }
     }
@@ -164,13 +290,15 @@ pub struct Settings {
     pub main_output_settings: RecoveryOutputSettings,
     /// LoRa settings
     pub lora: LoRaSettings,
+    pub lora_uplink_settings: LoraLinkSettings,
+    pub lora_downlink_settings: LoraLinkSettings,
     /// Telemetry data rate
     pub default_data_rate: TelemetryDataRate,
     /// Time after drogue deployment in which main deployment will not be triggered
     pub min_time_to_main: u32,
     /// Mounting orientation of the flight computer
     pub orientation: Orientation,
-    ///
+    //
     pub acs_tank_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_regulator_pressure_sensor_settings: PressureSensorCalibrationSettings,
     pub acs_accel_valve_pressure_sensor_settings: PressureSensorCalibrationSettings,
@@ -207,20 +335,11 @@ impl Default for Settings {
             apogee_min_falling_time: 100,
             main_output_mode: MainOutputMode::default(),
             main_output_deployment_altitude: 450.0,
-            drogue_output_settings: RecoveryOutputSettings {
-                output_high_time: 300,
-                output_low_time: 200,
-                num_pulses: 3,
-                output_warning_time: 200,
-                ..Default::default()
-            },
-            main_output_settings: RecoveryOutputSettings {
-                output_high_time: 200,
-                output_low_time: 500,
-                num_pulses: 3,
-                ..Default::default()
-            },
+            drogue_output_settings: RecoveryOutputSettings::default_parabreaks(),
+            main_output_settings: RecoveryOutputSettings::default_main(),
             lora: LoRaSettings::default(),
+            lora_downlink_settings: LoraLinkSettings::default_downlink(),
+            lora_uplink_settings: LoraLinkSettings::default_uplink(),
             default_data_rate: TelemetryDataRate::default(),
             min_time_to_main: 1000,
             orientation: Orientation::ZDown,

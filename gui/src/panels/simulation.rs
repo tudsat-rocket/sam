@@ -1,6 +1,6 @@
 use egui::CollapsingHeader;
 
-use archive::{ArchivedLog, ARCHIVED_LOGS};
+use archive::{ARCHIVED_LOGS, ArchivedLog};
 use telemetry::{FLASH_SCHEMA, LORA_SCHEMA, USB_SCHEMA};
 
 use crate::backend::{BackendVariant, SimulationBackend};

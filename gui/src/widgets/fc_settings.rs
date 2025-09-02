@@ -125,6 +125,45 @@ impl FcSettingsUiExt for Settings {
                     });
                     ui.end_row();
 
+                    // new lora code NOTE quick and dirty
+                    ui.label("Lora uplink coding rate ('4_x') x ∈ {5,6,7,8}");
+                    ui.vertical(|ui| {
+                        ui.selectable_value(&mut self.lora_uplink_settings.coding_rate, LoraCodingRate::_4_5, "4_5");
+                        ui.selectable_value(&mut self.lora_uplink_settings.coding_rate, LoraCodingRate::_4_6, "4_6");
+                        ui.selectable_value(&mut self.lora_uplink_settings.coding_rate, LoraCodingRate::_4_7, "4_7");
+                        ui.selectable_value(&mut self.lora_uplink_settings.coding_rate, LoraCodingRate::_4_8, "4_8");
+                    });
+                    ui.end_row();
+
+                    // ---
+                    // ui.label("Main deployment");
+                    // ui.vertical(|ui| {
+                    //     ui.horizontal(|ui| {
+                    //         ui.selectable_value(&mut self.main_output_mode, MainOutputMode::Never, "never");
+                    //         ui.selectable_value(&mut self.main_output_mode, MainOutputMode::AtApogee, "at apogee");
+                    //         ui.selectable_value(
+                    //             &mut self.main_output_mode,
+                    //             MainOutputMode::BelowAltitude,
+                    //             "below altitude of ",
+                    //         );
+                    //         ui.add(
+                    //             DragValue::new(&mut self.main_output_deployment_altitude)
+                    //                 .suffix(" m")
+                    //                 .speed(0.1)
+                    //                 .range(0.0..=10000.0),
+                    //         );
+                    //     });
+                    //     ui.horizontal(|ui| {
+                    //         ui.weak("and at least");
+                    //         ui.add(
+                    //             DragValue::new(&mut self.min_time_to_main).suffix(" ms").speed(1).range(0..=1000000),
+                    //         );
+                    //         ui.weak("after drogue");
+                    //     });
+                    // });
+                    // ui.end_row();
+                    // ---
+
                     ui.label("Default Data Rate");
                     ui.horizontal(|ui| {
                         ui.selectable_value(&mut self.default_data_rate, TelemetryDataRate::Low, "Low");
@@ -323,15 +362,15 @@ impl FcSettingsUiExt for Settings {
                         "pulses of"
                     });
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_high_time)
+                        DragValue::new(&mut self.drogue_output_settings.pulse_high_duration)
                             .suffix(" ms")
                             .speed(1)
-                            .range(0..=10000),
+                            .range(0..=100000),
                     );
                     if self.drogue_output_settings.num_pulses > 1 {
                         ui.weak("with");
                         ui.add(
-                            DragValue::new(&mut self.drogue_output_settings.output_low_time)
+                            DragValue::new(&mut self.drogue_output_settings.pause_duration)
                                 .suffix(" ms")
                                 .speed(1)
                                 .range(0..=10000),
@@ -341,7 +380,7 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.drogue_output_settings.output_warning_time)
+                        DragValue::new(&mut self.drogue_output_settings.forewarning_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),
@@ -366,7 +405,7 @@ impl FcSettingsUiExt for Settings {
                         "pulses of"
                     });
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_high_time)
+                        DragValue::new(&mut self.main_output_settings.pulse_high_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),
@@ -374,7 +413,7 @@ impl FcSettingsUiExt for Settings {
                     if self.main_output_settings.num_pulses > 1 {
                         ui.weak("with");
                         ui.add(
-                            DragValue::new(&mut self.main_output_settings.output_low_time)
+                            DragValue::new(&mut self.main_output_settings.pause_duration)
                                 .suffix(" ms")
                                 .speed(1)
                                 .range(0..=10000),
@@ -384,7 +423,7 @@ impl FcSettingsUiExt for Settings {
                         ui.weak("after");
                     }
                     ui.add(
-                        DragValue::new(&mut self.main_output_settings.output_warning_time)
+                        DragValue::new(&mut self.main_output_settings.forewarning_duration)
                             .suffix(" ms")
                             .speed(1)
                             .range(0..=10000),

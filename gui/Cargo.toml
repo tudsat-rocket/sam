@@ -49,6 +49,7 @@ cmake = "0.1.54"
 puffin = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 puffin_egui = { git = "https://github.com/tedsteen/puffin", branch="upgrade-egui", optional = true }
 bitflags = "2.9.1"
+strum = { version = "0.27.2", features=["derive"] }
 
 # X86 dependencies
 [target.'cfg(target_arch = "x86_64")'.dependencies]

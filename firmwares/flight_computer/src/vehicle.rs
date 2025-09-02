@@ -4,13 +4,17 @@ use core::convert::Infallible;
 use core::num::Wrapping;
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
+use embassy_futures::join::{join_array, join3, join5};
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::Mutex as BlMutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
+use embassy_sync::signal::Signal;
 use embassy_time::Instant;
 use embassy_time::{Duration, Ticker};
 
@@ -23,14 +27,16 @@ use shared_types::{
 };
 use state_estimator::StateEstimator;
 use telemetry::{
-    AccelerometerId, BarometerId, BatteryId, GyroscopeId, MagnetometerId, Metric, MetricSource, PressureSensorId,
-    Representation, TelemetryMessageWriter, TemperatureSensorId, FLASH_SCHEMA, LORA_SCHEMA, USB_SCHEMA,
+    AccelerometerId, BarometerId, BatteryId, FLASH_SCHEMA, GyroscopeId, LORA_SCHEMA, MagnetometerId, Metric,
+    MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA,
 };
 
+use crate::board::load_outputs;
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
-use crate::{BoardOutputs, BoardSensors};
-//use crate::flash::*;
+use crate::lora::TypedLoraLinkSettings;
+use crate::storage::*;
+use crate::{BoardOutputs, BoardSensors, LoadOutputs};
 //use crate::lora::*;
 //use crate::usb::*;
 //use crate::{can::*, BoardOutputs, BoardSensors};
@@ -42,14 +48,20 @@ pub struct Vehicle {
     mode: FlightMode,
     state_estimator: StateEstimator,
     settings: Settings,
+    lora_downlink_settings:
+        &'static embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
 
     sensors: BoardSensors,
-    outputs: BoardOutputs,
+    load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
+    board_leds: (Output<'static>, Output<'static>, Output<'static>),
 
     can1: ((), ()),
     can2: ((), ()),
-
-    usb: ((), ()),
+    #[cfg(feature = "usb")]
+    usb: (
+        Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+        Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
+    ),
     eth: (
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -58,6 +70,10 @@ pub struct Vehicle {
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
     ),
+    // lora_power_sig: &'static Signal<CriticalSectionRawMutex, u8>,
+    lora_uplink_rssi: &'static BlMutex<CriticalSectionRawMutex, i16>,
+    main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+    parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 
     loop_runtime: f32,
     //gps: GPSHandle,
@@ -65,7 +81,7 @@ pub struct Vehicle {
 
     //usb: UsbHandle,
     //radio: RadioHandle,
-    //flash: FlashHandle,
+    flash: FlashHandle,
     //can: CanHandle,
 }
 
@@ -81,12 +97,18 @@ pub async fn run(mut vehicle: Vehicle, mut iwdg: IndependentWatchdog<'static, IW
 }
 
 impl Vehicle {
+    #[allow(clippy::too_many_arguments)]
     pub fn init(
         mut sensors: BoardSensors,
-        outputs: BoardOutputs,
+        // outputs: BoardOutputs,
+        board_leds: (Output<'static>, Output<'static>, Output<'static>),
+        load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
         can1: ((), ()),
         can2: ((), ()),
-        usb: ((), ()),
+        #[cfg(feature = "usb")] usb: (
+            Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
+            Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
+        ),
         eth: (
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -95,11 +117,18 @@ impl Vehicle {
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
+
+        main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+        parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+
         //gps: GPSHandle,
         ////power: Power,
-        //flash: FlashHandle,
+        flash: FlashHandle,
         //mut buzzer: Buzzer,
         settings: Settings,
+        lora_downlink_settings: &'static BlMutex<CriticalSectionRawMutex, TypedLoraLinkSettings>,
+        rssi_glob: &'static BlMutex<CriticalSectionRawMutex, i16>,
+        // lora_power_sig: &'static Signal<CriticalSectionRawMutex, u8>,
     ) -> Self {
         //buzzer.apply_settings(&settings.drogue_output_settings, &settings.main_output_settings);
 
@@ -113,19 +142,25 @@ impl Vehicle {
             mode: FlightMode::Idle,
             state_estimator: StateEstimator::new(MAIN_LOOP_FREQUENCY.0 as f32, settings.clone()),
             settings,
-
+            lora_downlink_settings,
+            lora_uplink_rssi: rssi_glob,
+            // lora_power_sig,
             sensors,
-            outputs,
+            board_leds,
+            load_outputs,
 
             can1,
             can2,
+            #[cfg(feature = "usb")]
             usb,
             eth,
             lora,
+            main_recovery_sig,
+            parabreaks_sig,
 
             //gps,
             //power,
-            //flash,
+            flash,
             loop_runtime: 0.0,
         }
     }
@@ -135,15 +170,19 @@ impl Vehicle {
 
         // Query core sensors
         // TODO: should we separate these into separate tasks?
-        self.sensors.imu1.tick().await;
-        self.sensors.imu2.tick().await;
-        self.sensors.imu3.tick().await;
-        self.sensors.highg.tick().await;
-        self.sensors.mag.tick().await;
-        self.sensors.baro1.tick().await;
-        self.sensors.baro2.tick().await;
-        self.sensors.baro3.tick().await;
-        //self.power.tick();
+        // TODO: test and decide on correct future joining
+
+        join5(
+            self.sensors.imu1.tick(),
+            self.sensors.imu2.tick(),
+            self.sensors.imu3.tick(),
+            self.sensors.highg.tick(),
+            self.sensors.mag.tick(),
+        )
+        .await;
+
+        join3(self.sensors.baro1.tick(), self.sensors.baro2.tick(), self.sensors.baro3.tick()).await;
+        // self.power.tick();
 
         // Update state estimator
         // TODO: incorporate new sensors
@@ -158,49 +197,49 @@ impl Vehicle {
             //self.sensors.gps.new_datum(),
             None,
         );
-
         // Switch to new mode if necessary
-        //let arm_voltage = self.power.arm_voltage().unwrap_or(0);
+        // let arm_voltage = self.power.arm_voltage().unwrap_or(0);
         let arm_voltage = 0;
         if let Some(fm) = self.state_estimator.new_mode(arm_voltage) {
             self.switch_mode(fm);
         }
 
-        self.receive();
+        self.receive_uplink_message();
 
-        self.outputs.recovery_high.set_level((self.mode >= FlightMode::Armed).into());
+        // TODO: check arm
+        unsafe {
+            self.load_outputs.lock_mut(|o| o.arm());
+        }
+        // self.outputs.load_output_arm.set_level((self.mode >= FlightMode::Armed).into());
 
-        let elapsed = self.state_estimator.time_in_mode();
-        let drogue_high =
-            self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed);
-        let main_high =
-            self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed);
-        self.outputs.recovery_lows.0.set_level(drogue_high.into());
-        self.outputs.recovery_lows.1.set_level(main_high.into());
-
+        // TODO: re-enable timing checks for recovery // recovery invocation moved to fn switch_mode
+        let _elapsed = self.state_estimator.time_in_mode();
+        // if self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed) {
+        //     self.parabreaks_sig.signal(true);
+        // }
+        // if self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed) {
+        //     self.main_recovery_sig.signal(true);
+        // }
         let (r, y, g) = self.mode.led_state(self.time.0);
-        self.outputs.leds.0.set_level((!r).into());
-        self.outputs.leds.1.set_level((!y).into());
-        self.outputs.leds.2.set_level((!g).into());
+        self.board_leds.0.set_level((!r).into());
+        self.board_leds.1.set_level((!y).into());
+        self.board_leds.2.set_level((!g).into());
 
         //// Send valve commands via CAN bus
         //self.transmit_output_commands();
-
-        // Update buzzer
-        //self.buzzer.tick(self.time.0, self.power.battery_status());
-        //self.buzzer.tick(self.time.0);
-
-        self.transmit_and_store();
+        self.transmit_and_store().await;
 
         // Increase time for next iteration
         self.time += 1_000 / MAIN_LOOP_FREQUENCY.0;
 
         // get CPU usage
         self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
+        // defmt::info!("loop_runtime: {}", self.loop_runtime);
     }
 
-    fn receive(&mut self) {
+    fn receive_uplink_message(&mut self) {
         if let Ok(msg) = self.lora.1.try_receive() {
+            info!("receive lora uplink message");
             self.handle_uplink_message(msg);
         }
 
@@ -225,10 +264,18 @@ impl Vehicle {
             //UplinkMessage::ReadFlash(adress, size) => {
             //    let _ = self.flash.read(adress, size);
             //}
-            //UplinkMessage::ReadSettings => self.usb.send_message(DownlinkMessage::Settings(self.settings.clone())),
-            //UplinkMessage::WriteSettings(settings) => {
-            //    let _ = self.flash.write_settings(settings);
-            //}
+            UplinkMessage::ReadSettings => {
+                info!("UplinkMessage: ReadSettings");
+                // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+
+                // FIXME: tried re-enabling, but did not work
+                let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+            }
+            UplinkMessage::WriteSettings(settings) => {
+                info!("UplinkMessage: WriteSettings");
+                let _ = self.flash.write_settings(settings);
+            }
             //UplinkMessage::ApplyLoRaSettings(_) => {}
             _ => {}
         }
@@ -248,20 +295,31 @@ impl Vehicle {
         }
     }
 
-    fn transmit_and_store(&mut self) {
+    async fn transmit_and_store(&mut self) {
         let usb_msg =
             USB_SCHEMA.message(self, self.time.0).map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
         let lora_msg =
             LORA_SCHEMA.message(self, self.time.0).map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
-        let _flash_msg = FLASH_SCHEMA
+        let flash_msg = FLASH_SCHEMA
             .message(self, self.time.0)
             .map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
-        // Send telemetry via USB
+        // Send telemetry via Ethernet
+        if let Some(ref msg) = usb_msg {
+            let _ = self.eth.0.try_send(msg.clone());
+        }
+
+        // Send telemetry via Usb
+
         if let Some(msg) = usb_msg {
-            let _ = self.eth.0.try_send(msg);
+            #[cfg(feature = "usb")]
+            let _res = self.usb.0.try_send(msg);
+            // match res {
+            //     Ok(_) => defmt::info!("usb telemetry send successful"),
+            //     Err(_) => defmt::info!("usb telemetry send failed"),
+            // }
         }
 
         // Send telemetry via Lora
@@ -269,13 +327,14 @@ impl Vehicle {
             let _ = self.lora.0.try_send(msg);
         }
 
-        //// Store data in flash
-        //self.flash.tick().await;
-        //if self.mode >= FlightMode::ArmedLaunchImminent {
-        //    if let Some(msg) = self.next_flash_telem() {
-        //        let _ = self.flash.write_message(msg);
-        //    }
-        //}
+        // Store data in flash
+        self.flash.tick().await;
+        if self.mode >= FlightMode::ArmedLaunchImminent {
+            // FIXME: the impl has a bug
+            // if let Some(msg) = flash_msg {
+            //     let _ = self.flash.write_message(msg);
+            // }
+        }
 
         //// Broadcast telemetry to payloads
         //self.broadcast_can_telemetry();
@@ -288,12 +347,24 @@ impl Vehicle {
 
         // We are going to or beyond Armed, switch to max tx power and arm ACS
         if new_mode >= FlightMode::Armed && self.mode < FlightMode::Armed {
+            // TODO: lora max power
             //self.radio.set_max_transmit_power();
-            // TODO:
+            // TODO: think about arm AND de-arm
+            unsafe {
+                self.load_outputs.lock_mut(|o| o.arm());
+            }
+            info!("Arming Recovery");
+        }
+        // TODO:: move maybe
+        if new_mode == FlightMode::RecoveryDrogue {
+            self.parabreaks_sig.signal(true);
+        }
+        if new_mode == FlightMode::RecoveryMain {
+            self.main_recovery_sig.signal(true);
         }
 
         self.mode = new_mode;
-        //self.buzzer.switch_mode(self.time.0, new_mode);
+        crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
     }
 }
 
@@ -394,6 +465,7 @@ impl ::telemetry::MetricSource for Vehicle {
             // Misc.
             CpuUtilization => w.write_float(repr, self.loop_runtime),
             //FlashPointer => w.write_float(repr, self.flash.pointer),
+            UplinkRssi => w.write_float(repr, self.lora_uplink_rssi.lock(|x| *x)),
             _ => w.write_float(repr, 0.0),
         }
     }

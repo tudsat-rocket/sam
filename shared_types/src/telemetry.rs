@@ -1,7 +1,7 @@
 //! Contains data structures that the flight computer shares with the outside world,
 //! namely the ground station software, as well as common (de)serialization code.
 
-use heapless::{String, Vec};
+use heapless::Vec;
 
 #[cfg(target_os = "none")]
 use core::hash::Hasher;
@@ -200,26 +200,28 @@ impl TryFrom<u8> for BatteryChargerState {
 // TODO: metrics for this
 pub struct TelemetryGCS {
     pub time: u32,
-    pub lora_rssi: u8,
-    pub lora_rssi_signal: u8,
-    pub lora_snr: i8,
+    pub lora_rssi: i32,
+    pub lora_snr: i32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DownlinkMessage {
     Telemetry(u32, heapless::Vec<u8, 256>),
+    /// Does not originate from the FC, but from GCS.
     TelemetryGCS(TelemetryGCS),
     FlashContent(u32, heapless::Vec<u8, 256>),
+    /// A copy of the settings currently active one the FC.
     Settings(Settings),
 }
 
 impl DownlinkMessage {
-    pub fn time(&self) -> u32 {
+    // Returns the time when the message was produced by the FC.
+    pub fn time_produced(&self) -> Option<u32> {
         match self {
-            DownlinkMessage::Telemetry(time, _) => *time,
-            DownlinkMessage::TelemetryGCS(tm) => tm.time,
-            DownlinkMessage::FlashContent(_, _) => 0,
-            DownlinkMessage::Settings(_) => 0,
+            DownlinkMessage::Telemetry(time, _) => Some(*time),
+            DownlinkMessage::TelemetryGCS(tm) => Some(tm.time),
+            DownlinkMessage::FlashContent(_, _) => None,
+            DownlinkMessage::Settings(_) => None,
         }
     }
 }
