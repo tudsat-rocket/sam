@@ -28,8 +28,15 @@ pub struct UdpBackend {
     data_store: DataStore,
     fc_settings: Option<Settings>,
 
+    // DownlinkMessage receipt time
+    // 0: Intant, when message was received it sam
+    // 1: time when message was sent by FC, (for now) in [ms] since boot (inaccurate)
     message_receipt_times: VecDeque<(Instant, u32)>,
+    // The last command sent to the FC, we use this the rudimentarily prevent fast command
+    // repetitions
     last_command: Option<(Instant, Command)>,
+    // TODO: fix
+    last_read_settings: Option<Instant>,
 }
 
 impl UdpBackend {
@@ -60,6 +67,7 @@ impl UdpBackend {
             fc_settings: None,
             message_receipt_times: VecDeque::new(),
             last_command: None,
+            last_read_settings: None,
         }
     }
 
@@ -93,6 +101,14 @@ impl UdpBackend {
             }
         }
     }
+
+    fn send_ignore_error(&mut self, msg: UplinkMessage) {
+        log::info!("Sending {:?}", msg);
+        match self.send(msg) {
+            Ok(..) => (),
+            Err(e) => log::warn!("Failed to send uplink message: {}", e),
+        }
+    }
 }
 
 impl BackendVariant for UdpBackend {
@@ -107,20 +123,23 @@ impl BackendVariant for UdpBackend {
         }
 
         for (t, msg) in msgs.into_iter() {
-            let last_time = self.message_receipt_times.back().map(|(_i, t)| t);
-            let out_of_order = last_time.map(|last| *last > msg.time()).unwrap_or(false);
-            if out_of_order {
-                continue;
+            // log::info!("received message: {:?}", msg);
+            if let (Some(last_time), Some(msg_time)) = (self.message_receipt_times.back(), msg.time_produced()) {
+                if msg_time < last_time.1 {
+                    log::warn!("Recieved out of order downlink message, dropping.\nMsg: {:?}", msg);
+                    continue;
+                }
             }
 
             // TODO: save instant to log as well?
             // (richer log format in general?
             self.write_to_telemetry_log(&msg);
 
-            // TODO
             if let DownlinkMessage::TelemetryGCS(..) = msg {
             } else {
-                self.message_receipt_times.push_back((t, msg.time()));
+                if let Some(fc_time) = msg.time_produced() {
+                    self.message_receipt_times.push_back((t, fc_time));
+                }
             }
 
             match msg {
@@ -128,7 +147,10 @@ impl BackendVariant for UdpBackend {
                     self.fc_settings = Some(settings);
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
-                    self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    // self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    // FIXME: change schema
+                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+
                     //self.data_store.ingest_message(&LORA_SCHEMA, time, message);
                 }
                 _ => {
@@ -139,13 +161,25 @@ impl BackendVariant for UdpBackend {
             }
         }
 
-        //if self.fc_settings.is_none() && self.end().is_some() {
-        //    self.send(UplinkMessage::ReadSettings).unwrap();
-        //}
+        // FIXME: add rate limiting
+        if self.fc_settings.is_none() && self.fc_time().is_some() {
+            if let Some(last_instant) = self.last_read_settings {
+                if last_instant.elapsed() < Duration::from_secs(1) {
+                    // TODO: early return ugly
+                    return;
+                }
+            }
+            self.send_ignore_error(UplinkMessage::ReadSettings);
+            self.last_read_settings = Some(Instant::now());
+        }
     }
 
     fn data_store<'a>(&'a self) -> &'a DataStore {
         &self.data_store
+    }
+
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
     }
 
     fn fc_settings(&mut self) -> Option<&Settings> {
@@ -181,20 +215,22 @@ impl BackendVariant for UdpBackend {
         self.send(UplinkMessage::Command(cmd))
     }
 
-    fn end(&self) -> Option<f64> {
+    // returns approximate time of the flight computer since boot minus the signal transmission
+    // time
+    fn fc_time(&self) -> Option<f64> {
         let postroll = Duration::from_secs_f64(10.0);
-        // TODO: postroll
-        let Some((time_received, time_message)) = self.message_receipt_times.back() else {
+        // TODO: (Felix) explain postroll
+        let Some((time_received, time_sent)) = self.message_receipt_times.back() else {
             return None;
         };
 
-        let x = if time_received.elapsed() < postroll {
-            ((*time_message as f64) / 1000.0) + time_received.elapsed().as_secs_f64()
+        let current_time_fc = if time_received.elapsed() < postroll {
+            ((*time_sent as f64) / 1000.0) + time_received.elapsed().as_secs_f64()
         } else {
-            ((*time_message as f64) / 1000.0) + postroll.as_secs_f64()
+            ((*time_sent as f64) / 1000.0) + postroll.as_secs_f64()
         };
 
-        Some(x)
+        Some(current_time_fc)
     }
 
     fn apply_settings(&mut self, settings: &AppSettings) {
@@ -233,12 +269,14 @@ pub async fn run_socket(
     mut uplink_rx: Receiver<UplinkMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let socket = tokio::net::UdpSocket::bind("0.0.0.0:18355").await.unwrap();
+    println!("socket bind");
 
     let mut buf = [0; 1024];
     let mut peer = None;
 
     loop {
         tokio::select! {
+            // send uplink message via udp
             Some(msg) = uplink_rx.recv() => {
                 println!("{:?}", msg);
                 if let Some(addr) = peer {
@@ -246,15 +284,24 @@ pub async fn run_socket(
                     let _ = socket.send_to(&serialized, addr).await;
                 }
             },
+            // receive message via udp
             result = socket.recv_from(&mut buf) => {
+                // info!("Received udp message");
                 let (len, addr) = result.unwrap();
                 peer = Some(addr);
 
                 let Ok(msg) = postcard::from_bytes_cobs(&mut buf[..(len as usize)]) else {
+                    // info!("Postcard serialization of message failed");
                     continue;
                 };
+                    // info!("Postcard serialization of message successful");
 
-                downlink_tx.send((Instant::now(), msg)).await.unwrap();
+                    // TODO: remove unwrap
+                // downlink_tx.send((Instant::now(), msg)).await.unwrap();
+                match downlink_tx.send((Instant::now(), msg)).await {
+                    Ok(..) => (),
+                    Err(e) => log::warn!("Could not send message between threads: {}", e),
+                }
 
                 if let Some(ctx) = &ctx {
                     ctx.request_repaint();

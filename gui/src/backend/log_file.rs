@@ -48,6 +48,10 @@ impl BackendVariant for LogFileBackend {
         &self.data_store
     }
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
+        &mut self.data_store
+    }
+
     fn fc_settings(&mut self) -> Option<&Settings> {
         None // TODO: store these in flash?
     }
@@ -60,7 +64,7 @@ impl BackendVariant for LogFileBackend {
         self.data_store = DataStore::default();
     }
 
-    fn end(&self) -> Option<f64> {
+    fn fc_time(&self) -> Option<f64> {
         self.playback_end()
     }
 

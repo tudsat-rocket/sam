@@ -1,14 +1,21 @@
+use defmt::{error, Debug2Format};
+use embassy_futures::join::join;
+use embassy_stm32::Peri;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Output};
-use embassy_stm32::i2c::I2c;
+use embassy_stm32::i2c::{I2c, Master};
+use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
-use embassy_time::{with_timeout, Duration};
-use embassy_time::{Delay, Ticker};
+use embassy_stm32::usart::{UartRx, UartTx};
+use embassy_time::Ticker;
+use embassy_time::{Duration, with_timeout};
 use embedded_hal::digital::OutputPin;
 
+use {defmt_rtt as _, panic_probe as _};
 use shared_types::*;
 
 use crate::{CanInSubscriper, DriveVoltage, OutputStatePublisher, OutputStateSubscriber};
+
 
 async fn receive_output_message(
     subscriber: &mut crate::CanInSubscriper,
@@ -46,10 +53,14 @@ async fn receive_telemetry_message(subscriber: &mut crate::CanInSubscriper) -> T
 
 #[embassy_executor::task]
 pub async fn run_outputs(
-    mut output0: (Output<'static, PC7>, Output<'static, PC6>),
-    mut output1: (Output<'static, PC9>, Output<'static, PC8>),
-    mut output2: (Output<'static, PB8>, Output<'static, PB9>),
-    mut output3: (Output<'static, PA0>, Output<'static, PA1>),
+    // mut output0: (Output<'static, PC7>, Output<'static, PC6>),
+    // mut output1: (Output<'static, PC9>, Output<'static, PC8>),
+    // mut output2: (Output<'static, PB8>, Output<'static, PB9>),
+    // mut output3: (Output<'static, PA0>, Output<'static, PA1>),
+    mut output0: (Output<'static>, Output<'static>),
+    mut output1: (Output<'static>, Output<'static>),
+    mut output2: (Output<'static>, Output<'static>),
+    mut output3: (Output<'static>, Output<'static>),
     mut subscriber: OutputStateSubscriber,
 ) -> ! {
     loop {
@@ -103,9 +114,9 @@ async fn read_i2c_amp_value<I2C: embedded_hal_async::i2c::I2c>(
 
 #[embassy_executor::task]
 pub async fn run_i2c_sensors(
-    mut input1_i2c: Option<I2c<'static, I2C2, DMA1_CH4, DMA1_CH5>>,
-    mut input3_i2c: Option<I2c<'static, I2C1, DMA1_CH6, DMA1_CH7>>,
-    mut input3_gpio: Option<(Input<'static, PB6>, Input<'static, PB7>)>,
+    mut input1_i2c: Option<I2c<'static, Async, Master>>,
+    mut input3_i2c: Option<I2c<'static, Async, Master>>,
+    mut input3_gpio: Option<(Input<'static>, Input<'static>)>,
     publisher: crate::CanOutPublisher,
     role: IoBoardRole,
     interval: Duration,
@@ -129,7 +140,7 @@ pub async fn run_i2c_sensors(
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[0]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[1]).await.ok(),
                 read_i2c_amp_value(i2c2, AMPLIFIER_ADDRESSES[2]).await.ok(),
-                pins.map(|(p0, p1)| (((p0.is_high() as u16) << 1 | (p1.is_high() as u16), false))),
+                pins.map(|(p0, p1)| ((p0.is_high() as u16) << 1 | (p1.is_high() as u16), false)),
             ],
             (None, Some(i2c1), _) => [
                 read_i2c_amp_value(i2c1, AMPLIFIER_ADDRESSES[0]).await.ok(),
@@ -155,23 +166,24 @@ fn to_millivolts(vref_sample: u16, sample: u16) -> u16 {
 
 #[embassy_executor::task]
 pub async fn run_power_report(
+    //TODO maybe adjust default pins again
     publisher: crate::CanOutPublisher,
     mut adc: Adc<'static, ADC1>,
-    mut battery_voltage_sense_pin: PA7,
-    mut charge_bus_voltage_sense_pin: PA6,
-    mut boost_voltage_sense_pin: PA5,
-    mut current_sense_pin: PB1,
-    mut temperature_sense_pin: PA4,
+    mut battery_voltage_sense_pin: Peri<'static, PA7>,
+    mut charge_bus_voltage_sense_pin: Peri<'static, PA6>,
+    mut current_sense_pin: Peri<'static, PC5>,     //PB1
+    mut temperature_sense_pin: Peri<'static, PC4>, //PA4
     role: IoBoardRole,
     drive_voltage: DriveVoltage,
 ) -> ! {
-    let mut vref = adc.enable_vref(&mut Delay);
+    let mut vref = adc.enable_vref();
     const TIMEOUT: Duration = Duration::from_millis(10);
 
     let mut ticker = Ticker::every(Duration::from_millis(200)); // TODO: adjust?
     let vref_sample = with_timeout(TIMEOUT, adc.read(&mut vref)).await.unwrap_or(1490);
 
     loop {
+        // TODO: (embassy upgrade)
         let thermistor_sample = with_timeout(TIMEOUT, adc.read(&mut temperature_sense_pin)).await;
         let thermistor_vsense = (to_millivolts(vref_sample, thermistor_sample.unwrap_or_default()) as f32) / 1000.0;
         let thermistor_resistance = (10e3 * (thermistor_vsense / (3.3 - thermistor_vsense))) as u16;
@@ -185,10 +197,6 @@ pub async fn run_power_report(
             DriveVoltage::ChargeBus => {
                 let sample = with_timeout(TIMEOUT, adc.read(&mut charge_bus_voltage_sense_pin)).await;
                 ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (15.0 + 2.2) / 2.2) as u16
-            }
-            DriveVoltage::BoostConverter => {
-                let sample = with_timeout(TIMEOUT, adc.read(&mut boost_voltage_sense_pin)).await;
-                ((to_millivolts(vref_sample, sample.unwrap_or_default()) as f32) * (22.0 + 2.2) / 2.2) as u16
             }
         };
 
@@ -229,7 +237,8 @@ pub async fn run_outputs_on_after_flightmode(
 
 #[embassy_executor::task]
 pub async fn run_leds(
-    leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    // leds: (Output<'static, PB12>, Output<'static, PB13>, Output<'static, PB14>),
+    leds: (Output<'static>, Output<'static>, Output<'static>),
     mut output_state_subscriber: OutputStateSubscriber,
     id_pattern: [u8; 8],
 ) -> ! {
@@ -255,5 +264,45 @@ pub async fn run_leds(
 
         i = (i + 1) % id_pattern.len();
         ticker.next().await;
+    }
+}
+
+
+#[embassy_executor::task]
+pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, Async>) -> ! {
+    const UART_TO_CAN_TELEMETRY_FREQUENCY_HZ: u64 = 1;
+    let message_id: u16 = CanBusMessageId::IoBoardInput(IoBoardRole::Payload, 0).into();
+
+    // TODO: convince swiss to stick to 8-byte messages?
+    let mut ticker_interval = Ticker::every(Duration::from_hz(UART_TO_CAN_TELEMETRY_FREQUENCY_HZ));
+    let mut buffer: [u8; 8] = [0x00; 8];
+    loop {
+        // This effectively limits us to the ticker frequency.
+        match join(uart_rx.read(&mut buffer), ticker_interval.next()).await {
+            (Ok(()), _) => {
+                publisher.publish_immediate((message_id, buffer));
+            }
+            (Err(e), _) => {
+                error!("Failed to read payload telemetry message from UART: {:?}", Debug2Format(&e));
+            }
+        }
+    }
+}
+
+
+#[embassy_executor::task]
+pub async fn run_can_to_uart(
+    mut subscriber: crate::CanInSubscriper,
+    mut uart_tx: UartTx<'static, embassy_stm32::mode::Async>,
+) -> ! {
+    loop {
+        // These messages are relayed byte-for-byte, including CRC, so we never
+        // have to parse them.
+        let (sid, data) = subscriber.next_message_pure().await;
+        if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
+            if let Err(e) = uart_tx.write(&data).await {
+                error!("Failed to write message to UART: {:?}", Debug2Format(&e));
+            }
+        }
     }
 }

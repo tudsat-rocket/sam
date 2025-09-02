@@ -26,6 +26,8 @@ pub struct TelemetryMessageReader<const N: usize> {
 }
 
 impl Representation {
+    // TODO: (felix) check documentation
+    /// Returns the number of bits this representation occupies.
     pub fn bits(&self) -> usize {
         match self {
             Self::Enum { bits } => *bits,
@@ -130,26 +132,39 @@ impl<const N: usize> TelemetryMessageReader<N> {
         Ok(e)
     }
 
+    /// Reads any number from the representation, a float or a fixed point number, and converts it
+    /// to a f64.
     pub fn read_float(&mut self, repr: Representation) -> Result<f64, ()> {
+        // println!("-> read float");
         if self.bit_pointer % 8 != 0 {
             self.bit_pointer += 8 - self.bit_pointer % 8;
         }
 
+        // TODO: (felix) what does this mean?
         assert_eq!(repr.bits() % 8, 0);
 
+        if ((self.bit_pointer + repr.bits()) / 8) >= self.buffer.len() {
+            return Err(());
+        }
+
         let bytes = &self.buffer[(self.bit_pointer / 8)..((self.bit_pointer + repr.bits()) / 8)];
+        // println!("bytes are: {:?}", bytes);
         let value = match repr {
             Representation::FixedPoint { bits, min, max } => {
+                // println!("fixed point decode: b: {}, min: {}, max: {}", bits, min, max);
                 let mut be: [u8; 8] = [0; 8];
                 be[(8 - bytes.len())..].copy_from_slice(&bytes);
                 min + ((u64::from_be_bytes(be) as f64) / (((1u64 << bits) - 1) as f64)) * (max - min)
             }
-            Representation::FloatingPoint { bits } => match bits {
-                64 => f64::from_be_bytes(bytes.try_into().unwrap()),
-                32 => f32::from_be_bytes(bytes.try_into().unwrap()).into(),
-                16 => half::f16::from_be_bytes(bytes.try_into().unwrap()).to_f64(),
-                _ => todo!(),
-            },
+            Representation::FloatingPoint { bits } => {
+                // println!("Floating point decode: b: {}", bits);
+                match bits {
+                    64 => f64::from_be_bytes(bytes.try_into().unwrap()),
+                    32 => f32::from_be_bytes(bytes.try_into().unwrap()).into(),
+                    16 => half::f16::from_be_bytes(bytes.try_into().unwrap()).to_f64(),
+                    _ => todo!(),
+                }
+            }
             Representation::Enum { bits: _ } => unreachable!(),
         };
 

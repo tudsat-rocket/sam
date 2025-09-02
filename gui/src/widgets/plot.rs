@@ -90,7 +90,7 @@ impl<'a> egui::Widget for Plot<'a> {
         let text_color = ui.style().visuals.text_color();
         ui.style_mut().visuals.override_text_color = Some(text_color.gamma_multiply(0.5));
 
-        let view_end = self.backend.end().unwrap_or_default();
+        let view_end = self.backend.fc_time().unwrap_or_default();
         #[allow(deprecated)] // the axis widths in egui suck, TODO
         let mut plot = egui_plot::Plot::new(ui.next_auto_id())
             .link_axis("plot_axis_group", [true, false])

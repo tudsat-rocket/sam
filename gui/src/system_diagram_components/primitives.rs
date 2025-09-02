@@ -1,3 +1,3 @@
-pub mod circle;
-pub mod character;
 pub mod arrow;
+pub mod character;
+pub mod circle;

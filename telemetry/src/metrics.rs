@@ -1,5 +1,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde")]
+use strum::{EnumDiscriminants, VariantNames};
 
 // TODO: maybe bitfields so we can do some sort of select-all operation?
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -54,6 +56,10 @@ pub enum PressureSensorId {
     RecoveryChamberDrogue,
     RecoveryChamberMain,
     MainRelease,
+    //Hybrid
+    CombustionChamber,
+    OxidizerTank,
+    NitrogenTank,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -64,6 +70,17 @@ pub enum TemperatureSensorId {
     Acs,
     Recovery,
     Payload,
+    //Hybrid
+    OxidizerTank,
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum ValveId {
+    PressureRegulator,
+    MainValve,
+    VentValve,
+    FillAndDumpValve,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
@@ -77,13 +94,14 @@ pub enum Dim {
 /// This enum serves as an identifier for anything the ground station keeps
 /// track of and displays for a single flight computer / connection.
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize, VariantNames, EnumDiscriminants))]
 #[non_exhaustive]
 pub enum Metric {
     FlightMode,
     TransmitPower,
     AcsMode,
     ThrusterValveState,
+    ValveState(ValveId),
 
     // TODO: bit-fields: camera state, fin presence
     Orientation(usize),
@@ -116,6 +134,7 @@ pub enum Metric {
     BatteryChargerState(BatteryId),
     SupplyVoltage,
     SupplyCurrent,
+    RecoveryCurrent,
     CpuUtilization,
     FlashPointer,
     UplinkRssi,
@@ -137,6 +156,15 @@ pub enum Metric {
     TrueDrag(Dim),
     TrueThrust(Dim),
     ApogeeError,
+
+    //These Metrics are only used by SAM, e.g., for visualization and constraint purposes
+    LocalMetric(LocalMetric),
+}
+
+#[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub enum LocalMetric {
+    MaxPressureN2Tank,
 }
 
 #[cfg(not(target_os = "none"))]

@@ -54,6 +54,8 @@ pub trait BackendVariant {
 
     fn data_store<'a>(&'a self) -> &'a DataStore;
 
+    fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore;
+
     /// Return the current flight computer settings, if known.
     fn fc_settings(&mut self) -> Option<&Settings> {
         None
@@ -75,7 +77,10 @@ pub trait BackendVariant {
         Ok(())
     }
 
-    fn end(&self) -> Option<f64>;
+    // Returns the approximate current flight computer time since boot [s].
+    // The actual time on the may FC is ahead by the transmission delay.
+    // If no connection was made, or it has been lost for 10s, None will be returned.
+    fn fc_time(&self) -> Option<f64>;
 
     fn status_bar_ui(&mut self, _ui: &mut egui::Ui) {}
 
@@ -197,7 +202,7 @@ pub trait ReplayableBackendVariant: BackendVariant {
         let first = self.data_store().first_time().unwrap_or_default();
         let last = self.data_store().last_time().unwrap_or_default();
         let total = last - first;
-        let elapsed = self.end().map(|p| p - first).unwrap_or(0.0);
+        let elapsed = self.fc_time().map(|p| p - first).unwrap_or(0.0);
 
         if self.playback_state().is_none() {
             ui.disable();
@@ -309,21 +314,34 @@ impl Backend {
         }
     }
 
-    pub fn end(&self) -> Option<f64> {
+    pub fn data_store_mut<'a>(&'a mut self) -> &'a mut DataStore {
         match self {
             #[cfg(not(target_arch = "wasm32"))]
-            Self::Serial(b) => b.end(),
+            Self::Serial(b) => b.data_store_mut(),
             #[cfg(not(target_arch = "wasm32"))]
-            Self::Udp(b) => b.end(),
-            Self::Noop(b) => b.end(),
-            Self::Log(b) => b.end(),
+            Self::Udp(b) => b.data_store_mut(),
+            Self::Noop(b) => b.data_store_mut(),
+            Self::Log(b) => b.data_store_mut(),
             #[cfg(not(target_arch = "wasm32"))]
-            Self::Simulation(b) => b.end(),
+            Self::Simulation(b) => b.data_store_mut(),
+        }
+    }
+
+    pub fn fc_time(&self) -> Option<f64> {
+        match self {
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Serial(b) => b.fc_time(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Udp(b) => b.fc_time(),
+            Self::Noop(b) => b.fc_time(),
+            Self::Log(b) => b.fc_time(),
+            #[cfg(not(target_arch = "wasm32"))]
+            Self::Simulation(b) => b.fc_time(),
         }
     }
 
     pub fn current_value(&self, metric: Metric) -> Option<f64> {
-        self.data_store().current_float_value(metric, self.end())
+        self.data_store().current_float_value(metric, self.fc_time())
     }
 
     pub fn current_enum<E>(&self, metric: Metric) -> Option<E>
@@ -331,11 +349,11 @@ impl Backend {
         E: TryFrom<u8>,
         <E as TryFrom<u8>>::Error: std::fmt::Debug,
     {
-        self.data_store().current_enum_value(metric, self.end())
+        self.data_store().current_enum_value(metric, self.fc_time())
     }
 
     pub fn plot_metric<'a>(&'a self, key: &Metric, bounds: egui_plot::PlotBounds) -> egui_plot::PlotPoints<'a> {
-        self.data_store().plot_metric(key, bounds, self.end())
+        self.data_store().plot_metric(key, bounds, self.fc_time())
     }
 
     pub fn enum_transitions<'a, E: TryFrom<u8>>(
@@ -343,14 +361,14 @@ impl Backend {
         key: &Metric,
         bounds: egui_plot::PlotBounds,
     ) -> Vec<(f64, E)> {
-        self.data_store().enum_transitions(key, bounds, self.end())
+        self.data_store().enum_transitions(key, bounds, self.fc_time())
     }
 
     pub fn timeseries<'a>(
         &'a self,
         metric: &Metric,
     ) -> Option<impl Iterator<Item = (f64, f64)> + ExactSizeIterator + std::fmt::Debug + use<'a>> {
-        self.data_store().timeseries(metric, self.end())
+        self.data_store().timeseries(metric, self.fc_time())
     }
 
     pub fn zip_timeseries<'a, const N: usize>(
@@ -358,7 +376,7 @@ impl Backend {
         metrics: [Metric; N],
         carry_forward: f64,
     ) -> impl Iterator<Item = (f64, [Option<f64>; N])> + std::fmt::Debug + use<'a, N> {
-        self.data_store().zip_timeseries(metrics, carry_forward, self.end())
+        self.data_store().zip_timeseries(metrics, carry_forward, self.fc_time())
     }
 
     pub fn link_quality(&mut self) -> Option<f64> {
@@ -451,6 +469,16 @@ impl Backend {
             Self::Log(b) => b.status_bar_ui(ui),
             #[cfg(not(target_arch = "wasm32"))]
             Self::Simulation(b) => b.status_bar_ui(ui),
+        }
+    }
+
+    pub fn name(&self) -> &'static str {
+        match self {
+            Backend::Serial(_) => "Serial",
+            Backend::Udp(_) => "Udp",
+            Backend::Noop(_) => "Noop",
+            Backend::Log(_) => "Log",
+            Backend::Simulation(_) => "Simulation",
         }
     }
 }

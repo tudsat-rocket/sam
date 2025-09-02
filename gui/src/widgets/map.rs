@@ -13,9 +13,9 @@ use walkers::{HttpOptions, HttpTiles, MapMemory, Plugin, Position, Projector};
 use shared_types::telemetry::FlightMode;
 use telemetry::{Dim, Metric};
 
+use crate::Backend;
 use crate::settings::AppSettings;
 use crate::utils::telemetry_ext::ColorExt;
-use crate::Backend;
 
 const GRADIENT_MAX_ALT: f64 = 10000.0;
 
@@ -159,7 +159,7 @@ impl MapState {
         &mut self,
         backend: &mut Backend,
     ) -> Vec<(Position, (f64, Vector3<f32>, FlightMode, f32))> {
-        let Some(last) = backend.end() else {
+        let Some(last) = backend.fc_time() else {
             return Vec::new();
         };
 

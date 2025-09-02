@@ -1,11 +1,13 @@
 //! Driver for the on-board buzzer, responsible for playing mode change beeps and
 //! warning tones using the STM32's timers for PWM generation.
-//! TODO: maybe run melodies in a separate embassy task
 
-use embassy_stm32::pac::gpio::vals;
+use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 use embassy_stm32::pac::gpio::Gpio;
+use embassy_stm32::pac::gpio::vals;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::{simple_pwm::SimplePwm, CaptureCompare16bitInstance, Channel};
+use embassy_stm32::timer::{Channel, simple_pwm::SimplePwm};
+use embassy_time::{Duration, Timer};
 
 use num_traits::Float;
 
@@ -13,6 +15,13 @@ use shared_types::*;
 
 //use crate::drivers::sensors::BatteryStatus;
 use Semitone::*;
+
+const IDLE_AGAIN: [Note; 4] = [
+    Note::note(E, 4, 150),
+    Note::pause(10),
+    Note::note(C, 4, 150),
+    Note::pause(10),
+];
 
 #[allow(dead_code)]
 const STARTUP: [Note; 6] = [
@@ -292,157 +301,117 @@ const NO_BATTERY_ATTACHED_MELODY: [Note; 4] = [
     Note::pause(10),
 ];
 
-pub struct Buzzer<TIM: 'static> {
-    pwm: SimplePwm<'static, TIM>,
-    channel: Channel,
-    block: Gpio,
-    pin: usize,
-    drogue_warning_note: Note,
-    main_warning_note: Note,
-    current_tone: Option<Note>,
-    current_melody: Option<&'static [Note]>,
-    current_index: usize,
-    time_note_change: u32,
-    repeat: bool,
-    is_warning: bool,
-    nba_already_played: bool, //no_battery_attached_melody_already_played was too long for my taste
+#[embassy_executor::task]
+pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, channel: Channel) -> ! {
+    let max_duty = pwm.max_duty_cycle();
+
+    pwm.channel(channel).enable();
+    pwm.channel(channel).set_duty_cycle(max_duty / 2);
+
+    let mut flight_mode = FlightMode::default();
+    let mut melody = Some(STARTUP.as_slice());
+
+    loop {
+        // let flight_mode_fut = crate::FLIGHT_MODE_SIGNAL.wait();
+
+        let pwm_ref = &mut pwm;
+        let play_fut = async move {
+            if let Some(notes) = melody {
+                for note in notes {
+                    if let Some(freq) = note.freq() {
+                        pwm_ref.set_frequency(Hertz::hz(freq as u32));
+                        pwm_ref.channel(channel).enable();
+                    } else {
+                        pwm_ref.channel(channel).disable();
+                    }
+
+                    Timer::after(Duration::from_millis(note.duration.into())).await;
+                }
+            } else {
+                // TODO
+                Timer::after(Duration::from_millis(1000)).await
+            }
+        };
+
+        match select(crate::FLIGHT_MODE_SIGNAL.wait(), play_fut).await {
+            Either::First(fm) => {
+                flight_mode = fm;
+                melody = match flight_mode {
+                    FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
+                    FlightMode::HardwareArmed => Some(&HWARMED),
+                    FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
+                    // FlightMode::Landed =>#[cfg(feature = "std")] Some(&LANDED),
+                    FlightMode::Idle => Some(&IDLE_AGAIN),
+                    _ => None,
+                };
+            }
+            Either::Second(()) => {
+                if flight_mode != FlightMode::Landed {
+                    melody = None;
+                }
+            }
+        }
+
+        pwm.channel(channel).disable();
+    }
 }
 
-impl<TIM: CaptureCompare16bitInstance> Buzzer<TIM> {
-    pub fn init(mut pwm: SimplePwm<'static, TIM>, channel: Channel, block: Gpio, pin: usize) -> Self {
-        pwm.set_duty(Channel::Ch3, pwm.get_max_duty() / 2);
+#[embassy_executor::task]
+pub async fn run_b(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, channel: Channel) -> ! {
+    let max_duty = pwm.max_duty_cycle();
 
-        let buzzer = Self {
-            pwm,
-            channel,
-            block,
-            pin,
-            drogue_warning_note: Note::note(C, 5, 500),
-            main_warning_note: Note::note(C, 5, 500),
-            current_tone: None,
-            current_melody: Some(&STARTUP),
-            current_index: 0,
-            time_note_change: 0,
-            repeat: false,
-            is_warning: true,
-            nba_already_played: false,
-        };
-        buzzer
-    }
+    pwm.channel(channel).enable();
+    pwm.channel(channel).set_duty_cycle(max_duty / 2);
 
-    fn current_frequency(&self) -> Option<f32> {
-        let melody_note = self.current_melody.map(|m| m.get(self.current_index)).flatten();
+    let mut flight_mode = FlightMode::default();
+    let mut melody = Some(STARTUP.as_slice());
 
-        self.current_tone.as_ref().or(melody_note).map(|n| n.freq()).flatten()
-    }
+    loop {
+        // let flight_mode_fut = crate::FLIGHT_MODE_SIGNAL.wait();
 
-    //TODO repair so that warn tone length is changable
-    pub fn apply_settings(
-        &mut self,
-        drogue_output_settings: &RecoveryOutputSettings,
-        main_output_settings: &RecoveryOutputSettings,
-    ) {
-        self.drogue_warning_note = Note::frequency(
-            drogue_output_settings.output_warning_frequency,
-            drogue_output_settings.output_warning_time,
-        );
-        self.main_warning_note =
-            Note::frequency(main_output_settings.output_warning_frequency, main_output_settings.output_warning_time);
-    }
+        let pwm_ref = &mut pwm;
+        let play_fut = async move {
+            if let Some(notes) = melody {
+                for note in notes {
+                    if let Some(freq) = note.freq() {
+                        pwm_ref.set_frequency(Hertz::hz(freq as u32));
+                        pwm_ref.channel(channel).enable();
+                    } else {
+                        pwm_ref.channel(channel).disable();
+                    }
 
-    //returns true if just finished playing note
-    fn has_note_just_finished(&mut self, time: u32, note: Option<&Note>) -> bool {
-        if note.is_some() {
-            if time.wrapping_sub(self.time_note_change) > note.unwrap().duration {
-                return true;
+                    Timer::after(Duration::from_millis(note.duration.into())).await;
+                }
+            } else {
+                // TODO
+                Timer::after(Duration::from_millis(1000)).await
             }
-        }
-        return false;
-    }
-
-    fn increment_melody(&mut self, time: u32, length: usize) {
-        self.current_index += 1;
-        self.time_note_change = time;
-
-        if self.current_index >= length && !self.repeat {
-            if self.is_warning {
-                self.is_warning = false;
-            }
-            self.change_melody(time, None);
-        }
-
-        if self.current_index >= length && self.repeat {
-            self.current_index = 0;
-        }
-    }
-
-    //pub fn tick(&mut self, time: u32, battery_status: Option<BatteryStatus>) {
-    pub fn tick(&mut self, time: u32) {
-        //if let Some(status) = battery_status {
-        //    match status {
-        //        BatteryStatus::Low => {
-        //            self.change_melody(time, Some(&WARNING_MELODY));
-        //            self.nba_already_played = false;
-        //            self.is_warning = true;
-        //        }
-        //        BatteryStatus::High => {
-        //            self.nba_already_played = false;
-        //        }
-        //        BatteryStatus::NoBatteryAttached if !self.nba_already_played && !self.is_warning => {
-        //            self.change_melody(time, Some(&NO_BATTERY_ATTACHED_MELODY));
-        //            self.is_warning = true;
-        //            self.nba_already_played = true;
-        //        }
-        //        _ => {}
-        //    }
-        //}
-
-        if let Some(melody) = self.current_melody {
-            if self.has_note_just_finished(time, melody.get(self.current_index)) {
-                self.increment_melody(time, melody.len());
-            }
-        }
-
-        if time != self.time_note_change {
-            return;
-        }
-
-        // We set the buzzer output pin into an open-drain state when not using it to
-        // reduce leakage current. Since the HAL doesn't provide a straight-forward way
-        // to do that, we do it manually.
-        if let Some(freq) = self.current_frequency() {
-            self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::ALTERNATE));
-            self.block.otyper().modify(|w| w.set_ot(self.pin, vals::Ot::PUSHPULL));
-            self.pwm.set_frequency(Hertz::hz(freq as u32));
-            self.pwm.enable(self.channel);
-        } else {
-            self.block.moder().modify(|w| w.set_moder(self.pin, vals::Moder::OUTPUT));
-            self.block.otyper().modify(|w| w.set_ot(self.pin, vals::Ot::OPENDRAIN));
-            self.pwm.disable(self.channel);
-        }
-    }
-
-    pub fn switch_mode(&mut self, time: u32, mode: FlightMode) {
-        let new_melody: Option<&'static [Note]> = match mode {
-            FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
-            FlightMode::HardwareArmed => Some(&HWARMED),
-            FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
-            FlightMode::Landed => Some(&LANDED),
-            _ => None,
         };
 
-        self.change_melody(time, new_melody);
-        if !self.is_warning && mode == FlightMode::Landed {
-            self.repeat = true;
+        // let play_fut = async {
+        //     future::pending::<()>()
+        // }
+
+        match select(crate::FLIGHT_MODE_SIGNAL.wait(), play_fut).await {
+            Either::First(fm) => {
+                flight_mode = fm;
+                melody = match flight_mode {
+                    FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
+                    FlightMode::HardwareArmed => Some(&HWARMED),
+                    FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
+                    FlightMode::Landed => Some(&LANDED),
+                    FlightMode::Idle => Some(&IDLE_AGAIN),
+                    _ => None,
+                };
+            }
+            Either::Second(()) => {
+                if flight_mode != FlightMode::Landed {
+                    melody = None;
+                }
+            }
         }
-    }
-    fn change_melody(&mut self, time: u32, new_melody: Option<&'static [Note]>) {
-        if !self.is_warning {
-            self.current_melody = new_melody;
-            self.current_index = 0;
-            self.time_note_change = time;
-            self.repeat = false;
-        }
+
+        pwm.channel(channel).disable();
     }
 }
 

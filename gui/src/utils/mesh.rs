@@ -1,4 +1,4 @@
-use egui::{epaint::Vertex, Color32, Mesh, Pos2, TextureHandle, TextureId, Vec2};
+use egui::{Color32, Mesh, Pos2, TextureHandle, TextureId, Vec2, epaint::Vertex};
 use enum_map::{Enum, EnumMap};
 use std::sync::{LazyLock, Mutex};
 

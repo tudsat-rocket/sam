@@ -4,19 +4,19 @@
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_stm32::Config;
 use embassy_stm32::adc::Adc;
-use embassy_stm32::interrupt;
 use embassy_stm32::gpio::{Input, Level, Output, OutputType, Pull, Speed};
 use embassy_stm32::i2c::I2c;
+use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::low_level::CountingMode;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::usart::Uart;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
-use embassy_time::{Delay, Duration, Ticker, Timer, Instant};
+use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 use static_cell::StaticCell;
 
 use {defmt_rtt as _, panic_probe as _};
@@ -68,8 +68,8 @@ async fn main(spawner: Spawner) {
     let mut config = Config::default();
     config.rcc.hse = Some(embassy_stm32::rcc::Hse {
         mode: embassy_stm32::rcc::HseMode::Oscillator,
-        freq: Hertz::mhz(8), 
-    });;
+        freq: Hertz::mhz(8),
+    });
     //config.rcc.sys = Some(Hertz::mhz(72));
     //config.rcc.hclk1 = Some(Hertz::mhz(72));
     //config.rcc.pclk1 = Some(Hertz::mhz(36));
@@ -84,14 +84,16 @@ async fn main(spawner: Spawner) {
     iwdg.unleash();
     spawner.spawn(run_iwdg(iwdg)).unwrap();
 
-    let pwm_pin = PwmPin::new_ch4(p.PB1, OutputType::PushPull);    
-        
+    let pwm_pin = PwmPin::new_ch4(p.PB1, OutputType::PushPull);
+
     let toggle_duration = Duration::from_millis(2000);
-    
-    spawner.spawn(actors::run_servo_check(
-            SimplePwm::new(p.TIM3, None, None, None, Some(pwm_pin), 
-                Hertz::hz(2000), CountingMode::EdgeAlignedUp), 
-            toggle_duration)).unwrap();
+
+    spawner
+        .spawn(actors::run_servo_check(
+            SimplePwm::new(p.TIM3, None, None, None, Some(pwm_pin), Hertz::hz(50), CountingMode::EdgeAlignedUp),
+            toggle_duration,
+        ))
+        .unwrap();
 
     #[cfg(feature = "guard")]
     spawner.spawn(guard_task()).unwrap();

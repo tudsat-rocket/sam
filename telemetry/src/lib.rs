@@ -50,6 +50,7 @@ pub const TELEMETRY_RAW_SENSORS: MessageDefinition = MessageDefinition(&[
     (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::X), Representation::float(16)),
     (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Y), Representation::float(16)),
     (Metric::RawMagneticFluxDensity(MagnetometerId::LIS3MDL, Dim::Z), Representation::float(16)),
+    // recheck which of those are present on the new FC (stigma)
     (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::MS5611)), Representation::float(32)),
     (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::LPS22)), Representation::float(32)),
     (Metric::Pressure(PressureSensorId::FlightComputer(BarometerId::BMP580)), Representation::float(32)),
@@ -62,6 +63,7 @@ pub const TELEMETRY_DIAGNOSTICS: MessageDefinition = MessageDefinition(&[
     (Metric::UplinkRssi, Representation::fixed(8, -100.0..=0.0)),
     (Metric::GroundAltitudeASL, ALTITUDE_REPRESENTATION),
     (Metric::TransmitPower, Representation::Enum { bits: 8 }),
+    // reduce temperature metrics sent when clear which baros still present
     (
         Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::MS5611)),
         Representation::fixed(8, -20.0..=120.0),
@@ -87,12 +89,12 @@ pub const TELEMETRY_MAIN: MessageDefinition = MessageDefinition(&[
     (Metric::AccelerationWorldSpace(Dim::Z), Representation::float(16)),
     (Metric::VelocityWorldSpace(Dim::Z), Representation::float(16)),
     (Metric::PositionWorldSpace(Dim::Z), ALTITUDE_REPRESENTATION),
+    // TODO: reduce number of different baros
     (Metric::RawBarometricAltitude(BarometerId::MS5611), ALTITUDE_REPRESENTATION),
     (Metric::RawBarometricAltitude(BarometerId::LPS22), ALTITUDE_REPRESENTATION),
     (Metric::RawBarometricAltitude(BarometerId::BMP580), ALTITUDE_REPRESENTATION),
     (Metric::ApogeeAltitudeASL, ALTITUDE_REPRESENTATION),
     (Metric::BatteryCurrent(BatteryId::Avionics), Representation::fixed(16, -50.0..=50.0)),
-    // TODO: acs mode and valve state
 ]);
 
 pub const TELEMETRY_PRESSURES: MessageDefinition = MessageDefinition(&[
@@ -103,21 +105,34 @@ pub const TELEMETRY_PRESSURES: MessageDefinition = MessageDefinition(&[
     (Metric::Pressure(PressureSensorId::RecoveryChamberDrogue), Representation::fixed(16, 0.0..=40.0)),
 ]);
 
-pub const TELEMETRY_KALMAN: MessageDefinition = MessageDefinition(&[]); // TODO
+// split out ereg, ox tank, cc to higher rate telemetry
+pub const TELEMETRY_HYBRID: MessageDefinition = MessageDefinition(&[
+    (Metric::Pressure(PressureSensorId::CombustionChamber), Representation::fixed(16, 0.0..=40.0)),
+    (Metric::Pressure(PressureSensorId::OxidizerTank), Representation::fixed(8, 0.0..=100.0)),
+    (Metric::Pressure(PressureSensorId::NitrogenTank), Representation::fixed(16, 0.0..=300.0)),
+    (Metric::ValveState(ValveId::PressureRegulator), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::MainValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::VentValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::ValveState(ValveId::FillAndDumpValve), Representation::fixed(8, 0.0..=1.0)),
+    (Metric::Temperature(TemperatureSensorId::OxidizerTank), Representation::fixed(8, -80.0..=40.0)),
+]);
 
-pub const TELEMETRY_BUS: MessageDefinition = MessageDefinition(&[]); // TODO
+pub const TELEMETRY_KALMAN: MessageDefinition = MessageDefinition(&[]); // TODO low prio
+
+pub const TELEMETRY_BUS: MessageDefinition = MessageDefinition(&[]); // TODO low prio
 
 pub const TELEMETRY_FAST_COMPRESSED: MessageDefinition = MessageDefinition(&[
     (Metric::FlightMode, Representation::Enum { bits: 8 }),
-    // TODO: valve state
     (Metric::Azimuth, Representation::fixed(8, 0.0..=360.0)),
     (Metric::Elevation, Representation::fixed(8, -90.0..=90.0)),
     (Metric::VelocityWorldSpace(Dim::Z), Representation::fixed(8, -100.0..=400.0)),
     (Metric::AccelerationWorldSpace(Dim::Z), Representation::fixed(8, -128.0..=128.0)),
     (Metric::PositionWorldSpace(Dim::Z), ALTITUDE_REPRESENTATION),
-    (Metric::RawBarometricAltitude(BarometerId::MS5611), ALTITUDE_REPRESENTATION), // TODO: encode as offset?
+    (Metric::RawBarometricAltitude(BarometerId::MS5611), ALTITUDE_REPRESENTATION), // TODO: encode as offset lowish prio?
     (Metric::ApogeeAltitudeASL, ALTITUDE_REPRESENTATION),
     (Metric::BatteryCurrent(BatteryId::Acs), ALTITUDE_REPRESENTATION),
+    (Metric::Pressure(PressureSensorId::CombustionChamber), Representation::fixed(16, 0.0..=40.0)),
+    (Metric::Pressure(PressureSensorId::OxidizerTank), Representation::fixed(8, 0.0..=100.0)),
 ]);
 
 pub const USB_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[
@@ -134,6 +149,7 @@ pub const LORA_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[
     (TELEMETRY_KALMAN, 1000, 600),
     (TELEMETRY_BUS, 1000, 800),
     (TELEMETRY_FAST_COMPRESSED, 100, 50),
+    (TELEMETRY_HYBRID, 1000, 850),
 ]);
 
 pub const FLASH_SCHEMA: TelemetrySchema = TelemetrySchema::new(&[

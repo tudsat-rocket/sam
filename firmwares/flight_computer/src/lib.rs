@@ -3,22 +3,27 @@
 #![allow(dead_code)]
 #![allow(unused_mut)]
 
+use core::borrow::Borrow;
+use core::cell::RefCell;
 use core::net::Ipv4Addr;
 use core::net::SocketAddr;
 use core::net::SocketAddrV4;
 
 use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::adc::AnyAdcChannel;
+use embassy_stm32::timer::simple_pwm::PwmPinConfig;
 use embassy_stm32::usb::Driver;
+use embassy_sync::blocking_mutex;
 use embassy_usb::UsbDevice;
 use rand::RngCore;
 
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_futures::join::join;
-use embassy_futures::select::select;
 use embassy_futures::select::Either;
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::Timer;
 use embassy_time::{Delay, Duration, Instant, Ticker};
 
@@ -38,10 +43,10 @@ use embassy_stm32::rcc::*;
 use embassy_stm32::rng::Rng;
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::Channel;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm, SimplePwmChannel};
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::{Config, interrupt};
 
 use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice;
 use embedded_io_async::Write;
@@ -50,30 +55,38 @@ use embedded_nal_async::TcpConnect;
 use embedded_can::Id;
 use embedded_can::StandardId;
 
-use embassy_net::tcp::client::TcpClient;
-use embassy_net::tcp::client::TcpClientState;
 use embassy_net::Ipv4Cidr;
 use embassy_net::StackResources;
+use embassy_net::tcp::client::TcpClient;
+use embassy_net::tcp::client::TcpClientState;
 
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
 use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::PacketStatus;
 use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::sx126x::{self, Sx1262, Sx126x};
+use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use lora_phy::{LoRa, RxMode};
 
 use static_cell::StaticCell;
 
+use shared_types::FlightMode;
 use shared_types::Settings;
 
 //mod can;
+pub mod board;
+pub mod buzzer;
 pub mod drivers;
 pub mod ethernet;
 pub mod lora;
+pub mod recovery;
+pub mod storage;
+pub mod usb;
 pub mod vehicle;
 
+use board::load_outputs::LoadOutputs;
 use drivers::sensors::*;
+use storage::{Flash, FlashHandle, FlashType};
 
 bind_interrupts!(struct Irqs {
     FDCAN1_IT0 => embassy_stm32::can::IT0InterruptHandler<FDCAN1>;
@@ -102,9 +115,10 @@ pub struct BoardSensors {
 
 pub struct BoardOutputs {
     pub leds: (Output<'static>, Output<'static>, Output<'static>),
-    pub recovery_high: Output<'static>,
-    pub recovery_lows: (Output<'static>, Output<'static>, Output<'static>, Output<'static>),
-    pub continuity_check: Output<'static>,
+    // pub load_outputs: embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, RefCell<LoadOutputs>>,
+    // pub load_output_arm: Output<'static>,
+    // pub recovery_lows: (Output<'static>, Output<'static>, Output<'static>, Output<'static>),
+    // pub continuity_check: Output<'static>,
 }
 
 pub struct BoardAdc {
@@ -123,29 +137,35 @@ pub struct BoardAdc {
 pub struct Board {
     pub sensors: BoardSensors,
     pub outputs: BoardOutputs,
+    // pub load_outputs: embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, RefCell<LoadOutputs>>,
     pub adc: BoardAdc,
     pub can1: Can<'static>,
     pub can2: Can<'static>,
     pub lora1: LoRa<LoraTransceiver, Delay>,
     pub lora2: LoRa<LoraTransceiver, Delay>,
-    pub usb: UsbDevice<'static, Driver<'static, USB_OTG_FS>>,
+    pub flash: FlashType,
+    pub flash_handle: FlashHandle,
+    pub usb_driver: Driver<'static, USB_OTG_FS>,
     pub ethernet: Ethernet<'static, ETH, GenericPhy>,
     pub rng: Rng<'static, RNG>,
     pub iwdg: IndependentWatchdog<'static, IWDG1>,
+    pub buzzer: (SimplePwm<'static, TIM2>, Channel),
 }
 
 static USB_EP_OUT_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_CONFIG_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_BOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_MSOS_DESCRIPTOR_BUFFER: StaticCell<[u8; 256]> = StaticCell::new();
-static USB_CONTROL_BUFFER: StaticCell<[u8; 128]> = StaticCell::new();
 
 static SPI1_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI4_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 
-pub async fn init_board() -> (Board, Settings, u64) {
+static FLIGHT_MODE_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal::new();
+
+static LOAD_OUTPUTS: StaticCell<embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>> =
+    StaticCell::new();
+
+pub async fn init_board()
+-> (Board, &'static mut embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>, Settings, u64) {
     // Basic setup, including clocks
     // Divider values taken from STM32CubeMx
     let mut config = Config::default();
@@ -200,15 +220,17 @@ pub async fn init_board() -> (Board, Settings, u64) {
     config.rcc.apb4_pre = APBPrescaler::DIV2; // 100 Mhz
     config.rcc.voltage_scale = VoltageScale::Scale1;
     config.rcc.mux.fdcansel = embassy_stm32::rcc::mux::Fdcansel::HSE;
+    // usbsel clock was chosen by trial and error
+    config.rcc.mux.usbsel = embassy_stm32::rcc::mux::Usbsel::HSI48;
 
     let p = embassy_stm32::init(config);
 
-    //let (usb, usb_flash) = UsbHandle::init(p.USB_OTG_FS, p.PA12, p.PA11).await;
+    // let (usb, usb_flash) = UsbHandle::init(p.USB_OTG_FS, p.PA12, p.PA11).await;
 
     let mut spi1_config = embassy_stm32::spi::Config::default();
     spi1_config.frequency = Hertz::mhz(10);
     let spi1 = Spi::new(p.SPI1, p.PA5, p.PD7, p.PB4, p.DMA2_CH3, p.DMA2_CH2, spi1_config);
-    let spi1 = Mutex::<CriticalSectionRawMutex, _>::new(spi1);
+    let spi1 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi1);
     let spi1 = SPI1_SHARED.init(spi1);
 
     let spi1_cs_imu1 = Output::new(p.PD4, Level::High, Speed::VeryHigh);
@@ -219,7 +241,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi2_config = embassy_stm32::spi::Config::default();
     spi2_config.frequency = Hertz::mhz(10);
     let spi2 = Spi::new(p.SPI2, p.PD3, p.PB15, p.PB14, p.DMA1_CH4, p.DMA1_CH3, spi2_config);
-    let spi2 = Mutex::<CriticalSectionRawMutex, _>::new(spi2);
+    let spi2 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi2);
     let spi2 = SPI2_SHARED.init(spi2);
 
     let spi2_cs_imu2 = Output::new(p.PD8, Level::High, Speed::VeryHigh);
@@ -241,7 +263,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let mut spi4_config = embassy_stm32::spi::Config::default();
     spi4_config.frequency = Hertz::mhz(10);
     let spi4 = Spi::new(p.SPI4, p.PE2, p.PE6, p.PE5, p.DMA1_CH1, p.DMA1_CH2, spi4_config);
-    let spi4 = Mutex::<CriticalSectionRawMutex, _>::new(spi4);
+    let spi4 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi4);
     let spi4 = SPI4_SHARED.init(spi4);
 
     let lora1_cs = Output::new(p.PE7, Level::High, Speed::Low);
@@ -321,7 +343,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
 
     let mut config = embassy_stm32::usb::Config::default();
     config.vbus_detection = true;
-    let driver = embassy_stm32::usb::Driver::new_fs(
+    let usb_driver = embassy_stm32::usb::Driver::new_fs(
         p.USB_OTG_FS,
         Irqs,
         p.PA12,
@@ -329,66 +351,71 @@ pub async fn init_board() -> (Board, Settings, u64) {
         USB_EP_OUT_BUFFER.init([0; 256]),
         config,
     );
-
-    let mut config = embassy_usb::Config::new(0x0483, 0x5740);
-    config.manufacturer = Some("TUDSaT");
-    config.product = Some("Sting FC"); // TODO
-    config.serial_number = Some("12345678"); // TODO
-    config.device_class = 0xEF;
-    config.device_sub_class = 0x02;
-    config.device_protocol = 0x01;
-    config.composite_with_iads = true;
-
-    let mut builder = embassy_usb::Builder::new(
-        driver,
-        config,
-        USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
-        USB_CONTROL_BUFFER.init([0; 128]),
-    );
-    let usb = builder.build();
-    //let usb_class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
+    //
+    // let mut config = embassy_usb::Config::new(0x0483, 0x5740);
+    // config.manufacturer = Some("TUDSaT");
+    // config.product = Some("Sting FC"); // TODO
+    // config.serial_number = Some("12345678"); // TODO
+    // config.device_class = 0xEF;
+    // config.device_sub_class = 0x02;
+    // config.device_protocol = 0x01;
+    // config.composite_with_iads = true;
+    //
+    // let mut builder = embassy_usb::Builder::new(
+    //     driver,
+    //     config,
+    //     USB_CONFIG_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_BOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_MSOS_DESCRIPTOR_BUFFER.init([0; 256]),
+    //     USB_CONTROL_BUFFER.init([0; 128]),
+    // );
+    // let usb = builder.build();
+    // let usb_class = CdcAcmClass::new(&mut builder, CDC_ACM_STATE.init(State::new()), 64);
 
     //// SPI 3
-    //let mut spi3_config = embassy_stm32::spi::Config::default();
-    //spi3_config.frequency = Hertz::mhz(20);
-    //let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
-    //let spi3 = Mutex::<CriticalSectionRawMutex, _>::new(spi3);
-    //let spi3 = SPI3_SHARED.init(spi3);
+    let mut spi3_config = embassy_stm32::spi::Config::default();
+    spi3_config.frequency = Hertz::mhz(20);
+    let spi3 = Spi::new(p.SPI3, p.PC10, p.PC12, p.PC11, p.DMA1_CH7, p.DMA1_CH0, spi3_config);
+    let spi3 = embassy_sync::mutex::Mutex::<CriticalSectionRawMutex, _>::new(spi3);
+    let spi3 = SPI3_SHARED.init(spi3);
 
-    //let spi3_cs_flash = Output::new(p.PD2, Level::High, Speed::VeryHigh);
-    //#[cfg(not(feature = "gcs"))]
-    //let (flash, flash_handle, settings) =
-    //    Flash::init(SpiDevice::new(spi3, spi3_cs_flash), usb_flash).await.map_err(|_e| ()).unwrap();
+    use storage::{Flash, FlashHandle};
 
-    //// Initialize GPS
-    //#[cfg(not(feature = "gcs"))]
-    //let (gps, gps_handle) = GPS::init(p.USART2, p.PA3, p.PA2, p.DMA1_CH6, p.DMA1_CH5);
+    let spi3_cs_flash = Output::new(p.PD6, Level::High, Speed::VeryHigh);
+    #[cfg(not(feature = "gcs"))]
+    let (flash, flash_handle, settings) =
+        Flash::init(SpiDevice::new(spi3, spi3_cs_flash)).await.map_err(|_e| ()).unwrap();
+
+    // Initialize GPS
+    // #[cfg(not(feature = "gcs"))]
+    // let (gps, gps_handle) = GPS::init(p.USART2, p.PE1, p.PE0, p.DMA1_CH6, p.DMA1_CH5);
 
     //#[cfg(not(feature = "gcs"))]
     //let adc = Adc::new(p.ADC1, &mut Delay);
     ////#[cfg(not(feature = "gcs"))]
     ////let power = PowerMonitor::init(adc, p.PB0, p.PC5, p.PC4).await;
 
-    //let buzzer = {
-    //    let gpiob_block = {
-    //        use embassy_stm32::gpio::low_level::Pin;
-    //        p.PB10.block()
-    //    };
-    //    let pwm_pin = PwmPin::new_ch3(p.PB10, OutputType::PushPull);
-    //    let pwm = SimplePwm::new(p.TIM2, None, None, Some(pwm_pin), None, Hertz::hz(440), Default::default());
-    //    Buzzer::init(pwm, Channel::Ch3, gpiob_block, 10)
-    //};
-
-    let recovery_high = Output::new(p.PE13, Level::Low, Speed::Low);
-    let recovery_lows = (
+    // TODO: check if correct settings for buzzer
+    let buzzer_pin = PwmPin::new_with_config(
+        p.PB10,
+        PwmPinConfig {
+            output_type: OutputType::PushPull,
+            speed: Speed::Medium,
+            pull: Pull::None,
+        },
+    );
+    let buzzer_pwm = SimplePwm::new(p.TIM2, None, None, Some(buzzer_pin), None, Hertz::hz(440), Default::default());
+    let buzzer_pwm_channel = Channel::Ch3;
+    let load_outputs = LoadOutputs::new(
+        Output::new(p.PE13, Level::Low, Speed::Low),
         Output::new(p.PC9, Level::Low, Speed::Low),
         Output::new(p.PC8, Level::Low, Speed::Low),
         Output::new(p.PC7, Level::Low, Speed::Low),
         Output::new(p.PC6, Level::Low, Speed::Low),
     );
-    let continuity_check = Output::new(p.PE14, Level::High, Speed::Low);
+    let load_outputs = LOAD_OUTPUTS.init(embassy_sync::blocking_mutex::Mutex::new(load_outputs));
+
+    let _continuity_check = Output::new(p.PE14, Level::High, Speed::Low);
 
     let adc1 = Adc::new(p.ADC1);
     let adc2 = Adc::new(p.ADC2);
@@ -401,7 +428,7 @@ pub async fn init_board() -> (Board, Settings, u64) {
     let adc_main_current = p.PA0.degrade_adc();
     let adc_recovery_current = p.PA6.degrade_adc();
     let adc_continuity_check = p.PC0.degrade_adc();
-
+    use embassy_sync::blocking_mutex::Mutex;
     let board = Board {
         sensors: BoardSensors {
             imu1,
@@ -415,9 +442,10 @@ pub async fn init_board() -> (Board, Settings, u64) {
         },
         outputs: BoardOutputs {
             leds,
-            recovery_high,
-            recovery_lows,
-            continuity_check,
+            // load_outputs: Mutex::new(RefCell::new(load_outputs)),
+            // load_output_arm: recovery_high,
+            // recovery_lows,
+            // continuity_check,
         },
         adc: BoardAdc {
             adc1,
@@ -435,11 +463,14 @@ pub async fn init_board() -> (Board, Settings, u64) {
         lora2,
         can1,
         can2,
-        usb,
+        flash,
+        flash_handle,
+        usb_driver,
         ethernet,
         rng,
         iwdg,
+        buzzer: (buzzer_pwm, buzzer_pwm_channel),
     };
 
-    (board, Settings::default(), seed)
+    (board, load_outputs, settings, seed)
 }

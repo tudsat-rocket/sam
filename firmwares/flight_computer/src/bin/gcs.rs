@@ -20,22 +20,22 @@ use embassy_stm32::rcc::{
 };
 use embassy_stm32::spi::Spi;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::timer::Channel;
+use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{interrupt, Config};
+use embassy_stm32::{Config, interrupt};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::channel::Sender;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Delay, Duration, Instant, Ticker};
 
+use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
 use lora_phy::mod_params::CodingRate;
 use lora_phy::mod_params::SpreadingFactor;
-use lora_phy::sx126x::{self, Sx1262, Sx126x};
-use lora_phy::LoRa;
+use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use shared_types::{DownlinkMessage, UplinkMessage};
 use static_cell::StaticCell;
 
@@ -45,12 +45,13 @@ use flight_computer_firmware as fw;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let (mut board, settings, seed) = fw::init_board().await;
+    let (mut board, _load_outputs, settings, seed) = fw::init_board().await;
 
     let (usb_tx, usb_rx) = ((), ());
     //let (usb_downlink, usb_uplink) = fw::usb::start(board.usb, low_priority_spawner);
     let (eth_tx, eth_rx) = fw::ethernet::start(board.ethernet, spawner, seed);
-    let lora_rx = fw::lora::start_gcs_downlink(board.lora2, settings.lora.clone(), spawner.make_send());
+    let (lora_rx, _lora_link_settings) =
+        fw::lora::start_gcs_downlink(board.lora2, settings.lora.clone(), spawner.make_send());
     let lora_tx = fw::lora::start_gcs_uplink(board.lora1, settings.lora.clone(), spawner.make_send());
 
     spawner.spawn(run_downlink(eth_tx, usb_tx, lora_rx)).unwrap();
@@ -77,6 +78,8 @@ async fn run_uplink(
 ) -> ! {
     loop {
         let msg = eth_rx.receive().await;
+        defmt::info!("received uplinkmessage");
         lora_tx.send(msg).await;
+        defmt::info!("sent uplinkmessage");
     }
 }
