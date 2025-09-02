@@ -1,21 +1,20 @@
 use defmt::{error, Debug2Format};
 use embassy_futures::join::join;
-use embassy_stm32::Peri;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Output};
 use embassy_stm32::i2c::{I2c, Master};
 use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::usart::{UartRx, UartTx};
+use embassy_stm32::Peri;
 use embassy_time::Ticker;
-use embassy_time::{Duration, with_timeout};
+use embassy_time::{with_timeout, Duration};
 use embedded_hal::digital::OutputPin;
 
-use {defmt_rtt as _, panic_probe as _};
 use shared_types::*;
+use {defmt_rtt as _, panic_probe as _};
 
 use crate::{CanInSubscriper, DriveVoltage, OutputStatePublisher, OutputStateSubscriber};
-
 
 async fn receive_output_message(
     subscriber: &mut crate::CanInSubscriper,
@@ -164,6 +163,10 @@ fn to_millivolts(vref_sample: u16, sample: u16) -> u16 {
     (u32::from(sample) * VREFINT_MV / u32::from(vref_sample)) as u16
 }
 
+fn to_bar(sample: u16) -> f32 {
+    return 0.0;
+}
+
 #[embassy_executor::task]
 pub async fn run_power_report(
     //TODO maybe adjust default pins again
@@ -267,7 +270,6 @@ pub async fn run_leds(
     }
 }
 
-
 #[embassy_executor::task]
 pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, Async>) -> ! {
     const UART_TO_CAN_TELEMETRY_FREQUENCY_HZ: u64 = 1;
@@ -288,7 +290,6 @@ pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: Uar
         }
     }
 }
-
 
 #[embassy_executor::task]
 pub async fn run_can_to_uart(

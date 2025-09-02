@@ -10,11 +10,11 @@ use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::mode::Async;
 use embassy_stm32::peripherals::*;
+use embassy_stm32::rcc::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::usart::Uart;
-use embassy_stm32::rcc::*;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{Config, Peri, gpio};
+use embassy_stm32::{gpio, Config, Peri};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 use embassy_time::{Delay, Duration, Ticker, Timer};
@@ -24,12 +24,13 @@ use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 use io_module_firmware::can::{configure, spawn, CAN_IN, CAN_OUT};
+use io_module_firmware::common::{
+    run_can_to_uart, run_i2c_sensors, run_leds, run_output_control_via_can, run_uart_to_can,
+};
 use io_module_firmware::OUTPUT_STATE;
-use io_module_firmware::common::{run_i2c_sensors, run_leds, run_output_control_via_can, run_can_to_uart, run_uart_to_can};
 
 const ROLE_ID: IoBoardRole = IoBoardRole::Payload; //TODO change in sam::shared_types to Pavionic
 const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 0];
-
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -64,7 +65,6 @@ async fn main(spawner: Spawner) {
 
     defmt::info!("Running as role {:?}", defmt::Debug2Format(&ROLE_ID));
 
-    
     //configure p.watchdog and p.pins
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
     iwdg.unleash();
@@ -83,7 +83,6 @@ async fn main(spawner: Spawner) {
     let (uart_tx, uart_rx) = input0.unwrap().split();
     //maybe e.g. input1 = i2c ...
 
-
     //configure CANs
     let can_in = CAN_IN.init(PubSubChannel::new());
     let can_out = CAN_OUT.init(PubSubChannel::new());
@@ -94,7 +93,6 @@ async fn main(spawner: Spawner) {
     let mut can2 = embassy_stm32::can::Can::new(p.CAN2, p.PB12, p.PB13, io_module_firmware::Irqs);
     io_module_firmware::can::configure(&mut can2, ROLE_ID);
 
-
     // Start high priority executor
     interrupt::SPI2.set_priority(Priority::P6);
     let high_priority_spawner = io_module_firmware::EXECUTOR_HIGH.start(interrupt::SPI2);
@@ -102,10 +100,9 @@ async fn main(spawner: Spawner) {
     // Receive CAN message and forward it via UART
     // failsafe behaviour if connection to FC is lost.
     high_priority_spawner.spawn(run_can_to_uart(can_in.subscriber().unwrap(), uart_tx)).unwrap();
-    
+
     //Receive UART-data and forward it via CAN //TODO "spawner" right? and why spawner instead of high_priority_spawner?
     spawner.spawn(run_uart_to_can(can_out.publisher().unwrap(), uart_rx)).unwrap();
-
 
     // Run CAN bus, publishing received messages on can_in and transmitting messages
     // published on can_out. //TODO does pavionic need this?
@@ -131,7 +128,6 @@ async fn main(spawner: Spawner) {
         .unwrap();
      */
 
-    
     // Set the LEDs based on the output state.
     let led_output_state_sub = output_state.subscriber().unwrap();
     spawner.spawn(run_leds(leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();

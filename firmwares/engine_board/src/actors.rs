@@ -1,6 +1,5 @@
 use {defmt_rtt as _, panic_probe as _};
 
-use embassy_time::{Duration, Ticker};
 use embassy_stm32::peripherals::*;
 use embassy_stm32::timer::simple_pwm::SimplePwm;
 use embassy_time::{Duration, Ticker};
@@ -24,3 +23,4 @@ pub async fn run_servo_check(mut pwm: SimplePwm<'static, TIM3>, toggle_time: Dur
         ticker.next().await;
     }
 }
+
