@@ -57,7 +57,7 @@ pub struct Vehicle {
 
     can1: ((), ()),
     can2: ((), ()),
-
+    #[cfg(feature = "usb")]
     usb: (
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -105,7 +105,7 @@ impl Vehicle {
         load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
         can1: ((), ()),
         can2: ((), ()),
-        usb: (
+        #[cfg(feature = "usb")] usb: (
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
@@ -151,6 +151,7 @@ impl Vehicle {
 
             can1,
             can2,
+            #[cfg(feature = "usb")]
             usb,
             eth,
             lora,
@@ -267,8 +268,8 @@ impl Vehicle {
                 info!("UplinkMessage: ReadSettings");
                 // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
                 let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
-                // FIXME: remember to re-enable
-                // let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                // FIXME: tried re-enabling, but did not work
+                let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
             }
             UplinkMessage::WriteSettings(settings) => {
                 info!("UplinkMessage: WriteSettings");
@@ -312,6 +313,7 @@ impl Vehicle {
         // Send telemetry via Usb
 
         if let Some(msg) = usb_msg {
+            #[cfg(feature = "usb")]
             let _res = self.usb.0.try_send(msg);
             // match res {
             //     Ok(_) => defmt::info!("usb telemetry send successful"),
@@ -327,9 +329,10 @@ impl Vehicle {
         // Store data in flash
         self.flash.tick().await;
         if self.mode >= FlightMode::ArmedLaunchImminent {
-            if let Some(msg) = flash_msg {
-                let _ = self.flash.write_message(msg);
-            }
+            // FIXME: the impl has a bug
+            // if let Some(msg) = flash_msg {
+            //     let _ = self.flash.write_message(msg);
+            // }
         }
 
         //// Broadcast telemetry to payloads
@@ -343,14 +346,19 @@ impl Vehicle {
 
         // We are going to or beyond Armed, switch to max tx power and arm ACS
         if new_mode >= FlightMode::Armed && self.mode < FlightMode::Armed {
+            // TODO: lora max power
             //self.radio.set_max_transmit_power();
-            // TODO:
+            // TODO: think about arm AND de-arm
+            unsafe {
+                self.load_outputs.lock_mut(|o| o.arm());
+            }
+            info!("Arming Recovery");
         }
         // TODO:: move maybe
-        if self.mode == FlightMode::RecoveryDrogue {
+        if new_mode == FlightMode::RecoveryDrogue {
             self.parabreaks_sig.signal(true);
         }
-        if self.mode == FlightMode::RecoveryMain {
+        if new_mode == FlightMode::RecoveryMain {
             self.main_recovery_sig.signal(true);
         }
 

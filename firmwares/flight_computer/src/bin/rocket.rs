@@ -71,11 +71,19 @@ async fn main(low_priority_spawner: Spawner) -> ! {
 
     let (can1_tx, can1_rx) = ((), ());
     let (can2_tx, can2_rx) = ((), ());
-    // let (usb_downlink, usb_uplink) = ((), ());
+    #[cfg(feature = "usb")]
     let (usb_downlink, usb_uplink) = fw::usb::start(board.usb_driver, low_priority_spawner);
+
     let (eth_downlink, eth_uplink) = fw::ethernet::start(board.ethernet, low_priority_spawner, seed);
 
-    fw::recovery::start_recovery_task(load_outputs, high_priority_spawner, &MAIN_RECOVERY_SIG, &PARABREAKS_SIG).await;
+    fw::recovery::start_recovery_task(
+        settings.main_output_settings.clone(),
+        load_outputs,
+        high_priority_spawner,
+        &MAIN_RECOVERY_SIG,
+        &PARABREAKS_SIG,
+    )
+    .await;
 
     let vehicle = Vehicle::init(
         board.sensors,
@@ -83,6 +91,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         load_outputs,
         (can1_tx, can1_rx),
         (can2_tx, can2_rx),
+        #[cfg(feature = "usb")]
         (usb_downlink, usb_uplink),
         (eth_downlink, eth_uplink),
         (lora_downlink, lora_uplink),
