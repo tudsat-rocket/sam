@@ -250,12 +250,7 @@ impl<R: PopupResponse> FlattenPopupResponse<R> for egui::InnerResponse<R> {
 pub trait DisplayablePopup {
     type Kind: PopupKind;
     fn position(&self) -> &Pos2;
-    fn show(
-        self,
-        ui: &mut Ui,
-        frontend: &mut Frontend,
-        backend: &mut Backend,
-    ) -> <<Self as DisplayablePopup>::Kind as PopupKind>::Response;
+    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <Self::Kind as PopupKind>::Response;
 }
 impl<K, F> DisplayablePopup for PrimedPopup<K, F>
 where
