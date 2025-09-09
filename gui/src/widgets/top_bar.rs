@@ -4,29 +4,29 @@
 use std::time::Duration;
 
 use eframe::egui;
-use egui::widgets::{Button, ProgressBar};
-use egui::{Color32, Label, Rect, RichText, SelectableLabel, Stroke, Vec2};
+use egui::widgets::ProgressBar;
+use egui::{Color32, Label, RichText, SelectableLabel};
 
 use shared_types::{IoBoardRole, telemetry::*};
 
 use crate::Backend;
-use crate::utils::telemetry_ext::*;
+//use crate::utils::telemetry_ext::*;
 
-// TODO: move to telemetry_ext?
-fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
-    let fg = Color32::from_rgb(0x28, 0x28, 0x28);
-    match fm {
-        FlightMode::Idle => ("IDLE", "F4", fg, fm.color()),
-        FlightMode::HardwareArmed => ("HWARMD", "F5", fg, fm.color()),
-        FlightMode::Armed => ("ARMED", "F6", fg, fm.color()),
-        FlightMode::ArmedLaunchImminent => ("!ARMED!", "F6", fg, fm.color()),
-        FlightMode::Burn => ("BURN", "F7", fg, fm.color()),
-        FlightMode::Coast => ("COAST", "F8", fg, fm.color()),
-        FlightMode::RecoveryDrogue => ("DROGUE", "F9", fg, fm.color()),
-        FlightMode::RecoveryMain => ("MAIN", "F10", fg, fm.color()),
-        FlightMode::Landed => ("LANDED", "F11", fg, fm.color()),
-    }
-}
+// // TODO: move to telemetry_ext?
+// fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
+//     let fg = Color32::from_rgb(0x28, 0x28, 0x28);
+//     match fm {
+//         FlightMode::Idle => ("IDLE", "F4", fg, fm.color()),
+//         FlightMode::HardwareArmed => ("HWARMD", "F5", fg, fm.color()),
+//         FlightMode::Armed => ("ARMED", "F6", fg, fm.color()),
+//         FlightMode::ArmedLaunchImminent => ("!ARMED!", "F6", fg, fm.color()),
+//         FlightMode::Burn => ("BURN", "F7", fg, fm.color()),
+//         FlightMode::Coast => ("COAST", "F8", fg, fm.color()),
+//         FlightMode::RecoveryDrogue => ("DROGUE", "F9", fg, fm.color()),
+//         FlightMode::RecoveryMain => ("MAIN", "F10", fg, fm.color()),
+//         FlightMode::Landed => ("LANDED", "F11", fg, fm.color()),
+//     }
+// }
 
 pub trait TopBarUiExt {
     fn telemetry_value(&mut self, icon: &str, label: &str, value: Option<String>);
@@ -50,8 +50,8 @@ pub trait TopBarUiExt {
     fn battery_bar(&mut self, w: f32, voltage: Option<f64>);
     fn flash_bar(&mut self, w: f32, flash_pointer: Option<f64>);
     fn command_button(&mut self, label: &'static str, cmd: Command, backend: &mut Backend);
-    fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend);
-    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend);
+    //fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend);
+    //fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend);
 }
 
 impl TopBarUiExt for egui::Ui {
@@ -240,48 +240,48 @@ impl TopBarUiExt for egui::Ui {
         }
     }
 
-    fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend) {
-        let fm = match (current, fm) {
-            (Some(FlightMode::ArmedLaunchImminent), FlightMode::Armed) => FlightMode::ArmedLaunchImminent,
-            _ => fm,
-        };
+    // fn flight_mode_button(&mut self, fm: FlightMode, current: Option<FlightMode>, backend: &mut Backend) {
+    //     let fm = match (current, fm) {
+    //         (Some(FlightMode::ArmedLaunchImminent), FlightMode::Armed) => FlightMode::ArmedLaunchImminent,
+    //         _ => fm,
+    //     };
 
-        let (label, shortcut, fg, bg) = flight_mode_style(fm);
-        let is_current = current.map(|c| c == fm).unwrap_or(false);
+    //     let (label, shortcut, fg, bg) = flight_mode_style(fm);
+    //     let is_current = current.map(|c| c == fm).unwrap_or(false);
 
-        let main_text = RichText::new(label).monospace();
-        let button = if is_current {
-            Button::new(main_text.color(fg)).wrap().fill(bg)
-        } else {
-            Button::new(main_text).wrap().fill(Color32::TRANSPARENT).stroke(Stroke::new(2.0, bg))
-        };
+    //     let main_text = RichText::new(label).monospace();
+    //     let button = if is_current {
+    //         Button::new(main_text.color(fg)).wrap().fill(bg)
+    //     } else {
+    //         Button::new(main_text).wrap().fill(Color32::TRANSPARENT).stroke(Stroke::new(2.0, bg))
+    //     };
 
-        self.add_space(5.0);
-        let pos = self.next_widget_position();
-        let size = Vec2::new(self.available_width(), 50.0);
+    //     self.add_space(5.0);
+    //     let pos = self.next_widget_position();
+    //     let size = Vec2::new(self.available_width(), 50.0);
 
-        let shortcut = if is_current {
-            Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).color(fg))
-        } else {
-            Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).weak())
-        };
+    //     let shortcut = if is_current {
+    //         Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).color(fg))
+    //     } else {
+    //         Label::new(RichText::new(format!("Shift+{}", shortcut)).size(9.0).weak())
+    //     };
 
-        self.put(Rect::from_two_pos(pos + size * Vec2::new(0.0, 0.6), pos + size), shortcut);
-        if self.put(Rect::from_two_pos(pos, pos + size), button).clicked() {
-            backend.send_command(Command::SetFlightMode(fm)).unwrap();
-        }
-    }
+    //     self.put(Rect::from_two_pos(pos + size * Vec2::new(0.0, 0.6), pos + size), shortcut);
+    //     if self.put(Rect::from_two_pos(pos, pos + size), button).clicked() {
+    //         backend.send_command(Command::SetFlightMode(fm)).unwrap();
+    //     }
+    // }
 
-    fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend) {
-        self.columns(8, |columns| {
-            columns[0].flight_mode_button(FlightMode::Idle, current, backend);
-            columns[1].flight_mode_button(FlightMode::HardwareArmed, current, backend);
-            columns[2].flight_mode_button(FlightMode::Armed, current, backend);
-            columns[3].flight_mode_button(FlightMode::Burn, current, backend);
-            columns[4].flight_mode_button(FlightMode::Coast, current, backend);
-            columns[5].flight_mode_button(FlightMode::RecoveryDrogue, current, backend);
-            columns[6].flight_mode_button(FlightMode::RecoveryMain, current, backend);
-            columns[7].flight_mode_button(FlightMode::Landed, current, backend);
-        });
-    }
+    // fn flight_mode_buttons(&mut self, current: Option<FlightMode>, backend: &mut Backend) {
+    //     self.columns(8, |columns| {
+    //         columns[0].flight_mode_button(FlightMode::Idle, current, backend);
+    //         columns[1].flight_mode_button(FlightMode::HardwareArmed, current, backend);
+    //         columns[2].flight_mode_button(FlightMode::Armed, current, backend);
+    //         columns[3].flight_mode_button(FlightMode::Burn, current, backend);
+    //         columns[4].flight_mode_button(FlightMode::Coast, current, backend);
+    //         columns[5].flight_mode_button(FlightMode::RecoveryDrogue, current, backend);
+    //         columns[6].flight_mode_button(FlightMode::RecoveryMain, current, backend);
+    //         columns[7].flight_mode_button(FlightMode::Landed, current, backend);
+    //     });
+    // }
 }

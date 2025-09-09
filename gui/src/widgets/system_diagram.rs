@@ -13,17 +13,35 @@ use crate::{
 use egui::{Button, Color32, Pos2, Rect, RichText, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 
-pub trait Flatten {
+pub trait FlattenInnerResponse<R> {
+    //Flatten the outer layer of the response
+    fn flatten(self) -> egui::InnerResponse<R>;
+}
+
+impl<R> FlattenInnerResponse<R> for egui::InnerResponse<egui::InnerResponse<R>> {
+    fn flatten(self) -> egui::InnerResponse<R> {
+        return egui::InnerResponse::new(self.inner.inner, self.response.union(self.inner.response));
+    }
+}
+
+pub trait FlattenResponse {
+    //Flatten the outer layer of the response
     fn flatten(self) -> egui::Response;
 }
 
-impl Flatten for egui::InnerResponse<egui::Response> {
+impl FlattenResponse for egui::InnerResponse<egui::Response> {
     fn flatten(self) -> egui::Response {
         return self.response.union(self.inner);
     }
 }
 
-impl Flatten for egui::CollapsingResponse<egui::Response> {
+impl FlattenResponse for egui::InnerResponse<()> {
+    fn flatten(self) -> egui::Response {
+        return self.response;
+    }
+}
+
+impl FlattenResponse for egui::CollapsingResponse<egui::Response> {
     fn flatten(self) -> egui::Response {
         return self.body_response.map(|br| self.header_response.union(br)).unwrap_or(self.header_response);
     }

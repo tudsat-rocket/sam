@@ -1,6 +1,5 @@
 //! Main GUI code, included by cli, wasm and android entrypoints
 
-use core::f32;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,7 +27,10 @@ use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
-use crate::widgets::time_line::{Milestone, Timeline};
+use crate::widgets::time_line::{
+    COLOR_ABORT, COLOR_HOLD, COLOR_NOMINAL_IGNITION, COLOR_NOMINAL_IN_FLIGHT, COLOR_NOMINAL_ON_GROUND, Timeline,
+    TimelineState,
+};
 use crate::windows::*;
 
 /// Main state object of our GUI application
@@ -89,7 +91,7 @@ impl Sam {
         self.backends.push(data_source);
     }
 
-    fn backend(&mut self) -> &Backend {
+    fn backend(&self) -> &Backend {
         self.backends.last().unwrap()
     }
 
@@ -199,27 +201,33 @@ impl Sam {
         // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.backend_mut(), enabled);
         egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
-            //ui.label("Hello World!");
             ui.add(Timeline::new(
                 vec![
-                    Milestone::new("Testing"),
-                    Milestone::new("IdlePacified"),
-                    Milestone::new("N₂ Filling"),
-                    Milestone::new("IdleActive"),
-                    Milestone::new("HarwareArmed"),
-                    Milestone::new("N₂O Filling"),
-                    Milestone::new("SoftwareArmed"),
-                    Milestone::new("Ignition"),
-                    Milestone::new("BurnPhase"),
-                    Milestone::new("CoastPhase"),
-                    Milestone::new("DroguePhase"),
-                    Milestone::new("MainPhase"),
-                    Milestone::new("LandedActive"),
-                    Milestone::new("Passivation"),
-                    Milestone::new("LandedPacified"),
+                    TimelineState::new("Verification", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("IdlePassivated", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("N₂ Filling", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("IdleActive", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("HarwareArmed", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("N₂O Filling", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("SoftwareArmed", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("Ignition", COLOR_NOMINAL_IGNITION),
+                    TimelineState::new("BurnPhase", COLOR_NOMINAL_IN_FLIGHT),
+                    TimelineState::new("CoastPhase", COLOR_NOMINAL_IN_FLIGHT),
+                    TimelineState::new("DroguePhase", COLOR_NOMINAL_IN_FLIGHT),
+                    TimelineState::new("MainPhase", COLOR_NOMINAL_IN_FLIGHT),
+                    TimelineState::new("LandedActive", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("Passivation", COLOR_NOMINAL_ON_GROUND),
+                    TimelineState::new("LandedPassivated", COLOR_NOMINAL_ON_GROUND),
                 ],
-                5,
+                vec![
+                    TimelineState::new("Hold", COLOR_HOLD),
+                    TimelineState::new("Abort", COLOR_ABORT),
+                ],
+                0,
                 Rotation2::new(0f32), //f32::consts::PI / 2f32),
+                &mut self.frontend,
+                self.backends.last_mut().unwrap(),
+                //self.backend_mut(),
             ));
         });
 

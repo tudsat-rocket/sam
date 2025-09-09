@@ -3,13 +3,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use egui::{Id, Pos2, Rect, Response, Sense, Ui, Vec2};
+use egui::{Color32, Id, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::{
     backend::Backend,
     frontend::Frontend,
     system_diagram_components::core::constants::{GAMMA_MUL_ON_HOVER, GAMMA_MUL_ON_SELECTED, TOOLTIP_DURATION},
-    widgets::system_diagram::Flatten,
 };
 
 #[derive(Clone, Copy)]
@@ -68,24 +67,27 @@ impl Ord for PopupCloseCondition {
 pub trait NotInPopupList<L: PopupList> {}
 impl<K, Head, Tail> NotInPopupList<(Head, Tail)> for K
 where
-    K: PopupKind + NotEqual<Head::Kind> + NotInPopupList<Tail>,
+    K: PopupKind + Compatible<Head::Kind> + NotInPopupList<Tail>,
     Head: DisplayablePopup,
     Tail: PopupList,
 {
 }
 impl<K: PopupKind> NotInPopupList<()> for K {}
 
-pub trait IsEqual<K: PopupKind> {}
-impl<K: PopupKind> IsEqual<K> for K {}
-
 //TODO Hans: Find a better way of doing this
-pub trait NotEqual<K: PopupKind> {}
-impl NotEqual<Tooltip> for ContextMenu {}
-impl NotEqual<Tooltip> for DropdownMenu {}
-impl NotEqual<ContextMenu> for Tooltip {}
-impl NotEqual<ContextMenu> for DropdownMenu {}
-impl NotEqual<DropdownMenu> for Tooltip {}
-impl NotEqual<DropdownMenu> for ContextMenu {}
+pub trait Compatible<K: PopupKind> {}
+impl Compatible<Tooltip> for ContextMenu {}
+impl Compatible<Tooltip> for DropdownMenu {}
+impl Compatible<Tooltip> for ModalDialog {}
+impl Compatible<ContextMenu> for Tooltip {}
+impl Compatible<ContextMenu> for DropdownMenu {}
+impl Compatible<ContextMenu> for ModalDialog {}
+impl Compatible<DropdownMenu> for Tooltip {}
+impl Compatible<DropdownMenu> for ContextMenu {}
+//impl Compatible<DropdownMenu> for ModalDialog {} => Both activated using left click, so not compatible
+impl Compatible<ModalDialog> for Tooltip {}
+impl Compatible<ModalDialog> for ContextMenu {}
+//impl Compatible<ModalDialog> for DropdownMenu {} => Both activated using left click, so not compatible
 
 pub trait PopupList: Sized {
     fn show_if_active(
@@ -173,7 +175,7 @@ impl<L: PopupList> TriggerBuilder<L> {
     pub fn add<K, F>(self, position: Pos2, add_contents: F) -> TriggerBuilder<(PrimedPopup<K, F>, L)>
     where
         K: PopupKind + NotInPopupList<L>,
-        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
+        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
     {
         return TriggerBuilder {
             id: self.id,
@@ -201,7 +203,7 @@ impl<L: PopupList> TriggerBuilder<L> {
 pub struct PrimedPopup<K, F>
 where
     K: PopupKind,
-    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
+    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
 {
     popup_kind: PhantomData<K>,
     position: Pos2,
@@ -210,7 +212,7 @@ where
 impl<K, F> PrimedPopup<K, F>
 where
     K: PopupKind,
-    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
+    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
 {
     pub fn new(position: Pos2, add_contents: F) -> Self {
         Self {
@@ -221,15 +223,44 @@ where
     }
 }
 
+pub trait PopupResponse: Sized {
+    fn union(self, other: egui::Response) -> Self;
+}
+impl PopupResponse for egui::Response {
+    fn union(self, other: egui::Response) -> Self {
+        return Self::union(&self, other);
+    }
+}
+impl PopupResponse for egui::InnerResponse<bool> {
+    fn union(self, other: egui::Response) -> Self {
+        return Self::new(self.inner, self.response.union(other));
+    }
+}
+
+trait FlattenPopupResponse<R: PopupResponse> {
+    fn flatten(self) -> R;
+}
+
+impl<R: PopupResponse> FlattenPopupResponse<R> for egui::InnerResponse<R> {
+    fn flatten(self) -> R {
+        return R::union(self.inner, self.response);
+    }
+}
+
 pub trait DisplayablePopup {
     type Kind: PopupKind;
     fn position(&self) -> &Pos2;
-    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> Response;
+    fn show(
+        self,
+        ui: &mut Ui,
+        frontend: &mut Frontend,
+        backend: &mut Backend,
+    ) -> <<Self as DisplayablePopup>::Kind as PopupKind>::Response;
 }
 impl<K, F> DisplayablePopup for PrimedPopup<K, F>
 where
     K: PopupKind,
-    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> Response,
+    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
 {
     type Kind = K;
 
@@ -237,12 +268,13 @@ where
         return &self.position;
     }
 
-    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> Response {
+    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <K as PopupKind>::Response {
         return (self.add_contents)(ui, frontend, backend);
     }
 }
 
 pub trait PopupKind: Sized {
+    type Response: PopupResponse;
     fn id(trigger_id: &egui::Id) -> egui::Id;
     fn close_condition() -> PopupCloseCondition;
     fn show_if_active<'a, P>(
@@ -251,13 +283,14 @@ pub trait PopupKind: Sized {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<Self>;
+        P: DisplayablePopup<Kind = Self>;
 }
 
 #[derive(Default)]
 pub struct Tooltip {}
 impl PopupKind for Tooltip {
+    type Response = egui::Response;
+
     fn id(trigger_id: &egui::Id) -> egui::Id {
         return trigger_id.with("Tooltip");
     }
@@ -272,8 +305,7 @@ impl PopupKind for Tooltip {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<Self>,
+        P: DisplayablePopup<Kind = Self>,
     {
         PopupManager::add_tooltip(trigger, ui, frontend, backend);
     }
@@ -281,6 +313,8 @@ impl PopupKind for Tooltip {
 
 pub struct ContextMenu {}
 impl PopupKind for ContextMenu {
+    type Response = egui::Response;
+
     fn id(trigger_id: &egui::Id) -> egui::Id {
         return trigger_id.with("ContextMenu");
     }
@@ -295,14 +329,15 @@ impl PopupKind for ContextMenu {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<Self>,
+        P: DisplayablePopup<Kind = Self>,
     {
         PopupManager::add_context_menu(trigger, ui, frontend, backend);
     }
 }
 pub struct DropdownMenu {}
 impl PopupKind for DropdownMenu {
+    type Response = egui::Response;
+
     fn id(trigger_id: &egui::Id) -> egui::Id {
         return trigger_id.with("DropdownMenu");
     }
@@ -317,10 +352,33 @@ impl PopupKind for DropdownMenu {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<Self>,
+        P: DisplayablePopup<Kind = Self>,
     {
         PopupManager::add_dropdown_menu(trigger, ui, frontend, backend);
+    }
+}
+
+pub struct ModalDialog {}
+impl PopupKind for ModalDialog {
+    type Response = egui::InnerResponse<bool>;
+
+    fn id(trigger_id: &egui::Id) -> egui::Id {
+        return trigger_id.with("ModalDialog");
+    }
+
+    fn close_condition() -> PopupCloseCondition {
+        return PopupCloseCondition::ClickAnywhere;
+    }
+
+    fn show_if_active<'a, P>(
+        trigger: NewPopupTrigger<'a, P>,
+        ui: &mut Ui,
+        frontend: &mut Frontend,
+        backend: &mut Backend,
+    ) where
+        P: DisplayablePopup<Kind = Self>,
+    {
+        PopupManager::add_modal_dialog(trigger, ui, frontend, backend);
     }
 }
 
@@ -382,8 +440,7 @@ impl PopupManager {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<Tooltip>,
+        P: DisplayablePopup<Kind = Tooltip>,
     {
         let tooltip = ActivePopup::new::<Tooltip>(&trigger.id);
         let is_trigger_hovered = trigger.response.hovered();
@@ -415,8 +472,7 @@ impl PopupManager {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<ContextMenu>,
+        P: DisplayablePopup<Kind = ContextMenu>,
     {
         let context_menu = ActivePopup::new::<ContextMenu>(&trigger.id);
         let is_trigger_right_clicked = trigger.response.secondary_clicked();
@@ -449,8 +505,7 @@ impl PopupManager {
         frontend: &mut Frontend,
         backend: &mut Backend,
     ) where
-        P: DisplayablePopup,
-        P::Kind: IsEqual<DropdownMenu>,
+        P: DisplayablePopup<Kind = DropdownMenu>,
     {
         let dropdown_menu = ActivePopup::new::<DropdownMenu>(&trigger.id);
         let is_trigger_left_clicked = trigger.response.clicked();
@@ -471,6 +526,59 @@ impl PopupManager {
             if is_trigger_left_clicked && !is_dropdown_menu_still_open {
                 frontend.popup_manager.activate_in_current_layer(dropdown_menu);
             } else if dropdown_menu_response.clicked_elsewhere() {
+                frontend.popup_manager.deactivate_current_layer();
+            }
+        }
+    }
+
+    /// Add a modal dialog which can be opened via left click. It then remains open until the user clicks elsewhere
+    fn add_modal_dialog<'a, P>(
+        trigger: NewPopupTrigger<'a, P>,
+        ui: &mut egui::Ui,
+        frontend: &mut Frontend,
+        backend: &mut Backend,
+    ) where
+        P: DisplayablePopup<Kind = ModalDialog>,
+    {
+        let model_dialog = ActivePopup::new::<ModalDialog>(&trigger.id);
+        let is_trigger_left_clicked = trigger.response.clicked();
+        let is_modal_dialog_still_open = frontend.popup_manager.is_popup_open_in_current_layer(&model_dialog.id);
+
+        //If the dropdown menu should be drawn
+        if is_trigger_left_clicked || is_modal_dialog_still_open {
+            // Highlight the trigger to indicate it is clicked
+            ui.painter().rect_filled(
+                trigger.response.rect,
+                0.0,
+                ui.visuals().weak_text_color().gamma_multiply(GAMMA_MUL_ON_SELECTED),
+            );
+            //Dim the background and make it non-interactable
+            ui.ctx().memory_mut(|mem| {
+                mem.set_modal_layer(egui::LayerId::new(egui::Order::Foreground, P::Kind::id(&trigger.id)))
+            });
+
+            egui::Area::new(trigger.id.with("GrayOut"))
+                .sense(Sense::click_and_drag())
+                .interactable(true)
+                .fixed_pos(Pos2::new(0f32, 0f32))
+                .order(egui::Order::Foreground)
+                .show(ui.ctx(), |ui| {
+                    ui.allocate_rect(ui.ctx().screen_rect(), Sense::all());
+                    ui.painter().rect_filled(
+                        ui.ctx().screen_rect(),
+                        0.0,
+                        Color32::from_rgba_unmultiplied(50, 50, 50, 150),
+                    );
+                });
+
+            //Draw context menu on next popup layer
+            let modal_dialog_response =
+                Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend, backend);
+
+            //Perform (de)activations
+            if is_trigger_left_clicked && !is_modal_dialog_still_open {
+                frontend.popup_manager.activate_in_current_layer(model_dialog);
+            } else if modal_dialog_response.inner == true {
                 frontend.popup_manager.deactivate_current_layer();
             }
         }
@@ -514,7 +622,7 @@ impl PopupManager {
         ui: &mut Ui,
         frontend: &mut Frontend,
         backend: &mut Backend,
-    ) -> Response {
+    ) -> <P::Kind as PopupKind>::Response {
         frontend.popup_manager.current_layer += 1;
         frontend.popup_manager.active_frame = egui::Frame::popup(ui.style());
         let popup_response = egui::Area::new(id)

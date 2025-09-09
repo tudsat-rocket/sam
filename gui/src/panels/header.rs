@@ -1,4 +1,4 @@
-use egui::{Align, CollapsingHeader, Layout, Vec2};
+use egui::CollapsingHeader;
 
 use shared_types::telemetry::*;
 use telemetry::{BarometerId, BatteryId, Dim, Metric, TemperatureSensorId};
@@ -10,10 +10,7 @@ pub struct HeaderPanel {}
 
 impl HeaderPanel {
     fn text_telemetry(ui: &mut egui::Ui, backend: &mut Backend) {
-        let spacing = 3.0; // TODO: this is ugly
-
         let time = backend.fc_time().map(|time| format!("{:10.3}", time));
-        let mode = backend.current_enum::<FlightMode>(Metric::FlightMode).map(|s| format!("{:?}", s));
 
         let alt_ground = backend.current_value(Metric::GroundAltitudeASL).unwrap_or(0.0);
         let alt_agl = backend.current_value(Metric::PositionWorldSpace(Dim::Z)).map(|a| a - alt_ground);
@@ -24,12 +21,9 @@ impl HeaderPanel {
         let longitude = backend.current_value(Metric::Latitude);
         let coords = latitude.and_then(|lat| longitude.map(|lng| format!("{:.5},{:.5}", lat, lng)));
 
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width() / 3.5);
-            ui.add_space(spacing);
-            ui.telemetry_value("🕐", "Time [s]", time);
-            ui.telemetry_value("🏷", "Mode", mode);
-            ui.nominal_value(
+        ui.columns_const(|[c1, c2, c3, c4, c5, c6]| {
+            c1.telemetry_value("🕐", "Time [s]", time);
+            c1.nominal_value(
                 "🔥",
                 "Baro Temp. [°C]",
                 backend.current_value(Metric::Temperature(TemperatureSensorId::Barometer(BarometerId::MS5611))),
@@ -37,25 +31,14 @@ impl HeaderPanel {
                 0.0,
                 60.0,
             );
-            ui.nominal_value("📡", "RSSI [dBm]", backend.current_value(Metric::DownlinkRssi), 1, -50.0, 0.0);
-            ui.nominal_value("📶", "Link Quality [%]", backend.link_quality().map(|f| f.into()), 1, 90.0, 101.0);
-            ui.add_space(ui.spacing().item_spacing.y);
-        });
 
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width() / 2.0);
-            ui.add_space(spacing);
-            ui.nominal_value("📈", "Altitude (AGL) [m]", alt_agl, 1, -1.0, 10000.0);
-            ui.nominal_value("📈", "Apogee (AGL) [m]", apogee_agl, 1, -1.0, 10000.0);
-            ui.nominal_value(
-                "☁",
-                "Baro. Alt. (ASL) [m]",
-                backend.current_value(Metric::RawBarometricAltitude(BarometerId::MS5611)),
-                1,
-                -100.0,
-                10000.0,
-            );
-            ui.nominal_value(
+            c2.nominal_value("📡", "RSSI [dBm]", backend.current_value(Metric::DownlinkRssi), 1, -50.0, 0.0);
+            c2.nominal_value("📶", "Link Quality [%]", backend.link_quality().map(|f| f.into()), 1, 90.0, 101.0);
+
+            c3.nominal_value("📈", "Altitude (AGL) [m]", alt_agl, 1, -1.0, 10000.0);
+            c3.nominal_value("📈", "Apogee (AGL) [m]", apogee_agl, 1, -1.0, 10000.0);
+
+            c4.nominal_value(
                 "⏱",
                 "Vertical Speed [m/s]",
                 backend.current_value(Metric::VelocityWorldSpace(Dim::Z)),
@@ -63,7 +46,7 @@ impl HeaderPanel {
                 -1.0,
                 1.0,
             );
-            ui.nominal_value(
+            c4.nominal_value(
                 "⬆",
                 "Vertical Accel. [m/s²]",
                 backend.current_value(Metric::AccelerationWorldSpace(Dim::Z)),
@@ -71,23 +54,12 @@ impl HeaderPanel {
                 -1.0,
                 1.0,
             );
-        });
 
-        ui.vertical(|ui| {
-            ui.set_width(ui.available_width());
-            ui.add_space(spacing);
-            ui.telemetry_value("🌍", "GPS Status", gps_fix.map(|f| format!("{:?}", f)));
-            ui.nominal_value("📶", "# Sats", backend.current_value(Metric::GpsSatellites), 0, 5.0, 99.0);
-            ui.nominal_value("🎯", "HDOP", backend.current_value(Metric::GpsHdop), 2, 0.0, 5.0);
-            ui.nominal_value(
-                "📡",
-                "GPS Alt. (ASL) [m]",
-                backend.current_value(Metric::GpsAltitude),
-                1,
-                -100.0,
-                10000.0,
-            );
-            ui.telemetry_value("🌐", "Coords", coords);
+            c5.telemetry_value("🌍", "GPS Status", gps_fix.map(|f| format!("{:?}", f)));
+            c5.nominal_value("📶", "# Sats", backend.current_value(Metric::GpsSatellites), 0, 5.0, 99.0);
+
+            c6.nominal_value("🎯", "HDOP", backend.current_value(Metric::GpsHdop), 2, 0.0, 5.0);
+            c6.telemetry_value("🌐", "Coords", coords);
         });
     }
 
@@ -98,7 +70,7 @@ impl HeaderPanel {
             });
         } else {
             ui.horizontal_centered(|ui| {
-                ui.set_width(ui.available_width() * 0.50);
+                ui.set_width(ui.available_width() * 0.70);
                 Self::text_telemetry(ui, backend);
             });
         }
@@ -106,94 +78,27 @@ impl HeaderPanel {
         ui.separator();
 
         let current_transmit_power = backend.current_enum::<TransmitPower>(Metric::TransmitPower).unwrap_or_default();
-        let current_acs_mode = backend.current_enum::<AcsMode>(Metric::AcsMode).unwrap_or_default();
-        let current_valve_state =
-            backend.current_enum::<ThrusterValveState>(Metric::ThrusterValveState).unwrap_or_default();
-        let acs_present = false; // TODO
-        let recovery_present = false; // TODO
-        let payload_present = false; // TODO
-        let fins_present = [false, false, false]; // TODO
-        let current_camera_state = [false, false, false];
-
-        if vertical {
-            ui.columns(4, |uis| {
-                uis[0].add_space(3.0);
-                uis[0].weak("ACS Mode");
-                uis[1].acs_mode_controls(current_acs_mode, backend);
-                uis[2].add_space(3.0);
-                uis[2].weak("ACS Valves");
-                uis[3].acs_valve_controls(current_valve_state, current_acs_mode, backend);
-            });
-
-            ui.separator();
-
-            ui.columns(4, |uis| {
-                uis[0].add_space(3.0);
-                uis[0].weak("Transmit Power [dBm]");
-                uis[1].transmit_power_controls(current_transmit_power, backend);
-                uis[2].add_space(3.0);
-                uis[2].weak("Cams");
-                uis[3].camera_controls(current_camera_state, backend);
-            });
-
-            ui.separator();
-
-            ui.columns(4, |uis| {
-                uis[0].add_space(3.0);
-                uis[0].weak("IO Modules");
-                uis[1].io_module_indicators(acs_present, recovery_present, payload_present);
-                uis[2].add_space(3.0);
-                uis[2].weak("Fins");
-                uis[3].fin_indicators(fins_present);
-            });
-        } else {
-            ui.vertical(|ui| {
-                ui.add_space(3.0);
-                ui.weak("Transmit Power [dBm]");
-                ui.transmit_power_controls(current_transmit_power, backend);
-                ui.add_space(3.0);
-                ui.weak("IO Modules");
-                ui.io_module_indicators(acs_present, recovery_present, payload_present);
-                ui.horizontal(|ui| {
-                    ui.weak("Fins");
-                    ui.add_space(3.0);
-                    ui.fin_indicators(fins_present);
-                });
-            });
-
-            ui.separator();
-
-            ui.vertical(|ui| {
-                ui.add_space(3.0);
-                ui.weak("ACS Mode");
-                ui.acs_mode_controls(current_acs_mode, backend);
-                ui.add_space(3.0);
-                ui.weak("ACS Valves");
-                ui.acs_valve_controls(current_valve_state, current_acs_mode, backend);
-                ui.horizontal(|ui| {
-                    ui.weak("Cams");
-                    ui.add_space(3.0);
-                    ui.camera_controls(current_camera_state, backend);
-                });
-            });
-        }
 
         ui.vertical(|ui| {
-            let size = Vec2::new(ui.available_width(), 30.0);
-            ui.allocate_ui_with_layout(size, Layout::right_to_left(Align::Center), |ui| {
-                ui.command_button("⟲  Reboot", Command::Reboot, backend);
+            ui.add_space(3.0);
+            ui.weak("Transmit Power [dBm]");
+            ui.transmit_power_controls(current_transmit_power, backend);
+        });
+
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                ui.flash_bar(
+                    f32::max(0f32, ui.available_width() - 100f32),
+                    backend.current_value(Metric::FlashPointer),
+                );
                 ui.command_button("🗑 Erase Flash", Command::EraseFlash, backend);
-                ui.flash_bar(ui.available_width() * 0.6, backend.current_value(Metric::FlashPointer));
+            });
+            ui.horizontal(|ui| {
                 ui.battery_bar(
-                    ui.available_width(),
+                    f32::max(0f32, ui.available_width() - 100f32),
                     backend.current_value(Metric::BatteryVoltage(BatteryId::Avionics)),
                 );
-            });
-
-            ui.separator();
-
-            ui.allocate_ui(ui.available_size(), |ui| {
-                ui.flight_mode_buttons(backend.flight_mode(), backend);
+                ui.command_button("⟲  Reboot", Command::Reboot, backend);
             });
         });
     }
