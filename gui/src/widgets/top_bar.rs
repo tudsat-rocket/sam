@@ -7,7 +7,7 @@ use eframe::egui;
 use egui::widgets::ProgressBar;
 use egui::{Color32, Label, RichText, SelectableLabel};
 
-use shared_types::{IoBoardRole, telemetry::*};
+use shared_types::{can::IoBoardRole, telemetry::*};
 
 use crate::Backend;
 //use crate::utils::telemetry_ext::*;

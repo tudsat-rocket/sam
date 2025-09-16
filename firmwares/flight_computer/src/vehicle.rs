@@ -20,28 +20,35 @@ use embassy_time::{Duration, Ticker};
 
 use defmt::*;
 
+use shared_types::can::EngineState;
 use shared_types::{
-    AcsMode, CanBusMessage, CanBusMessageId, Command, DownlinkMessage, FcReceivedCanBusMessage, FlightMode,
-    IoBoardOutputMessage, IoBoardRole, Settings, TelemetryDataRate, TelemetryToPayloadMessage, ThrusterValveState,
-    UplinkMessage,
+    AcsMode, Command, DownlinkMessage, FlightMode, Settings, TelemetryDataRate, ThrusterValveState, UplinkMessage,
 };
 use state_estimator::StateEstimator;
 use telemetry::{
     AccelerometerId, BarometerId, BatteryId, FLASH_SCHEMA, GyroscopeId, LORA_SCHEMA, MagnetometerId, Metric,
-    MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA,
+    MetricSource, PressureSensorId, Representation, TelemetryMessageWriter, TemperatureSensorId, USB_SCHEMA, ValveId,
 };
 
 use crate::board::load_outputs;
+use crate::can::CanTxPublisher;
 //use crate::buzzer::Buzzer as BuzzerDriver;
 use crate::drivers::sensors::*;
 use crate::lora::TypedLoraLinkSettings;
 use crate::storage::*;
+use crate::subsystems::engine::EngineSubsystem;
+use crate::subsystems::ereg::EregSubsystem;
 use crate::{BoardOutputs, BoardSensors, LoadOutputs};
 //use crate::lora::*;
 //use crate::usb::*;
 //use crate::{can::*, BoardOutputs, BoardSensors};
 
 const MAIN_LOOP_FREQUENCY: Hertz = Hertz::hz(1000);
+
+pub struct Subsystems {
+    pub engine: EngineSubsystem,
+    pub ereg: EregSubsystem,
+}
 
 pub struct Vehicle {
     pub time: core::num::Wrapping<u32>,
@@ -55,8 +62,8 @@ pub struct Vehicle {
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
     board_leds: (Output<'static>, Output<'static>, Output<'static>),
 
-    can1: ((), ()),
-    can2: ((), ()),
+    can1: (crate::can::CanTxPublisher, crate::can::CanRxSubscriber),
+    can2: (crate::can::CanTxPublisher, crate::can::CanRxSubscriber),
     #[cfg(feature = "usb")]
     usb: (
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
@@ -70,6 +77,7 @@ pub struct Vehicle {
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
     ),
+    subsystems: Subsystems,
     // lora_power_sig: &'static Signal<CriticalSectionRawMutex, u8>,
     lora_uplink_rssi: &'static BlMutex<CriticalSectionRawMutex, i16>,
     main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
@@ -88,7 +96,6 @@ pub struct Vehicle {
 #[embassy_executor::task]
 pub async fn run(mut vehicle: Vehicle, mut iwdg: IndependentWatchdog<'static, IWDG1>) -> ! {
     let mut ticker = Ticker::every(Duration::from_micros(1_000_000 / MAIN_LOOP_FREQUENCY.0 as u64));
-    defmt::info!("Starting main loop.");
     loop {
         vehicle.tick().await;
         iwdg.pet();
@@ -103,8 +110,8 @@ impl Vehicle {
         // outputs: BoardOutputs,
         board_leds: (Output<'static>, Output<'static>, Output<'static>),
         load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
-        can1: ((), ()),
-        can2: ((), ()),
+        can1: (crate::can::CanTxPublisher, crate::can::CanRxSubscriber),
+        can2: (crate::can::CanTxPublisher, crate::can::CanRxSubscriber),
         #[cfg(feature = "usb")] usb: (
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -117,6 +124,7 @@ impl Vehicle {
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
+        subsystems: Subsystems,
 
         main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
         parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
@@ -148,9 +156,9 @@ impl Vehicle {
             sensors,
             board_leds,
             load_outputs,
-
             can1,
             can2,
+            subsystems,
             #[cfg(feature = "usb")]
             usb,
             eth,
@@ -167,6 +175,14 @@ impl Vehicle {
 
     async fn tick(&mut self) {
         let start = Instant::now();
+
+        // FIXME: temporary
+        if self.time.0 % 1000 == 0 {
+            self.subsystems.engine.set_target_state(EngineState::Ready);
+            self.subsystems.engine.tick(&mut self.can1.0).await;
+            self.subsystems.engine.set_target_state(EngineState::Scrub);
+            self.subsystems.engine.tick(&mut self.can1.0).await;
+        }
 
         // Query core sensors
         // TODO: should we separate these into separate tasks?
@@ -466,6 +482,26 @@ impl ::telemetry::MetricSource for Vehicle {
             CpuUtilization => w.write_float(repr, self.loop_runtime),
             //FlashPointer => w.write_float(repr, self.flash.pointer),
             UplinkRssi => w.write_float(repr, self.lora_uplink_rssi.lock(|x| *x)),
+
+            // --- Engine
+            Pressure(PressureSensorId::CombustionChamber) => w.write_float(
+                repr,
+                self.subsystems.engine.get_engine_measurements().unwrap_or_default().pressure_combustion_chamber,
+            ),
+            Pressure(PressureSensorId::OxidizerTank) => {
+                w.write_float(repr, self.subsystems.engine.get_engine_measurements().unwrap_or_default().pressure_ox)
+            }
+            ValveState(ValveId::MainValve) => {
+                w.write_float(repr, self.subsystems.engine.get_engine_measurements().unwrap_or_default().main_valve)
+            }
+            ValveState(ValveId::FillAndDumpValve) => w.write_float(
+                repr,
+                self.subsystems.engine.get_engine_measurements().unwrap_or_default().fill_and_dump_valve,
+            ),
+            Temperature(TemperatureSensorId::OxidizerTank) => {
+                w.write_float(repr, self.subsystems.engine.get_engine_measurements().unwrap_or_default().temp_ox)
+            }
+            // ---
             _ => w.write_float(repr, 0.0),
         }
     }

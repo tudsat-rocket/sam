@@ -1,193 +1,153 @@
-//! Driver for the MCP2517FD CAN controller.
-//!
-//! Datasheet: https://ww1.microchip.com/downloads/en/DeviceDoc/MCP2517FD-External-CAN-FD-Controller-with-SPI-Interface-20005688B.pdf
-
-use embassy_embedded_hal::shared_bus::asynch::spi::SpiDevice as SpiDeviceImpl;
-use embassy_stm32::gpio::Output;
-use embassy_stm32::peripherals::*;
-use embassy_stm32::spi::Spi;
+use defmt::*;
+use embassy_executor::SendSpawner;
+// use embassy_stm32::can::bxcan::{Frame, Id, StandardId};
+use embassy_stm32::can::{Can, CanRx, CanTx, Frame};
+// use embassy_stm32::peripherals::CAN;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, Receiver, Sender};
-use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Timer};
-use embedded_hal_async::spi::SpiDevice;
 
+use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
+use embedded_can::{Id, StandardId};
+use heapless::Vec;
+use nalgebra::inf;
 use static_cell::StaticCell;
 
-use defmt::*;
+use shared_types::can::{
+    CanMessage,
+    structure::{Can2aFrame, CanFrameId},
+};
 
-use shared_types::can::*;
+pub const CAN_QUEUE_SIZE: usize = 20;
+pub const NUM_CAN_SUBSCRIBERS: usize = 1;
+pub const NUM_CAN_PUBLISHERS: usize = 1;
 
-use crate::drivers::can::*;
+pub type CanRxChannel = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanRxSubscriber =
+    Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanTxChannel = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanTxPublisher =
+    Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 
-pub struct CanTx<SPI: 'static> {
-    driver: &'static Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>,
-    receiver: Receiver<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 3>,
-}
+// --- can1
+pub static CAN1_RX_CH: StaticCell<CanRxChannel> = StaticCell::new();
+pub static CAN1_TX_CH: StaticCell<CanTxChannel> = StaticCell::new();
 
-pub struct CanRx<SPI: 'static> {
-    driver: &'static Mutex<CriticalSectionRawMutex, MCP2517FD<SPI>>,
-    sender: Sender<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>,
-}
+static CAN1_TX: StaticCell<CanTx<'static>> = StaticCell::new();
+static CAN1_RX: StaticCell<CanRx<'static>> = StaticCell::new();
 
-pub struct CanHandle {
-    receiver: Receiver<'static, CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>,
-    sender: Sender<'static, CriticalSectionRawMutex, (u16, [u8; 8]), 3>,
-}
+// --- can2
+pub static CAN2_RX_CH: StaticCell<CanRxChannel> = StaticCell::new();
+pub static CAN2_TX_CH: StaticCell<CanTxChannel> = StaticCell::new();
 
-#[allow(dead_code)]
-#[derive(Clone, Copy)]
-pub enum CanDataRate {
-    Kbps125,
-    Kbps250,
-    Kbps500,
-    Kbps1000,
-}
+static CAN2_TX: StaticCell<CanTx<'static>> = StaticCell::new();
+static CAN2_RX: StaticCell<CanRx<'static>> = StaticCell::new();
 
-type SpiInst = Spi<'static, SPI2, DMA1_CH4, DMA1_CH3>;
-type SpiDeviceImplInst = SpiDeviceImpl<'static, CriticalSectionRawMutex, SpiInst, Output<'static, PB12>>;
-type CanTxInst = CanTx<SpiDeviceImplInst>;
-type CanRxInst = CanRx<SpiDeviceImplInst>;
-
-static DRIVER_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, MCP2517FD<SpiDeviceImplInst>>> = StaticCell::new();
-
-static INCOMING_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, FcReceivedCanBusMessage, 3>> = StaticCell::new();
-static OUTGOING_CHANNEL: StaticCell<Channel<CriticalSectionRawMutex, (u16, [u8; 8]), 3>> = StaticCell::new();
-
-impl CanHandle {
-    pub fn receive(&mut self) -> Option<FcReceivedCanBusMessage> {
-        self.receiver.try_receive().ok()
-    }
-
-    pub fn transmit(&mut self, id: u16, msg: [u8; 8]) {
-        if let Err(_e) = self.sender.try_send((id, msg)) {
-            error!("Failed to enqueue CAN msg.");
-        }
-    }
-}
-
-#[cfg(not(feature = "gcs"))]
-impl<SPI: SpiDevice<u8>> CanTx<SPI> {
-    async fn run(&mut self) -> ! {
-        loop {
-            let (id, msg) = self.receiver.receive().await;
-            if let Err(_e) = self.driver.lock().await.transmit(id, msg).await {
-                //error!("Failed to transmit CAN msg: {:?}", Debug2Format(&e));
+async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    info!("Run Can RX");
+    loop {
+        match can_rx.read().await {
+            Ok(envelope) => {
+                info!("Read Can Message");
+                let frame = envelope.frame;
+                let Id::Standard(id) = frame.id() else {
+                    warn!("Unexpected extended 29bit Can Frame Id, dropping.");
+                    continue;
+                };
+                let Ok(data) = Vec::from_slice(frame.data()) else {
+                    warn!("Unexpected Can Frame data of lenght > 8 bytes, dropping.");
+                    continue;
+                };
+                let Ok(id) = CanFrameId::try_from(id.as_raw()) else {
+                    warn!(
+                        "Can Frame could not be converted, this is a bug in the implementation and should never happen"
+                    );
+                    continue;
+                };
+                let message = Can2aFrame { id, payload: data };
+                let Ok(message_parsed) = CanMessage::try_from(message) else {
+                    warn!("Malformed Can Message, dropping"); //id: {}, payload: {}", message.id, message.payload);
+                    continue;
+                };
+                publisher.publish_immediate(message_parsed); // TODO: think about publish immediate
+            }
+            Err(e) => {
+                error!("Failed to read can envelope: {:?}", Debug2Format(&e))
             }
         }
     }
 }
 
-#[cfg(not(feature = "gcs"))]
-impl<SPI: SpiDevice<u8>> CanRx<SPI> {
-    async fn run(&mut self) -> ! {
-        loop {
-            let res = {
-                let mut driver = self.driver.lock().await;
-                driver.try_receive().await
-            };
+async fn run_can_tx(
+    can_tx: &'static mut CanTx<'static>,
+    // mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+    mut subscriber: CanRxSubscriber,
+) -> ! {
+    info!("Run can tx");
+    loop {
+        let message = subscriber.next_message_pure().await; // should we care about lag?
+        info!("Can message transmit");
+        let frame = Can2aFrame::from(message);
 
-            let (id, msg) = match res {
-                Ok(Some((id, msg))) => (id, msg),
-                Ok(None) => {
-                    Timer::after(Duration::from_micros(100)).await;
-                    continue;
-                }
-                Err(e) => {
-                    error!("Failed to receive CAN msg: {:?}", Debug2Format(&e));
-                    continue;
-                }
-            };
+        let Some(sid) = StandardId::new(frame.id.into()) else {
+            continue;
+        };
 
-            let message_id = match CanBusMessageId::try_from(id) {
-                Ok(id) => id,
-                Err(e) => {
-                    error!("Unknown CAN bus message id: {}", e);
-                    continue;
-                }
-            };
-
-            let received_message = match message_id {
-                CanBusMessageId::IoBoardInput(role, 0xf) => {
-                    let Ok(Some(parsed)) = IoBoardPowerMessage::parse(msg) else {
-                        error!("Malformed message");
-                        continue;
-                    };
-
-                    FcReceivedCanBusMessage::IoBoardPower(role, parsed)
-                }
-                CanBusMessageId::IoBoardInput(role, id) => {
-                    let Ok(Some(parsed)) = IoBoardSensorMessage::parse(msg) else {
-                        error!("Malformed message");
-                        continue;
-                    };
-
-                    FcReceivedCanBusMessage::IoBoardSensor(role, id, parsed)
-                }
-                CanBusMessageId::FinBoardInput(fin, id) => {
-                    let Ok(Some(parsed)) = FinBoardDataMessage::parse(msg) else {
-                        error!("Malformed message");
-                        continue;
-                    };
-
-                    FcReceivedCanBusMessage::FinBoardData(fin, id, parsed)
-                }
-                CanBusMessageId::BatteryBoardInput(id) => {
-                    let Ok(Some(parsed)) = BatteryTelemetryMessage::parse(msg) else {
-                        error!("Malformed message");
-                        continue;
-                    };
-
-                    FcReceivedCanBusMessage::BatteryTelemetry(id, parsed)
-                }
-                m_id => {
-                    error!("Unsupported CAN bus message id: {}", Debug2Format(&m_id));
-                    continue;
-                }
-            };
-
-            self.sender.send(received_message).await;
-        }
+        // unwrap is safe, because payload slice is never larger than 8 bytes
+        let frame = Frame::new_data(sid, frame.payload.as_slice()).unwrap();
+        info!("embassy can frame write start");
+        can_tx.write(&frame).await;
+        info!("embassy can frame write finished");
     }
 }
 
-pub async fn init(
-    spi: SpiDeviceImplInst,
-    data_rate: CanDataRate,
-) -> (CanTx<SpiDeviceImplInst>, CanRx<SpiDeviceImplInst>, CanHandle) {
-    let incoming_channel = INCOMING_CHANNEL.init(Channel::new());
-    let outgoing_channel = OUTGOING_CHANNEL.init(Channel::new());
+pub async fn spawn_can1(
+    can: Can<'static>,
+    spawner: SendSpawner,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+) {
+    let (can_tx, can_rx, _properties) = can.split();
+    let can_tx = CAN1_TX.init(can_tx);
+    let can_rx = CAN1_RX.init(can_rx);
 
-    let mcp = MCP2517FD::init(spi, data_rate).await.unwrap();
-    let mcp = Mutex::new(mcp);
-    let mcp = DRIVER_SHARED.init(mcp);
-
-    let can_tx = CanTx {
-        driver: mcp,
-        receiver: outgoing_channel.receiver(),
-    };
-
-    let can_rx = CanRx {
-        driver: mcp,
-        sender: incoming_channel.sender(),
-    };
-
-    let handle = CanHandle {
-        receiver: incoming_channel.receiver(),
-        sender: outgoing_channel.sender(),
-    };
-
-    (can_tx, can_rx, handle)
+    spawner.spawn(run_can1_tx(can_tx, subscriber)).unwrap();
+    spawner.spawn(run_can1_rx(can_rx, publisher)).unwrap();
 }
 
-#[cfg(not(feature = "gcs"))]
 #[embassy_executor::task]
-pub async fn run_tx(mut can_tx: CanTxInst) -> ! {
-    can_tx.run().await
+async fn run_can1_tx(
+    can_tx: &'static mut CanTx<'static>,
+    // mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+    mut subscriber: CanRxSubscriber,
+) -> ! {
+    run_can_tx(can_tx, subscriber).await
 }
 
-#[cfg(not(feature = "gcs"))]
 #[embassy_executor::task]
-pub async fn run_rx(mut can_rx: CanRxInst) -> ! {
-    can_rx.run().await
+async fn run_can1_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    run_can_rx(can_rx, publisher).await
+}
+
+// --- CAN2
+pub async fn spawn_can2(
+    can: Can<'static>,
+    spawner: SendSpawner,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+) {
+    let (can_tx, can_rx, _properties) = can.split();
+    let can_tx = CAN2_TX.init(can_tx);
+    let can_rx = CAN2_RX.init(can_rx);
+
+    spawner.spawn(run_can2_tx(can_tx, subscriber)).unwrap();
+    spawner.spawn(run_can2_rx(can_rx, publisher)).unwrap();
+}
+
+#[embassy_executor::task]
+async fn run_can2_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+    run_can_tx(can_tx, subscriber).await
+}
+
+#[embassy_executor::task]
+async fn run_can2_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    run_can_rx(can_rx, publisher).await
 }

@@ -27,6 +27,8 @@ embassy-embedded-hal = "0.1"
 embassy-sync = "0.5"
 embassy-futures = "0.1"
 
+heapless = { version = "0.8.0", features = ["serde"] } # TODO: serde?
+
 static_cell = "2"
 crc = "3"
 

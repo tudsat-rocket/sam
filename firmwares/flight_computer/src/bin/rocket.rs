@@ -27,12 +27,15 @@ use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_stm32::{Config, interrupt};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::pubsub::PubSubChannel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Ticker, Timer};
 
 use flight_computer_firmware::board::load_outputs;
 use flight_computer_firmware::lora;
 use flight_computer_firmware::lora::TypedLoraLinkSettings;
+use flight_computer_firmware::subsystems::engine::EngineSubsystem;
+use flight_computer_firmware::subsystems::ereg::EregSubsystem;
 use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
@@ -69,12 +72,36 @@ async fn main(low_priority_spawner: Spawner) -> ! {
     let (lora_uplink, rssi_glob) =
         fw::lora::start_rocket_uplink(board.lora2, settings.lora.clone(), medium_priority_spawner);
 
-    let (can1_tx, can1_rx) = ((), ());
+    // can 1
+    let can1_rx_ch = fw::can::CAN1_RX_CH.init(PubSubChannel::new());
+    let can1_rx_pub = can1_rx_ch.publisher().unwrap();
+    let can1_rx_sub = can1_rx_ch.subscriber().unwrap();
+
+    let can1_tx_ch = fw::can::CAN1_TX_CH.init(PubSubChannel::new());
+    let can1_tx_pub = can1_tx_ch.publisher().unwrap();
+    let can1_tx_sub = can1_tx_ch.subscriber().unwrap();
+
+    fw::can::spawn_can1(board.can1, high_priority_spawner, can1_rx_pub, can1_tx_sub).await;
+
+    // can 2
+    let can2_rx_ch = fw::can::CAN2_RX_CH.init(PubSubChannel::new());
+    let can2_rx_pub = can2_rx_ch.publisher().unwrap();
+    let can2_rx_sub = can2_rx_ch.subscriber().unwrap();
+
+    let can2_tx_ch = fw::can::CAN2_TX_CH.init(PubSubChannel::new());
+    let can2_tx_pub = can2_tx_ch.publisher().unwrap();
+    let can2_tx_sub = can2_tx_ch.subscriber().unwrap();
+
     let (can2_tx, can2_rx) = ((), ());
     #[cfg(feature = "usb")]
     let (usb_downlink, usb_uplink) = fw::usb::start(board.usb_driver, low_priority_spawner);
 
     let (eth_downlink, eth_uplink) = fw::ethernet::start(board.ethernet, low_priority_spawner, seed);
+
+    // subsystems
+    let engine = EngineSubsystem::default();
+    let ereg = EregSubsystem::default();
+    let subsystems = Subsystems { engine, ereg };
 
     fw::recovery::start_recovery_task(
         settings.main_output_settings.clone(),
@@ -89,12 +116,13 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         board.sensors,
         board.outputs.leds,
         load_outputs,
-        (can1_tx, can1_rx),
-        (can2_tx, can2_rx),
+        (can1_tx_pub, can1_rx_sub),
+        (can2_tx_pub, can2_rx_sub),
         #[cfg(feature = "usb")]
         (usb_downlink, usb_uplink),
         (eth_downlink, eth_uplink),
         (lora_downlink, lora_uplink),
+        subsystems,
         &MAIN_RECOVERY_SIG,
         &PARABREAKS_SIG,
         board.flash_handle,

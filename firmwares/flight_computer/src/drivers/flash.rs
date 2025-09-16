@@ -7,6 +7,10 @@ use embedded_hal_async::spi::{Error as SpiErrorTrait, ErrorKind, ErrorType};
 use embedded_hal_async::spi::{Operation, SpiDevice};
 use embedded_storage_async::nor_flash::{self, NorFlash, NorFlashError, NorFlashErrorKind, ReadNorFlash};
 
+const _4KB: u32 = 2_u32.pow(12);
+const _32KB: u32 = 2_u32.pow(15);
+const _64KB: u32 = 2_u32.pow(16);
+
 pub struct W25Q128<SPI> {
     spi: SPI,
 }
@@ -44,6 +48,16 @@ fn make_op_3b_slice(opcode: OpCode, address: u32) -> [u8; 4] {
     let byte15_8 = ((address >> 8) & 0xFF) as u8;
     let byte7_0 = (address & 0xFF) as u8;
     [opcode.into(), byte23_16, byte15_8, byte7_0]
+}
+
+fn aligned_4kb(value: u32) -> bool {
+    value % _4KB == 0
+}
+fn aligned_32kb(value: u32) -> bool {
+    value % _32KB == 0
+}
+fn aligned_64kb(value: u32) -> bool {
+    value % _64KB == 0
 }
 
 impl<SPI: SpiDevice> W25Q128<SPI> {
@@ -123,6 +137,88 @@ impl<SPI: SpiDevice> W25Q128<SPI> {
             .map_err(FlashError::Spi)?;
         // self.spi.transfer(bytes, &[OpCode::ReadData.into()]).await.map_err(FlashError::Spi)?;
         Ok(())
+    }
+
+    async fn erase_flexible(&mut self, from: u32, to: u32) -> Result<(), FlashError<SPI::Error>> {
+        // TODO: allow not 4kb aligned erases
+        if from > to || to as usize > self.capacity() {
+            return Err(FlashError::OutOfBounds);
+        }
+        if from == 0 && to as usize == self.capacity() {
+            self.chip_erase().await?;
+            return Ok(());
+        }
+        if from == to {
+            return Ok(());
+        }
+        if !aligned_4kb(from) || !aligned_4kb(to) {
+            return Err(FlashError::NotAligned);
+        }
+        let mut from = from;
+        loop {
+            from = self.erase_next(from, to).await?;
+            if from == to {
+                break;
+            }
+        }
+
+        // let mut from = from;
+        // while !(aligned_32kb(from) && (from + _32KB >= to)) {
+        //     self.erase_sector_4kb_unchecked(from).await?;
+        //     from += _4KB;
+        // }
+        // if !(aligned_64kb(from) && (from + _64KB >= to)) && aligned_32kb(from) && (from + _32KB <= to) {
+        //     self.erase_block_32kb_unchecked(from).await?;
+        //     from += _32KB;
+        // }
+        // while aligned_64kb(from) && (from + _64KB <= to) {
+        //     self.erase_block_64kb_unchecked(from).await?;
+        //     from += _64KB;
+        // }
+        // while aligned_32kb(from) && (from + _32KB <= to) {
+        //     self.erase_block_32kb_unchecked(from).await?;
+        //     from += _32KB;
+        // }
+        // while from + _4KB <= to {
+        //     self.erase_sector_4kb_unchecked(from).await?;
+        //     from += _4KB;
+        // }
+        Ok(())
+    }
+    // returns index of not erased section
+    async fn erase_next(&mut self, index: u32, max: u32) -> Result<u32, FlashError<SPI::Error>> {
+        // 64kb
+        let size: u32 = max - index;
+
+        let max_fits: u32 = match size {
+            0.._4KB => 0,
+            _4KB.._32KB => _4KB,
+            _32KB.._64KB => _32KB,
+            _ => _64KB,
+        };
+
+        let max_alignment = if aligned_64kb(index) {
+            _64KB
+        } else if aligned_32kb(index) {
+            _32KB
+        } else if aligned_4kb(index) {
+            _4KB
+        } else {
+            // unreachable if index is 4KB aligned
+            0
+        };
+
+        let erase_size = max_fits.min(max_alignment);
+
+        match erase_size {
+            _4KB => self.erase_sector_4kb_unchecked(index).await?,
+            _32KB => self.erase_block_32kb_unchecked(index).await?,
+            _64KB => self.erase_block_32kb_unchecked(index).await?,
+            0 => (),
+            // unreachable
+            _ => (),
+        }
+        Ok(index + erase_size)
     }
 
     // private methods

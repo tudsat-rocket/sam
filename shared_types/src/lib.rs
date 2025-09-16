@@ -4,7 +4,6 @@ pub mod common;
 pub use common::*;
 
 pub mod can;
-pub use can::*;
 
 #[cfg(feature = "serde")]
 pub mod settings;

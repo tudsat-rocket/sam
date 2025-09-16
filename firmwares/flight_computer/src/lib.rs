@@ -73,14 +73,15 @@ use static_cell::StaticCell;
 use shared_types::FlightMode;
 use shared_types::Settings;
 
-//mod can;
 pub mod board;
 pub mod buzzer;
+pub mod can;
 pub mod drivers;
 pub mod ethernet;
 pub mod lora;
 pub mod recovery;
 pub mod storage;
+pub mod subsystems;
 pub mod usb;
 pub mod vehicle;
 

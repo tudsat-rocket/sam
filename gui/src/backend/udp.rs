@@ -147,9 +147,9 @@ impl BackendVariant for UdpBackend {
                     self.fc_settings = Some(settings);
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
-                    // self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    self.data_store.ingest_message(&USB_SCHEMA, time, message);
                     // FIXME: change schema
-                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    // self.data_store.ingest_message(&LORA_SCHEMA, time, message);
 
                     //self.data_store.ingest_message(&LORA_SCHEMA, time, message);
                 }

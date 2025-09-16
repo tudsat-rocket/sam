@@ -340,65 +340,6 @@ pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, 
                     FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
                     FlightMode::HardwareArmed => Some(&HWARMED),
                     FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
-                    // FlightMode::Landed =>#[cfg(feature = "std")] Some(&LANDED),
-                    FlightMode::Idle => Some(&IDLE_AGAIN),
-                    _ => None,
-                };
-            }
-            Either::Second(()) => {
-                if flight_mode != FlightMode::Landed {
-                    melody = None;
-                }
-            }
-        }
-
-        pwm.channel(channel).disable();
-    }
-}
-
-#[embassy_executor::task]
-pub async fn run_b(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, channel: Channel) -> ! {
-    let max_duty = pwm.max_duty_cycle();
-
-    pwm.channel(channel).enable();
-    pwm.channel(channel).set_duty_cycle(max_duty / 2);
-
-    let mut flight_mode = FlightMode::default();
-    let mut melody = Some(STARTUP.as_slice());
-
-    loop {
-        // let flight_mode_fut = crate::FLIGHT_MODE_SIGNAL.wait();
-
-        let pwm_ref = &mut pwm;
-        let play_fut = async move {
-            if let Some(notes) = melody {
-                for note in notes {
-                    if let Some(freq) = note.freq() {
-                        pwm_ref.set_frequency(Hertz::hz(freq as u32));
-                        pwm_ref.channel(channel).enable();
-                    } else {
-                        pwm_ref.channel(channel).disable();
-                    }
-
-                    Timer::after(Duration::from_millis(note.duration.into())).await;
-                }
-            } else {
-                // TODO
-                Timer::after(Duration::from_millis(1000)).await
-            }
-        };
-
-        // let play_fut = async {
-        //     future::pending::<()>()
-        // }
-
-        match select(crate::FLIGHT_MODE_SIGNAL.wait(), play_fut).await {
-            Either::First(fm) => {
-                flight_mode = fm;
-                melody = match flight_mode {
-                    FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
-                    FlightMode::HardwareArmed => Some(&HWARMED),
-                    FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
                     FlightMode::Landed => Some(&LANDED),
                     FlightMode::Idle => Some(&IDLE_AGAIN),
                     _ => None,
@@ -414,6 +355,65 @@ pub async fn run_b(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>
         pwm.channel(channel).disable();
     }
 }
+
+// #[embassy_executor::task]
+// pub async fn run_b(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, channel: Channel) -> ! {
+//     let max_duty = pwm.max_duty_cycle();
+//
+//     pwm.channel(channel).enable();
+//     pwm.channel(channel).set_duty_cycle(max_duty / 2);
+//
+//     let mut flight_mode = FlightMode::default();
+//     let mut melody = Some(STARTUP.as_slice());
+//
+//     loop {
+//         // let flight_mode_fut = crate::FLIGHT_MODE_SIGNAL.wait();
+//
+//         let pwm_ref = &mut pwm;
+//         let play_fut = async move {
+//             if let Some(notes) = melody {
+//                 for note in notes {
+//                     if let Some(freq) = note.freq() {
+//                         pwm_ref.set_frequency(Hertz::hz(freq as u32));
+//                         pwm_ref.channel(channel).enable();
+//                     } else {
+//                         pwm_ref.channel(channel).disable();
+//                     }
+//
+//                     Timer::after(Duration::from_millis(note.duration.into())).await;
+//                 }
+//             } else {
+//                 // TODO
+//                 Timer::after(Duration::from_millis(1000)).await
+//             }
+//         };
+//
+//         // let play_fut = async {
+//         //     future::pending::<()>()
+//         // }
+//
+//         match select(crate::FLIGHT_MODE_SIGNAL.wait(), play_fut).await {
+//             Either::First(fm) => {
+//                 flight_mode = fm;
+//                 melody = match flight_mode {
+//                     FlightMode::RecoveryDrogue | FlightMode::RecoveryMain => Some(&SHORT_WARNING_MELODY),
+//                     FlightMode::HardwareArmed => Some(&HWARMED),
+//                     FlightMode::Armed | FlightMode::ArmedLaunchImminent => Some(&ARMED),
+//                     FlightMode::Landed => Some(&LANDED),
+//                     FlightMode::Idle => Some(&IDLE_AGAIN),
+//                     _ => None,
+//                 };
+//             }
+//             Either::Second(()) => {
+//                 if flight_mode != FlightMode::Landed {
+//                     melody = None;
+//                 }
+//             }
+//         }
+//
+//         pwm.channel(channel).disable();
+//     }
+// }
 
 #[derive(Clone)]
 struct Note {
