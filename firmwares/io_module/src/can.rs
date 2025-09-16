@@ -34,10 +34,18 @@ pub async fn spawn(
     subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
     info!("Can task spawner activated");
-    // can.modify_config().set_loopback(true).set_silent(true).set_automatic_retransmit(true);
+    can.modify_config().set_loopback(false).set_silent(false).set_automatic_retransmit(true);
     // .leave_disabled();
     can.set_bitrate(125_000);
     can.enable().await;
+    // can.wakeup();
+    let is_sleeping = can.is_sleeping();
+    if is_sleeping {
+        info!("Was was set up but is sleeping");
+    } else {
+        info!("Was was set up and is awake");
+    }
+    // can.enable().await;
 
     let can = CAN.init(can);
     let (can_tx, can_rx) = can.split();
@@ -45,8 +53,8 @@ pub async fn spawn(
     let can_rx = CAN_RX.init(can_rx);
 
     info!("spawning...");
-    spawner.spawn(run_tx(can_tx, subscriber)).unwrap();
-    spawner.spawn(run_rx(can_rx, publisher)).unwrap();
+    spawner.spawn(run_tx(can_tx, subscriber).unwrap());
+    spawner.spawn(run_rx(can_rx, publisher).unwrap());
 }
 
 #[embassy_executor::task]

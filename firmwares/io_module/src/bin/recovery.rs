@@ -6,11 +6,11 @@ use embassy_executor::Spawner;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
+use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::rcc::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::{can, interrupt};
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::Duration;
 use shared_types::{CanBusMessage, CanBusMessageId, FinBoardDataMessage, IoBoardRole, IoBoardSensorMessage};
@@ -61,7 +61,7 @@ async fn main(spawner: Spawner) {
     //configure p.watchdog and p.pins
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
     iwdg.unleash();
-    spawner.spawn(io_module_firmware::run_iwdg(iwdg)).err();
+    spawner.spawn(io_module_firmware::run_iwdg(iwdg).unwrap());
 
     let mut adc = Adc::new(p.ADC1);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::CYCLES239_5);
@@ -75,9 +75,9 @@ async fn main(spawner: Spawner) {
     i2c_config.timeout = Duration::from_millis(10);
     let i2c_freq = Hertz::khz(100);
 
-    let input0 = I2c::new(p.I2C1, p.PB6, p.PB7, io_module_firmware::Irqs, p.DMA1_CH6, p.DMA1_CH7, i2c_freq, i2c_config);
-    let input1 =
-        I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_freq, i2c_config);
+    // let input0 = I2c::new(p.I2C1, p.PB6, p.PB7, io_module_firmware::Irqs, p.DMA1_CH6, p.DMA1_CH7, i2c_freq, i2c_config);
+    let input0 = I2c::new(p.I2C1, p.PB6, p.PB7, io_module_firmware::Irqs, p.DMA1_CH6, p.DMA1_CH7, i2c_config);
+    let input1 = I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_config);
 
     //configure CANs
     let can_in = CAN_IN.init(PubSubChannel::new());
@@ -94,20 +94,15 @@ async fn main(spawner: Spawner) {
 
     // Control output state based on received commands, with optional
     // failsafe behaviour if connection to FC is lost.
-    high_priority_spawner
-        .spawn(run_output_control_via_can(
-            can_in.subscriber().unwrap(),
-            output_state.publisher().unwrap(),
-            ROLE_ID,
-            None,
-        ))
-        .unwrap();
+    high_priority_spawner.spawn(
+        run_output_control_via_can(can_in.subscriber().unwrap(), output_state.publisher().unwrap(), ROLE_ID, None)
+            .unwrap(),
+    );
 
     // temporary heartbeat for thermal test
     high_priority_spawner
-        .spawn(crate::heartbeat::run(can_out.publisher().unwrap(), can_in.subscriber().unwrap()))
-        .unwrap();
-    spawner.spawn(crate::heartbeat::run_leds(leds)).unwrap();
+        .spawn(crate::heartbeat::run(can_out.publisher().unwrap(), can_in.subscriber().unwrap()).unwrap());
+    spawner.spawn(crate::heartbeat::run_leds(leds).unwrap());
 
     // Run output based on published output state (HC_OUTS) //TODO apparently not needed
     /*high_priority_spawner

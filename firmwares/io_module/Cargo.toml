@@ -25,12 +25,12 @@ cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single
 cortex-m-rt = "0.7"
 alloc-cortex-m = "0.4"
 
-embassy-stm32 = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.2", features = ["stm32f105rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
-embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.7", features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
-embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.4", features = ["tick-hz-32_768"] }
-embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.3.1" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.7" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "a5984a8298491ea748693783275d95286a481394", version = "0.1" }
+embassy-stm32 = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.4", features = ["stm32f105rc", "unstable-pac", "memory-x", "time-driver-any", "exti"]  }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.9", features = ["arch-cortex-m", "executor-thread", "executor-interrupt"] }
+embassy-time = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.5", features = ["tick-hz-32_768"] }
+embassy-embedded-hal = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.5" }
+embassy-sync = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.7" }
+embassy-futures = { git = "https://github.com/embassy-rs/embassy", rev = "017064138003fa38b52f11dba872a43d4fec8b61", version = "0.1" }
 
 static_cell = "2"
 crc = "3"
