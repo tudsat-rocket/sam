@@ -1,14 +1,15 @@
 #![no_std]
 #![no_main]
 
+use defmt::*;
 use embassy_executor::InterruptExecutor;
 use embassy_stm32::adc::Instance;
+use embassy_stm32::dma::*;
 use embassy_stm32::gpio::Pull;
 use embassy_stm32::interrupt;
 use embassy_stm32::interrupt::InterruptExt;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::dma::*;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
@@ -17,6 +18,7 @@ use static_cell::StaticCell;
 
 pub mod can;
 pub mod common;
+pub mod heartbeat;
 
 use can::*;
 type OutputStateChannel = PubSubChannel<CriticalSectionRawMutex, ([bool; 8], bool), 1, 3, 2>;

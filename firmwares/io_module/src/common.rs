@@ -1,4 +1,4 @@
-use defmt::{error, Debug2Format};
+use defmt::{Debug2Format, error};
 use embassy_futures::join::join;
 use embassy_stm32::Peri;
 use embassy_stm32::adc::Adc;
@@ -11,14 +11,13 @@ use embassy_time::Ticker;
 use embassy_time::{Duration, with_timeout};
 use embedded_hal::digital::OutputPin;
 
-use {defmt_rtt as _, panic_probe as _};
 use shared_types::*;
+use {defmt_rtt as _, panic_probe as _};
 
-use crate::{CanInSubscriper, DriveVoltage, OutputStatePublisher, OutputStateSubscriber};
-
+use crate::{CanInSubscriber, DriveVoltage, OutputStatePublisher, OutputStateSubscriber};
 
 async fn receive_output_message(
-    subscriber: &mut crate::CanInSubscriper,
+    subscriber: &mut crate::CanInSubscriber,
     role: IoBoardRole,
     command_id: u8,
 ) -> IoBoardOutputMessage {
@@ -36,7 +35,7 @@ async fn receive_output_message(
     }
 }
 
-async fn receive_telemetry_message(subscriber: &mut crate::CanInSubscriper) -> TelemetryToPayloadMessage {
+async fn receive_telemetry_message(subscriber: &mut crate::CanInSubscriber) -> TelemetryToPayloadMessage {
     let expected_sid = CanBusMessageId::TelemetryBroadcast(0).into();
 
     loop {
@@ -78,7 +77,7 @@ pub async fn run_outputs(
 
 #[embassy_executor::task]
 pub async fn run_output_control_via_can(
-    mut can_subscriber: CanInSubscriper,
+    mut can_subscriber: CanInSubscriber,
     output_publisher: OutputStatePublisher,
     role: IoBoardRole,
     timeout: Option<Duration>,
@@ -219,7 +218,7 @@ pub async fn run_power_report(
 
 #[embassy_executor::task]
 pub async fn run_outputs_on_after_flightmode(
-    mut can_subscriber: CanInSubscriper,
+    mut can_subscriber: CanInSubscriber,
     output_publisher: OutputStatePublisher,
     threshold_fm: FlightMode,
 ) -> ! {
@@ -267,7 +266,6 @@ pub async fn run_leds(
     }
 }
 
-
 #[embassy_executor::task]
 pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: UartRx<'static, Async>) -> ! {
     const UART_TO_CAN_TELEMETRY_FREQUENCY_HZ: u64 = 1;
@@ -289,10 +287,9 @@ pub async fn run_uart_to_can(publisher: crate::CanOutPublisher, mut uart_rx: Uar
     }
 }
 
-
 #[embassy_executor::task]
 pub async fn run_can_to_uart(
-    mut subscriber: crate::CanInSubscriper,
+    mut subscriber: crate::CanInSubscriber,
     mut uart_tx: UartTx<'static, embassy_stm32::mode::Async>,
 ) -> ! {
     loop {
@@ -306,3 +303,4 @@ pub async fn run_can_to_uart(
         }
     }
 }
+

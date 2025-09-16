@@ -1,5 +1,14 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
-runner = "probe-rs run --chip stm32f105rc"
+runner = [
+    "probe-rs",
+    "run",
+    "--chip",
+    "stm32f105rc",
+    "--catch-hardfault",
+    "--always-print-stacktrace",
+    "--log-format",
+    "{L} {m:white} {s}"
+]
 
 [build]
 target = "thumbv7m-none-eabi"

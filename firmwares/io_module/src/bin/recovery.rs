@@ -1,27 +1,29 @@
 #![no_std]
 #![no_main]
 
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
 use embassy_stm32::i2c::I2c;
-use embassy_stm32::{can, interrupt};
 use embassy_stm32::interrupt::{InterruptExt, Priority};
 use embassy_stm32::rcc::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_sync::pubsub::{PubSubChannel};
-use embassy_time::{Duration};
+use embassy_stm32::{can, interrupt};
+use embassy_sync::pubsub::PubSubChannel;
+use embassy_time::Duration;
 use shared_types::{CanBusMessage, CanBusMessageId, FinBoardDataMessage, IoBoardRole, IoBoardSensorMessage};
 
 use {defmt_rtt as _, panic_probe as _};
 
-use io_module_firmware::can::{configure, spawn, CAN_OUT, CAN_IN};
+use io_module_firmware::can::{CAN_IN, CAN_OUT, configure, spawn};
 use io_module_firmware::common::{run_i2c_sensors, run_leds, run_output_control_via_can};
-use io_module_firmware::OUTPUT_STATE;
+use io_module_firmware::{OUTPUT_STATE, heartbeat};
 
 const ROLE_ID: IoBoardRole = IoBoardRole::Recovery;
 const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 1, 0];
+// const ID_LED_PATTERN: [u8; 8] = [0, 0, 0, 0, 1, 0, 0, 1];
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -64,7 +66,6 @@ async fn main(spawner: Spawner) {
     let mut adc = Adc::new(p.ADC1);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::CYCLES239_5);
 
-
     let led_red = Output::new(p.PC7, Level::Low, Speed::Low);
     let led_yellow = Output::new(p.PC8, Level::Low, Speed::Low);
     let led_green = Output::new(p.PC9, Level::Low, Speed::Low);
@@ -78,7 +79,6 @@ async fn main(spawner: Spawner) {
     let input1 =
         I2c::new(p.I2C2, p.PB10, p.PB11, io_module_firmware::Irqs, p.DMA1_CH4, p.DMA1_CH5, i2c_freq, i2c_config);
 
-
     //configure CANs
     let can_in = CAN_IN.init(PubSubChannel::new());
     let can_out = CAN_OUT.init(PubSubChannel::new());
@@ -88,7 +88,6 @@ async fn main(spawner: Spawner) {
     io_module_firmware::can::configure(&mut can1, ROLE_ID);
     let mut can2 = embassy_stm32::can::Can::new(p.CAN2, p.PB12, p.PB13, io_module_firmware::Irqs);
     io_module_firmware::can::configure(&mut can2, ROLE_ID);
-
 
     interrupt::SPI2.set_priority(Priority::P6);
     let high_priority_spawner = io_module_firmware::EXECUTOR_HIGH.start(interrupt::SPI2);
@@ -104,6 +103,12 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
+    // temporary heartbeat for thermal test
+    high_priority_spawner
+        .spawn(crate::heartbeat::run(can_out.publisher().unwrap(), can_in.subscriber().unwrap()))
+        .unwrap();
+    spawner.spawn(crate::heartbeat::run_leds(leds)).unwrap();
+
     // Run output based on published output state (HC_OUTS) //TODO apparently not needed
     /*high_priority_spawner
     .spawn(run_outputs(
@@ -118,7 +123,6 @@ async fn main(spawner: Spawner) {
     // Run CAN bus, publishing received messages on can_in and transmitting messages
     // published on can_out.
     io_module_firmware::can::spawn(can1, spawner, can_in.publisher().unwrap(), can_out.subscriber().unwrap()).await;
-
 
     // Every IO board occasionally reports its temperature, drive voltage and current
     //TODO currently deactivated because of CAN error
@@ -152,5 +156,5 @@ async fn main(spawner: Spawner) {
 
     // Set the LEDs based on the output state.
     let led_output_state_sub = output_state.subscriber().unwrap();
-    spawner.spawn(run_leds(leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();
+    // spawner.spawn(run_leds(leds, led_output_state_sub, ID_LED_PATTERN)).unwrap();
 }

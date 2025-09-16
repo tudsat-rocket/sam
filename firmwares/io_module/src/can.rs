@@ -1,12 +1,12 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::{filter, Can, CanRx, CanTx, Fifo};
+use embassy_stm32::can::{Can, CanRx, CanTx, Fifo, filter};
 use embassy_stm32::can::{Frame, Id, StandardId};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
-use shared_types::{CanBusMessageId, IoBoardRole};
 use shared_types::IoBoardRole::Recovery;
+use shared_types::{CanBusMessageId, IoBoardRole};
 use static_cell::StaticCell;
 
 pub const CAN_QUEUE_SIZE: usize = 5; // TODO
@@ -15,7 +15,7 @@ pub const NUM_CAN_PUBLISHERS: usize = 5; // TODO
 
 pub type CanFrame = (u16, [u8; 8]);
 pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper = //TODO change spelling
+pub type CanInSubscriber =
     Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
 pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
@@ -33,7 +33,8 @@ pub async fn spawn(
     publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
     subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
-    can.modify_config().set_loopback(false).set_silent(false).set_automatic_retransmit(false);
+    info!("Can task spawner activated");
+    // can.modify_config().set_loopback(true).set_silent(true).set_automatic_retransmit(true);
     // .leave_disabled();
     can.set_bitrate(125_000);
     can.enable().await;
@@ -43,6 +44,7 @@ pub async fn spawn(
     let can_tx = CAN_TX.init(can_tx);
     let can_rx = CAN_RX.init(can_rx);
 
+    info!("spawning...");
     spawner.spawn(run_tx(can_tx, subscriber)).unwrap();
     spawner.spawn(run_rx(can_rx, publisher)).unwrap();
 }
@@ -52,8 +54,11 @@ async fn run_tx(
     can_tx: &'static mut CanTx<'static>,
     mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) -> ! {
+    info!("Can TX task started.");
     loop {
         let (address, data) = subscriber.next_message_pure().await;
+        info!("Sending Can message");
+        // info!("Can tx subscriber received message");
         if let Some(sid) = StandardId::new(address) {
             // TODO: (embassy upgrade) handle error
             if let Ok(frame) = Frame::new_data(sid, &data) {
@@ -68,6 +73,7 @@ async fn run_rx(
     can_rx: &'static mut CanRx<'static>,
     publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
 ) -> ! {
+    info!("Can rx task started");
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
@@ -100,10 +106,8 @@ async fn run_rx(
 
 pub fn configure(can: &mut Can, role: IoBoardRole) {
     let command_prefix = CanBusMessageId::IoBoardCommand(role, 0).into();
-    let command_filter = filter::Mask32::frames_with_std_id(
-        StandardId::new(command_prefix).unwrap(),
-        StandardId::new(0x7f0).unwrap(),
-    );
+    let command_filter =
+        filter::Mask32::frames_with_std_id(StandardId::new(command_prefix).unwrap(), StandardId::new(0x7f0).unwrap());
 
     let telemetry_filter = filter::Mask32::frames_with_std_id(
         StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
