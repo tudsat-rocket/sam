@@ -297,11 +297,11 @@ pub async fn init_board()
     let lora2_iv = GenericSx126xInterfaceVariant::new(lora2_reset, lora2_irq, lora2_busy, None, None).unwrap();
     let mut lora2 = LoRa::new(Sx126x::new(lora2_spi, lora2_iv, lora2_config), false, Delay).await.unwrap();
 
-    let mut can1 = CanConfigurator::new(p.FDCAN1, p.PB8, p.PB9, Irqs);
-    let mut can2 = CanConfigurator::new(p.FDCAN2, p.PB5, p.PB6, Irqs);
+    let mut can1 = CanConfigurator::new(p.FDCAN2, p.PB5, p.PB6, Irqs);
+    let mut can2 = CanConfigurator::new(p.FDCAN1, p.PB8, p.PB9, Irqs);
 
-    can1.set_bitrate(1_000_000);
-    can2.set_bitrate(1_000_000);
+    can1.set_bitrate(125_000);
+    can2.set_bitrate(125_000);
 
     let mut can1 = can1.into_normal_mode();
     let mut can2 = can2.into_normal_mode();

@@ -1,6 +1,7 @@
 //! Driver for the on-board buzzer, responsible for playing mode change beeps and
 //! warning tones using the STM32's timers for PWM generation.
 
+use defmt::warn;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_stm32::pac::gpio::Gpio;
@@ -305,7 +306,6 @@ const NO_BATTERY_ATTACHED_MELODY: [Note; 4] = [
 pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, channel: Channel) -> ! {
     let max_duty = pwm.max_duty_cycle();
 
-    pwm.channel(channel).enable();
     pwm.channel(channel).set_duty_cycle(max_duty / 2);
 
     let mut flight_mode = FlightMode::default();

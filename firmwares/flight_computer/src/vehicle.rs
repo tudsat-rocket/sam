@@ -20,7 +20,8 @@ use embassy_time::{Duration, Ticker};
 
 use defmt::*;
 
-use shared_types::can::EngineState;
+use shared_types::can::SubsystemInfo;
+use shared_types::can::{CanMessage, engine::EngineState};
 use shared_types::{
     AcsMode, Command, DownlinkMessage, FlightMode, Settings, TelemetryDataRate, ThrusterValveState, UplinkMessage,
 };
@@ -69,6 +70,7 @@ pub struct Vehicle {
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
     ),
+    #[cfg(feature = "ethernet")]
     eth: (
         Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
         Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
@@ -116,7 +118,7 @@ impl Vehicle {
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
-        eth: (
+        #[cfg(feature = "ethernet")] eth: (
             Sender<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
             Receiver<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
         ),
@@ -161,6 +163,7 @@ impl Vehicle {
             subsystems,
             #[cfg(feature = "usb")]
             usb,
+            #[cfg(feature = "ethernet")]
             eth,
             lora,
             main_recovery_sig,
@@ -175,14 +178,6 @@ impl Vehicle {
 
     async fn tick(&mut self) {
         let start = Instant::now();
-
-        // FIXME: temporary
-        if self.time.0 % 1000 == 0 {
-            self.subsystems.engine.set_target_state(EngineState::Ready);
-            self.subsystems.engine.tick(&mut self.can1.0).await;
-            self.subsystems.engine.set_target_state(EngineState::Scrub);
-            self.subsystems.engine.tick(&mut self.can1.0).await;
-        }
 
         // Query core sensors
         // TODO: should we separate these into separate tasks?
@@ -221,6 +216,7 @@ impl Vehicle {
         }
 
         self.receive_uplink_message();
+        self.receive_can();
 
         // TODO: check arm
         unsafe {
@@ -259,11 +255,14 @@ impl Vehicle {
             self.handle_uplink_message(msg);
         }
 
+        #[cfg(feature = "ethernet")]
         if let Ok(msg) = self.eth.1.try_receive() {
             self.handle_uplink_message(msg);
         }
-
-        // TODO: usb
+        #[cfg(feature = "usb")]
+        if let Ok(msg) = self.usb.1.try_receive() {
+            self.handle_uplink_message(msg);
+        }
     }
 
     fn handle_uplink_message(&mut self, msg: UplinkMessage) {
@@ -282,14 +281,17 @@ impl Vehicle {
             //}
             UplinkMessage::ReadSettings => {
                 info!("UplinkMessage: ReadSettings");
-                // let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                #[cfg(feature = "ethernet")]
                 let _ = self.eth.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
+                #[cfg(feature = "usb")]
+                let _ = self.usb.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
 
                 // FIXME: tried re-enabling, but did not work
                 let _ = self.lora.0.try_send(DownlinkMessage::Settings(self.settings.clone()));
             }
             UplinkMessage::WriteSettings(settings) => {
                 info!("UplinkMessage: WriteSettings");
+                // NOTE: this reboots the processor
                 let _ = self.flash.write_settings(settings);
             }
             //UplinkMessage::ApplyLoRaSettings(_) => {}
@@ -323,19 +325,19 @@ impl Vehicle {
             .map(|buffer| DownlinkMessage::Telemetry(self.time.0, buffer));
 
         // Send telemetry via Ethernet
+        #[cfg(feature = "ethernet")]
         if let Some(ref msg) = usb_msg {
             let _ = self.eth.0.try_send(msg.clone());
         }
 
         // Send telemetry via Usb
-
+        #[cfg(feature = "usb")]
         if let Some(msg) = usb_msg {
-            #[cfg(feature = "usb")]
-            let _res = self.usb.0.try_send(msg);
-            // match res {
-            //     Ok(_) => defmt::info!("usb telemetry send successful"),
-            //     Err(_) => defmt::info!("usb telemetry send failed"),
-            // }
+            let res = self.usb.0.try_send(msg);
+            match res {
+                Ok(_) => defmt::info!("usb telemetry send successful"),
+                Err(_) => defmt::info!("usb telemetry send failed"),
+            }
         }
 
         // Send telemetry via Lora
@@ -354,6 +356,15 @@ impl Vehicle {
 
         //// Broadcast telemetry to payloads
         //self.broadcast_can_telemetry();
+    }
+
+    /// Reads all CAN messages (CAN1) from the buffer and processes them.
+    /// For now only uses CAN1.
+    fn receive_can(&mut self) {
+        while let Some(msg) = self.can1.1.try_next_message_pure() {
+            self.subsystems.ereg.process_message(msg);
+            self.subsystems.engine.process_message(msg);
+        }
     }
 
     fn switch_mode(&mut self, new_mode: FlightMode) {

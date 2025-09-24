@@ -283,11 +283,13 @@ async fn run_gcs_downlink(
             let timeout = Duration::from_millis(DOWNLINK_PACKET_INTERVAL_MILLIS - 10);
             if let Some((msg, status)) = attempt_receive_downlink(&mut lora, &key, f, timeout, &local_settings).await {
                 downlink_sender.send(msg.clone()).await;
-                downlink_sender.send(DownlinkMessage::TelemetryGCS(shared_types::telemetry::TelemetryGCS {
-                    time: msg.time_produced().unwrap_or(0),
-                    lora_rssi: status.rssi as i32,
-                    lora_snr: status.snr as i32,
-                })).await;
+                downlink_sender
+                    .send(DownlinkMessage::TelemetryGCS(shared_types::telemetry::TelemetryGCS {
+                        time: msg.time_produced().unwrap_or(0),
+                        lora_rssi: status.rssi as i32,
+                        lora_snr: status.snr as i32,
+                    }))
+                    .await;
                 failure_counter = 0;
             } else {
                 failure_counter += 1;
@@ -325,7 +327,9 @@ async fn attempt_receive_downlink(
     lora.prepare_for_rx(RxMode::Continuous, &mod_params, &packet_params).await.unwrap();
 
     match with_timeout(timeout, lora.rx(&packet_params, &mut rx_buffer)).await {
-        Ok(Ok((len, status))) => decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]).map(|msg| (msg, status)),
+        Ok(Ok((len, status))) => {
+            decode_and_verify::<_, DOWNLINK_HMAC_LEN>(&key, &mut rx_buffer[..(len as usize)]).map(|msg| (msg, status))
+        }
         _ => None,
     }
 }
@@ -347,8 +351,8 @@ async fn run_gcs_uplink(
 
         let serialized = serialize_and_hmac::<_, UPLINK_HMAC_LEN>(&key, &msg);
         tx_buffer[..serialized.len()].copy_from_slice(&serialized);
-        
-        for _ in 0..3 { 
+
+        for _ in 0..3 {
             let mod_params = lora.create_modulation_params(UPLINK_SF, UPLINK_BW, UPLINK_CR, frequency).unwrap();
             let mut packet_params =
                 lora.create_rx_packet_params(4, false, UPLINK_MSG_LEN as u8, true, false, &mod_params).unwrap();

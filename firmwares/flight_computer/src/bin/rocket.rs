@@ -96,6 +96,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
     #[cfg(feature = "usb")]
     let (usb_downlink, usb_uplink) = fw::usb::start(board.usb_driver, low_priority_spawner);
 
+    #[cfg(feature = "ethernet")]
     let (eth_downlink, eth_uplink) = fw::ethernet::start(board.ethernet, low_priority_spawner, seed);
 
     // subsystems
@@ -120,6 +121,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         (can2_tx_pub, can2_rx_sub),
         #[cfg(feature = "usb")]
         (usb_downlink, usb_uplink),
+        #[cfg(feature = "ethernet")]
         (eth_downlink, eth_uplink),
         (lora_downlink, lora_uplink),
         subsystems,

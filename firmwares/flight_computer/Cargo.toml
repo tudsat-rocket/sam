@@ -70,5 +70,8 @@ telemetry = { path = "../../telemetry" }
 defmt-test = "0.3"
 
 [features]
-gcs = []
-rev1 = []
+default = ["ethernet"]
+# gcs = []
+# rev1 = []
+usb = []
+ethernet = []
