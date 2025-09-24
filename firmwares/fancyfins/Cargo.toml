@@ -27,6 +27,7 @@ embassy-embedded-hal = "0.1"
 embassy-sync = "0.5"
 embassy-futures = "0.1"
 
+heapless = "0.9"
 static_cell = "2"
 crc = "3"
 

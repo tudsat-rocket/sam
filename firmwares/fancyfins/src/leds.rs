@@ -1,12 +1,12 @@
-use defmt::error;
+use defmt::*;
 use embassy_executor;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::{Config, Phase, Polarity, Spi};
 use embassy_stm32::time::Hertz;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Ticker, Timer};
 use shared_types::FlightMode;
-use smart_leds::SmartLedsWrite;
 use smart_leds::RGB8;
+use smart_leds::SmartLedsWrite;
 use ws2812_spi::Ws2812;
 
 const NAVIGATION_LIGHT_PATTERN: [RGB8; 16] = [
@@ -122,7 +122,10 @@ pub async fn run(
     let mut flight_mode = FlightMode::default();
 
     let mut config = Config::default();
-    config.frequency = Hertz::khz(3500);
+    // config.frequency = Hertz::khz(3500);
+    // config.frequency = Hertz::khz(3226);
+    config.frequency = Hertz::khz(2400);
+    // config.frequency = Hertz::khz(7200);
     config.mode.polarity = Polarity::IdleLow;
     config.mode.phase = Phase::CaptureOnSecondTransition;
     let spi_bus = embassy_stm32::spi::Spi::new_txonly_nosck(spi, led_signal_pin, dma_out, dma_in, config);
@@ -130,6 +133,8 @@ pub async fn run(
     let mut leds = Ws2812::new(spi_bus);
 
     boot_animation(&mut leds).await;
+
+    // Hyacinth FancyFins use GRB: green, red, blue
 
     loop {
         while let Some(new_fm) = flight_mode_subscriber.try_next_message_pure() {

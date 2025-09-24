@@ -11,6 +11,7 @@ use core::net::SocketAddrV4;
 
 use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::adc::AnyAdcChannel;
+use embassy_stm32::can::config::FdCanConfig;
 use embassy_stm32::timer::simple_pwm::PwmPinConfig;
 use embassy_stm32::usb::Driver;
 use embassy_sync::blocking_mutex;
@@ -299,6 +300,11 @@ pub async fn init_board()
 
     let mut can1 = CanConfigurator::new(p.FDCAN2, p.PB5, p.PB6, Irqs);
     let mut can2 = CanConfigurator::new(p.FDCAN1, p.PB8, p.PB9, Irqs);
+    let mut can_config = FdCanConfig::default();
+    can_config.set_automatic_retransmit(false);
+
+    can1.set_config(can_config);
+    can2.set_config(can_config);
 
     can1.set_bitrate(125_000);
     can2.set_bitrate(125_000);

@@ -1,130 +1,140 @@
 use defmt::*;
-use embassy_executor::Spawner;
-use embassy_stm32::can::bxcan::{filter, Fifo, Frame, Id, StandardId};
-use embassy_stm32::can::{Can, CanRx, CanTx};
-use embassy_stm32::peripherals::CAN;
+use embassy_executor::SendSpawner;
+use embassy_stm32::can::{Can, CanRx, CanTx, Frame};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
-use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
+
+use embedded_can::{Id, StandardId};
+use heapless::Vec;
 use static_cell::StaticCell;
 
-pub const CAN_QUEUE_SIZE: usize = 3; // TODO
-pub const NUM_CAN_SUBSCRIBERS: usize = 1; // TODO
-pub const NUM_CAN_PUBLISHERS: usize = 1; // TODO
+use shared_types::can::{
+    CanMessage,
+    structure::{Can2aFrame, CanFrameId},
+};
 
-pub type CanFrame = (u16, [u8; 8]);
-pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper =
-    Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
-pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub const CAN_RX_QUEUE_SIZE: usize = 20;
+pub const CAN_TX_QUEUE_SIZE: usize = 20;
+pub const NUM_CAN_SUBSCRIBERS: usize = 1;
+pub const NUM_CAN_PUBLISHERS: usize = 1;
 
-pub static CAN_IN: StaticCell<CanInChannel> = StaticCell::new();
-pub static CAN_OUT: StaticCell<CanOutChannel> = StaticCell::new();
+pub type CanRxChannel = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanRxSubscriber =
+    Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanTxChannel = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_TX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanTxPublisher =
+    Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_TX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 
-pub const NUM_FLIGHT_MODE_SUBSCRIBERS: usize = 3;
-pub type FlightModeChannel = PubSubChannel<CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
-pub type FlightModeSubscriber =
-    Subscriber<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
-pub static FLIGHT_MODE: StaticCell<FlightModeChannel> = StaticCell::new();
+// --- can1
+pub static CAN1_RX_CH: StaticCell<CanRxChannel> = StaticCell::new();
+pub static CAN1_TX_CH: StaticCell<CanTxChannel> = StaticCell::new();
 
-static CAN: StaticCell<Can<'static, CAN>> = StaticCell::new();
-static CAN_TX: StaticCell<CanTx<'static, 'static, CAN>> = StaticCell::new();
-static CAN_RX: StaticCell<CanRx<'static, 'static, CAN>> = StaticCell::new();
+static CAN1_TX: StaticCell<CanTx<'static>> = StaticCell::new();
+static CAN1_RX: StaticCell<CanRx<'static>> = StaticCell::new();
 
-pub async fn spawn(
-    mut can: Can<'static, CAN>,
-    spawner: Spawner,
-    publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
-    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
-) {
-    can.modify_config()
-        .set_loopback(false)
-        .set_silent(false)
-        .set_automatic_retransmit(false)
-        .leave_disabled();
+// --- can2
+pub static CAN2_RX_CH: StaticCell<CanRxChannel> = StaticCell::new();
+pub static CAN2_TX_CH: StaticCell<CanTxChannel> = StaticCell::new();
 
-    let telemetry_filter = filter::Mask32::frames_with_std_id(
-        StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-        StandardId::new(0x700).unwrap(),
-    );
+static CAN2_TX: StaticCell<CanTx<'static>> = StaticCell::new();
+static CAN2_RX: StaticCell<CanRx<'static>> = StaticCell::new();
 
-    can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
-
-    can.set_bitrate(125_000);
-    can.enable().await;
-
-    let can = CAN.init(can);
-    let (can_tx, can_rx) = can.split();
-    let can_tx = CAN_TX.init(can_tx);
-    let can_rx = CAN_RX.init(can_rx);
-
-    spawner.spawn(run_tx(can_tx, subscriber)).unwrap();
-    spawner.spawn(run_rx(can_rx, publisher)).unwrap();
-}
-
-#[embassy_executor::task]
-async fn run_tx(
-    can_tx: &'static mut CanTx<'static, 'static, CAN>,
-    mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
-) -> ! {
-    loop {
-        let (address, data) = subscriber.next_message_pure().await;
-        let Some(sid) = StandardId::new(address) else {
-            continue;
-        };
-
-        let frame = Frame::new_data(sid, data);
-        can_tx.write(&frame).await;
-        can_tx.flush_all().await;
-    }
-}
-
-#[embassy_executor::task]
-async fn run_rx(
-    can_rx: &'static mut CanRx<'static, 'static, CAN>,
-    publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
-) -> ! {
+// --- dedicated tasks for receiving and sending CAN messages for each hardware Bus
+async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
                 let frame = envelope.frame;
-                let Some(data) = frame.data() else {
+                let Id::Standard(id) = frame.id() else {
+                    warn!("Unexpected extended 29bit Can Frame Id, dropping.");
                     continue;
                 };
-
-                let Id::Standard(sid) = frame.id() else {
-                    // EID package, skipping.
+                let Ok(data) = Vec::from_slice(frame.data()) else {
+                    warn!("Unexpected Can Frame data of lenght > 8 bytes, dropping.");
                     continue;
                 };
-                let id_raw = sid.as_raw();
-
-                let Ok(data_array) = data.as_ref().try_into() else {
-                    // frame wasn't 8 bytes long, skip.
+                let Ok(id) = CanFrameId::try_from(id.as_raw()) else {
+                    warn!(
+                        "Can Frame could not parsed into type, either the senders or this software might be outdated."
+                    );
                     continue;
                 };
-
-                publisher.publish_immediate((id_raw, data_array));
+                let message = Can2aFrame { id, payload: data };
+                let Ok(message_parsed) = CanMessage::try_from(message) else {
+                    warn!("Malformed Can Message, message could not be parsed into type, dropping"); //id: {}, payload: {}", message.id, message.payload);
+                    continue;
+                };
+                publisher.publish_immediate(message_parsed); // TODO: think about publish immediate
             }
             Err(e) => {
-                error!("Failed to read envelope: {:?}", Debug2Format(&e))
+                error!("Can Bus Error: Failed to read can envelope: {:?}", Debug2Format(&e))
             }
         }
     }
 }
 
-#[embassy_executor::task]
-pub async fn run_flight_mode_listener(
-    mut can_subscriber: CanInSubscriper,
-    flight_mode_publisher: Publisher<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>,
-) -> ! {
+async fn run_can_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
     loop {
-        let (sid, data) = can_subscriber.next_message_pure().await;
-        if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
-            if let Ok(Some(msg)) = TelemetryToPayloadMessage::parse(data) {
-                flight_mode_publisher.publish_immediate(msg.mode);
-            }
-        }
+        let message = subscriber.next_message_pure().await; // should we care about lag?
+        let frame = Can2aFrame::from(message);
+
+        let Some(sid) = StandardId::new(frame.id.into()) else {
+            error!("Can2.0A Frame could not be converted to StandardId, this is a bug in the implementation.");
+            continue;
+        };
+
+        // unwrap is safe, because payload slice is never larger than 8 bytes
+        let frame = Frame::new_data(sid, frame.payload.as_slice()).unwrap();
+        can_tx.write(&frame).await;
     }
+}
+
+// --- CAN1
+pub async fn spawn_can1(
+    can: Can<'static>,
+    spawner: SendSpawner,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+) {
+    let (can_tx, can_rx, _properties) = can.split();
+    let can_tx = CAN1_TX.init(can_tx);
+    let can_rx = CAN1_RX.init(can_rx);
+
+    spawner.spawn(run_can1_tx(can_tx, subscriber)).unwrap();
+    spawner.spawn(run_can1_rx(can_rx, publisher)).unwrap();
+}
+
+#[embassy_executor::task]
+async fn run_can1_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+    run_can_tx(can_tx, subscriber).await
+}
+
+#[embassy_executor::task]
+async fn run_can1_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    run_can_rx(can_rx, publisher).await
+}
+
+// --- CAN2
+pub async fn spawn_can2(
+    can: Can<'static>,
+    spawner: SendSpawner,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+) {
+    let (can_tx, can_rx, _properties) = can.split();
+    let can_tx = CAN2_TX.init(can_tx);
+    let can_rx = CAN2_RX.init(can_rx);
+
+    spawner.spawn(run_can2_tx(can_tx, subscriber)).unwrap();
+    spawner.spawn(run_can2_rx(can_rx, publisher)).unwrap();
+}
+
+#[embassy_executor::task]
+async fn run_can2_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+    run_can_tx(can_tx, subscriber).await
+}
+
+#[embassy_executor::task]
+async fn run_can2_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    run_can_rx(can_rx, publisher).await
 }

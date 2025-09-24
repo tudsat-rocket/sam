@@ -3,7 +3,7 @@
 
 use super::PayloadParseError;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct EngineInfoMsg {
     /// Pressure at the bottom of the oxidizer tank
     pub pressure_ox: u8,
