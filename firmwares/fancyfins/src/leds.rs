@@ -1,13 +1,20 @@
 use defmt::*;
 use embassy_executor;
+use embassy_stm32::mode::Blocking;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi::{Config, Phase, Polarity, Spi};
 use embassy_stm32::time::Hertz;
 use embassy_time::{Duration, Ticker, Timer};
+use embedded_hal::spi::SpiBus;
 use shared_types::FlightMode;
+use shared_types::can::{CanMessage, TelemetryBroadcast};
 use smart_leds::RGB8;
 use smart_leds::SmartLedsWrite;
 use ws2812_spi::Ws2812;
+
+const GREEN: RGB8 = RGB8::new(255, 0, 0);
+const RED: RGB8 = RGB8::new(0, 255, 0);
+const BLUE: RGB8 = RGB8::new(0, 0, 255);
 
 const NAVIGATION_LIGHT_PATTERN: [RGB8; 16] = [
     RGB8 {
@@ -93,7 +100,8 @@ const NAVIGATION_LIGHT_PATTERN: [RGB8; 16] = [
 ];
 const NAVIGATION_LIGHT_BLINK_DURATION_MILLIS: u64 = 50;
 
-async fn boot_animation(leds: &mut Ws2812<Spi<'static, SPI3, DMA1_CH1, DMA1_CH2>>) {
+// async fn boot_animation(leds: &mut Ws2812<Spi<'static, SPI3, DMA1_CH1, DMA1_CH2>>) {
+async fn boot_animation(leds: &mut Ws2812<Spi<'static, embassy_stm32::mode::Blocking>>) {
     let mut colors = [RGB8::default(); 16];
 
     for i in 0..16 {
@@ -112,13 +120,8 @@ async fn boot_animation(leds: &mut Ws2812<Spi<'static, SPI3, DMA1_CH1, DMA1_CH2>
 }
 
 #[embassy_executor::task]
-pub async fn run(
-    mut flight_mode_subscriber: crate::can::FlightModeSubscriber,
-    spi: SPI3,
-    led_signal_pin: PB5,
-    dma_out: DMA1_CH1,
-    dma_in: DMA1_CH2,
-) -> ! {
+pub async fn run(mut can_message_sub: crate::can::CanRxSubscriber, spi_bus: Spi<'static, Blocking>) -> ! {
+    info!("led task start");
     let mut flight_mode = FlightMode::default();
 
     let mut config = Config::default();
@@ -128,7 +131,7 @@ pub async fn run(
     // config.frequency = Hertz::khz(7200);
     config.mode.polarity = Polarity::IdleLow;
     config.mode.phase = Phase::CaptureOnSecondTransition;
-    let spi_bus = embassy_stm32::spi::Spi::new_txonly_nosck(spi, led_signal_pin, dma_out, dma_in, config);
+    // let spi_bus = embassy_stm32::spi::Spi::new_txonly_nosck(spi, led_signal_pin, dma_out, dma_in, config);
 
     let mut leds = Ws2812::new(spi_bus);
 
@@ -136,9 +139,19 @@ pub async fn run(
 
     // Hyacinth FancyFins use GRB: green, red, blue
 
+    // let mut test_ticker = Ticker::every(Duration::from_millis(500));
+    // loop {
+    //     leds.write([GREEN; 20]).unwrap();
+    //     test_ticker.next().await;
+    //     leds.write([BLUE; 20]).unwrap();
+    //     test_ticker.next().await;
+    // }
+
     loop {
-        while let Some(new_fm) = flight_mode_subscriber.try_next_message_pure() {
-            flight_mode = new_fm;
+        while let Some(msg) = can_message_sub.try_next_message_pure() {
+            if let CanMessage::Telem(TelemetryBroadcast::FlightMode(mode)) = msg {
+                flight_mode = mode;
+            }
         }
 
         if flight_mode >= FlightMode::Burn {

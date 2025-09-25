@@ -1,5 +1,5 @@
 use defmt::*;
-use embassy_executor::SendSpawner;
+use embassy_executor::Spawner;
 use embassy_stm32::can::{Can, CanRx, CanTx, Frame};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
@@ -41,9 +41,11 @@ static CAN2_RX: StaticCell<CanRx<'static>> = StaticCell::new();
 
 // --- dedicated tasks for receiving and sending CAN messages for each hardware Bus
 async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublisher) -> ! {
+    info!("started can rx task");
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
+                info!("read some can message");
                 let frame = envelope.frame;
                 let Id::Standard(id) = frame.id() else {
                     warn!("Unexpected extended 29bit Can Frame Id, dropping.");
@@ -76,6 +78,7 @@ async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublish
 async fn run_can_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
     loop {
         let message = subscriber.next_message_pure().await; // should we care about lag?
+        info!("run can_tx_received message");
         let frame = Can2aFrame::from(message);
 
         let Some(sid) = StandardId::new(frame.id.into()) else {
@@ -86,17 +89,20 @@ async fn run_can_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSu
         // unwrap is safe, because payload slice is never larger than 8 bytes
         let frame = Frame::new_data(sid, frame.payload.as_slice()).unwrap();
         can_tx.write(&frame).await;
+        info!("run can_tx_received write message successfully");
     }
 }
 
 // --- CAN1
 pub async fn spawn_can1(
-    can: Can<'static>,
-    spawner: SendSpawner,
+    mut can: Can<'static>,
+    spawner: Spawner,
     publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
     subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
-    let (can_tx, can_rx, _properties) = can.split();
+    // TODO: config
+    can.modify_config().set_silent(false).set_loopback(false).set_automatic_retransmit(false);
+    let (can_tx, can_rx) = can.split();
     let can_tx = CAN1_TX.init(can_tx);
     let can_rx = CAN1_RX.init(can_rx);
 
@@ -105,7 +111,7 @@ pub async fn spawn_can1(
 }
 
 #[embassy_executor::task]
-async fn run_can1_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+async fn run_can1_tx(can_tx: &'static mut CanTx<'static>, subscriber: CanRxSubscriber) -> ! {
     run_can_tx(can_tx, subscriber).await
 }
 
@@ -116,12 +122,12 @@ async fn run_can1_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublis
 
 // --- CAN2
 pub async fn spawn_can2(
-    can: Can<'static>,
-    spawner: SendSpawner,
+    mut can: Can<'static>,
+    spawner: Spawner,
     publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
     subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
-    let (can_tx, can_rx, _properties) = can.split();
+    let (can_tx, can_rx) = can.split();
     let can_tx = CAN2_TX.init(can_tx);
     let can_rx = CAN2_RX.init(can_rx);
 
@@ -130,7 +136,7 @@ pub async fn spawn_can2(
 }
 
 #[embassy_executor::task]
-async fn run_can2_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+async fn run_can2_tx(can_tx: &'static mut CanTx<'static>, subscriber: CanRxSubscriber) -> ! {
     run_can_tx(can_tx, subscriber).await
 }
 

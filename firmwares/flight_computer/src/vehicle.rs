@@ -354,8 +354,10 @@ impl Vehicle {
             // }
         }
 
-        //// Broadcast telemetry to payloads
-        self.broadcast_can_telemetry();
+        // Broadcast telemetry to payloads
+        if self.time.0 % 500 == 0 {
+            self.broadcast_can_telemetry();
+        }
     }
 
     /// Reads all CAN messages (CAN1) from the buffer and processes them.
