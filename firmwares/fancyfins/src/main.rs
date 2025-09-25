@@ -2,6 +2,8 @@
 #![no_main]
 
 use embassy_executor::Spawner;
+use embassy_stm32::can::RxPin;
+use embassy_stm32::can::TxPin;
 use embassy_stm32::mode;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::spi;
@@ -32,11 +34,20 @@ use can::*;
 static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
 
 embassy_stm32::bind_interrupts!(struct Irqs {
-    CAN1_RX1 => embassy_stm32::can::Rx1InterruptHandler<CAN>;
-    CAN1_SCE => embassy_stm32::can::SceInterruptHandler<CAN>;
-    USB_LP_CAN1_RX0 => embassy_stm32::can::Rx0InterruptHandler<CAN>;
-    USB_HP_CAN1_TX => embassy_stm32::can::TxInterruptHandler<CAN>;
+    CAN1_RX0 => embassy_stm32::can::Rx0InterruptHandler<CAN1>;
+    CAN1_TX => embassy_stm32::can::TxInterruptHandler<CAN1>;
+    CAN1_RX1 => embassy_stm32::can::Rx1InterruptHandler<CAN1>;
+    CAN1_SCE => embassy_stm32::can::SceInterruptHandler<CAN1>;
+
+    CAN2_RX0 => embassy_stm32::can::Rx0InterruptHandler<CAN2>;
+    CAN2_TX => embassy_stm32::can::TxInterruptHandler<CAN2>;
+    CAN2_RX1 => embassy_stm32::can::Rx1InterruptHandler<CAN2>;
+    CAN2_SCE => embassy_stm32::can::SceInterruptHandler<CAN2>;
+
 });
+
+// USB_LP_CAN1_RX0 => embassy_stm32::can::Rx0InterruptHandler<CAN1>;
+// USB_HP_CAN1_TX => embassy_stm32::can::TxInterruptHandler<CAN1>;
 
 #[embassy_executor::task]
 async fn iwdg_task(mut iwdg: IndependentWatchdog<'static, IWDG>) -> ! {
@@ -60,24 +71,31 @@ async fn main(low_priority_spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     // Remap CAN to be on PB8/9
-    embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(1));
+    // embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(0));
+    embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(0));
+    let test = embassy_stm32::pac::AFIO.mapr().modify(|w| w.can1_remap());
+    info!("can 1 remap: {:?}", test);
 
     // Start watchdog
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
     iwdg.unleash();
-    low_priority_spawner.spawn(iwdg_task(iwdg)).unwrap();
+    low_priority_spawner.spawn(iwdg_task(iwdg).unwrap());
 
     // --- CAN
     let can_rx = CAN1_RX_CH.init(PubSubChannel::new());
     let can_tx = CAN1_TX_CH.init(PubSubChannel::new());
     // Can RX on PB8 can TX on PB9
     // let can = embassy_stm32::can::Can::new(p.CAN, p.PB8, p.PB9, Irqs);
-    let can = embassy_stm32::can::Can::new(p.CAN, p.PA11, p.PA12, Irqs);
+    // p.PA11.afio_remap();
+    // p.PA12.afio_remap();
+
+    let mut can = embassy_stm32::can::Can::new(p.CAN1, p.PA11, p.PA12, Irqs);
+    can.wakeup();
 
     // Start main CAN RX/TX tasks
     can::spawn_can1(can, low_priority_spawner, can_rx.publisher().unwrap(), can_tx.subscriber().unwrap()).await;
 
-    low_priority_spawner.spawn(can_heartbeat(can_tx.publisher().unwrap())).unwrap();
+    low_priority_spawner.spawn(can_heartbeat(can_tx.publisher().unwrap()).unwrap());
 
     let mut spi_config = spi::Config::default();
     spi_config.frequency = khz(2400);
@@ -85,7 +103,7 @@ async fn main(low_priority_spawner: Spawner) {
     let spi3: Spi<'static, mode::Blocking> = Spi::new_blocking_txonly_nosck(p.SPI3, p.PB5, spi_config);
 
     // Run LED task
-    low_priority_spawner.spawn(leds::run(can_rx.subscriber().unwrap(), spi3)).unwrap();
+    low_priority_spawner.spawn(leds::run(can_rx.subscriber().unwrap(), spi3).unwrap());
 
     // Run strain gauge task. TODO: split flash into separate task?
     // let mut adc = Adc::new(p.ADC1, &mut Delay);

@@ -76,9 +76,10 @@ async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublish
 }
 
 async fn run_can_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSubscriber) -> ! {
+    info!("started can tx task");
     loop {
         let message = subscriber.next_message_pure().await; // should we care about lag?
-        info!("run can_tx_received message");
+        info!("run_can_tx'_received message");
         let frame = Can2aFrame::from(message);
 
         let Some(sid) = StandardId::new(frame.id.into()) else {
@@ -88,7 +89,12 @@ async fn run_can_tx(can_tx: &'static mut CanTx<'static>, mut subscriber: CanRxSu
 
         // unwrap is safe, because payload slice is never larger than 8 bytes
         let frame = Frame::new_data(sid, frame.payload.as_slice()).unwrap();
-        can_tx.write(&frame).await;
+        let test_frame =
+            Frame::new_data(StandardId::new(1).unwrap(), &[0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F, 0x0F]).unwrap();
+        can_tx.write(&test_frame).await;
+        info!("flushing...");
+        can_tx.flush_all().await;
+        info!("flushing... success");
         info!("run can_tx_received write message successfully");
     }
 }
@@ -100,14 +106,18 @@ pub async fn spawn_can1(
     publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
     subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_RX_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
-    // TODO: config
-    can.modify_config().set_silent(false).set_loopback(false).set_automatic_retransmit(false);
+    // TODO: consistent config
+    can.modify_config()
+        .set_silent(false)
+        .set_loopback(true)
+        // .set_automatic_retransmit(false)
+        .set_bitrate(125_000);
     let (can_tx, can_rx) = can.split();
     let can_tx = CAN1_TX.init(can_tx);
     let can_rx = CAN1_RX.init(can_rx);
 
-    spawner.spawn(run_can1_tx(can_tx, subscriber)).unwrap();
-    spawner.spawn(run_can1_rx(can_rx, publisher)).unwrap();
+    spawner.spawn(run_can1_tx(can_tx, subscriber).unwrap());
+    spawner.spawn(run_can1_rx(can_rx, publisher).unwrap());
 }
 
 #[embassy_executor::task]
@@ -131,8 +141,8 @@ pub async fn spawn_can2(
     let can_tx = CAN2_TX.init(can_tx);
     let can_rx = CAN2_RX.init(can_rx);
 
-    spawner.spawn(run_can2_tx(can_tx, subscriber)).unwrap();
-    spawner.spawn(run_can2_rx(can_rx, publisher)).unwrap();
+    spawner.spawn(run_can2_tx(can_tx, subscriber).unwrap());
+    spawner.spawn(run_can2_rx(can_rx, publisher).unwrap());
 }
 
 #[embassy_executor::task]
