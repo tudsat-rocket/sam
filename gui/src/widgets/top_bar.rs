@@ -10,23 +10,6 @@ use egui::{Color32, Label, RichText, SelectableLabel};
 use shared_types::{can::IoBoardRole, telemetry::*};
 
 use crate::Backend;
-//use crate::utils::telemetry_ext::*;
-
-// // TODO: move to telemetry_ext?
-// fn flight_mode_style(fm: FlightMode) -> (&'static str, &'static str, Color32, Color32) {
-//     let fg = Color32::from_rgb(0x28, 0x28, 0x28);
-//     match fm {
-//         FlightMode::Idle => ("IDLE", "F4", fg, fm.color()),
-//         FlightMode::HardwareArmed => ("HWARMD", "F5", fg, fm.color()),
-//         FlightMode::Armed => ("ARMED", "F6", fg, fm.color()),
-//         FlightMode::ArmedLaunchImminent => ("!ARMED!", "F6", fg, fm.color()),
-//         FlightMode::Burn => ("BURN", "F7", fg, fm.color()),
-//         FlightMode::Coast => ("COAST", "F8", fg, fm.color()),
-//         FlightMode::RecoveryDrogue => ("DROGUE", "F9", fg, fm.color()),
-//         FlightMode::RecoveryMain => ("MAIN", "F10", fg, fm.color()),
-//         FlightMode::Landed => ("LANDED", "F11", fg, fm.color()),
-//     }
-// }
 
 pub trait TopBarUiExt {
     fn telemetry_value(&mut self, icon: &str, label: &str, value: Option<String>);

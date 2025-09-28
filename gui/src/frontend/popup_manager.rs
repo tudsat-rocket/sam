@@ -169,18 +169,31 @@ impl TriggerBuilder<()> {
             popups: Default::default(),
         };
     }
+
+    pub fn add_all<Contents: PopupContentList>(
+        self,
+        popups: Contents,
+        position: Pos2,
+    ) -> TriggerBuilder<Contents::AsPopupList> {
+        return TriggerBuilder {
+            id: self.id,
+            bounding_box: self.bounding_box,
+            popups: popups.position(position),
+        };
+    }
 }
 
 impl<L: PopupList> TriggerBuilder<L> {
-    pub fn add<K, F>(self, position: Pos2, add_contents: F) -> TriggerBuilder<(PrimedPopup<K, F>, L)>
+    pub fn add<C /*, K, F*/>(self, position: Pos2, contents: C) -> TriggerBuilder<(PositionedPopup<C>, L)>
     where
-        K: PopupKind + NotInPopupList<L>,
-        F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
+        //K: PopupKind + NotInPopupList<L>,
+        //F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
+        C: PopupContents, //<Kind = K, Contents = F>,
     {
         return TriggerBuilder {
             id: self.id,
             bounding_box: self.bounding_box,
-            popups: self.popups.add(PrimedPopup::new(position, add_contents)),
+            popups: self.popups.add(PositionedPopup::new(position, contents)),
         };
     }
 
@@ -200,26 +213,78 @@ impl<L: PopupList> TriggerBuilder<L> {
     }
 }
 
-pub struct PrimedPopup<K, F>
+pub trait PopupContentList: Sized + Clone {
+    type AsPopupList: PopupList;
+    fn add<C: PopupContents>(self, contents: C) -> (Self, C) {
+        return (self, contents);
+    }
+
+    fn position(self, position: Pos2) -> Self::AsPopupList;
+}
+impl PopupContentList for () {
+    type AsPopupList = ();
+    fn position(self, _position: Pos2) -> Self::AsPopupList {}
+}
+impl<H, T> PopupContentList for (H, T)
+where
+    H: PopupContents,
+    T: PopupContentList,
+{
+    type AsPopupList = (PositionedPopup<H>, T::AsPopupList);
+    fn position(self, position: Pos2) -> Self::AsPopupList {
+        return (PositionedPopup::new(position, self.0), self.1.position(position));
+    }
+}
+
+pub trait PopupContents: Clone {
+    type Kind: PopupKind;
+    type Contents: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <Self::Kind as PopupKind>::Response;
+    fn contents(self) -> Self::Contents;
+}
+
+impl<K, F> PopupContents for PopupContentData<K, F>
+where
+    K: PopupKind,
+    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response + Clone,
+{
+    type Kind = K;
+    type Contents = F;
+
+    fn contents(self) -> Self::Contents {
+        return self.add_contents;
+    }
+}
+
+#[derive(Clone)]
+pub struct PopupContentData<K, F>
 where
     K: PopupKind,
     F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
 {
     popup_kind: PhantomData<K>,
-    position: Pos2,
     add_contents: F,
 }
-impl<K, F> PrimedPopup<K, F>
+
+impl<K, F> PopupContentData<K, F>
 where
     K: PopupKind,
     F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
 {
-    pub fn new(position: Pos2, add_contents: F) -> Self {
+    pub fn new(add_contents: F) -> Self {
         Self {
-            position,
             add_contents,
             popup_kind: PhantomData,
         }
+    }
+}
+
+pub struct PositionedPopup<Contents: PopupContents> {
+    position: Pos2,
+    contents: Contents,
+}
+impl<Contents: PopupContents> PositionedPopup<Contents> {
+    pub fn new(position: Pos2, contents: Contents) -> Self {
+        Self { position, contents }
     }
 }
 
@@ -252,23 +317,19 @@ pub trait DisplayablePopup {
     fn position(&self) -> &Pos2;
     fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <Self::Kind as PopupKind>::Response;
 }
-impl<K, F> DisplayablePopup for PrimedPopup<K, F>
-where
-    K: PopupKind,
-    F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
-{
-    type Kind = K;
+impl<Contents: PopupContents> DisplayablePopup for PositionedPopup<Contents> {
+    type Kind = Contents::Kind;
 
     fn position(&self) -> &Pos2 {
         return &self.position;
     }
 
-    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <K as PopupKind>::Response {
-        return (self.add_contents)(ui, frontend, backend);
+    fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <Self::Kind as PopupKind>::Response {
+        return (self.contents.contents())(ui, frontend, backend);
     }
 }
 
-pub trait PopupKind: Sized {
+pub trait PopupKind: Sized + Clone {
     type Response: PopupResponse;
     fn id(trigger_id: &egui::Id) -> egui::Id;
     fn close_condition() -> PopupCloseCondition;
@@ -281,7 +342,7 @@ pub trait PopupKind: Sized {
         P: DisplayablePopup<Kind = Self>;
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Tooltip {}
 impl PopupKind for Tooltip {
     type Response = egui::Response;
@@ -306,6 +367,7 @@ impl PopupKind for Tooltip {
     }
 }
 
+#[derive(Clone)]
 pub struct ContextMenu {}
 impl PopupKind for ContextMenu {
     type Response = egui::Response;
@@ -329,6 +391,8 @@ impl PopupKind for ContextMenu {
         PopupManager::add_context_menu(trigger, ui, frontend, backend);
     }
 }
+
+#[derive(Clone)]
 pub struct DropdownMenu {}
 impl PopupKind for DropdownMenu {
     type Response = egui::Response;
@@ -353,6 +417,7 @@ impl PopupKind for DropdownMenu {
     }
 }
 
+#[derive(Clone)]
 pub struct ModalDialog {}
 impl PopupKind for ModalDialog {
     type Response = egui::InnerResponse<bool>;

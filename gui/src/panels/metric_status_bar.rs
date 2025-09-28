@@ -2,7 +2,7 @@ use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
 use egui::{Button, Image, Sense, Ui, Vec2};
 use itertools::Itertools;
-use strum::{IntoEnumIterator, VariantNames};
+use strum::VariantNames;
 use telemetry::{Metric, MetricDiscriminants};
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
         Frontend,
         constraints::{ConstraintResult, EvaluatedConstraint},
         metric_monitor::MetricMonitor,
-        popup_manager::{DropdownMenu, TriggerBuilder},
+        popup_manager::TriggerBuilder,
     },
     system_diagram_components::core::constants::{IMG_DANGER, IMG_FILTER, IMG_NOMINAL, IMG_WARNING},
     utils::theme::ThemeColors,
@@ -120,25 +120,28 @@ impl MetricStatusBar {
                         ui.add(Button::image(Image::new(IMG_FILTER).tint(theme.foreground_weak)).small())
                 });
                 TriggerBuilder::new(METRIC_MONITOR_FILTER_BUTTON_ID.clone(), dropdown_response.interact_rect)
-                    .add::<DropdownMenu, _>(dropdown_response.interact_rect.right_top(), |ui, _frontend, _backend| {
-                        let mut i = 0;
-                        let mut response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
-                        for constraint_result in ConstraintResult::iter() {
-                            let active_position = active_constraint_mask
-                                .iter()
-                                .find_position(|e| **e == constraint_result)
-                                .map(|(i, _c)| i);
-                            let mut is_active = active_position.is_some();
-                            response = response.union(ui.checkbox(&mut is_active, ConstraintResult::VARIANTS[i]));
-                            if is_active && !active_position.is_some() {
-                                active_constraint_mask.push(constraint_result);
-                            } else if !is_active && active_position.is_some() {
-                                active_position.map(|i| active_constraint_mask.swap_remove(i));
-                            }
-                            i += 1;
-                        }
-                        return response;
-                    })
+                    // .add(
+                    //     dropdown_response.interact_rect.right_top(),
+                    //     PopupContentData::<DropdownMenu, _>::new(|ui, _frontend, _backend| {
+                    //         let mut i = 0;
+                    //         let mut response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
+                    //         for constraint_result in ConstraintResult::iter() {
+                    //             let active_position = active_constraint_mask
+                    //                 .iter()
+                    //                 .find_position(|e| **e == constraint_result)
+                    //                 .map(|(i, _c)| i);
+                    //             let mut is_active = active_position.is_some();
+                    //             response = response.union(ui.checkbox(&mut is_active, ConstraintResult::VARIANTS[i]));
+                    //             if is_active && !active_position.is_some() {
+                    //                 active_constraint_mask.push(constraint_result);
+                    //             } else if !is_active && active_position.is_some() {
+                    //                 active_position.map(|i| active_constraint_mask.swap_remove(i));
+                    //             }
+                    //             i += 1;
+                    //         }
+                    //         return response;
+                    //     }),
+                    // )
                     .show_active(ui, frontend, backend);
                 ui.separator();
                 egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {

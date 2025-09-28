@@ -2,7 +2,7 @@ use crate::{
     backend::Backend,
     frontend::{
         Frontend,
-        popup_manager::{ContextMenu, Tooltip, TriggerBuilder},
+        popup_manager::{ContextMenu, PopupContentData, Tooltip, TriggerBuilder},
     },
     system_diagram_components::{
         core::flow_painter::Line1D, diagrams::hyacinth::SystemComponent, math::transform::Transform,
@@ -101,31 +101,37 @@ fn as_tooltip<Comp: SystemComponent>(
                         );
                         let tooltip_id = ui.make_persistent_id(format!("ID Metric {name}"));
                         TriggerBuilder::new(tooltip_id, bounding_box)
-                            .add::<Tooltip, _>(popup_pos, |ui, frontend, backend| {
-                                let inner_tooltip_response = ui.label(format!("Justification: Missing"));
-                                let config = super::plot::PlotConfig {
-                                    lines: vec![(metric, Color32::RED)],
-                                    ylimits: (None, None),
-                                };
-                                return ui
-                                    .add(Plot::new(&config, frontend.shared_plot_mut(), backend))
-                                    .union(inner_tooltip_response);
-                            })
-                            .add::<ContextMenu, _>(popup_pos, |ui, frontend, _backend| {
-                                return if frontend.metric_monitor().is_pinned(&metric) {
-                                    let unpin_response = ui.button("Unpin from Monitor");
-                                    if unpin_response.clicked() {
-                                        frontend.metric_monitor_mut().unpin(metric);
-                                    }
-                                    unpin_response
-                                } else {
-                                    let pin_response = ui.button("Pin to monitor");
-                                    if pin_response.clicked() {
-                                        frontend.metric_monitor_mut().pin(metric);
-                                    }
-                                    pin_response
-                                };
-                            })
+                            .add(
+                                popup_pos,
+                                PopupContentData::<Tooltip, _>::new(|ui, frontend, backend| {
+                                    let inner_tooltip_response = ui.label(format!("Justification: Missing"));
+                                    let config = super::plot::PlotConfig {
+                                        lines: vec![(metric, Color32::RED)],
+                                        ylimits: (None, None),
+                                    };
+                                    return ui
+                                        .add(Plot::new(&config, frontend.shared_plot_mut(), backend))
+                                        .union(inner_tooltip_response);
+                                }),
+                            )
+                            .add(
+                                popup_pos,
+                                PopupContentData::<ContextMenu, _>::new(|ui, frontend, _backend| {
+                                    return if frontend.metric_monitor().is_pinned(&metric) {
+                                        let unpin_response = ui.button("Unpin from Monitor");
+                                        if unpin_response.clicked() {
+                                            frontend.metric_monitor_mut().unpin(metric);
+                                        }
+                                        unpin_response
+                                    } else {
+                                        let pin_response = ui.button("Pin to monitor");
+                                        if pin_response.clicked() {
+                                            frontend.metric_monitor_mut().pin(metric);
+                                        }
+                                        pin_response
+                                    };
+                                }),
+                            )
                             .show_active(ui, frontend, backend);
                         ui.end_row();
                     }
@@ -199,39 +205,46 @@ impl<'a, Comp: SystemComponent> egui::Widget for SystemDiagram<'a, Comp> {
                     let trigger_id = ui.make_persistent_id(format!("Base Layer Trigger ID {idx}")); //TODO Improve ID
                     let popup_pos = bounding_box.min + bounding_box.size() * Vec2::new(1.0, 0.5);
                     TriggerBuilder::new(trigger_id, bounding_box)
-                        .add::<Tooltip, _>(popup_pos, |ui, frontend, backend| {
-                            let mut tooltip_response =
-                                ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
-                            return ui
-                                .vertical(|ui| {
-                                    tooltip_response =
-                                        as_tooltip(comp, ui, frontend, backend).union(tooltip_response.clone())
-                                })
-                                .response
-                                .union(tooltip_response);
-                        })
-                        .add::<ContextMenu, _>(popup_pos, |ui, _frontend, backend| {
-                            let mut tooltip_response =
-                                ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
-                            return if comp.interactions().len() > 0 {
-                                ui.vertical(|ui| {
-                                    for interaction in comp.interactions() {
-                                        let interaction_response = ui.add_enabled(
-                                            interaction.is_possible(&backend),
-                                            Button::new(interaction.description(backend)),
-                                        );
-                                        tooltip_response = interaction_response.union(tooltip_response.clone());
-                                        if interaction_response.clicked() {
-                                            interaction.interact(backend);
+                        .add(
+                            popup_pos,
+                            PopupContentData::<Tooltip, _>::new(|ui, frontend, backend| {
+                                let mut tooltip_response =
+                                    ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                                return ui
+                                    .vertical(|ui| {
+                                        tooltip_response =
+                                            as_tooltip(comp, ui, frontend, backend).union(tooltip_response.clone())
+                                    })
+                                    .response
+                                    .union(tooltip_response);
+                            }),
+                        )
+                        .add(
+                            popup_pos,
+                            PopupContentData::<ContextMenu, _>::new(|ui, _frontend, backend| {
+                                let mut tooltip_response =
+                                    ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
+                                return if comp.interactions().len() > 0 {
+                                    ui.vertical(|ui| {
+                                        for interaction in comp.interactions() {
+                                            let interaction_response = ui.add_enabled(
+                                                interaction.is_possible(&backend),
+                                                Button::new(interaction.description(backend)),
+                                            );
+                                            tooltip_response = interaction_response.union(tooltip_response.clone());
+                                            if interaction_response.clicked() {
+                                                interaction.interact(backend);
+                                            }
                                         }
-                                    }
-                                })
-                                .response
-                                .union(tooltip_response)
-                            } else {
-                                ui.label(RichText::new("No intractions available").italics()).union(tooltip_response)
-                            };
-                        })
+                                    })
+                                    .response
+                                    .union(tooltip_response)
+                                } else {
+                                    ui.label(RichText::new("No intractions available").italics())
+                                        .union(tooltip_response)
+                                };
+                            }),
+                        )
                         .show_active(ui, self.frontend, self.backend);
                 }
                 for line in self.lines {

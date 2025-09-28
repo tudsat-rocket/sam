@@ -9,7 +9,7 @@ use shared_types::telemetry::*;
 use crate::Backend;
 use crate::settings::AppSettings;
 use crate::utils::file::*;
-use crate::widgets::fc_settings::{self, *};
+use crate::widgets::fc_settings::*;
 
 pub struct ConfigureTab {}
 

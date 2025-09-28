@@ -166,36 +166,7 @@ pub trait ReplayableBackendVariant: BackendVariant {
     }
 
     fn skip_to_next_flightmode(&mut self, _reverse: bool) {
-        //let fm: Option<FlightMode> = self.data_store().current_enum_value(Metric::FlightMode, self.end());
-
-        //let Some(end) = self.end() else {
-        //    return;
-        //};
-
-        //let i = self.all_vehicle_states().partition_point(|(t, _)| *t <= end);
-
-        //let next_flightmode = if reverse {
-        //    self.all_vehicle_states()[..i]
-        //        .iter()
-        //        .rev()
-        //        .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != fm)
-        //        .map(|(t, _)| t)
-        //        .next()
-        //} else {
-        //    self.all_vehicle_states()[i..]
-        //        .iter()
-        //        .filter(|(_t, vs)| vs.mode.is_some() && vs.mode != fm)
-        //        .map(|(t, _)| t)
-        //        .next()
-        //};
-
-        //if let Some(inst) = next_flightmode {
-        //    let playing = self.playing();
-        //    *self.playback_state_mut() = Some(PlaybackState::Paused(*inst));
-        //    if playing {
-        //        self.playpause();
-        //    }
-        //}
+        println!("Skipping FlightMode currently not supported!");
     }
 
     fn playback_ui(&mut self, ui: &mut egui::Ui) {

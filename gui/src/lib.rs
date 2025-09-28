@@ -27,10 +27,7 @@ use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
-use crate::widgets::time_line::{
-    COLOR_ABORT, COLOR_HOLD, COLOR_NOMINAL_IGNITION, COLOR_NOMINAL_IN_FLIGHT, COLOR_NOMINAL_ON_GROUND, Timeline,
-    TimelineState,
-};
+use crate::widgets::time_line::{HyacinthAnomalousState, HyacinthNominalState, Timeline};
 use crate::windows::*;
 
 /// Main state object of our GUI application
@@ -200,34 +197,14 @@ impl Sam {
 
         // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.backend_mut(), enabled);
+
         egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
             ui.add(Timeline::new(
-                vec![
-                    TimelineState::new("Verification", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("IdlePassivated", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("N₂ Filling", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("IdleActive", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("HarwareArmed", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("N₂O Filling", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("SoftwareArmed", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("Ignition", COLOR_NOMINAL_IGNITION),
-                    TimelineState::new("BurnPhase", COLOR_NOMINAL_IN_FLIGHT),
-                    TimelineState::new("CoastPhase", COLOR_NOMINAL_IN_FLIGHT),
-                    TimelineState::new("DroguePhase", COLOR_NOMINAL_IN_FLIGHT),
-                    TimelineState::new("MainPhase", COLOR_NOMINAL_IN_FLIGHT),
-                    TimelineState::new("LandedActive", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("Passivation", COLOR_NOMINAL_ON_GROUND),
-                    TimelineState::new("LandedPassivated", COLOR_NOMINAL_ON_GROUND),
-                ],
-                vec![
-                    TimelineState::new("Hold", COLOR_HOLD),
-                    TimelineState::new("Abort", COLOR_ABORT),
-                ],
-                0,
+                HyacinthNominalState::as_timeline(&self.frontend),
+                HyacinthAnomalousState::as_timeline(&self.frontend),
                 Rotation2::new(0f32), //f32::consts::PI / 2f32),
                 &mut self.frontend,
                 self.backends.last_mut().unwrap(),
-                //self.backend_mut(),
             ));
         });
 
