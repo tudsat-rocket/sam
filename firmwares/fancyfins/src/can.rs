@@ -1,12 +1,13 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::bxcan::{filter, Fifo, Frame, Id, StandardId};
+use embassy_stm32::can::bxcan::{Fifo, Frame, Id, StandardId, filter};
 use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::peripherals::CAN;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
-use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
+use shared_types::FlightMode;
+//use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
 use static_cell::StaticCell;
 
 pub const CAN_QUEUE_SIZE: usize = 3; // TODO
@@ -46,8 +47,9 @@ pub async fn spawn(
         .leave_disabled();
 
     let telemetry_filter = filter::Mask32::frames_with_std_id(
-        StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-        StandardId::new(0x700).unwrap(),
+        //StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
+        StandardId::new(0x1af).unwrap(),
+        StandardId::new(0x7ff).unwrap(),
     );
 
     can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
@@ -86,9 +88,11 @@ async fn run_rx(
     can_rx: &'static mut CanRx<'static, 'static, CAN>,
     publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
 ) -> ! {
+    info!("Running RX...");
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
+                info!("got envelope");
                 let frame = envelope.frame;
                 let Some(data) = frame.data() else {
                     continue;
@@ -121,10 +125,11 @@ pub async fn run_flight_mode_listener(
 ) -> ! {
     loop {
         let (sid, data) = can_subscriber.next_message_pure().await;
-        if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
-            if let Ok(Some(msg)) = TelemetryToPayloadMessage::parse(data) {
-                flight_mode_publisher.publish_immediate(msg.mode);
-            }
-        }
+        info!("blub");
+        //if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
+        //    if let Ok(Some(msg)) = TelemetryToPayloadMessage::parse(data) {
+        //        flight_mode_publisher.publish_immediate(msg.mode);
+        //    }
+        //}
     }
 }

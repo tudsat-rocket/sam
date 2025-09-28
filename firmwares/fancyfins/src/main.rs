@@ -2,12 +2,12 @@
 #![no_main]
 
 use embassy_executor::Spawner;
+use embassy_stm32::Config;
 use embassy_stm32::adc::Adc;
 use embassy_stm32::gpio::Input;
 use embassy_stm32::peripherals::*;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::wdg::IndependentWatchdog;
-use embassy_stm32::Config;
 use embassy_sync::pubsub::PubSubChannel;
 use embassy_time::{Delay, Duration, Ticker};
 
@@ -15,7 +15,7 @@ use {defmt_rtt as _, panic_probe as _};
 
 mod can;
 mod leds;
-mod strain_gauge;
+//mod strain_gauge;
 
 use can::*;
 
@@ -51,7 +51,7 @@ async fn main(low_priority_spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     // Remap CAN to be on PB8/9
-    embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(2));
+    //embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(2));
 
     let addr0 = Input::new(p.PA8, embassy_stm32::gpio::Pull::Up);
     let addr1 = Input::new(p.PA9, embassy_stm32::gpio::Pull::Up);
@@ -69,7 +69,7 @@ async fn main(low_priority_spawner: Spawner) {
     let can_in = CAN_IN.init(PubSubChannel::new());
     let can_out = CAN_OUT.init(PubSubChannel::new());
     // Can RX on PB8 can TX on PB9
-    let can = embassy_stm32::can::Can::new(p.CAN, p.PB8, p.PB9, Irqs);
+    let can = embassy_stm32::can::Can::new(p.CAN, p.PA11, p.PA12, Irqs);
 
     // Start main CAN RX/TX tasks
     can::spawn(can, low_priority_spawner, can_in.publisher().unwrap(), can_out.subscriber().unwrap()).await;
@@ -89,16 +89,16 @@ async fn main(low_priority_spawner: Spawner) {
     let mut adc = Adc::new(p.ADC1, &mut Delay);
     adc.set_sample_time(embassy_stm32::adc::SampleTime::Cycles239_5);
 
-    low_priority_spawner
-        .spawn(strain_gauge::run(
-            address,
-            adc,
-            p.PC0,
-            p.PC1,
-            p.PC2,
-            p.PC3,
-            flight_mode.subscriber().unwrap(),
-            can_out.publisher().unwrap(),
-        ))
-        .unwrap();
+    //low_priority_spawner
+    //    .spawn(strain_gauge::run(
+    //        address,
+    //        adc,
+    //        p.PC0,
+    //        p.PC1,
+    //        p.PC2,
+    //        p.PC3,
+    //        flight_mode.subscriber().unwrap(),
+    //        can_out.publisher().unwrap(),
+    //    ))
+    //    .unwrap();
 }
