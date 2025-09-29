@@ -1,9 +1,10 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::{Can, CanRx, CanTx, Frame};
+use embassy_stm32::can::{Can, CanRx, CanTx, Fifo, Frame, filter::Mask32};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
 
+use embassy_time::{Duration, Ticker};
 use embedded_can::{Id, StandardId};
 use heapless::Vec;
 use static_cell::StaticCell;
@@ -45,7 +46,7 @@ async fn run_can_rx(can_rx: &'static mut CanRx<'static>, publisher: CanTxPublish
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
-                info!("read some can message");
+                info!("read some can envelope");
                 let frame = envelope.frame;
                 let Id::Standard(id) = frame.id() else {
                     warn!("Unexpected extended 29bit Can Frame Id, dropping.");
@@ -109,9 +110,17 @@ pub async fn spawn_can1(
     // TODO: consistent config
     can.modify_config()
         .set_silent(false)
-        .set_loopback(true)
-        // .set_automatic_retransmit(false)
+        .set_loopback(false)
+        .set_automatic_retransmit(false)
         .set_bitrate(125_000);
+
+    let telemetry_filter = Mask32::accept_all();
+
+    can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
+    can.set_bitrate(125_000);
+    can.enable().await;
+    info!("enabled can bus ---------");
+
     let (can_tx, can_rx) = can.split();
     let can_tx = CAN1_TX.init(can_tx);
     let can_rx = CAN1_RX.init(can_rx);

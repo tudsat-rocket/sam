@@ -4,11 +4,16 @@
 use embassy_executor::Spawner;
 use embassy_stm32::can::RxPin;
 use embassy_stm32::can::TxPin;
+use embassy_stm32::can::{Can, CanRx, CanTx, Fifo, Frame, filter::Mask32};
 use embassy_stm32::mode;
 use embassy_stm32::peripherals::*;
+use embassy_stm32::rcc::{
+    ADCPrescaler, AHBPrescaler, APBPrescaler, HseMode, Pll, PllMul, PllPreDiv, PllSource, Sysclk,
+};
 use embassy_stm32::spi;
 use embassy_stm32::spi::MODE_1;
 use embassy_stm32::spi::Spi;
+use embassy_stm32::time::Hertz;
 use embassy_stm32::time::khz;
 use embassy_stm32::wdg::IndependentWatchdog;
 use embassy_sync::pubsub::PubSubChannel;
@@ -61,6 +66,27 @@ async fn iwdg_task(mut iwdg: IndependentWatchdog<'static, IWDG>) -> ! {
 #[embassy_executor::main]
 async fn main(low_priority_spawner: Spawner) {
     let mut config = embassy_stm32::Config::default();
+    config.rcc.hse = Some(embassy_stm32::rcc::Hse {
+        freq: Hertz::mhz(8),
+        mode: HseMode::Oscillator,
+    });
+    config.rcc.sys = Sysclk::PLL1_P;
+    // sysclk: 72 Mhz = (8Mhz / 1) * 9
+    config.rcc.pll = Some(Pll {
+        src: PllSource::HSE,
+        prediv: PllPreDiv::DIV1,
+        mul: PllMul::MUL9,
+    });
+    // advanced high performance bus prescaler (for example can bus (I think))
+    // 72 Mhz
+    config.rcc.ahb_pre = AHBPrescaler::DIV1;
+    // peripheral bus precalers
+    // 36 Mhz
+    config.rcc.apb1_pre = APBPrescaler::DIV2;
+    // 72 Mhz
+    config.rcc.apb2_pre = APBPrescaler::DIV1;
+    // 18 Mhz
+    config.rcc.adc_pre = ADCPrescaler::DIV8;
 
     // config.rcc.hse = Some(Hertz::mhz(8));
     // config.rcc.sys_ck = Some(Hertz::mhz(72));
@@ -71,10 +97,10 @@ async fn main(low_priority_spawner: Spawner) {
     let p = embassy_stm32::init(config);
 
     // Remap CAN to be on PB8/9
+    // embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(2));
     // embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(0));
-    embassy_stm32::pac::AFIO.mapr().modify(|w| w.set_can1_remap(0));
-    let test = embassy_stm32::pac::AFIO.mapr().modify(|w| w.can1_remap());
-    info!("can 1 remap: {:?}", test);
+    // let test = embassy_stm32::pac::AFIO.mapr().modify(|w| w.can1_remap());
+    // info!("can 1 remap: {:?}", test);
 
     // Start watchdog
     let mut iwdg = IndependentWatchdog::new(p.IWDG, 512_000); // 512ms timeout
@@ -82,6 +108,9 @@ async fn main(low_priority_spawner: Spawner) {
     low_priority_spawner.spawn(iwdg_task(iwdg).unwrap());
 
     // --- CAN
+    //
+    //
+
     let can_rx = CAN1_RX_CH.init(PubSubChannel::new());
     let can_tx = CAN1_TX_CH.init(PubSubChannel::new());
     // Can RX on PB8 can TX on PB9
@@ -90,7 +119,21 @@ async fn main(low_priority_spawner: Spawner) {
     // p.PA12.afio_remap();
 
     let mut can = embassy_stm32::can::Can::new(p.CAN1, p.PA11, p.PA12, Irqs);
+
+    can.modify_config()
+        .set_silent(false)
+        .set_loopback(false)
+        .set_automatic_retransmit(false)
+        .set_bitrate(125_000);
+
+    let telemetry_filter = Mask32::accept_all();
+
+    can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
+
     can.wakeup();
+    info!("trying to enable can bus ---------");
+    can.enable().await;
+    info!("enabled can bus ---------");
 
     // Start main CAN RX/TX tasks
     can::spawn_can1(can, low_priority_spawner, can_rx.publisher().unwrap(), can_tx.subscriber().unwrap()).await;
