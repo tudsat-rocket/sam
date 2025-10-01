@@ -1,33 +1,32 @@
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_stm32::can::bxcan::{filter, Fifo, Frame, Id, StandardId};
+use embassy_stm32::can::bxcan::{Data, Fifo, Frame, Id, StandardId, filter};
 use embassy_stm32::can::{Can, CanRx, CanTx};
 use embassy_stm32::peripherals::CAN;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 use embassy_sync::pubsub::{PubSubChannel, Publisher, Subscriber};
-use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
+use shared_types::FlightMode;
+//use shared_types::{CanBusMessage, CanBusMessageId, FlightMode, TelemetryToPayloadMessage};
+use heapless::Vec;
 use static_cell::StaticCell;
+
+use shared_types::can::{
+    CanMessage,
+    structure::{Can2aFrame, CanFrameId},
+};
 
 pub const CAN_QUEUE_SIZE: usize = 3; // TODO
 pub const NUM_CAN_SUBSCRIBERS: usize = 1; // TODO
 pub const NUM_CAN_PUBLISHERS: usize = 1; // TODO
 
-pub type CanFrame = (u16, [u8; 8]);
-pub type CanInChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanInSubscriper =
-    Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
-pub type CanOutChannel = PubSubChannel<CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
-pub type CanOutPublisher = Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanRxCh = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanRxSub = Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>;
+pub type CanTxCh = PubSubChannel<CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
+pub type CanTxPub = Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>;
 
-pub static CAN_IN: StaticCell<CanInChannel> = StaticCell::new();
-pub static CAN_OUT: StaticCell<CanOutChannel> = StaticCell::new();
-
-pub const NUM_FLIGHT_MODE_SUBSCRIBERS: usize = 3;
-pub type FlightModeChannel = PubSubChannel<CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
-pub type FlightModeSubscriber =
-    Subscriber<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>;
-pub static FLIGHT_MODE: StaticCell<FlightModeChannel> = StaticCell::new();
+pub static CAN_IN: StaticCell<CanRxCh> = StaticCell::new();
+pub static CAN_OUT: StaticCell<CanTxCh> = StaticCell::new();
 
 static CAN: StaticCell<Can<'static, CAN>> = StaticCell::new();
 static CAN_TX: StaticCell<CanTx<'static, 'static, CAN>> = StaticCell::new();
@@ -36,8 +35,8 @@ static CAN_RX: StaticCell<CanRx<'static, 'static, CAN>> = StaticCell::new();
 pub async fn spawn(
     mut can: Can<'static, CAN>,
     spawner: Spawner,
-    publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
-    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) {
     can.modify_config()
         .set_loopback(false)
@@ -46,8 +45,9 @@ pub async fn spawn(
         .leave_disabled();
 
     let telemetry_filter = filter::Mask32::frames_with_std_id(
-        StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
-        StandardId::new(0x700).unwrap(),
+        //StandardId::new(CanBusMessageId::TelemetryBroadcast(0).into()).unwrap(),
+        StandardId::new(0x1af).unwrap(),
+        StandardId::new(0).unwrap(),
     );
 
     can.modify_filters().enable_bank(0, Fifo::Fifo0, telemetry_filter);
@@ -67,15 +67,15 @@ pub async fn spawn(
 #[embassy_executor::task]
 async fn run_tx(
     can_tx: &'static mut CanTx<'static, 'static, CAN>,
-    mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
+    mut subscriber: Subscriber<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, 1, NUM_CAN_PUBLISHERS>,
 ) -> ! {
     loop {
-        let (address, data) = subscriber.next_message_pure().await;
-        let Some(sid) = StandardId::new(address) else {
+        let msg: Can2aFrame = subscriber.next_message_pure().await.into();
+        let Some(sid) = StandardId::new(msg.id.into()) else {
             continue;
         };
 
-        let frame = Frame::new_data(sid, data);
+        let frame = Frame::new_data(sid, Data::new(msg.payload.as_slice()).unwrap());
         can_tx.write(&frame).await;
         can_tx.flush_all().await;
     }
@@ -84,46 +84,41 @@ async fn run_tx(
 #[embassy_executor::task]
 async fn run_rx(
     can_rx: &'static mut CanRx<'static, 'static, CAN>,
-    publisher: Publisher<'static, CriticalSectionRawMutex, CanFrame, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
+    publisher: Publisher<'static, CriticalSectionRawMutex, CanMessage, CAN_QUEUE_SIZE, NUM_CAN_SUBSCRIBERS, 1>,
 ) -> ! {
     loop {
         match can_rx.read().await {
             Ok(envelope) => {
                 let frame = envelope.frame;
-                let Some(data) = frame.data() else {
+                let Id::Standard(id) = frame.id() else {
+                    warn!("Unexpected extended 29bit Can Frame Id, dropping.");
+                    continue;
+                };
+                let Some(frame_data) = frame.data() else {
+                    warn!("Unexpected non-data Can Frame, dropping.");
                     continue;
                 };
 
-                let Id::Standard(sid) = frame.id() else {
-                    // EID package, skipping.
+                let Ok(data) = Vec::from_slice(frame_data) else {
+                    warn!("Unexpected Can Frame data of lenght > 8 bytes, dropping.");
                     continue;
                 };
-                let id_raw = sid.as_raw();
-
-                let Ok(data_array) = data.as_ref().try_into() else {
-                    // frame wasn't 8 bytes long, skip.
+                let Ok(id) = CanFrameId::try_from(id.as_raw()) else {
+                    warn!(
+                        "Can Frame id could not be mapped to a type, either the sender's or this software might be outdated. id: {}",
+                        id.as_raw()
+                    );
                     continue;
                 };
-
-                publisher.publish_immediate((id_raw, data_array));
+                let message = Can2aFrame { id, payload: data };
+                let Ok(message_parsed) = CanMessage::try_from(message) else {
+                    warn!("Malformed Can Message payload, message could not be parsed into type, dropping.");
+                    continue;
+                };
+                publisher.publish_immediate(message_parsed); // TODO: think about publish immediate
             }
             Err(e) => {
-                error!("Failed to read envelope: {:?}", Debug2Format(&e))
-            }
-        }
-    }
-}
-
-#[embassy_executor::task]
-pub async fn run_flight_mode_listener(
-    mut can_subscriber: CanInSubscriper,
-    flight_mode_publisher: Publisher<'static, CriticalSectionRawMutex, FlightMode, 1, NUM_FLIGHT_MODE_SUBSCRIBERS, 1>,
-) -> ! {
-    loop {
-        let (sid, data) = can_subscriber.next_message_pure().await;
-        if sid == CanBusMessageId::TelemetryBroadcast(0).into() {
-            if let Ok(Some(msg)) = TelemetryToPayloadMessage::parse(data) {
-                flight_mode_publisher.publish_immediate(msg.mode);
+                error!("Can Bus Error: Failed to read can envelope: {:?}", Debug2Format(&e))
             }
         }
     }

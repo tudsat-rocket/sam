@@ -34,3 +34,4 @@ shared_types = { path = "../../shared_types" }
 w25q = "0.2.9"
 smart-leds = "0.4.0"
 ws2812-spi = "0.5.0"
+heapless = "0.8"

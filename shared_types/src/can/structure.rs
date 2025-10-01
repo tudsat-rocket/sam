@@ -6,6 +6,7 @@ pub struct Can2aFrame {
 
 /// Abstract representation of an 11 bit CAN identifier.
 /// This is to loosely encode priority and make parsing by hand easier.
+#[derive(Debug)]
 pub struct CanFrameId {
     pub message_kind: MessageKind,
     pub subsystem_id: SubsystemId,
@@ -37,7 +38,7 @@ impl From<CanFrameId> for u16 {
 }
 
 /// This is to loosely encode priority and make parsing by hand easier.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 #[repr(u8)]
 pub enum SubsystemId {
     Empty = 0,
@@ -51,6 +52,7 @@ impl TryFrom<u8> for SubsystemId {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         use SubsystemId as Id;
         Ok(match value {
+            0 => Id::Empty,
             1 => Id::Engine,
             2 => Id::Ereg,
             7 => Id::CameraIo,
@@ -62,7 +64,7 @@ impl TryFrom<u8> for SubsystemId {
 
 /// This is to loosely encode priority and make parsing by hand easier.
 #[repr(u8)]
-#[derive(PartialEq, Eq, Clone)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum MessageKind {
     /// Command sent from the FC to other boards.
     SubsystemCommand = 0,
@@ -97,6 +99,7 @@ impl From<PayloadParseError> for CanMessageParseError {
         Self::Payload(value)
     }
 }
+#[derive(Debug)]
 pub enum IdParseError {
     MessageKind,
     SubsystemId,
