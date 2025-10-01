@@ -28,8 +28,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Receiver;
 use embassy_sync::channel::Sender;
 use embassy_sync::mutex::Mutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Ticker};
+use shared_types::FlightMode;
 
+use core::sync::atomic::{AtomicBool, Ordering};
+use flight_computer_firmware::buzzer::run_gcs;
 use lora_phy::LoRa;
 use lora_phy::iv::GenericSx126xInterfaceVariant;
 use lora_phy::mod_params::Bandwidth;
@@ -39,9 +43,15 @@ use lora_phy::sx126x::{self, Sx126x, Sx1262};
 use shared_types::{DownlinkMessage, UplinkMessage};
 use static_cell::StaticCell;
 
+use defmt::{Debug2Format, info, warn};
 use {defmt_rtt as _, panic_probe as _};
 
 use flight_computer_firmware as fw;
+use shared_types::Command;
+
+static BUZZER_ON_SIG: StaticCell<Signal<CriticalSectionRawMutex, bool>> = StaticCell::new();
+static IS_ARMED_SIGNAL: StaticCell<Signal<CriticalSectionRawMutex, bool>> = StaticCell::new();
+static IS_ARMED: AtomicBool = AtomicBool::new(false);
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -56,6 +66,18 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(run_downlink(eth_tx, usb_tx, lora_rx)).unwrap();
     spawner.spawn(run_uplink(eth_rx, usb_rx, lora_tx)).unwrap();
+    let buzzer_on_sig = BUZZER_ON_SIG.init(Signal::new());
+    spawner.spawn(fw::buzzer::run_gcs(board.buzzer.0, board.buzzer.1, buzzer_on_sig)).unwrap();
+    let is_armed_signal = IS_ARMED_SIGNAL.init(Signal::new());
+    spawner.spawn(fw::gcs::keyswitch::run(board.other.keyswitch_in, is_armed_signal)).unwrap();
+
+    // main loop
+    loop {
+        let is_armed = is_armed_signal.wait().await;
+        info!("is_armed: {}", is_armed);
+        buzzer_on_sig.signal(is_armed);
+        IS_ARMED.store(is_armed, Ordering::Relaxed);
+    }
 }
 
 #[embassy_executor::task]
@@ -79,7 +101,44 @@ async fn run_uplink(
     loop {
         let msg = eth_rx.receive().await;
         defmt::info!("received uplinkmessage");
+        match msg {
+            UplinkMessage::ReadSettings => (),
+            UplinkMessage::Heartbeat => (),
+            UplinkMessage::ApplyLoRaSettings(_) => (),
+            UplinkMessage::ReadFlash(..) => (),
+            UplinkMessage::WriteSettings(_) => (),
+            UplinkMessage::Command(ref cmd) => {
+                match cmd {
+                    Command::Reboot
+                    | Command::EraseFlash
+                    | Command::RebootToBootloader
+                    | Command::SetDataRate(_)
+                    | Command::SetTransmitPower(_)
+                    | Command::SetAcsMode(_)
+                    | Command::SetAcsValveState(_) => (),
+                    Command::SetIoModuleOutput(..) => {
+                        if !IS_ARMED.load(Ordering::Relaxed) {
+                            uplink_rejected(cmd);
+                            continue;
+                        }
+                    }
+                    Command::SetFlightMode(fm) => match fm {
+                        FlightMode::Idle | FlightMode::HardwareArmed => (),
+                        _ => {
+                            if !IS_ARMED.load(Ordering::Relaxed) {
+                                uplink_rejected(cmd);
+                                continue;
+                            }
+                        }
+                    },
+                };
+            }
+        };
         lora_tx.send(msg).await;
         defmt::info!("sent uplinkmessage");
     }
+}
+
+fn uplink_rejected(cmd: &Command) {
+    warn!("uplink command: {} was rejected because the system is not armed. Turn the key to arm!", Debug2Format(&cmd));
 }

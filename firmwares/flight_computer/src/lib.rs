@@ -11,10 +11,12 @@ use core::net::SocketAddrV4;
 
 use embassy_stm32::adc::AdcChannel;
 use embassy_stm32::adc::AnyAdcChannel;
+use embassy_stm32::can::config::FdCanConfig;
 use embassy_stm32::timer::simple_pwm::PwmPinConfig;
 use embassy_stm32::usb::Driver;
 use embassy_sync::blocking_mutex;
 use embassy_usb::UsbDevice;
+use gcs::keyswitch;
 use rand::RngCore;
 
 use embassy_executor::{InterruptExecutor, Spawner};
@@ -78,6 +80,7 @@ pub mod buzzer;
 pub mod can;
 pub mod drivers;
 pub mod ethernet;
+pub mod gcs;
 pub mod lora;
 pub mod recovery;
 pub mod storage;
@@ -135,11 +138,17 @@ pub struct BoardAdc {
     pub continuity_check: AnyAdcChannel<ADC1>,
 }
 
+pub struct OtherBoardIo {
+    pub keyswitch_in: Input<'static>,   // PC2_C
+    pub keyswitch_out: Output<'static>, // PA4
+}
+
 pub struct Board {
     pub sensors: BoardSensors,
     pub outputs: BoardOutputs,
     // pub load_outputs: embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, RefCell<LoadOutputs>>,
     pub adc: BoardAdc,
+    pub other: OtherBoardIo,
     pub can1: Can<'static>,
     pub can2: Can<'static>,
     pub lora1: LoRa<LoraTransceiver, Delay>,
@@ -299,6 +308,11 @@ pub async fn init_board()
 
     let mut can1 = CanConfigurator::new(p.FDCAN2, p.PB5, p.PB6, Irqs);
     let mut can2 = CanConfigurator::new(p.FDCAN1, p.PB8, p.PB9, Irqs);
+    let mut can_config = FdCanConfig::default();
+    can_config.set_automatic_retransmit(false);
+
+    can1.set_config(can_config);
+    can2.set_config(can_config);
 
     can1.set_bitrate(125_000);
     can2.set_bitrate(125_000);
@@ -429,6 +443,12 @@ pub async fn init_board()
     let adc_main_current = p.PA0.degrade_adc();
     let adc_recovery_current = p.PA6.degrade_adc();
     let adc_continuity_check = p.PC0.degrade_adc();
+
+    // Other / keyswitch
+    // // TODO: check pull
+    let keyswitch_in = Input::new(p.PC2, Pull::Down);
+    let keyswitch_out = Output::new(p.PA4, Level::High, Speed::Low);
+
     use embassy_sync::blocking_mutex::Mutex;
     let board = Board {
         sensors: BoardSensors {
@@ -459,6 +479,10 @@ pub async fn init_board()
             main_current: adc_main_current,
             recovery_current: adc_recovery_current,
             continuity_check: adc_continuity_check,
+        },
+        other: OtherBoardIo {
+            keyswitch_in,
+            keyswitch_out,
         },
         lora1,
         lora2,

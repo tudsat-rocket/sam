@@ -20,8 +20,8 @@ use embassy_time::{Duration, Ticker};
 
 use defmt::*;
 
-use shared_types::can::SubsystemInfo;
-use shared_types::can::{CanMessage, engine::EngineState};
+use shared_types::can::structure::{Can2aFrame, MessageKind};
+use shared_types::can::{CanMessage, SubsystemInfo, TelemetryBroadcast, engine::EngineState};
 use shared_types::{
     AcsMode, Command, DownlinkMessage, FlightMode, Settings, TelemetryDataRate, ThrusterValveState, UplinkMessage,
 };
@@ -354,8 +354,10 @@ impl Vehicle {
             // }
         }
 
-        //// Broadcast telemetry to payloads
-        //self.broadcast_can_telemetry();
+        // Broadcast telemetry to payloads
+        if self.time.0 % 500 == 0 {
+            self.broadcast_can_telemetry();
+        }
     }
 
     /// Reads all CAN messages (CAN1) from the buffer and processes them.
@@ -365,6 +367,13 @@ impl Vehicle {
             self.subsystems.ereg.process_message(msg);
             self.subsystems.engine.process_message(msg);
         }
+    }
+
+    fn broadcast_can_telemetry(&mut self) {
+        self.can1.0.publish_immediate(CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode)));
+        let msg = CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode));
+        let id: u16 = Can2aFrame::from(msg).id.into();
+        warn!("can telemetry with id: {} and payload...", id);
     }
 
     fn switch_mode(&mut self, new_mode: FlightMode) {

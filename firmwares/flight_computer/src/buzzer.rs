@@ -1,13 +1,15 @@
 //! Driver for the on-board buzzer, responsible for playing mode change beeps and
 //! warning tones using the STM32's timers for PWM generation.
 
-use defmt::warn;
+use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 use embassy_stm32::pac::gpio::Gpio;
 use embassy_stm32::pac::gpio::vals;
 use embassy_stm32::time::Hertz;
 use embassy_stm32::timer::{Channel, simple_pwm::SimplePwm};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 
 use num_traits::Float;
@@ -31,6 +33,16 @@ const STARTUP: [Note; 6] = [
     Note::note(E, 4, 150),
     Note::pause(10),
     Note::note(G, 4, 150),
+    Note::pause(10),
+];
+
+#[allow(dead_code)]
+const STARTUP_LOW_PITCH: [Note; 6] = [
+    Note::note(C, 3, 150),
+    Note::pause(10),
+    Note::note(E, 3, 150),
+    Note::pause(10),
+    Note::note(G, 3, 150),
     Note::pause(10),
 ];
 
@@ -353,6 +365,33 @@ pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, 
         }
 
         pwm.channel(channel).disable();
+    }
+}
+
+#[embassy_executor::task]
+pub async fn run_gcs(
+    mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>,
+    channel: Channel,
+    on_signal: &'static Signal<CriticalSectionRawMutex, bool>,
+) -> ! {
+    let max_duty = pwm.max_duty_cycle();
+
+    pwm.channel(channel).set_duty_cycle(max_duty / 2);
+
+    loop {
+        let pwm_ref = &mut pwm;
+
+        match on_signal.wait().await {
+            true => {
+                info!("buzzer on");
+                pwm_ref.set_frequency(Hertz::hz(880));
+                pwm_ref.channel(channel).enable();
+            }
+            false => {
+                info!("buzzer off");
+                pwm_ref.channel(channel).disable();
+            }
+        }
     }
 }
 
