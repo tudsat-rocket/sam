@@ -24,7 +24,7 @@ use engine::{EngineInfoMsg, EngineState, LaunchCode};
 use ereg::{EregInfoMsg, EregState};
 use structure::*;
 
-use crate::common::FlightMode;
+use crate::common::{FlightMode, ProcedureStep};
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -176,6 +176,7 @@ impl TryFrom<Can2aFrame> for SubsystemInfo {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum TelemetryBroadcast {
     FlightMode(FlightMode),
+    ProcedureStep(ProcedureStep),
 }
 impl TryFrom<Can2aFrame> for TelemetryBroadcast {
     type Error = CanMessageParseError;
@@ -193,20 +194,35 @@ impl TryFrom<Can2aFrame> for TelemetryBroadcast {
                     .map_err(|_e| PayloadParseError::FlightMode)?;
                 TelemetryBroadcast::FlightMode(fm)
             }
+            1 => {
+                let step = ProcedureStep::try_from(*value.payload.first().ok_or(PayloadParseError::ProcedureStep)?)
+                    .map_err(|_e| PayloadParseError::ProcedureStep)?;
+                TelemetryBroadcast::ProcedureStep(step)
+            }
             _ => return Err(IdParseError::SpecificMessageId.into()),
         })
     }
 }
 impl From<TelemetryBroadcast> for Can2aFrame {
     fn from(value: TelemetryBroadcast) -> Self {
+        let message_kind = MessageKind::TelemetryBroadcast;
+        let subsystem_id = SubsystemId::Empty;
         match value {
             TelemetryBroadcast::FlightMode(fm) => Can2aFrame {
                 id: CanFrameId {
-                    message_kind: MessageKind::TelemetryBroadcast,
-                    subsystem_id: SubsystemId::Empty,
+                    message_kind,
+                    subsystem_id,
                     specific_message_id: 0,
                 },
                 payload: { Vec::from_slice(&[fm as u8]).unwrap() },
+            },
+            TelemetryBroadcast::ProcedureStep(step) => Can2aFrame {
+                id: CanFrameId {
+                    message_kind,
+                    subsystem_id,
+                    specific_message_id: 1,
+                },
+                payload: Vec::from_slice(&[step as u8]).unwrap(),
             },
         }
     }

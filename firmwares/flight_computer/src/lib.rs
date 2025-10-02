@@ -169,7 +169,7 @@ static SPI2_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = Sta
 static SPI3_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 static SPI4_SHARED: StaticCell<Mutex<CriticalSectionRawMutex, Spi<Async>>> = StaticCell::new();
 
-static FLIGHT_MODE_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal::new();
+static BUZZER_SIGNAL: Signal<CriticalSectionRawMutex, FlightMode> = Signal::new();
 
 static LOAD_OUTPUTS: StaticCell<embassy_sync::blocking_mutex::Mutex<CriticalSectionRawMutex, LoadOutputs>> =
     StaticCell::new();

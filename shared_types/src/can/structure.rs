@@ -112,6 +112,7 @@ pub enum PayloadParseError {
     EregInfoMsg,
     EregState,
     FlightMode,
+    ProcedureStep,
 }
 
 /// Helper to build our 11 bit Can2.0A identifier.

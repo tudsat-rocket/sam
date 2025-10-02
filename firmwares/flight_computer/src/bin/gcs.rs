@@ -30,7 +30,7 @@ use embassy_sync::channel::Sender;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_time::{Delay, Duration, Instant, Ticker};
-use shared_types::FlightMode;
+use shared_types::{FlightMode, ProcedureStep};
 
 use core::sync::atomic::{AtomicBool, Ordering};
 use flight_computer_firmware::buzzer::run_gcs;
@@ -98,9 +98,10 @@ async fn run_uplink(
     usb_rx: (),
     lora_tx: Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
 ) -> ! {
-    loop {
+    'outer: loop {
         let msg = eth_rx.receive().await;
-        defmt::info!("received uplinkmessage");
+        defmt::info!("received uplinkmessage over ethernet");
+        use ProcedureStep as S;
         match msg {
             UplinkMessage::ReadSettings => (),
             UplinkMessage::Heartbeat => (),
@@ -119,7 +120,7 @@ async fn run_uplink(
                     Command::SetIoModuleOutput(..) => {
                         if !IS_ARMED.load(Ordering::Relaxed) {
                             uplink_rejected(cmd);
-                            continue;
+                            continue 'outer;
                         }
                     }
                     Command::SetFlightMode(fm) => match fm {
@@ -127,7 +128,16 @@ async fn run_uplink(
                         _ => {
                             if !IS_ARMED.load(Ordering::Relaxed) {
                                 uplink_rejected(cmd);
-                                continue;
+                                continue 'outer;
+                            }
+                        }
+                    },
+                    Command::SetDisplayStep(step) => match step {
+                        S::IdlePassivated | S::N2Filling | S::IdleActive | S::HardwareArmed => (),
+                        _ => {
+                            if !IS_ARMED.load(Ordering::Relaxed) {
+                                uplink_rejected(cmd);
+                                continue 'outer;
                             }
                         }
                     },
@@ -135,7 +145,6 @@ async fn run_uplink(
             }
         };
         lora_tx.send(msg).await;
-        defmt::info!("sent uplinkmessage");
     }
 }
 

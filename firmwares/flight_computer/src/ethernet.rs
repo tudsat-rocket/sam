@@ -1,3 +1,4 @@
+use defmt::info;
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
 
@@ -65,9 +66,12 @@ async fn run_socket(
     downlink_receiver: Receiver<'static, CriticalSectionRawMutex, DownlinkMessage, 3>,
     uplink_sender: Sender<'static, CriticalSectionRawMutex, UplinkMessage, 3>,
 ) -> ! {
+    info!("started run_socket");
     let remote_endpoint = (embassy_net::Ipv4Address::new(255, 255, 255, 255), 18355);
+
     socket.bind(18356).unwrap();
     socket.set_hop_limit(Some(4));
+    info!("Ethernet socket bind successful");
 
     loop {
         let mut recv_buffer = [0; 1024];
@@ -79,8 +83,10 @@ async fn run_socket(
             }
             // receive udp packet from PC
             Either::Second(res) => {
+                info!("Received some data over ethernet.");
                 if let Ok((len, _peer)) = res {
                     let Ok(msg) = postcard::from_bytes_cobs(&mut recv_buffer[..len]) else {
+                        info!("Received UplinkMessage");
                         continue;
                     };
 

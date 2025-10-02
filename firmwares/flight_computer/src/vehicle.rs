@@ -23,7 +23,8 @@ use defmt::*;
 use shared_types::can::structure::{Can2aFrame, MessageKind};
 use shared_types::can::{CanMessage, SubsystemInfo, TelemetryBroadcast, engine::EngineState};
 use shared_types::{
-    AcsMode, Command, DownlinkMessage, FlightMode, Settings, TelemetryDataRate, ThrusterValveState, UplinkMessage,
+    AcsMode, Command, DownlinkMessage, FlightMode, ProcedureStep, Settings, TelemetryDataRate, ThrusterValveState,
+    UplinkMessage,
 };
 use state_estimator::StateEstimator;
 use telemetry::{
@@ -93,6 +94,7 @@ pub struct Vehicle {
     //radio: RadioHandle,
     flash: FlashHandle,
     //can: CanHandle,
+    display_procedure_step: ProcedureStep,
 }
 
 #[embassy_executor::task]
@@ -173,6 +175,7 @@ impl Vehicle {
             //power,
             flash,
             loop_runtime: 0.0,
+            display_procedure_step: ProcedureStep::default(),
         }
     }
 
@@ -226,12 +229,6 @@ impl Vehicle {
 
         // TODO: re-enable timing checks for recovery // recovery invocation moved to fn switch_mode
         let _elapsed = self.state_estimator.time_in_mode();
-        // if self.mode == FlightMode::RecoveryDrogue && self.settings.drogue_output_settings.currently_high(elapsed) {
-        //     self.parabreaks_sig.signal(true);
-        // }
-        // if self.mode == FlightMode::RecoveryMain && self.settings.main_output_settings.currently_high(elapsed) {
-        //     self.main_recovery_sig.signal(true);
-        // }
         let (r, y, g) = self.mode.led_state(self.time.0);
         self.board_leds.0.set_level((!r).into());
         self.board_leds.1.set_level((!y).into());
@@ -305,6 +302,7 @@ impl Vehicle {
             Command::Reboot => cortex_m::peripheral::SCB::sys_reset(),
             Command::RebootToBootloader => {}
             Command::SetFlightMode(fm) => self.switch_mode(fm),
+            Command::SetDisplayStep(step) => self.switch_procedure_step(step),
             //Command::SetTransmitPower(txp) => self.radio.set_transmit_power(txp),
             //Command::EraseFlash => {
             //    let _ = self.flash.erase();
@@ -371,6 +369,9 @@ impl Vehicle {
 
     fn broadcast_can_telemetry(&mut self) {
         self.can1.0.publish_immediate(CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode)));
+        self.can1
+            .0
+            .publish_immediate(CanMessage::Telem(TelemetryBroadcast::ProcedureStep(self.display_procedure_step)));
         let msg = CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode));
         let id: u16 = Can2aFrame::from(msg).id.into();
         warn!("can telemetry with id: {} and payload...", id);
@@ -400,7 +401,17 @@ impl Vehicle {
         }
 
         self.mode = new_mode;
-        crate::FLIGHT_MODE_SIGNAL.signal(self.mode);
+        crate::BUZZER_SIGNAL.signal(self.mode);
+        self.broadcast_can_telemetry();
+    }
+
+    /// For now only broadcasts to fins.
+    /// Later this should also control the rocket.
+    fn switch_procedure_step(&mut self, new_step: ProcedureStep) {
+        if new_step != self.display_procedure_step {
+            self.broadcast_can_telemetry();
+        }
+        self.display_procedure_step = new_step;
     }
 }
 

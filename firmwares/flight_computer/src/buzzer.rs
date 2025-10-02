@@ -345,7 +345,7 @@ pub async fn run(mut pwm: SimplePwm<'static, embassy_stm32::peripherals::TIM2>, 
             }
         };
 
-        match select(crate::FLIGHT_MODE_SIGNAL.wait(), play_fut).await {
+        match select(crate::BUZZER_SIGNAL.wait(), play_fut).await {
             Either::First(fm) => {
                 flight_mode = fm;
                 melody = match flight_mode {

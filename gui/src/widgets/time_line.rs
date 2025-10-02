@@ -1,6 +1,6 @@
 use egui::{Align2, Color32, FontId, Layout, Pos2, Rect, Stroke, Vec2, epaint::CircleShape};
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2};
-use shared_types::{Command, FlightMode};
+use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
 
 use crate::{
@@ -24,7 +24,7 @@ pub enum HyacinthNominalState {
     IdlePassivated,
     N2Filling,
     IdleActive,
-    HarwareArmed,
+    HardwareArmed,
     N2OFilling,
     SoftwareArmed,
     Ignition,
@@ -38,13 +38,35 @@ pub enum HyacinthNominalState {
 }
 
 impl HyacinthNominalState {
+    fn associated_procedure_step(&self) -> ProcedureStep {
+        use HyacinthNominalState as S;
+        use ProcedureStep as P;
+        match self {
+            S::Verification => P::Verification,
+            S::IdlePassivated => P::IdlePassivated,
+            S::N2Filling => P::N2Filling,
+            S::IdleActive => P::IdleActive,
+            S::HardwareArmed => P::HardwareArmed,
+            S::N2OFilling => P::N2OFilling,
+            S::SoftwareArmed => P::SoftwareArmed,
+            S::Ignition => P::Ignition,
+            S::BurnPhase => P::BurnPhase,
+            S::CoastPhase => P::CoastPhase,
+            S::DroguePhase => P::DroguePhase,
+            S::MainPhase => P::MainPhase,
+            S::LandedActive => P::LandedActive,
+            S::Passivation => P::Passivation,
+            S::LandedPassivated => P::LandedPassivated,
+        }
+    }
+
     fn associated_flight_mode(&self) -> FlightMode {
         match self {
             HyacinthNominalState::Verification => FlightMode::Idle,
             HyacinthNominalState::IdlePassivated => FlightMode::Idle,
             HyacinthNominalState::N2Filling => FlightMode::Idle,
             HyacinthNominalState::IdleActive => FlightMode::Idle,
-            HyacinthNominalState::HarwareArmed => FlightMode::HardwareArmed,
+            HyacinthNominalState::HardwareArmed => FlightMode::HardwareArmed,
             HyacinthNominalState::N2OFilling => FlightMode::HardwareArmed,
             HyacinthNominalState::SoftwareArmed => FlightMode::Armed,
             HyacinthNominalState::Ignition => FlightMode::Armed,
@@ -64,7 +86,7 @@ impl HyacinthNominalState {
             HyacinthNominalState::IdlePassivated => COLOR_NOMINAL_ON_GROUND,
             HyacinthNominalState::N2Filling => COLOR_NOMINAL_ON_GROUND,
             HyacinthNominalState::IdleActive => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::HarwareArmed => COLOR_NOMINAL_ON_GROUND,
+            HyacinthNominalState::HardwareArmed => COLOR_NOMINAL_ON_GROUND,
             HyacinthNominalState::N2OFilling => COLOR_NOMINAL_ON_GROUND,
             HyacinthNominalState::SoftwareArmed => COLOR_NOMINAL_ON_GROUND,
             HyacinthNominalState::Ignition => COLOR_NOMINAL_IGNITION,
@@ -88,7 +110,7 @@ impl HyacinthNominalState {
                     (
                         Self::IdleActive.as_timeline_state(frontend),
                         (
-                            Self::HarwareArmed.as_timeline_state(frontend),
+                            Self::HardwareArmed.as_timeline_state(frontend),
                             (
                                 Self::N2OFilling.as_timeline_state(frontend),
                                 (
@@ -153,9 +175,16 @@ impl HyacinthNominalState {
                                         .map(|fm| fm != self.associated_flight_mode())
                                         .unwrap_or(true)
                                     {
-                                        backend
-                                            .send_command(Command::SetFlightMode(self.associated_flight_mode()))
-                                            .unwrap();
+                                        if let Err(e) =
+                                            backend.send_command(Command::SetFlightMode(self.associated_flight_mode()))
+                                        {
+                                            println!("Error sending command via backend: {}", e);
+                                        }
+                                        if let Err(e) = backend
+                                            .send_command(Command::SetDisplayStep(self.associated_procedure_step()))
+                                        {
+                                            println!("Error sending command via backend: {}", e);
+                                        }
                                     }
                                     captured_frontend.set_hyacinth_anomalous_state(None);
                                     captured_frontend.set_hyacinth_nominal_state(self);

@@ -55,3 +55,49 @@ impl Default for FlightMode {
         Self::Idle
     }
 }
+
+#[derive(Default, Clone, Copy, Debug, PartialEq, PartialOrd, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[repr(u8)]
+/// Procedure as shown in Sam, guiding a launch as planned.
+pub enum ProcedureStep {
+    Verification = 0,
+    #[default]
+    IdlePassivated = 1,
+    N2Filling = 2,
+    IdleActive = 3,
+    HardwareArmed = 4,
+    N2OFilling = 5,
+    SoftwareArmed = 6,
+    Ignition = 7,
+    BurnPhase = 8,
+    CoastPhase = 9,
+    DroguePhase = 10,
+    MainPhase = 11,
+    LandedActive = 12,
+    Passivation = 13,
+    LandedPassivated = 14,
+}
+
+impl TryFrom<u8> for ProcedureStep {
+    type Error = ();
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Verification),
+            1 => Ok(Self::IdlePassivated),
+            2 => Ok(Self::N2Filling),
+            3 => Ok(Self::IdleActive),
+            4 => Ok(Self::HardwareArmed),
+            5 => Ok(Self::N2OFilling),
+            6 => Ok(Self::SoftwareArmed),
+            7 => Ok(Self::Ignition),
+            8 => Ok(Self::BurnPhase),
+            9 => Ok(Self::CoastPhase),
+            11 => Ok(Self::DroguePhase),
+            12 => Ok(Self::MainPhase),
+            13 => Ok(Self::Passivation),
+            14 => Ok(Self::LandedPassivated),
+            _ => Err(()),
+        }
+    }
+}

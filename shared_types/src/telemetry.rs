@@ -245,6 +245,7 @@ pub enum Command {
     SetFlightMode(FlightMode),
     SetTransmitPower(TransmitPower),
     SetDataRate(TelemetryDataRate),
+    SetDisplayStep(ProcedureStep),
     SetAcsMode(AcsMode),
     SetAcsValveState(ThrusterValveState),
     SetIoModuleOutput(IoBoardRole, u8, bool),
