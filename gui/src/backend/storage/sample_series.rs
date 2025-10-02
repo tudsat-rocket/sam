@@ -41,7 +41,6 @@ impl DataType for SampleSeries {
 
     fn current_value<M: MetricTrait>(&self, end: Option<f64>) -> M::Value {
         let last_value = self.data[0].last();
-        println!("{:?}, {:?}", last_value.unwrap().time, end);
         let current_value = end
             .or(last_value.map(|p| p.time))
             .map(|end| {

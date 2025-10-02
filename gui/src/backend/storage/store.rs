@@ -20,6 +20,7 @@ use crate::{
 
 #[derive(Default)]
 pub struct DataStore {
+    has_initialized_local_metrics: bool,
     data: HashMap<Metric, Data>,
     first_time: Option<f64>,
     last_time: Option<f64>,
@@ -79,17 +80,17 @@ impl Data {
 
     fn append<M: MetricTrait>(&mut self, value: M::Value, time: f64) -> Result<(), &'static str> {
         return match self {
-            Data::SampleSeries(data) => data.append::<M>(value, time),
-            Data::EventSeries(data) => data.append::<M>(value, time),
-            Data::Constant(data) => data.append::<M>(value, time),
+            Data::SampleSeries(sample_series) => sample_series.append::<M>(value, time),
+            Data::EventSeries(event_series) => event_series.append::<M>(value, time),
+            Data::Constant(constant) => constant.append::<M>(value, time),
         };
     }
 
     fn current_value<M: MetricTrait>(&self, end: Option<f64>) -> M::Value {
         return match self {
-            Data::SampleSeries(data) => data.current_value::<M>(end),
-            Data::EventSeries(data) => data.current_value::<M>(end),
-            Data::Constant(data) => data.current_value::<M>(end),
+            Data::SampleSeries(sample_series) => sample_series.current_value::<M>(end),
+            Data::EventSeries(event_series) => event_series.current_value::<M>(end),
+            Data::Constant(constant) => constant.current_value::<M>(end),
         };
     }
 }
@@ -118,6 +119,13 @@ impl DataStore {
 
     pub fn current_value<M: MetricTrait>(&self, end: Option<f64>) -> Option<M::Value> {
         return self.data.get(&M::metric()).map(|data| data.current_value::<M>(end));
+    }
+
+    pub fn has_initialized_local_metrics(&self) -> bool {
+        return self.has_initialized_local_metrics;
+    }
+    pub fn initialize_local_metrics(&mut self) {
+        self.has_initialized_local_metrics = true;
     }
 
     pub fn ingest_message<const N: usize>(
@@ -328,6 +336,7 @@ impl DataStore {
 
         return Self {
             data,
+            has_initialized_local_metrics: false,
             first_time: first_time.is_normal().then_some(first_time),
             last_time: last_time.is_normal().then_some(last_time),
         };

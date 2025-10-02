@@ -72,8 +72,12 @@ impl MenuBarPanel {
                 egui::ComboBox::new(egui::Id::new("CreateNewBackend"), "").selected_text("Create Backend").show_ui(
                     ui,
                     |ui| {
-                        ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Serial), "Serial");
-                        ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Udp), "UDP");
+                        if !sam.has_active_backend_type(BackendDiscriminants::Serial) {
+                            ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Serial), "Serial");
+                        }
+                        if !sam.has_active_backend_type(BackendDiscriminants::Udp) {
+                            ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Udp), "UDP");
+                        }
                         #[cfg(not(target_os = "android"))]
                         ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Simulation), "Simulation");
                     },

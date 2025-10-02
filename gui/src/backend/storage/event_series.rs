@@ -71,7 +71,9 @@ impl DataType for EventSeries {
                 .first()
                 .map(|first| raw.push(PlotPoint::new(display_start, first.to_plot_point::<M::Value>().y)));
         }
-        raw.last().map(|last| PlotPoint::new(display_end, last.y)).map(|end_point| raw.push(end_point));
+        if playback_end.is_some() {
+            raw.last().map(|last| PlotPoint::new(display_end, last.y)).map(|end_point| raw.push(end_point));
+        }
 
         //Insert elements on change for correct pattern
         let mut processed = vec![];

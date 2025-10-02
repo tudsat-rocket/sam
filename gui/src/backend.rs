@@ -318,6 +318,25 @@ impl Backend {
         }
     }
 
+    pub fn has_initialized_local_metrics(&self) -> bool {
+        return match self {
+            Backend::Serial(serial_backend) => serial_backend.data_store().has_initialized_local_metrics(),
+            Backend::Udp(udp_backend) => udp_backend.data_store().has_initialized_local_metrics(),
+            Backend::Noop(noop_backend) => noop_backend.data_store().has_initialized_local_metrics(),
+            Backend::Log(log_file_backend) => log_file_backend.data_store().has_initialized_local_metrics(),
+            Backend::Simulation(simulation_backend) => simulation_backend.data_store().has_initialized_local_metrics(),
+        };
+    }
+    pub fn initialize_local_metrics(&mut self) {
+        match self {
+            Backend::Serial(serial_backend) => serial_backend.data_store_mut().initialize_local_metrics(),
+            Backend::Udp(udp_backend) => udp_backend.data_store_mut().initialize_local_metrics(),
+            Backend::Noop(noop_backend) => noop_backend.data_store_mut().initialize_local_metrics(),
+            Backend::Log(log_file_backend) => log_file_backend.data_store_mut().initialize_local_metrics(),
+            Backend::Simulation(simulation_backend) => simulation_backend.data_store_mut().initialize_local_metrics(),
+        };
+    }
+
     pub fn set_value<M: MetricTrait>(&mut self, value: M::Value) -> Result<(), &'static str> {
         let time = self.fc_time().unwrap_or(0f64);
         return self.data_store_mut().set_value::<M>(value, time);

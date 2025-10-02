@@ -49,9 +49,9 @@ impl Sam {
         let backends = vec![
             Backend::Noop(NoopBackend::default()),
             #[cfg(not(target_arch = "wasm32"))]
-            Backend::Udp(UdpBackend::new(ctx)),
-            #[cfg(not(target_arch = "wasm32"))]
             Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())),
+            #[cfg(not(target_arch = "wasm32"))]
+            Backend::Udp(UdpBackend::new(ctx)),
         ];
         let selected_backend_id = backends.len() - 1;
 
@@ -82,6 +82,15 @@ impl Sam {
 
             archive_window: ArchiveWindow::default(),
         }
+    }
+
+    fn has_active_backend_type(&self, backend_type: BackendDiscriminants) -> bool {
+        for backend in &self.backends {
+            if backend_type == BackendDiscriminants::from(backend) {
+                return true;
+            }
+        }
+        return false;
     }
 
     fn close_backend(&mut self, close_id: usize) {
@@ -278,7 +287,7 @@ impl Sam {
         } else {
             self.backends.len() - 1
         };
-        let backend = &mut self.backends[self.selected_backend_id];
+        let backend = &mut self.backends[id];
         let _ = self.frontend.metric_monitor_mut().evaluate_constraints(backend);
         let mut active_constraint_mask = self.frontend.metric_monitor().active_constraint_mask().clone();
         MetricStatusBar::show(ctx, backend, &mut self.frontend, &mut active_constraint_mask);

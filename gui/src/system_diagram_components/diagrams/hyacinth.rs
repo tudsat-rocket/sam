@@ -489,17 +489,16 @@ fn system_definition() -> SystemDefinition {
     }
 }
 
-static INIT_METRICS: Once = Once::new();
-
 pub fn create_diagram<'a>(
     backend: &'a mut Backend,
     frontend: &'a mut Frontend,
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
-    INIT_METRICS.call_once(|| {
+    if !backend.has_initialized_local_metrics() {
         let _ = backend.set_value::<MaxPressureN2Tank>(50f64);
         let _ = backend.set_value::<N2ReleaseValveState>(ValveState::Closed);
-    });
+        backend.initialize_local_metrics();
+    }
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),
         system_definition.connections.iter().map(|c| Line1D::new(c.points.clone())).collect(),
