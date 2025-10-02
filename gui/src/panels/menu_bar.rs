@@ -1,6 +1,7 @@
 use eframe::egui;
-use egui::{Align, Layout, Vec2};
+use egui::{Ui, Vec2};
 
+use crate::backend::{BackendDiscriminants, SerialBackend, UdpBackend};
 use crate::tabs::GuiTab;
 use crate::utils::file::*;
 use crate::{Backend, Sam};
@@ -65,20 +66,30 @@ impl MenuBarPanel {
                 // Toggle archive panel
                 ui.toggle_value(&mut sam.archive_window.open, "🗄 Flight Archive");
 
-                // Toggle archive panel
-                #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-                if ui.selectable_label(data_source_is_sim, "💻 Simulate").clicked() {
-                    #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-                    sam.open_backend(Backend::Simulation(SimulationBackend::default()));
-                }
-
-                // Show a button to the right to close the current log/simulation and go back to
-                // live view
-                ui.allocate_ui_with_layout(ui.available_size(), Layout::right_to_left(Align::Center), |ui| {
-                    if (data_source_is_log || data_source_is_sim) && ui.button("❌").clicked() {
-                        sam.close_backend();
+                // Create new backends
+                let mut new_backend: Option<BackendDiscriminants> = None;
+                #[cfg(not(target_arch = "wasm32"))]
+                egui::ComboBox::new(egui::Id::new("CreateNewBackend"), "").selected_text("Create Backend").show_ui(
+                    ui,
+                    |ui| {
+                        ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Serial), "Serial");
+                        ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Udp), "UDP");
+                        #[cfg(not(target_os = "android"))]
+                        ui.selectable_value(&mut new_backend, Some(BackendDiscriminants::Simulation), "Simulation");
+                    },
+                );
+                if let Some(to_create) = new_backend {
+                    match to_create {
+                        BackendDiscriminants::Serial => {
+                            sam.open_backend(Backend::Serial(SerialBackend::new(ui.ctx(), sam.settings.lora.clone())))
+                        }
+                        BackendDiscriminants::Udp => sam.open_backend(Backend::Udp(UdpBackend::new(ui.ctx()))),
+                        BackendDiscriminants::Simulation => {
+                            sam.open_backend(Backend::Simulation(SimulationBackend::default()))
+                        }
+                        _ => unreachable!(),
                     }
-                });
+                }
             });
         });
     }

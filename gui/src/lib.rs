@@ -33,6 +33,7 @@ use crate::windows::*;
 /// Main state object of our GUI application
 pub struct Sam {
     backends: Vec<Backend>,
+    selected_backend_id: usize,
     frontend: Frontend,
     settings: AppSettings,
     tab: GuiTab,
@@ -45,11 +46,14 @@ impl Sam {
     /// Initialize the application, including the state objects for widgets
     /// such as plots and maps.
     pub fn init(ctx: &egui::Context, settings: AppSettings, default_backend: Option<Backend>) -> Self {
-        #[cfg(not(target_arch = "wasm32"))]
-        let backend = default_backend.unwrap_or(Backend::Udp(UdpBackend::new(ctx)));
-        //let backend = default_backend.unwrap_or(Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())));
-        #[cfg(target_arch = "wasm32")]
-        let backend = default_backend.unwrap_or(Backend::Noop(NoopBackend::default()));
+        let backends = vec![
+            Backend::Noop(NoopBackend::default()),
+            #[cfg(not(target_arch = "wasm32"))]
+            Backend::Udp(UdpBackend::new(ctx)),
+            #[cfg(not(target_arch = "wasm32"))]
+            Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())),
+        ];
+        let selected_backend_id = backends.len() - 1;
 
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
@@ -67,7 +71,8 @@ impl Sam {
         egui_extras::install_image_loaders(ctx);
 
         Self {
-            backends: vec![backend],
+            backends,
+            selected_backend_id,
             frontend: Frontend::new(ctx, &settings),
             settings,
 
@@ -79,21 +84,34 @@ impl Sam {
         }
     }
 
-    fn close_backend(&mut self) {
-        self.backends.truncate(1);
+    fn close_backend(&mut self, close_id: usize) {
+        if close_id < self.backends.len() {
+            self.backends.remove(close_id);
+            self.selected_backend_id -= 1;
+        }
     }
 
     fn open_backend(&mut self, data_source: Backend) {
-        self.close_backend();
         self.backends.push(data_source);
+        self.selected_backend_id = self.backends.len() - 1;
     }
 
     fn backend(&self) -> &Backend {
-        self.backends.last().unwrap()
+        let id = if self.selected_backend_id < self.backends.len() {
+            self.selected_backend_id
+        } else {
+            self.backends.len() - 1
+        };
+        return &self.backends[id];
     }
 
     fn backend_mut(&mut self) -> &mut Backend {
-        self.backends.last_mut().unwrap()
+        let id = if self.selected_backend_id < self.backends.len() {
+            self.selected_backend_id
+        } else {
+            self.backends.len() - 1
+        };
+        return &mut self.backends[id];
     }
 
     fn process_keybinding(&mut self, ctx: &egui::Context) {
@@ -230,7 +248,24 @@ impl Sam {
                 ui.separator();
 
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                    ui.label(format!("Current Backend: {}", self.backend().name()));
+                    let mut close_id = 0;
+                    ui.label("Current Backend:");
+                    egui::ComboBox::new(egui::Id::new("ActiveBackendSelection"), "")
+                        .selected_text(self.backend().name())
+                        .show_ui(ui, |ui| {
+                            egui::Grid::new("ActiveBackendSelectionGrid").striped(true).show(ui, |ui| {
+                                for (id, backend) in self.backends.iter().enumerate() {
+                                    ui.selectable_value(&mut self.selected_backend_id, id, backend.name());
+                                    if id > 0 && ui.button("❌").clicked() {
+                                        close_id = id;
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                        });
+                    if close_id > 0 {
+                        self.close_backend(close_id);
+                    }
                     ui.separator();
                     self.backend_mut().status_bar_ui(ui);
                 })
@@ -238,7 +273,12 @@ impl Sam {
         });
 
         // Everything else. This has to be called after all the other panels are created.
-        let backend = self.backends.last_mut().unwrap();
+        let id = if self.selected_backend_id < self.backends.len() {
+            self.selected_backend_id
+        } else {
+            self.backends.len() - 1
+        };
+        let backend = &mut self.backends[self.selected_backend_id];
         let _ = self.frontend.metric_monitor_mut().evaluate_constraints(backend);
         let mut active_constraint_mask = self.frontend.metric_monitor().active_constraint_mask().clone();
         MetricStatusBar::show(ctx, backend, &mut self.frontend, &mut active_constraint_mask);
