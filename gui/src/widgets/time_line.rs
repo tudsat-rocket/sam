@@ -2,7 +2,6 @@ use egui::{Align2, Color32, FontId, Layout, Pos2, Rect, Stroke, Vec2, epaint::Ci
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2};
 use shared_types::{Command, FlightMode};
 use strum::IntoStaticStr;
-use telemetry::Metric;
 
 use crate::{
     backend::Backend,
@@ -150,7 +149,7 @@ impl HyacinthNominalState {
                                 ui.allocate_space(modal_dialog_size / 3f32);
                                 if ui.button("Proceed").clicked() {
                                     if backend
-                                        .current_enum::<FlightMode>(Metric::FlightMode)
+                                        .current_value::<crate::backend::storage::static_metrics::FlightMode>()
                                         .map(|fm| fm != self.associated_flight_mode())
                                         .unwrap_or(true)
                                     {
@@ -243,7 +242,7 @@ pub static COLOR_HOLD: Color32 = Color32::from_rgb(0xd5, 0xc4, 0xa1);
 pub static COLOR_ABORT: Color32 = Color32::from_rgb(0xcc, 0x24, 0x1d);
 
 static RELATIVE_PADDING_HORIZONAL: f32 = 0.03;
-static ABSOLUTE_CIRCLE_RADIUS: f32 = 8.0;
+static ABSOLUTE_CIRCLE_RADIUS: f32 = 16.0;
 static ABSOLUTE_LINE_WIDTH_REACHED: f32 = 5.0;
 static ABSOLUTE_LINE_WIDTH_PENDING: f32 = 2.0;
 static ABSOLUTE_LINE_TO_STATE_GAP: f32 = 2.0;

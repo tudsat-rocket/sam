@@ -1,3 +1,4 @@
+use crate::backend::storage::storeable_value::ValveState;
 use nalgebra::{Affine2, Point2};
 
 use crate::{
@@ -6,7 +7,7 @@ use crate::{
         other::*,
         sensors_and_actuators::{manometer, motor, pressure_sensor, temperature_sensor},
         storage::{storage_state::StorageState, *},
-        valves::{valve_state::ValveState, *},
+        valves::*,
     },
     utils::theme::ThemeColors,
 };

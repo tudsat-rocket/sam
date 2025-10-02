@@ -1,3 +1,4 @@
+use crate::backend::storage::storeable_value::ValveState;
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2};
 
 use crate::{
@@ -8,8 +9,6 @@ use crate::{
     },
     utils::theme::ThemeColors,
 };
-
-use super::valve_state::ValveState;
 
 ///Diameter of the circles to the left and right of the quick disconnect
 const WEDGE_DIAMETER: f32 = 0.2;

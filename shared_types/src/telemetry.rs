@@ -23,7 +23,7 @@ pub const FLASH_SIZE: u32 = 32 * 1024 * 1024;
 pub const FLASH_HEADER_SIZE: u32 = 4096; // needs to be multiple of 4096
 pub const FLASH_SETTINGS_SIZE: u32 = 1024; // we don't need the full sector, so make the buffers smaller
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum GPSFixType {
     NoFix = 0,
     AutonomousFix = 1,
@@ -119,7 +119,7 @@ pub struct GPSDatum {
     pub num_satellites: u8,
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum AcsMode {
     #[default]
     Disabled = 0b00,
@@ -140,7 +140,7 @@ impl TryFrom<u8> for AcsMode {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum ThrusterValveState {
     #[default]
     Closed = 0b00,

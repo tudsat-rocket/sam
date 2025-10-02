@@ -110,7 +110,8 @@ impl Sam {
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
             Some(FlightMode::HardwareArmed)
         } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            if self.backend().flight_mode().unwrap_or_default() == FlightMode::Armed {
+            if false {
+                //TODO Hans //self.backend().flight_mode().unwrap_or_default() == FlightMode::Armed {
                 Some(FlightMode::ArmedLaunchImminent)
             } else {
                 Some(FlightMode::Armed)

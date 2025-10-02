@@ -165,6 +165,7 @@ pub enum Metric {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum LocalMetric {
     MaxPressureN2Tank,
+    N2ReleaseValveState,
 }
 
 #[cfg(not(target_os = "none"))]

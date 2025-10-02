@@ -1,5 +1,4 @@
-use crate::BackendVariant;
-use telemetry::DataStore;
+use crate::{BackendVariant, backend::storage::store::DataStore};
 
 #[derive(Default)]
 pub struct NoopBackend {

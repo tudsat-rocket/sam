@@ -1,3 +1,4 @@
+use crate::backend::storage::storeable_value::ValveState;
 use crate::{
     system_diagram_components::{
         core::constants::STROKE_WIDTH,
@@ -9,8 +10,6 @@ use crate::{
     },
 };
 use nalgebra::{Affine2, Point2};
-
-use super::valve_state::ValveState;
 
 const POSITIONS: [Point2<f32>; 5] = [
     Point2::new(-0.5, -0.5),

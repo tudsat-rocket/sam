@@ -34,11 +34,12 @@ impl HasImage for ConstraintResult {
 }
 
 fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, ui: &mut Ui, theme: &ThemeColors) {
-    let val = backend.current_value(*metric).map(|v| format!("{0:.2}", v)).unwrap_or("N/A".to_string());
-    let (name, unit) = match metric {
-        Metric::Pressure(_) => ("Pressure", "bar"),
-        Metric::Temperature(_) => ("Temperature", "°C"),
-        _ => ("UNKOWN", "??"),
+    let val = backend.current_value_dynamic_as_string(&metric);
+    let name = format!("{:?}", metric);
+    let unit = match metric {
+        Metric::Pressure(_) => "bar",
+        Metric::Temperature(_) => "°C",
+        _ => "??",
     };
 
     ui.label(name);

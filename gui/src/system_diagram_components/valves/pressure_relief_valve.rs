@@ -1,3 +1,4 @@
+use crate::backend::storage::storeable_value::ValveState;
 use nalgebra::{Affine2, Point2};
 
 use crate::{
@@ -8,7 +9,7 @@ use crate::{
     utils::theme::ThemeColors,
 };
 
-use super::{generic_valve, valve_state::ValveState};
+use super::generic_valve;
 
 ///TODO Requires better name
 const HANDLE_LENGTH: f32 = 0.4;

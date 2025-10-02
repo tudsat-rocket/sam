@@ -15,8 +15,12 @@ use egui::{Layout, RichText, Slider};
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::{DataStore, Metric};
+use telemetry::Metric;
 
+use crate::backend::storage::static_metrics::MetricTrait;
+use crate::backend::storage::store::DataStore;
+use crate::backend::storage::storeable_value::StorableValue;
+use crate::call_static_metric;
 use crate::settings::AppSettings;
 
 pub mod log_file;
@@ -25,6 +29,7 @@ pub mod noop;
 pub mod serial;
 #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
 pub mod simulation;
+pub mod storage;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod udp;
 
@@ -311,16 +316,34 @@ impl Backend {
         }
     }
 
-    pub fn current_value(&self, metric: Metric) -> Option<f64> {
-        self.data_store().current_float_value(metric, self.fc_time())
+    pub fn set_value<M: MetricTrait>(&mut self, value: M::Value) -> Result<(), &'static str> {
+        let time = self.fc_time().unwrap_or(0f64);
+        return self.data_store_mut().set_value::<M>(value, time);
     }
 
-    pub fn current_enum<E>(&self, metric: Metric) -> Option<E>
-    where
-        E: TryFrom<u8>,
-        <E as TryFrom<u8>>::Error: std::fmt::Debug,
-    {
-        self.data_store().current_enum_value(metric, self.fc_time())
+    pub fn current_value<M: MetricTrait>(&self) -> Option<M::Value> {
+        return self.data_store().current_value::<M>(self.fc_time());
+    }
+
+    pub fn current_value_as_string<M: MetricTrait>(&self) -> String {
+        return self.current_value::<M>().map(|val| val.to_string()).unwrap_or("N/A".to_string());
+    }
+
+    fn current_value_as<M: MetricTrait + 'static, ExpectedValue: 'static>(&self) -> Option<ExpectedValue> {
+        let val = self.current_value::<M>();
+        val.map(|v| {
+            let as_any = Box::new(v) as Box<dyn std::any::Any>;
+            as_any.downcast::<ExpectedValue>().ok().map(|e| *e)
+        })
+        .flatten()
+    }
+
+    pub fn current_value_dynamic<ExpectedValue: 'static>(&self, metric: &Metric) -> Option<ExpectedValue> {
+        return call_static_metric!(Self::current_value_as, <metric, ExpectedValue, >, self);
+    }
+
+    pub fn current_value_dynamic_as_string(&self, metric: &Metric) -> String {
+        return call_static_metric!(Self::current_value_as_string, <metric, >, self);
     }
 
     pub fn plot_metric<'a>(&'a self, key: &Metric, bounds: egui_plot::PlotBounds) -> egui_plot::PlotPoints<'a> {
@@ -398,10 +421,6 @@ impl Backend {
             Self::Udp(b) => b.send_command(cmd),
             _ => Ok(()),
         }
-    }
-
-    pub fn flight_mode(&self) -> Option<FlightMode> {
-        self.current_enum::<FlightMode>(Metric::FlightMode)
     }
 
     pub fn reset(&mut self) {

@@ -1,3 +1,4 @@
+use crate::backend::storage::storeable_value::ValveState;
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2};
 
 use crate::{
@@ -9,7 +10,7 @@ use crate::{
     utils::theme::ThemeColors,
 };
 
-use super::{generic_valve, valve_state::ValveState};
+use super::generic_valve;
 
 ///Length of the valve handle relative to the height of the valve
 const HANDLE_LENGTH: f32 = 0.4;

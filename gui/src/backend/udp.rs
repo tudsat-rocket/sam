@@ -13,9 +13,10 @@ use log::*;
 
 use shared_types::settings::*;
 use shared_types::telemetry::*;
-use telemetry::{DataStore, LORA_SCHEMA, USB_SCHEMA};
+use telemetry::{LORA_SCHEMA, USB_SCHEMA};
 
 use crate::backend::BackendVariant;
+use crate::backend::storage::store::DataStore;
 use crate::settings::AppSettings;
 
 pub struct UdpBackend {

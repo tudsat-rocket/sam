@@ -1,5 +1,5 @@
 use core::f32;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, Once};
 
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
@@ -8,7 +8,13 @@ use strum::{EnumIter, IntoEnumIterator};
 use telemetry::Metric;
 
 use crate::{
-    backend::Backend,
+    backend::{
+        Backend,
+        storage::{
+            static_metrics::{MaxPressureN2Tank, N2ReleaseValveState},
+            storeable_value::ValveState,
+        },
+    },
     frontend::Frontend,
     system_diagram_components::{
         core::{
@@ -17,7 +23,6 @@ use crate::{
         },
         math::transform::Transform,
         storage::storage_state::StorageState,
-        valves::valve_state::ValveState,
     },
     widgets::system_diagram::SystemDiagram,
 };
@@ -25,17 +30,17 @@ use crate::{
 #[derive(Clone)]
 pub enum ComponentInteraction {
     PrintInteraction(&'static str),
-    ToggleBinaryValveState(Metric),
+    ToggleN2ReleaseValveState,
 }
 
 impl ComponentInteraction {
     pub fn interact(&self, backend: &mut Backend) {
         match self {
             ComponentInteraction::PrintInteraction(str) => println!("{str}"),
-            ComponentInteraction::ToggleBinaryValveState(metric) => {
-                backend.current_enum::<ValveState>(*metric).map(|state| match state {
-                    ValveState::Open => todo!(),
-                    ValveState::Closed => todo!(),
+            ComponentInteraction::ToggleN2ReleaseValveState => {
+                backend.current_value::<N2ReleaseValveState>().map(|state| match state {
+                    ValveState::Open => backend.set_value::<N2ReleaseValveState>(ValveState::Closed),
+                    ValveState::Closed => backend.set_value::<N2ReleaseValveState>(ValveState::Open),
                 });
             }
         }
@@ -44,8 +49,8 @@ impl ComponentInteraction {
     pub fn is_possible(&self, backend: &Backend) -> bool {
         match self {
             ComponentInteraction::PrintInteraction(_) => true,
-            ComponentInteraction::ToggleBinaryValveState(metric) => {
-                backend.current_enum::<ValveState>(*metric).map(|_| true).unwrap_or(false)
+            ComponentInteraction::ToggleN2ReleaseValveState => {
+                backend.current_value::<N2ReleaseValveState>().map(|_| true).unwrap_or(false)
             }
         }
     }
@@ -53,13 +58,13 @@ impl ComponentInteraction {
     pub fn description(&self, backend: &Backend) -> String {
         match self {
             ComponentInteraction::PrintInteraction(str) => format!("Print \"{str}\""),
-            ComponentInteraction::ToggleBinaryValveState(metric) => backend
-                .current_enum::<ValveState>(*metric)
+            ComponentInteraction::ToggleN2ReleaseValveState => backend
+                .current_value::<N2ReleaseValveState>()
                 .map(|state| match state {
-                    ValveState::Open => return format!("Close {metric}"),
-                    ValveState::Closed => return format!("Open {metric}"),
+                    ValveState::Open => return format!("Close N2ReleaseValve"),
+                    ValveState::Closed => return format!("Open N2ReleaseValve"),
                 })
-                .unwrap_or(format!("Invalid metric or value for {metric}")),
+                .unwrap_or(format!("Invalid metric or value for N2ReleaseValve")),
         }
     }
 }
@@ -186,8 +191,7 @@ static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<Compone
         let mut interactions: EnumMap<HyacinthComponent, Vec<ComponentInteraction>> = Default::default();
         interactions[HyacinthComponent::N2Bottle]
             .push(ComponentInteraction::PrintInteraction("This is a test interaction"));
-        interactions[HyacinthComponent::N2ReleaseValve]
-            .push(ComponentInteraction::ToggleBinaryValveState(Metric::AcsMode));
+        interactions[HyacinthComponent::N2ReleaseValve].push(ComponentInteraction::ToggleN2ReleaseValveState);
         return interactions;
     });
 
@@ -219,7 +223,9 @@ static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<Compone
 
 static RESERVOIR_TO_METRICS: LazyLock<EnumMap<HyacinthReservoir, Vec<Metric>>> = LazyLock::new(|| {
     enum_map![
-        HyacinthReservoir::N2Bottle => vec![],
+        HyacinthReservoir::N2Bottle => vec![
+            Metric::LocalMetric(telemetry::LocalMetric::N2ReleaseValveState),
+        ],
         HyacinthReservoir::N2Filling => vec![],
         HyacinthReservoir::N2OBottle => vec![],
         HyacinthReservoir::N2OFilling => vec![
@@ -228,7 +234,7 @@ static RESERVOIR_TO_METRICS: LazyLock<EnumMap<HyacinthReservoir, Vec<Metric>>> =
         HyacinthReservoir::N2Tank => vec![
             Metric::Pressure(telemetry::PressureSensorId::NitrogenTank),
             Metric::ValveState(telemetry::ValveId::PressureRegulator),
-            Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank)
+            Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank),
         ],
         HyacinthReservoir::N2OTank => vec![
             Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
@@ -483,14 +489,17 @@ fn system_definition() -> SystemDefinition {
     }
 }
 
+static INIT_METRICS: Once = Once::new();
+
 pub fn create_diagram<'a>(
     backend: &'a mut Backend,
     frontend: &'a mut Frontend,
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
-    // backend
-    //     .data_store_mut()
-    //     .set_const_float(Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank), 50f64);
+    INIT_METRICS.call_once(|| {
+        let _ = backend.set_value::<MaxPressureN2Tank>(50f64);
+        let _ = backend.set_value::<N2ReleaseValveState>(ValveState::Closed);
+    });
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),
         system_definition.connections.iter().map(|c| Line1D::new(c.points.clone())).collect(),

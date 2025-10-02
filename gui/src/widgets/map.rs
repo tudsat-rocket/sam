@@ -14,6 +14,7 @@ use shared_types::telemetry::FlightMode;
 use telemetry::{Dim, Metric};
 
 use crate::Backend;
+use crate::backend::storage::static_metrics::Orientation;
 use crate::settings::AppSettings;
 use crate::utils::telemetry_ext::ColorExt;
 
@@ -296,10 +297,10 @@ impl<'a> Map<'a> {
         let vehicle_positions = state.vehicle_positions(backend);
         let vehicle_position = state.last_position();
 
-        let q0 = backend.current_value(Metric::Orientation(0));
-        let q1 = backend.current_value(Metric::Orientation(1));
-        let q2 = backend.current_value(Metric::Orientation(2));
-        let q3 = backend.current_value(Metric::Orientation(3));
+        let q0 = backend.current_value::<Orientation<0>>();
+        let q1 = backend.current_value::<Orientation<1>>();
+        let q2 = backend.current_value::<Orientation<2>>();
+        let q3 = backend.current_value::<Orientation<3>>();
         let orientation = match (q0, q1, q2, q3) {
             (Some(q0), Some(q1), Some(q2), Some(q3)) => {
                 let orientation =

@@ -124,6 +124,34 @@ impl<const N: usize> TelemetryMessageReader<N> {
         }
     }
 
+    pub fn read_value(&mut self, repr: Representation) -> Result<u64, ()> {
+        //Correct Bit pointer alignment
+        if self.bit_pointer % 8 != 0 {
+            self.bit_pointer += 8 - self.bit_pointer % 8;
+        }
+
+        //Check if the representation is valid
+        if repr.bits() % 8 != 0 || repr.bits() > 64 {
+            return Err(());
+        }
+
+        //Check that buffer contains a complete value
+        if ((self.bit_pointer + repr.bits()) / 8) >= self.buffer.len() {
+            return Err(());
+        }
+
+        //Read as u64 by applying padding if necessary
+        let mut bytes = [0; 8];
+        bytes[8 - repr.bits() / 8..]
+            .copy_from_slice(&self.buffer[(self.bit_pointer / 8)..((self.bit_pointer + repr.bits()) / 8)]);
+        let value = u64::from_be_bytes(bytes);
+
+        //Advance bit pointer
+        self.bit_pointer += repr.bits();
+
+        return Ok(value);
+    }
+
     pub fn read_enum<E: TryFrom<u8>>(&mut self, _repr: Representation) -> Result<E, ()> {
         let b = self.buffer[self.bit_pointer / 8];
         self.bit_pointer += 8;

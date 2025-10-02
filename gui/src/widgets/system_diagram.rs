@@ -83,8 +83,7 @@ fn as_tooltip<Comp: SystemComponent>(
             .show(ui, |ui| {
                 egui::Grid::new("tooltip_grid_metrics").striped(true).show(ui, |ui| {
                     for metric in comp.metrics() {
-                        let val =
-                            backend.current_value(metric).map(|v| format!("{0:.2}", v)).unwrap_or("N/A".to_string());
+                        let val = backend.current_value_dynamic_as_string(&metric);
                         let name = format!("{metric}");
 
                         tooltip_response = tooltip_response.union(ui.label(name.clone()));

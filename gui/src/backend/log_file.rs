@@ -3,8 +3,6 @@
 
 use std::path::PathBuf;
 
-use telemetry::DataStore;
-
 use crate::backend::*;
 
 pub struct LogFileBackend {
