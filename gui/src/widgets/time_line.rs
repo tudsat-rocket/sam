@@ -1,5 +1,5 @@
-use egui::{Align2, Color32, FontId, Layout, Pos2, Rect, Stroke, Vec2, epaint::CircleShape};
-use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2};
+use egui::{Align2, Color32, FontId, Layout, Pos2, Rect, Vec2, epaint::RectShape};
+use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
 use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
 
@@ -9,10 +9,9 @@ use crate::{
         Frontend,
         popup_manager::{ModalDialog, PopupContentData, PopupContentList, TriggerBuilder},
     },
-    system_diagram_components::math::{
-        conversions::{to_pos, to_vec},
-        transform::Transform,
-        utils::get_basis_x,
+    system_diagram_components::{
+        core::constants::{self, CORNER_RADIUS},
+        math::{conversions::to_pos, transform::Transform, utils::get_basis_y},
     },
     utils::theme::ThemeColors,
     widgets::system_diagram::FlattenResponse,
@@ -270,11 +269,9 @@ pub static COLOR_NOMINAL_IGNITION: Color32 = Color32::from_rgb(0xb1, 0x62, 0x86)
 pub static COLOR_HOLD: Color32 = Color32::from_rgb(0xd5, 0xc4, 0xa1);
 pub static COLOR_ABORT: Color32 = Color32::from_rgb(0xcc, 0x24, 0x1d);
 
-static RELATIVE_PADDING_HORIZONAL: f32 = 0.03;
-static ABSOLUTE_CIRCLE_RADIUS: f32 = 16.0;
-static ABSOLUTE_LINE_WIDTH_REACHED: f32 = 5.0;
-static ABSOLUTE_LINE_WIDTH_PENDING: f32 = 2.0;
-static ABSOLUTE_LINE_TO_STATE_GAP: f32 = 2.0;
+static RELATIVE_PADDING_HORIZONAL: f32 = 0.01;
+static RELATIVE_HEIGHT_MILESTONE: f32 = 0.5;
+static RELATIVE_HEIGHT_ANOMALOUS_STATE: f32 = 0.3;
 
 pub trait AsDynVec {
     fn as_dyn_vec<'a>(&'a self) -> Vec<&'a dyn TimelineState>;
@@ -304,7 +301,6 @@ pub trait TimelineState {
     fn active(&self) -> bool;
     fn name(&self) -> &'static str;
     fn stroke(&self) -> egui::Stroke;
-    fn outer_diameter(&self) -> f32;
     fn fill(&self, bg_color: Color32) -> Color32;
     fn create_popups(
         &self,
@@ -326,10 +322,6 @@ impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
 
     fn stroke(&self) -> egui::Stroke {
         return self.stroke();
-    }
-
-    fn outer_diameter(&self) -> f32 {
-        return self.outer_diameter();
     }
 
     fn fill(&self, bg_color: Color32) -> Color32 {
@@ -358,6 +350,59 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
     fn max_active(&self) -> usize;
     fn dyn_iter<'a>(&'a self) -> std::vec::IntoIter<&'a dyn TimelineState> {
         self.as_dyn_vec().into_iter()
+    }
+
+    fn paint_timeline(
+        &self,
+        transform: &Affine2<f32>,
+        ui: &mut egui::Ui,
+        frontend: &mut Frontend,
+        backend: &mut Backend,
+    ) {
+        let relative_width_anomalous_state = if Self::num_states() > 0 {
+            (1f32 - (Self::num_states() + 1) as f32 * RELATIVE_PADDING_HORIZONAL) / (Self::num_states() as f32)
+        } else {
+            0.0
+        };
+
+        let anomalous_state_positions =
+            std::iter::successors(Some(Point2::new(-0.5 + RELATIVE_PADDING_HORIZONAL, -0.5)), |p| {
+                Some(Point2::new(p.x + relative_width_anomalous_state + RELATIVE_PADDING_HORIZONAL, p.y))
+            })
+            .take(Self::num_states())
+            .map(|p| to_pos(transform * p))
+            .collect::<Vec<_>>();
+
+        //These only work when the timeline is horizontal
+        let absolute_width_anomalous_state =
+            transform.transform_vector(&Vector2::new(relative_width_anomalous_state, 0f32)).x;
+        let absolute_height_anomalous_state = get_basis_y(transform).y;
+
+        for (anomalous_state, p) in std::iter::zip(self.dyn_iter(), anomalous_state_positions) {
+            ui.painter().add(egui::Shape::Rect(RectShape::new(
+                Rect::from_min_size(p, Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state)),
+                CORNER_RADIUS,
+                anomalous_state.fill(ThemeColors::new(ui.ctx()).background_weak),
+                anomalous_state.stroke(),
+                egui::StrokeKind::Middle,
+            )));
+
+            let trigger = TriggerBuilder::new(
+                egui::Id::new(format!("FlightState {}", anomalous_state.name())),
+                Rect::from_min_size(p, Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state)),
+            );
+            let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
+            let position = ui.ctx().screen_rect().center() - modal_dialog_size / 2f32;
+            anomalous_state.create_popups(ui, backend, frontend, trigger, position);
+
+            ui.painter().text(
+                p + Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state) / 2f32,
+                Align2::CENTER_CENTER,
+                anomalous_state.name().to_string(),
+                FontId::default(),
+                ThemeColors::new(ui.ctx()).foreground_weak,
+            );
+        }
     }
 }
 impl TimelineStateSequence for () {
@@ -413,22 +458,10 @@ impl<PopupContents: PopupContentList> TimelineStateData<PopupContents> {
     }
 
     fn stroke(&self) -> egui::Stroke {
-        return if self.is_active {
-            egui::Stroke {
-                width: ABSOLUTE_LINE_WIDTH_REACHED,
-                color: self.color,
-            }
-        } else {
-            egui::Stroke {
-                width: ABSOLUTE_LINE_WIDTH_PENDING,
-                color: self.color,
-            }
+        return egui::Stroke {
+            width: constants::STROKE_WIDTH,
+            color: self.color,
         };
-    }
-
-    ///The real diameter of the circle including the stroke
-    fn outer_diameter(&self) -> f32 {
-        return 2f32 * (ABSOLUTE_CIRCLE_RADIUS + self.stroke().width);
     }
 }
 
@@ -460,108 +493,33 @@ impl<'a, Milestones: TimelineStateSequence, AnomalousStates: TimelineStateSequen
     }
 
     pub fn paint(&mut self, transform: &Affine2<f32>, ui: &mut egui::Ui) {
-        let vertical_offset = if AnomalousStates::num_states() == 0 { 0f32 } else { 0.35 };
-        let line_offset = (ABSOLUTE_LINE_TO_STATE_GAP + ABSOLUTE_CIRCLE_RADIUS + ABSOLUTE_LINE_WIDTH_REACHED)
-            * to_vec(get_basis_x(transform)).normalized();
-        let distance_between_milestones = if Milestones::num_states() > 0 {
-            (1f32 - 2f32 * RELATIVE_PADDING_HORIZONAL) / ((Milestones::num_states() - 1) as f32)
-        } else {
-            0.0
-        };
-        let bg_color = ThemeColors::new(ui.ctx()).background_weak;
-        let fg_color = ThemeColors::new(ui.ctx()).foreground_weak;
-
-        let milestone_positions = std::iter::successors(
-            Some(Point2::new(-0.5f32 + RELATIVE_PADDING_HORIZONAL, vertical_offset * 0.3f32)),
-            |p| Some(Point2::new(p.x + distance_between_milestones, p.y)),
-        )
-        .take(Milestones::num_states())
-        .map(|p| to_pos(transform * p))
-        .collect::<Vec<_>>();
-
-        let lines = milestone_positions
-            .windows(2)
-            .map(|ps| Some((ps[0] + line_offset, ps[1] - line_offset)))
-            .chain(std::iter::once(None))
-            .collect::<Vec<_>>();
-
-        for (i, milestone) in self.milestones.dyn_iter().enumerate() {
-            let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
-            let position = ui.ctx().screen_rect().center() - modal_dialog_size / 2f32;
-            let trigger = TriggerBuilder::new(
-                egui::Id::new(format!("FlightState {}", milestone.name())),
-                Rect::from_center_size(
-                    milestone_positions[i],
-                    Vec2::new(milestone.outer_diameter(), milestone.outer_diameter()),
-                ),
-            );
-            milestone.create_popups(ui, self.backend, self.frontend, trigger, position);
-            let painter = ui.painter();
-            lines[i].map(|(start, end)| {
-                painter.line(
-                    vec![start, end],
-                    if i < self.milestones.max_active() - 1 {
-                        Stroke::new(ABSOLUTE_LINE_WIDTH_REACHED, fg_color)
-                    } else {
-                        Stroke::new(ABSOLUTE_LINE_WIDTH_PENDING, fg_color)
-                    },
-                )
-            });
-            painter.add(egui::Shape::Circle(CircleShape {
-                center: milestone_positions[i],
-                radius: ABSOLUTE_CIRCLE_RADIUS,
-                fill: milestone.fill(bg_color),
-                stroke: milestone.stroke(),
-            }));
-
-            let label_layout = painter.layout_no_wrap(milestone.name().to_string(), FontId::default(), fg_color);
-            painter.text(
-                milestone_positions[i] + Vec2::new(0f32, label_layout.size().y + 5f32),
-                Align2::CENTER_CENTER,
-                label_layout.text(),
-                FontId::default(),
-                fg_color,
-            );
+        let mut height_timelines = 0f32;
+        let mut num_timelines = 0;
+        if Milestones::num_states() > 0 {
+            height_timelines += RELATIVE_HEIGHT_MILESTONE;
+            num_timelines += 1;
         }
-
-        let anomalous_state_positions =
-            std::iter::successors(Some(Point2::new(-0.5f32 + RELATIVE_PADDING_HORIZONAL, -vertical_offset)), |p| {
-                Some(Point2::new(p.x + distance_between_milestones, p.y))
-            })
-            .take(AnomalousStates::num_states())
-            .map(|p| to_pos(transform * p))
-            .collect::<Vec<_>>();
-
-        for (anomalous_state, p) in std::iter::zip(self.anomalous_states.dyn_iter(), anomalous_state_positions) {
-            let trigger = TriggerBuilder::new(
-                egui::Id::new(format!("FlightState {}", anomalous_state.name())),
-                Rect::from_center_size(
-                    p,
-                    Vec2::new(anomalous_state.outer_diameter(), anomalous_state.outer_diameter()),
-                ),
-            );
-            let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
-            let position = ui.ctx().screen_rect().center() - modal_dialog_size / 2f32;
-            anomalous_state.create_popups(ui, self.backend, self.frontend, trigger, position);
-
-            let painter = ui.painter();
-            painter.add(egui::Shape::Circle(CircleShape {
-                center: p,
-                radius: ABSOLUTE_CIRCLE_RADIUS,
-                fill: anomalous_state.fill(bg_color),
-                stroke: anomalous_state.stroke(),
-            }));
-
-            let label_layout = painter.layout_no_wrap(anomalous_state.name().to_string(), FontId::default(), fg_color);
-
-            painter.text(
-                p + Vec2::new(0f32, label_layout.size().y + 5f32),
-                Align2::CENTER_CENTER,
-                label_layout.text(),
-                FontId::default(),
-                fg_color,
-            );
+        if AnomalousStates::num_states() > 0 {
+            height_timelines += RELATIVE_HEIGHT_ANOMALOUS_STATE;
+            num_timelines += 1;
         }
+        let relative_padding_vertical = (1f32 - height_timelines) / (num_timelines + 1) as f32;
+        let milestone_transform = transform
+            * Transform::new(
+                Rotation2::identity(),
+                Scale2::new(1f32, RELATIVE_HEIGHT_MILESTONE),
+                Translation2::new(0f32, 0.5 - relative_padding_vertical - RELATIVE_HEIGHT_MILESTONE / 2f32),
+            )
+            .to_affine2();
+        self.milestones.paint_timeline(&milestone_transform, ui, self.frontend, self.backend);
+        let anomalous_state_transform = transform
+            * Transform::new(
+                Rotation2::identity(),
+                Scale2::new(1f32, RELATIVE_HEIGHT_ANOMALOUS_STATE),
+                Translation2::new(0f32, -0.5 + relative_padding_vertical + RELATIVE_HEIGHT_ANOMALOUS_STATE / 2f32),
+            )
+            .to_affine2();
+        self.anomalous_states.paint_timeline(&anomalous_state_transform, ui, self.frontend, self.backend);
     }
 }
 
@@ -569,11 +527,8 @@ impl<'a, Milestones: TimelineStateSequence, AnomalousStates: TimelineStateSequen
     for Timeline<'a, Milestones, AnomalousStates>
 {
     fn ui(mut self, ui: &mut egui::Ui) -> egui::Response {
-        let (available_space, response) = ui.allocate_at_least(
-            Vec2::new(
-                ui.available_rect_before_wrap().width(),
-                2.6f32 * (ABSOLUTE_CIRCLE_RADIUS + ABSOLUTE_LINE_WIDTH_REACHED + 30f32),
-            ),
+        let (available_space, response) = ui.allocate_exact_size(
+            Vec2::new(ui.available_rect_before_wrap().width(), ui.available_rect_before_wrap().width() * 0.1),
             egui::Sense::click_and_drag(),
         );
         let global_transform = Transform::new(
