@@ -41,13 +41,13 @@ async fn run_main_recovery(
         // Check armed status
         for _ in 0..settings.num_pulses {
             unsafe {
-                load_outputs.lock_mut(|o| o.activate(LoadOutput::Out1));
+                load_outputs.lock_mut(|o| o.activate(LoadOutput::Out2));
             }
             defmt::info!("Main recovery motor active.");
 
             Timer::after(Duration::from_millis(settings.pulse_high_duration.into())).await;
             unsafe {
-                load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out1));
+                load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out2));
             }
             defmt::info!("Main recovery motor stop.");
 
@@ -71,14 +71,14 @@ async fn run_parabreaks(
             load_outputs.lock_mut(|o| o.arm());
         }
         unsafe {
-            load_outputs.lock_mut(|o| o.activate(LoadOutput::Out3));
+            load_outputs.lock_mut(|o| o.activate(LoadOutput::Out1));
         }
         defmt::info!("Parabreaks motor active.");
 
         Timer::after(Duration::from_secs(12)).await;
 
         unsafe {
-            load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out3));
+            load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out1));
         }
         defmt::info!("Parabreaks motor stop.");
     }
