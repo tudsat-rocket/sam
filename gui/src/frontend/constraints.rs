@@ -1,7 +1,9 @@
+use std::marker::PhantomData;
+
 use strum::{EnumIter, VariantNames};
 use telemetry::Metric;
 
-use crate::backend::Backend;
+use crate::backend::{Backend, storage::static_metrics::MetricTrait};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, VariantNames)]
 pub enum ConstraintResult {
@@ -58,138 +60,153 @@ pub trait Constraint {
     fn metric(&self) -> Metric;
 }
 
-// pub struct MaxConstraint {
-//     metric: Metric,
-//     max: f64,
-//     violation_result: ConstraintResult,
-// }
+pub struct NotConstraint<C: Constraint> {
+    constraint: C,
+    violation_result: ConstraintResult,
+}
 
-// pub struct MinConstraint {
-//     metric: Metric,
-//     min: f64,
-//     violation_result: ConstraintResult,
-// }
+impl<C: Constraint> NotConstraint<C> {
+    pub fn new(constraint: C, violation_result: ConstraintResult) -> Self {
+        Self {
+            constraint,
+            violation_result,
+        }
+    }
+}
 
-// pub struct SomeConstraint {
-//     metric: Metric,
-//     violation_result: ConstraintResult,
-// }
+impl<C: Constraint> Constraint for NotConstraint<C> {
+    fn check(&self, backend: &Backend) -> ConstraintResult {
+        if self.constraint.check(backend) == ConstraintResult::NOMINAL {
+            return self.violation_result;
+        } else {
+            return ConstraintResult::NOMINAL;
+        }
+    }
 
-// pub struct EqualsConstraint<T> {
-//     metric: Metric,
-//     expected: T,
-//     violation_result: ConstraintResult,
-// }
+    fn metric(&self) -> Metric {
+        return self.constraint.metric();
+    }
+}
 
-// impl MaxConstraint {
-//     pub fn new(metric: Metric, max: f64, violation_result: ConstraintResult) -> Self {
-//         Self {
-//             metric,
-//             max,
-//             violation_result,
-//         }
-//     }
-// }
+pub struct MinConstraint<M: MetricTrait, C: MetricTrait> {
+    metric: PhantomData<M>,
+    min: PhantomData<C>,
+    violation_result: ConstraintResult,
+}
 
-// impl Constraint for MaxConstraint {
-//     fn check(&self, backend: &Backend) -> ConstraintResult {
-//         match backend.current_value(self.metric) {
-//             Some(value) => {
-//                 if value <= self.max {
-//                     return ConstraintResult::NOMINAL;
-//                 } else {
-//                     return self.violation_result;
-//                 }
-//             }
-//             None => return ConstraintResult::NOMINAL,
-//         }
-//     }
+impl<M: MetricTrait, C: MetricTrait> MinConstraint<M, C> {
+    pub fn new(violation_result: ConstraintResult) -> Self {
+        Self {
+            metric: PhantomData,
+            min: PhantomData,
+            violation_result,
+        }
+    }
+}
 
-//     fn metric(&self) -> Metric {
-//         return self.metric;
-//     }
-// }
+impl<M: MetricTrait, C: MetricTrait<Value = M::Value>> Constraint for MinConstraint<M, C> {
+    fn check(&self, backend: &Backend) -> ConstraintResult {
+        let metric_val = backend.current_value::<M>();
+        let constraint_val = backend.current_value::<C>();
+        if metric_val >= constraint_val {
+            return ConstraintResult::NOMINAL;
+        } else {
+            return self.violation_result;
+        };
+    }
 
-// impl MinConstraint {
-//     pub fn new(metric: Metric, min: f64, violation_result: ConstraintResult) -> Self {
-//         Self {
-//             metric,
-//             min,
-//             violation_result,
-//         }
-//     }
-// }
+    fn metric(&self) -> Metric {
+        return M::metric();
+    }
+}
 
-// impl Constraint for MinConstraint {
-//     fn check(&self, backend: &Backend) -> ConstraintResult {
-//         match backend.current_value(self.metric) {
-//             Some(value) => {
-//                 if value >= self.min {
-//                     return ConstraintResult::NOMINAL;
-//                 } else {
-//                     return self.violation_result;
-//                 }
-//             }
-//             None => return ConstraintResult::NOMINAL,
-//         }
-//     }
+pub struct MaxConstraint<M: MetricTrait, C: MetricTrait> {
+    metric: PhantomData<M>,
+    max: PhantomData<C>,
+    violation_result: ConstraintResult,
+}
 
-//     fn metric(&self) -> Metric {
-//         return self.metric;
-//     }
-// }
+impl<M: MetricTrait, C: MetricTrait> MaxConstraint<M, C> {
+    pub fn new(violation_result: ConstraintResult) -> Self {
+        Self {
+            metric: PhantomData,
+            max: PhantomData,
+            violation_result,
+        }
+    }
+}
 
-// impl SomeConstraint {
-//     pub fn new(metric: Metric, violation_result: ConstraintResult) -> Self {
-//         Self {
-//             metric,
-//             violation_result,
-//         }
-//     }
-// }
+impl<M: MetricTrait, C: MetricTrait<Value = M::Value>> Constraint for MaxConstraint<M, C> {
+    fn check(&self, backend: &Backend) -> ConstraintResult {
+        let metric_val = backend.current_value::<M>();
+        let constraint_val = backend.current_value::<C>();
+        if metric_val <= constraint_val {
+            return ConstraintResult::NOMINAL;
+        } else {
+            return self.violation_result;
+        };
+    }
 
-// impl Constraint for SomeConstraint {
-//     fn check(&self, backend: &Backend) -> ConstraintResult {
-//         match backend.current_value(self.metric) {
-//             Some(_) => return ConstraintResult::NOMINAL,
-//             None => return self.violation_result,
-//         }
-//     }
+    fn metric(&self) -> Metric {
+        return M::metric();
+    }
+}
 
-//     fn metric(&self) -> Metric {
-//         return self.metric;
-//     }
-// }
+pub struct SomeConstraint<M: MetricTrait> {
+    metric: PhantomData<M>,
+    violation_result: ConstraintResult,
+}
 
-// impl<T> EqualsConstraint<T> {
-//     pub fn new(metric: Metric, expected: T, violation_result: ConstraintResult) -> Self {
-//         Self {
-//             metric,
-//             expected,
-//             violation_result,
-//         }
-//     }
-// }
+impl<M: MetricTrait> SomeConstraint<M> {
+    pub fn new(violation_result: ConstraintResult) -> Self {
+        Self {
+            metric: PhantomData,
+            violation_result,
+        }
+    }
+}
 
-// impl<T> Constraint for EqualsConstraint<T>
-// where
-//     T: TryFrom<u8> + PartialEq,
-//     <T as TryFrom<u8>>::Error: std::fmt::Debug,
-// {
-//     fn check(&self, backend: &Backend) -> ConstraintResult {
-//         match backend.current_enum::<T>(self.metric) {
-//             Some(val) => {
-//                 if val == self.expected {
-//                     return ConstraintResult::NOMINAL;
-//                 } else {
-//                     return self.violation_result;
-//                 }
-//             }
-//             None => return ConstraintResult::NOMINAL,
-//         }
-//     }
+impl<M: MetricTrait> Constraint for SomeConstraint<M> {
+    fn check(&self, backend: &Backend) -> ConstraintResult {
+        match backend.current_value::<M>() {
+            Some(_) => return ConstraintResult::NOMINAL,
+            None => return self.violation_result,
+        }
+    }
 
-//     fn metric(&self) -> Metric {
-//         return self.metric;
-//     }
-// }
+    fn metric(&self) -> Metric {
+        return M::metric();
+    }
+}
+
+pub struct EqualsConstraint<M: MetricTrait, C: MetricTrait> {
+    metric: PhantomData<M>,
+    value: PhantomData<C>,
+    violation_result: ConstraintResult,
+}
+
+impl<M: MetricTrait, C: MetricTrait> EqualsConstraint<M, C> {
+    pub fn new(violation_result: ConstraintResult) -> Self {
+        Self {
+            metric: PhantomData,
+            value: PhantomData,
+            violation_result,
+        }
+    }
+}
+
+impl<M: MetricTrait, C: MetricTrait<Value = M::Value>> Constraint for EqualsConstraint<M, C> {
+    fn check(&self, backend: &Backend) -> ConstraintResult {
+        let metric_val = backend.current_value::<M>();
+        let constraint_val = backend.current_value::<C>();
+        if metric_val == constraint_val {
+            return ConstraintResult::NOMINAL;
+        } else {
+            return self.violation_result;
+        };
+    }
+
+    fn metric(&self) -> Metric {
+        return M::metric();
+    }
+}

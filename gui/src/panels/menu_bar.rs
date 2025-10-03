@@ -1,5 +1,5 @@
 use eframe::egui;
-use egui::{Ui, Vec2};
+use egui::Vec2;
 
 use crate::backend::{BackendDiscriminants, SerialBackend, UdpBackend};
 use crate::tabs::GuiTab;
@@ -17,19 +17,6 @@ impl MenuBarPanel {
         puffin::profile_function!();
 
         let backend = sam.backend();
-
-        #[cfg(all(not(target_arch = "wasm32"), not(target_os = "android")))]
-        let data_source_is_sim = match backend {
-            Backend::Simulation(_) => true,
-            _ => false,
-        };
-        #[cfg(any(target_arch = "wasm32", target_os = "android"))]
-        let data_source_is_sim = false;
-
-        let data_source_is_log = match backend {
-            Backend::Log(_) => true,
-            _ => false,
-        };
 
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
             if !enabled {

@@ -4,6 +4,7 @@ use crate::{
     system_diagram_components::{core::constants::STROKE_WIDTH, math::conversions::to_pos},
     utils::theme::ThemeColors,
 };
+use egui::Shape;
 use nalgebra::{Affine2, Point2};
 
 const NUM_STEPS: usize = 100;
@@ -16,7 +17,9 @@ pub fn paint(transform: &Affine2<f32>, painter: &egui::Painter, theme: &ThemeCol
         color: theme.foreground_weak,
     };
     let positions = POINTS.into_iter().map(|p| to_pos(transform * p)).collect::<Vec<_>>();
-    painter.line(positions, stroke);
+    //Hans: Currently we use convex shape for disconnect_with_check_valve
+    painter.add(Shape::convex_polygon(positions, theme.background_weak, stroke));
+    //painter.line(positions, stroke);
 }
 
 fn calculate_circle_points() -> [Point2<f32>; NUM_STEPS] {

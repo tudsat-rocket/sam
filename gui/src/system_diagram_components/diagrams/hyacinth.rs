@@ -1,24 +1,28 @@
 use core::f32;
-use std::sync::{LazyLock, Once};
+use std::sync::LazyLock;
 
+use crate::storage::static_metrics::MetricTrait;
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
 use strum::{EnumIter, IntoEnumIterator};
-use telemetry::Metric;
+use telemetry::{LocalMetric, Metric};
 
 use crate::{
     backend::{
         Backend,
         storage::{
-            static_metrics::{MaxPressureN2Tank, N2ReleaseValveState},
+            static_metrics::{MS5611, MaxPressureN2Tank, RawBarometricAltitude},
             storeable_value::ValveState,
         },
     },
-    frontend::Frontend,
+    frontend::{
+        Frontend,
+        constraints::{ConstraintResult, MaxConstraint},
+    },
     system_diagram_components::{
         core::{
-            flow_painter::{Line1D, Painter, Symbol},
+            flow_painter::{BinaryValvePainter, Line1D, Painter, Symbol},
             fluids::FluidType,
         },
         math::transform::Transform,
@@ -27,44 +31,153 @@ use crate::{
     widgets::system_diagram::SystemDiagram,
 };
 
+macro_rules! make_valve_interactions {
+    ($($name:ident),*) => {
+        #[derive(Clone)]
+        pub enum ToggleValve {
+            $( $name ),*
+        }
+
+    impl ToggleValve {
+        pub fn interact(&self, backend: &mut Backend) {
+            match self {
+                $( ToggleValve::$name => {
+                backend.current_value::<crate::storage::static_metrics::$name>().map(|state| match state {
+                    ValveState::Open => backend.set_value::<crate::storage::static_metrics::$name>(ValveState::Closed),
+                    ValveState::Closed => backend.set_value::<crate::storage::static_metrics::$name>(ValveState::Open),
+                });
+            }),*
+            }
+        }
+
+        pub fn is_possible(&self, backend: &Backend) -> bool {
+            match self {
+                $( ToggleValve::$name => {
+                backend.current_value::<crate::storage::static_metrics::$name>().is_some()
+            }),*
+            }
+        }
+
+        pub fn description(&self, backend: &Backend) -> String {
+            match self {
+                $( ToggleValve::$name => backend.current_value::<crate::storage::static_metrics::$name>()
+                .map(|state| match state {
+                    ValveState::Open => format!("Close {}", <crate::storage::static_metrics::$name as MetricTrait>::metric()),
+                    ValveState::Closed => format!("Open {}", <crate::storage::static_metrics::$name as MetricTrait>::metric()),
+                })
+                .unwrap_or(format!("Invalid metric or value for {}", <crate::storage::static_metrics::$name as MetricTrait>::metric()))
+            ),*
+            }
+        }
+    }
+
+            #[derive(Clone)]
+        pub enum OpenValve {
+            $( $name ),*
+        }
+
+    impl OpenValve {
+        pub fn interact(&self, backend: &mut Backend) {
+            let _ = match self {
+                $( OpenValve::$name =>
+                    backend.set_value::<crate::storage::static_metrics::$name>(ValveState::Open),
+
+            )*
+            };
+        }
+
+        pub fn is_possible(&self, backend: &Backend) -> bool {
+            match self {
+                $( OpenValve::$name => {
+                backend.current_value::<crate::storage::static_metrics::$name>().is_none()
+            }),*
+            }
+        }
+
+        pub fn description(&self, _backend: &Backend) -> String {
+            match self {
+                $( OpenValve::$name => format!("Open {}", <crate::storage::static_metrics::$name as MetricTrait>::metric())
+            ),*
+            }
+        }
+    }
+                #[derive(Clone)]
+        pub enum CloseValve {
+            $( $name ),*
+        }
+
+    impl CloseValve {
+        pub fn interact(&self, backend: &mut Backend) {
+            let _ = match self {
+                $( CloseValve::$name =>
+                    backend.set_value::<crate::storage::static_metrics::$name>(ValveState::Closed),
+
+            )*
+            };
+        }
+
+        pub fn is_possible(&self, backend: &Backend) -> bool {
+            match self {
+                $( CloseValve::$name => {
+                backend.current_value::<crate::storage::static_metrics::$name>().is_none()
+            }),*
+            }
+        }
+
+        pub fn description(&self, _backend: &Backend) -> String {
+            match self {
+                $( CloseValve::$name => format!("Close {}", <crate::storage::static_metrics::$name as MetricTrait>::metric())
+            ),*
+            }
+        }
+    }
+    }
+}
+
+make_valve_interactions!(
+    N2BottleValve,
+    N2OBottleValve,
+    N2ReleaseValve,
+    N2OReleaseValve,
+    N2QuickDisconnect,
+    N2OQuickDisconnect,
+    N2PurgeValve,
+    N2PressureRegulator,
+    N2OVentValve,
+    N2OBurstDisc,
+    N2OFillAndDumpValve,
+    N2OMainValve
+);
+
 #[derive(Clone)]
 pub enum ComponentInteraction {
-    PrintInteraction(&'static str),
-    ToggleN2ReleaseValveState,
+    ToggleValve(ToggleValve),
+    OpenValve(OpenValve),
+    CloseValve(CloseValve),
 }
 
 impl ComponentInteraction {
     pub fn interact(&self, backend: &mut Backend) {
         match self {
-            ComponentInteraction::PrintInteraction(str) => println!("{str}"),
-            ComponentInteraction::ToggleN2ReleaseValveState => {
-                backend.current_value::<N2ReleaseValveState>().map(|state| match state {
-                    ValveState::Open => backend.set_value::<N2ReleaseValveState>(ValveState::Closed),
-                    ValveState::Closed => backend.set_value::<N2ReleaseValveState>(ValveState::Open),
-                });
-            }
+            ComponentInteraction::ToggleValve(valve) => valve.interact(backend),
+            ComponentInteraction::OpenValve(open_valve) => open_valve.interact(backend),
+            ComponentInteraction::CloseValve(close_valve) => close_valve.interact(backend),
         }
     }
 
     pub fn is_possible(&self, backend: &Backend) -> bool {
         match self {
-            ComponentInteraction::PrintInteraction(_) => true,
-            ComponentInteraction::ToggleN2ReleaseValveState => {
-                backend.current_value::<N2ReleaseValveState>().map(|_| true).unwrap_or(false)
-            }
+            ComponentInteraction::ToggleValve(valve) => valve.is_possible(backend),
+            ComponentInteraction::OpenValve(open_valve) => open_valve.is_possible(backend),
+            ComponentInteraction::CloseValve(close_valve) => close_valve.is_possible(backend),
         }
     }
 
     pub fn description(&self, backend: &Backend) -> String {
         match self {
-            ComponentInteraction::PrintInteraction(str) => format!("Print \"{str}\""),
-            ComponentInteraction::ToggleN2ReleaseValveState => backend
-                .current_value::<N2ReleaseValveState>()
-                .map(|state| match state {
-                    ValveState::Open => return format!("Close N2ReleaseValve"),
-                    ValveState::Closed => return format!("Open N2ReleaseValve"),
-                })
-                .unwrap_or(format!("Invalid metric or value for N2ReleaseValve")),
+            ComponentInteraction::ToggleValve(valve) => valve.description(backend),
+            ComponentInteraction::OpenValve(open_valve) => open_valve.description(backend),
+            ComponentInteraction::CloseValve(close_valve) => close_valve.description(backend),
         }
     }
 }
@@ -189,9 +302,78 @@ static COMPONENT_TO_RESERVOIR: LazyLock<EnumMap<HyacinthComponent, ReservoirAsso
 static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<ComponentInteraction>>> =
     LazyLock::new(|| {
         let mut interactions: EnumMap<HyacinthComponent, Vec<ComponentInteraction>> = Default::default();
-        interactions[HyacinthComponent::N2Bottle]
-            .push(ComponentInteraction::PrintInteraction("This is a test interaction"));
-        interactions[HyacinthComponent::N2ReleaseValve].push(ComponentInteraction::ToggleN2ReleaseValveState);
+        //Toggle Valve
+        interactions[HyacinthComponent::N2BottleValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2BottleValve));
+        interactions[HyacinthComponent::N2OBottleValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OBottleValve));
+        interactions[HyacinthComponent::N2ReleaseValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2ReleaseValve));
+        interactions[HyacinthComponent::N2OReleaseValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OReleaseValve));
+        interactions[HyacinthComponent::N2QuickDisconnect]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2QuickDisconnect));
+        interactions[HyacinthComponent::N2OQuickDisconnect]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OQuickDisconnect));
+        interactions[HyacinthComponent::N2PurgeValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2PurgeValve));
+        interactions[HyacinthComponent::N2PressureRegulator]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2PressureRegulator));
+        interactions[HyacinthComponent::N2OVentValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OVentValve));
+        interactions[HyacinthComponent::N2OBurstDiscOne]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OBurstDiscTwo]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OFillAndDumpValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OFillAndDumpValve));
+        interactions[HyacinthComponent::N2OMainValve]
+            .push(ComponentInteraction::ToggleValve(ToggleValve::N2OMainValve));
+        //Close Valve
+        interactions[HyacinthComponent::N2BottleValve]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2BottleValve));
+        interactions[HyacinthComponent::N2OBottleValve]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OBottleValve));
+        interactions[HyacinthComponent::N2ReleaseValve]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2ReleaseValve));
+        interactions[HyacinthComponent::N2OReleaseValve]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OReleaseValve));
+        interactions[HyacinthComponent::N2QuickDisconnect]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2QuickDisconnect));
+        interactions[HyacinthComponent::N2OQuickDisconnect]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OQuickDisconnect));
+        interactions[HyacinthComponent::N2PurgeValve].push(ComponentInteraction::CloseValve(CloseValve::N2PurgeValve));
+        interactions[HyacinthComponent::N2PressureRegulator]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2PressureRegulator));
+        interactions[HyacinthComponent::N2OVentValve].push(ComponentInteraction::CloseValve(CloseValve::N2OVentValve));
+        interactions[HyacinthComponent::N2OBurstDiscOne]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OBurstDiscTwo]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OFillAndDumpValve]
+            .push(ComponentInteraction::CloseValve(CloseValve::N2OFillAndDumpValve));
+        interactions[HyacinthComponent::N2OMainValve].push(ComponentInteraction::CloseValve(CloseValve::N2OMainValve));
+        //Open Valve
+        interactions[HyacinthComponent::N2BottleValve].push(ComponentInteraction::OpenValve(OpenValve::N2BottleValve));
+        interactions[HyacinthComponent::N2OBottleValve]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2OBottleValve));
+        interactions[HyacinthComponent::N2ReleaseValve]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2ReleaseValve));
+        interactions[HyacinthComponent::N2OReleaseValve]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2OReleaseValve));
+        interactions[HyacinthComponent::N2QuickDisconnect]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2QuickDisconnect));
+        interactions[HyacinthComponent::N2OQuickDisconnect]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2OQuickDisconnect));
+        interactions[HyacinthComponent::N2PurgeValve].push(ComponentInteraction::OpenValve(OpenValve::N2PurgeValve));
+        interactions[HyacinthComponent::N2PressureRegulator]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2PressureRegulator));
+        interactions[HyacinthComponent::N2OVentValve].push(ComponentInteraction::OpenValve(OpenValve::N2OVentValve));
+        interactions[HyacinthComponent::N2OBurstDiscOne].push(ComponentInteraction::OpenValve(OpenValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OBurstDiscTwo].push(ComponentInteraction::OpenValve(OpenValve::N2OBurstDisc));
+        interactions[HyacinthComponent::N2OFillAndDumpValve]
+            .push(ComponentInteraction::OpenValve(OpenValve::N2OFillAndDumpValve));
+        interactions[HyacinthComponent::N2OMainValve].push(ComponentInteraction::OpenValve(OpenValve::N2OMainValve));
         return interactions;
     });
 
@@ -224,7 +406,7 @@ static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<Compone
 static RESERVOIR_TO_METRICS: LazyLock<EnumMap<HyacinthReservoir, Vec<Metric>>> = LazyLock::new(|| {
     enum_map![
         HyacinthReservoir::N2Bottle => vec![
-            Metric::LocalMetric(telemetry::LocalMetric::N2ReleaseValveState),
+            Metric::LocalMetric(telemetry::LocalMetric::N2ReleaseValve),
         ],
         HyacinthReservoir::N2Filling => vec![],
         HyacinthReservoir::N2OBottle => vec![],
@@ -255,30 +437,30 @@ static COMPONENT_TO_SYMBOL: LazyLock<EnumMap<HyacinthComponent, Symbol>> = LazyL
     enum_map![
         HyacinthComponent::N2Bottle => Symbol::new(Painter::Bottle(StorageState::new(FluidType::N2, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.24), Translation2::new(0.10, 0.32))),
         HyacinthComponent::N2OBottle => Symbol::new(Painter::Bottle(StorageState::new(FluidType::N2O, 1f32)), Transform::new(Rotation2::identity(), Scale2::new(0.12, 0.24), Translation2::new(0.10, 0.84))),
-        HyacinthComponent::N2BottleValve => Symbol::new(Painter::ManualValve(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.18, 0.16))),
-        HyacinthComponent::N2OBottleValve => Symbol::new(Painter::ManualValve(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.18, 0.68))),
+        HyacinthComponent::N2BottleValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::ManualValve, Metric::LocalMetric(LocalMetric::N2BottleValve)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.18, 0.16))),
+        HyacinthComponent::N2OBottleValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::ManualValve, Metric::LocalMetric(LocalMetric::N2OBottleValve)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.18, 0.68))),
         HyacinthComponent::N2Manometer => Symbol::new(Painter::Manometer, Transform::new(Rotation2::new(0f32), Scale2::new(0.04, 0.04), Translation2::new(0.28, 0.10))),
-        HyacinthComponent::N2ReleaseValve => Symbol::new(Painter::ManualValve(ValveState::Closed), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.28, 0.24))),
-        HyacinthComponent::N2OReleaseValve => Symbol::new(Painter::ManualValve(ValveState::Closed), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.28, 0.76))),
+        HyacinthComponent::N2ReleaseValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::ManualValve, Metric::LocalMetric(LocalMetric::N2ReleaseValve)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.28, 0.24))),
+        HyacinthComponent::N2OReleaseValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::ManualValve, Metric::LocalMetric(LocalMetric::N2OReleaseValve)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.28, 0.76))),
         HyacinthComponent::N2FlexTube => Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.06), Translation2::new(0.38, 0.16))),
         HyacinthComponent::N2OFlexTube => Symbol::new(Painter::FlexTube, Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.06), Translation2::new(0.38, 0.68))),
-        HyacinthComponent::N2QuickDisconnect => Symbol::new(Painter::QuickDisconnect(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.50, 0.16))),
-        HyacinthComponent::N2OQuickDisconnect => Symbol::new(Painter::QuickDisconnectWithCheckValve(ValveState::Open), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.50, 0.68))),
+        HyacinthComponent::N2QuickDisconnect => Symbol::new(Painter::BinaryValve(BinaryValvePainter::QuickDisconnect, Metric::LocalMetric(LocalMetric::N2QuickDisconnect)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.50, 0.16))),
+        HyacinthComponent::N2OQuickDisconnect => Symbol::new(Painter::BinaryValve(BinaryValvePainter::QuickDisconnectWithCheckValve, Metric::LocalMetric(LocalMetric::N2OQuickDisconnect)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.50, 0.68))),
         HyacinthComponent::N2FillingCheckValve => Symbol::new(Painter::CheckValve, Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.62, 0.16))),
         HyacinthComponent::N2Tank => Symbol::new(Painter::Tank(StorageState::new(FluidType::N2, 0f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.10), Translation2::new(0.77, 0.09))),
-        HyacinthComponent::N2PurgeValve => Symbol::new(Painter::ManualValve(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.92, 0.13))),
+        HyacinthComponent::N2PurgeValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::ManualValve, Metric::LocalMetric(LocalMetric::N2PurgeValve)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.92, 0.13))),
         HyacinthComponent::N2TankPressureSensor => Symbol::new(Painter::PressureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.94, 0.19))),
-        HyacinthComponent::N2PressureRegulator => Symbol::new(Painter::MotorizedValve(ValveState::Closed), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.77, 0.22))),
+        HyacinthComponent::N2PressureRegulator => Symbol::new(Painter::BinaryValve(BinaryValvePainter::MotorizedValve, Metric::LocalMetric(LocalMetric::N2PressureRegulator)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.77, 0.22))),
         HyacinthComponent::N2ToN2OCheckValve => Symbol::new(Painter::CheckValve, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.77, 0.34))),
         HyacinthComponent::N2OTank => Symbol::new(Painter::Tank(StorageState::new(FluidType::N2O, 0f32)), Transform::new(Rotation2::identity(), Scale2::new(0.14, 0.24), Translation2::new(0.77, 0.54))),
-        HyacinthComponent::N2OVentValve => Symbol::new(Painter::SolenoidValve(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.92, 0.36))),
+        HyacinthComponent::N2OVentValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::SolenoidValve, Metric::LocalMetric(LocalMetric::N2OVentValve)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.92, 0.36))),
         HyacinthComponent::N2OPressureSensorTop => Symbol::new(Painter::PressureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.64, 0.40))),
-        HyacinthComponent::N2OBurstDiscOne => Symbol::new(Painter::BurstDisc(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.06), Translation2::new(0.94, 0.43))),
-        HyacinthComponent::N2OBurstDiscTwo => Symbol::new(Painter::BurstDisc(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.06), Translation2::new(0.94, 0.51))),
+        HyacinthComponent::N2OBurstDiscOne => Symbol::new(Painter::BinaryValve(BinaryValvePainter::BurstDisc, Metric::LocalMetric(LocalMetric::N2OBurstDisc)), Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.06), Translation2::new(0.94, 0.43))),
+        HyacinthComponent::N2OBurstDiscTwo => Symbol::new(Painter::BinaryValve(BinaryValvePainter::BurstDisc, Metric::LocalMetric(LocalMetric::N2OBurstDisc)), Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.06), Translation2::new(0.94, 0.51))),
         HyacinthComponent::N2OPressureSensorBottom => Symbol::new(Painter::PressureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.94, 0.71))),
         HyacinthComponent::N2OTemperatureSensor => Symbol::new(Painter::TemperatureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.94, 0.65))),
-        HyacinthComponent::N2OFillAndDumpValve => Symbol::new(Painter::SolenoidValve(ValveState::Closed), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.62, 0.68))),
-        HyacinthComponent::N2OMainValve => Symbol::new(Painter::MotorizedValve(ValveState::Closed), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.77, 0.74))),
+        HyacinthComponent::N2OFillAndDumpValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::SolenoidValve, Metric::LocalMetric(LocalMetric::N2OFillAndDumpValve)), Transform::new(Rotation2::identity(), Scale2::new(0.08, 0.04), Translation2::new(0.62, 0.68))),
+        HyacinthComponent::N2OMainValve => Symbol::new(Painter::BinaryValve(BinaryValvePainter::MotorizedValve, Metric::LocalMetric(LocalMetric::N2OMainValve)), Transform::new(Rotation2::new(-f32::consts::FRAC_PI_2), Scale2::new(0.08, 0.04), Translation2::new(0.77, 0.74))),
         HyacinthComponent::Igniter => Symbol::new(Painter::Thruster, Transform::new(Rotation2::new(f32::consts::FRAC_PI_2), Scale2::new(0.04, 0.06), Translation2::new(0.85, 0.84))),
         HyacinthComponent::CombustionChamberPressureSensor => Symbol::new(Painter::PressureSensor, Transform::new(Rotation2::identity(), Scale2::new(0.04, 0.04), Translation2::new(0.64, 0.80))),
         HyacinthComponent::CombustionChamber => Symbol::new(Painter::Thruster, Transform::new(Rotation2::identity(), Scale2::new(0.10, 0.14), Translation2::new(0.77, 0.89)))
@@ -495,9 +677,13 @@ pub fn create_diagram<'a>(
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
     if !backend.has_initialized_local_metrics() {
-        let _ = backend.set_value::<MaxPressureN2Tank>(50f64);
-        let _ = backend.set_value::<N2ReleaseValveState>(ValveState::Closed);
+        let _ = backend.set_value::<MaxPressureN2Tank>(2000f64);
         backend.initialize_local_metrics();
+        frontend
+            .metric_monitor_mut()
+            .add_constraint(Box::new(MaxConstraint::<RawBarometricAltitude<MS5611>, MaxPressureN2Tank>::new(
+                ConstraintResult::WARNING,
+            )));
     }
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),

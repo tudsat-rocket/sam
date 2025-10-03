@@ -23,7 +23,7 @@ const POSITIONS: [Point2<f32>; 4] = [
     Point2::new(HANDLE_WIDTH / 2f32, -HANDLE_LENGTH),
 ];
 
-pub fn paint(transform: &Affine2<f32>, state: &ValveState, painter: &egui::Painter, theme: &ThemeColors) {
+pub fn paint(transform: &Affine2<f32>, state: &Option<ValveState>, painter: &egui::Painter, theme: &ThemeColors) {
     let stroke = egui::Stroke {
         width: STROKE_WIDTH,
         color: theme.foreground_weak,

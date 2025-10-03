@@ -53,6 +53,12 @@ pub enum ValveState {
     Closed,
 }
 
+impl Default for ValveState {
+    fn default() -> Self {
+        Self::Open //TODO Hans: This is not good
+    }
+}
+
 impl StorableValue for ValveState {
     fn to_bits(&self) -> u64 {
         match self {

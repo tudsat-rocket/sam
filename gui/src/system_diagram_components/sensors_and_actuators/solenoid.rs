@@ -24,5 +24,6 @@ pub fn paint(transform: &Affine2<f32>, painter: &egui::Painter, ctx: &egui::Cont
         2f32 * Circle::new(Point2::origin(), 0.5).transform(transform).incircle().radius(),
         painter,
         ctx,
+        theme.foreground_weak,
     );
 }

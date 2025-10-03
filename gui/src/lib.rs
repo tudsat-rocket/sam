@@ -288,7 +288,7 @@ impl Sam {
             self.backends.len() - 1
         };
         let backend = &mut self.backends[id];
-        let _ = self.frontend.metric_monitor_mut().evaluate_constraints(backend);
+        self.frontend.metric_monitor_mut().evaluate_constraints(backend);
         let mut active_constraint_mask = self.frontend.metric_monitor().active_constraint_mask().clone();
         MetricStatusBar::show(ctx, backend, &mut self.frontend, &mut active_constraint_mask);
         *self.frontend.metric_monitor_mut().active_constraint_mask_mut() = active_constraint_mask;

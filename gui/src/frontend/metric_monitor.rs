@@ -37,7 +37,7 @@ pub struct MetricMonitor {
 impl Default for MetricMonitor {
     fn default() -> Self {
         Self {
-            active_constraint_mask: vec![ConstraintResult::NOMINAL],
+            active_constraint_mask: vec![ConstraintResult::WARNING, ConstraintResult::DANGER],
             flags: Default::default(),
             constraints: Default::default(),
         }
@@ -61,9 +61,12 @@ impl MetricMonitor {
         return self.flags.iter().filter(|(_m, f)| f.contains(MonitorFlags::PINNED)).map(|(m, _f)| m).collect();
     }
 
-    pub fn evaluate_constraints(&mut self, backend: &Backend) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {
-        let _ = self.constraints.values_mut().map(|ecs| ecs.iter_mut().map(|ec| ec.evaluate(backend)));
-        return &self.constraints;
+    pub fn evaluate_constraints(&mut self, backend: &Backend) {
+        for ecs in self.constraints.values_mut() {
+            for ec in ecs {
+                ec.evaluate(backend);
+            }
+        }
     }
 
     pub fn constraint_results(&self) -> &HashMap<Metric, Vec<EvaluatedConstraint>> {

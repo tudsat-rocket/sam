@@ -138,7 +138,7 @@ impl DataStore {
         schema
             .receive(time, message, |metric, repr, reader: &mut TelemetryMessageReader<N>| {
                 let _ = reader.read_value(repr).and_then(|bits| {
-                    call_static_metric!(Self::ingest_value, <metric, >, self, bits, t).map_err(|s| print!("{s}"))
+                    call_static_metric!(Self::ingest_value, <metric, >, self, bits, t).map_err(|s| println!("{s}"))
                 });
             })
             .unwrap();
@@ -309,7 +309,7 @@ impl DataStore {
             .map(|(metric, data_points)| {
                 call_static_metric!(Data::from_file_entry, <metric, >, data_points)
                     .map(|data| (metric, data))
-                    .map_err(|s| print!("{s}"))
+                    .map_err(|s| println!("{s}"))
             })
             .flatten()
             .collect();

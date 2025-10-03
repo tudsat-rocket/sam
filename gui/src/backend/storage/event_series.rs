@@ -20,7 +20,6 @@ impl DataType for EventSeries {
     }
 
     fn append<M: MetricTrait>(&mut self, value: M::Value, time: f64) -> Result<(), &'static str> {
-        println!("Appending value {}", value.to_string());
         self.data.push(DataPoint::new(time, value));
         Ok(())
     }

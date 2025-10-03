@@ -98,12 +98,67 @@ make_static_metric_with_storage_type!(ApogeeError, f64, SampleSeries);
 
 // ------------- Local Nested Metrics -------------
 
-make_static_local_metric_with_storage_type!(MaxPressureN2Tank, f64, Constant);
 make_static_local_metric_with_storage_type!(
-    N2ReleaseValveState,
+    N2BottleValve,
     crate::backend::storage::storeable_value::ValveState,
     EventSeries
 );
+make_static_local_metric_with_storage_type!(
+    N2OBottleValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2ReleaseValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OReleaseValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2QuickDisconnect,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OQuickDisconnect,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2PurgeValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2PressureRegulator,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OVentValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OBurstDisc,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OFillAndDumpValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    N2OMainValve,
+    crate::backend::storage::storeable_value::ValveState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(MaxPressureN2Tank, f64, Constant);
 
 // ------------- Other Nested Metrics (currently do not work via macro) -------------
 
@@ -1112,8 +1167,19 @@ macro_rules! call_static_metric {
             telemetry::Metric::ApogeeError => $($func)::+::<$crate::storage::static_metrics::ApogeeError $(, $generics)*>($($args),*),
             telemetry::Metric::LocalMetric(local_metric) =>
             match local_metric {
+                telemetry::LocalMetric::N2BottleValve => $($func)::+::<$crate::storage::static_metrics::N2BottleValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OBottleValve => $($func)::+::<$crate::storage::static_metrics::N2OBottleValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2ReleaseValve => $($func)::+::<$crate::storage::static_metrics::N2ReleaseValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OReleaseValve => $($func)::+::<$crate::storage::static_metrics::N2OReleaseValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2QuickDisconnect => $($func)::+::<$crate::storage::static_metrics::N2QuickDisconnect $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OQuickDisconnect => $($func)::+::<$crate::storage::static_metrics::N2OQuickDisconnect $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2PurgeValve => $($func)::+::<$crate::storage::static_metrics::N2PurgeValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2PressureRegulator => $($func)::+::<$crate::storage::static_metrics::N2PressureRegulator $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OVentValve => $($func)::+::<$crate::storage::static_metrics::N2OVentValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OBurstDisc => $($func)::+::<$crate::storage::static_metrics::N2OBurstDisc $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OFillAndDumpValve => $($func)::+::<$crate::storage::static_metrics::N2OFillAndDumpValve $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::N2OMainValve => $($func)::+::<$crate::storage::static_metrics::N2OMainValve $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::MaxPressureN2Tank => $($func)::+::<$crate::storage::static_metrics::MaxPressureN2Tank $(, $generics)*>($($args),*),
-                telemetry::LocalMetric::N2ReleaseValveState => $($func)::+::<$crate::storage::static_metrics::N2ReleaseValveState $(, $generics)*>($($args),*),
             },
             _ => unreachable!()
         }

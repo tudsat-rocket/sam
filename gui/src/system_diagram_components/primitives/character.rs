@@ -1,9 +1,16 @@
-use egui::{Align, FontFamily, FontId, TextFormat, epaint::TextShape, text::LayoutJob};
+use egui::{Align, Color32, FontFamily, FontId, TextFormat, epaint::TextShape, text::LayoutJob};
 use nalgebra::{Point2, Vector2};
 
 use crate::{system_diagram_components::math::conversions::to_pos, utils::theme::ThemeColors};
 
-pub fn paint(text: &str, target_center: Point2<f32>, target_height: f32, painter: &egui::Painter, ctx: &egui::Context) {
+pub fn paint(
+    text: &str,
+    target_center: Point2<f32>,
+    target_height: f32,
+    painter: &egui::Painter,
+    ctx: &egui::Context,
+    color: Color32,
+) {
     let theme = ThemeColors::new(ctx);
     let mut layout = LayoutJob::default();
     layout.halign = Align::Center;
@@ -12,7 +19,7 @@ pub fn paint(text: &str, target_center: Point2<f32>, target_height: f32, painter
         0.0,
         TextFormat {
             font_id: FontId::new(target_height, FontFamily::Monospace),
-            color: theme.foreground_weak,
+            color: color,
             ..Default::default()
         },
     );

@@ -164,8 +164,21 @@ pub enum Metric {
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum LocalMetric {
+    //Binary Valve States
+    N2BottleValve,
+    N2OBottleValve,
+    N2ReleaseValve,
+    N2OReleaseValve,
+    N2QuickDisconnect,
+    N2OQuickDisconnect,
+    N2PurgeValve,
+    N2PressureRegulator,
+    N2OVentValve,
+    N2OBurstDisc,
+    N2OFillAndDumpValve,
+    N2OMainValve,
+    //
     MaxPressureN2Tank,
-    N2ReleaseValveState,
 }
 
 #[cfg(not(target_os = "none"))]

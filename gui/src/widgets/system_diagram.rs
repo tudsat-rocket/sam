@@ -10,7 +10,7 @@ use crate::{
     utils::mesh::register_textures,
     widgets::plot::Plot,
 };
-use egui::{Button, Color32, Pos2, Rect, RichText, Vec2};
+use egui::{Color32, Pos2, Rect, RichText, Sense, Vec2};
 use nalgebra::{Rotation2, Scale2, Translation2};
 
 pub trait FlattenInnerResponse<R> {
@@ -141,22 +141,6 @@ fn as_tooltip<Comp: SystemComponent>(
     } else {
         tooltip_response = ui.label(RichText::new("No metrics available").italics()).union(tooltip_response);
     }
-
-    // tooltip_response = egui::CollapsingHeader::new(RichText::new("Properties").strong().underline())
-    //     .show(ui, |ui| {
-    //         egui::Grid::new("tooltip_grid_properties").striped(true).show(ui, |ui| {
-    //             for property in &self.properties {
-    //                 tooltip_response = tooltip_response.union(ui.label(property.desc.clone()));
-    //                 tooltip_response = tooltip_response.union(
-    //                     ui.label(property.val.value.clone().map(|v| format!("{v}")).unwrap_or("N/A".to_string())),
-    //                 );
-    //                 tooltip_response.union(ui.label(property.unit.clone().unwrap_or("N/A".to_string())));
-    //                 ui.end_row();
-    //             }
-    //         });
-    //     })
-    //     .header_response
-    //     .union(tooltip_response);
     return tooltip_response;
 }
 // }
@@ -200,7 +184,7 @@ impl<'a, Comp: SystemComponent> egui::Widget for SystemDiagram<'a, Comp> {
         return ui
             .vertical(|ui| {
                 for (idx, comp) in self.components.iter().enumerate() {
-                    let bounding_box = comp.symbol().paint(&global_transform, ui.painter(), ui.ctx());
+                    let bounding_box = comp.symbol().paint(&global_transform, ui, self.backend);
                     let trigger_id = ui.make_persistent_id(format!("Base Layer Trigger ID {idx}")); //TODO Improve ID
                     let popup_pos = bounding_box.min + bounding_box.size() * Vec2::new(1.0, 0.5);
                     TriggerBuilder::new(trigger_id, bounding_box)
@@ -226,10 +210,11 @@ impl<'a, Comp: SystemComponent> egui::Widget for SystemDiagram<'a, Comp> {
                                 return if comp.interactions().len() > 0 {
                                     ui.vertical(|ui| {
                                         for interaction in comp.interactions() {
-                                            let interaction_response = ui.add_enabled(
-                                                interaction.is_possible(&backend),
-                                                Button::new(interaction.description(backend)),
-                                            );
+                                            let interaction_response = if interaction.is_possible(&backend) {
+                                                ui.button(interaction.description(backend))
+                                            } else {
+                                                ui.allocate_response(Vec2::ZERO, Sense::hover())
+                                            };
                                             tooltip_response = interaction_response.union(tooltip_response.clone());
                                             if interaction_response.clicked() {
                                                 interaction.interact(backend);
