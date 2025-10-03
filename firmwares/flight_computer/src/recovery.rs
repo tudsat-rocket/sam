@@ -9,17 +9,17 @@ use embassy_time::{Duration, Timer};
 use shared_types::{FlightMode, settings::RecoveryOutputSettings};
 
 pub static MAIN_RECOVERY_SIG: Signal<CriticalSectionRawMutex, bool> = Signal::new();
-pub static PARABREAKS_SIG: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+pub static PARABRAKES_SIG: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
 pub async fn start_recovery_task(
     main_output_settings: RecoveryOutputSettings,
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
     spawner: SendSpawner,
     main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
-    parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+    parabrakes_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 ) {
     spawner.spawn(run_main_recovery(main_output_settings, load_outputs, main_recovery_sig)).unwrap();
-    spawner.spawn(run_parabreaks(load_outputs, parabreaks_sig)).unwrap();
+    spawner.spawn(run_parabrakes(load_outputs, parabrakes_sig)).unwrap();
 }
 // TODO: add settings
 
@@ -30,6 +30,7 @@ async fn run_main_recovery(
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
     main_recovery_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 ) {
+    let main = LoadOutput::Out2;
     loop {
         let sig = main_recovery_sig.wait().await;
         if !sig {
@@ -41,13 +42,13 @@ async fn run_main_recovery(
         // Check armed status
         for _ in 0..settings.num_pulses {
             unsafe {
-                load_outputs.lock_mut(|o| o.activate(LoadOutput::Out2));
+                load_outputs.lock_mut(|o| o.activate(main));
             }
             defmt::info!("Main recovery motor active.");
 
             Timer::after(Duration::from_millis(settings.pulse_high_duration.into())).await;
             unsafe {
-                load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out2));
+                load_outputs.lock_mut(|o| o.deactivate(main));
             }
             defmt::info!("Main recovery motor stop.");
 
@@ -57,29 +58,26 @@ async fn run_main_recovery(
 }
 
 #[embassy_executor::task]
-async fn run_parabreaks(
+async fn run_parabrakes(
     load_outputs: &'static Mutex<CriticalSectionRawMutex, LoadOutputs>,
-    parabreaks_sig: &'static Signal<CriticalSectionRawMutex, bool>,
+    parabrakes_sig: &'static Signal<CriticalSectionRawMutex, bool>,
 ) {
+    let parabrakes = LoadOutput::Out1;
     loop {
-        let sig = parabreaks_sig.wait().await;
+        let sig = parabrakes_sig.wait().await;
         if !sig {
             continue;
         }
-        // TODO: probably remove arm
         unsafe {
-            load_outputs.lock_mut(|o| o.arm());
+            load_outputs.lock_mut(|o| o.activate(parabrakes));
         }
-        unsafe {
-            load_outputs.lock_mut(|o| o.activate(LoadOutput::Out1));
-        }
-        defmt::info!("Parabreaks motor active.");
+        defmt::info!("Parabrakes motor active.");
 
         Timer::after(Duration::from_secs(12)).await;
 
         unsafe {
-            load_outputs.lock_mut(|o| o.deactivate(LoadOutput::Out1));
+            load_outputs.lock_mut(|o| o.deactivate(parabrakes));
         }
-        defmt::info!("Parabreaks motor stop.");
+        defmt::info!("Parabrakes motor stop.");
     }
 }

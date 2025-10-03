@@ -48,7 +48,7 @@ use static_cell::StaticCell;
 use {defmt_rtt as _, panic_probe as _};
 
 use flight_computer_firmware as fw;
-use fw::recovery::{MAIN_RECOVERY_SIG, PARABREAKS_SIG, start_recovery_task};
+use fw::recovery::{MAIN_RECOVERY_SIG, PARABRAKES_SIG, start_recovery_task};
 use fw::storage;
 use fw::vehicle::*;
 
@@ -109,7 +109,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         load_outputs,
         high_priority_spawner,
         &MAIN_RECOVERY_SIG,
-        &PARABREAKS_SIG,
+        &PARABRAKES_SIG,
     )
     .await;
 
@@ -126,7 +126,7 @@ async fn main(low_priority_spawner: Spawner) -> ! {
         (lora_downlink, lora_uplink),
         subsystems,
         &MAIN_RECOVERY_SIG,
-        &PARABREAKS_SIG,
+        &PARABRAKES_SIG,
         board.flash_handle,
         settings,
         downlink_settings,

@@ -1,5 +1,4 @@
 use embassy_stm32::gpio::{AnyPin, Input, Level, Output, OutputType, Pin, Pull, Speed};
-
 pub struct LoadOutputs {
     arm: Output<'static>,
     out1: Output<'static>,
@@ -8,6 +7,7 @@ pub struct LoadOutputs {
     out4: Output<'static>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum LoadOutput {
     Out1,
     Out2,
