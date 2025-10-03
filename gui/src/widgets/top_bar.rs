@@ -219,7 +219,9 @@ impl TopBarUiExt for egui::Ui {
 
     fn command_button(&mut self, label: &'static str, cmd: Command, backend: &mut Backend) {
         if self.button(label).clicked() {
-            backend.send_command(cmd).unwrap();
+            if let Err(e) = backend.send_command(cmd.clone()) {
+                println!("Error sending command: {:?}. {}", cmd, e);
+            }
         }
     }
 

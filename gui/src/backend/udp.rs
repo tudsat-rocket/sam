@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::error;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -6,6 +7,11 @@ use std::time::Duration;
 
 use std::time::Instant;
 
+use serde::de::Expected;
+use telemetry::MessageDefinition;
+use telemetry::Metric;
+use telemetry::Representation;
+use telemetry::TelemetrySchema;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -18,6 +24,8 @@ use telemetry::{LORA_SCHEMA, USB_SCHEMA};
 use crate::backend::BackendVariant;
 use crate::backend::storage::store::DataStore;
 use crate::settings::AppSettings;
+
+use super::storage::static_metrics::PressureSensorId;
 
 pub struct UdpBackend {
     downlink_rx: Receiver<(Instant, DownlinkMessage)>,
@@ -55,7 +63,9 @@ impl UdpBackend {
             .name("sam-udp".to_owned())
             .spawn(move || {
                 let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-                rt.block_on(run_socket(Some(ctx), downlink_tx, uplink_rx)).unwrap()
+                if let Err(e) = rt.block_on(run_socket(Some(ctx), downlink_tx, uplink_rx)) {
+                    error!("UDP socket thread has ended because of a fatal error, please restart the app.");
+                }
             })
             .unwrap();
 
@@ -112,6 +122,79 @@ impl UdpBackend {
     }
 }
 
+// enum SchemaInterpretError {
+//     MissmatchedTimeOffsets,
+//     ReprNotByteAlligned,
+//     BufferToShort,
+//     BufferToLong,
+// }
+
+// Schema reader
+fn interpret_buffer_with_schema(schema: &TelemetrySchema, buffer: &[u8], fc_time: u32) -> Result<(), ()> {
+    // let mut res = Vec::with_capacity(schema.0.iter().map(|(m, _, _)| m.0.len()).sum());
+    let count: usize = 0;
+    let mut bit_pointer: usize = 0;
+
+    let mut msg_def: Option<&MessageDefinition> = None;
+    for (m, period, offset) in schema.0 {
+        if fc_time % *period == *offset {
+            msg_def = Some(m);
+        }
+    }
+    let Some(msg_def) = msg_def else {
+        // error!("Interpretation as schema: {:?} failed because of mismatched time offsets", schema);
+        return Err(());
+    };
+    let expected_size_bits: usize = msg_def.0.iter().map(|(_, repr)| repr.bits()).sum();
+    let expected_size = expected_size_bits / 8;
+    // info!("expected_size: {} bytes ({} bits), buffer size: {}", expected_size, expected_size_bits, buffer.len());
+    // info!("detected MessageDefinition: {:?}", msg_def);
+    if expected_size != buffer.len() {
+        // error!("MessageDefinition does not match buffer lenght");
+        return Err(());
+    }
+
+    for (metr, repr) in msg_def.0 {
+        //Correct Bit pointer alignment
+        if bit_pointer % 8 != 0 {
+            warn!("BUG: Reading MessageDefinition some metric was not byte alignment, this is not allowed.");
+            bit_pointer += 8 - bit_pointer % 8;
+        }
+
+        //Check if the representation is valid
+        if repr.bits() % 8 != 0 || repr.bits() > 64 {
+            // error!("Interpretation as schema failed because some representation was (comp time) invalid");
+            return Err(());
+        }
+
+        //Check that buffer contains a complete value
+        if ((bit_pointer + repr.bits()) / 8) > buffer.len() {
+            // error!("Interpretation as schema failed because buffer was shorter than MessageDefinition required");
+            return Err(());
+        }
+
+        //Read as u64 by applying padding if necessary
+        let mut bytes = [0; 8];
+        bytes[8 - repr.bits() / 8..].copy_from_slice(&buffer[(bit_pointer / 8)..((bit_pointer + repr.bits()) / 8)]);
+        let value = u64::from_be_bytes(bytes);
+
+        //Advance bit pointer
+        bit_pointer += repr.bits();
+
+        // res.push(value);
+    }
+    // if count != msg_def.0.len() {
+    //     error!("Interpretation as schema failed because buffer was longer than schema suggested");
+    //     return Err(());
+    // }
+    // if res.len() != schema.0.len() {
+    //     error!("Interpretation as schema failed because buffer was longer than schema suggested");
+    //     return Err(());
+    // }
+    // Ok(res)
+    Ok(())
+}
+
 impl BackendVariant for UdpBackend {
     fn update(&mut self, _ctx: &egui::Context) {
         self.message_receipt_times.retain(|(i, _)| i.elapsed() < Duration::from_millis(1000));
@@ -148,11 +231,13 @@ impl BackendVariant for UdpBackend {
                     self.fc_settings = Some(settings);
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
-                    //self.data_store.ingest_message(&USB_SCHEMA, time, message);
-                    // FIXME: change schema
-                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
-
-                    //self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    if interpret_buffer_with_schema(&LORA_SCHEMA, message.as_slice(), time).is_ok() {
+                        self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    } else if interpret_buffer_with_schema(&USB_SCHEMA, message.as_slice(), time).is_ok() {
+                        self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    } else {
+                        error!("Could not identify DownlinkMessage as LORA_SCHEMA nor as USB_SCHEMA, ignoring");
+                    }
                 }
                 _ => {
                     // TODO: metrics via downlink message
@@ -199,11 +284,15 @@ impl BackendVariant for UdpBackend {
         self.message_receipt_times.truncate(0);
     }
 
+    /// Tries to send an UplinkMessage via UDP.
+    /// An Ok() result does *not* indicate a successful send.
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         log::info!("Sending {:?}", msg);
         self.uplink_tx.blocking_send(msg)
     }
 
+    /// Tries to send an UplinkMessage of type Command via UDP.
+    /// An Ok() result does *not* indicate a successful send.
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         println!("{:?}", cmd);
         if let Some((t, last_cmd)) = self.last_command.as_ref() {
@@ -234,8 +323,11 @@ impl BackendVariant for UdpBackend {
         Some(current_time_fc)
     }
 
+    /// TODO: this function name is highly misleading.
     fn apply_settings(&mut self, settings: &AppSettings) {
-        self.send(UplinkMessage::ApplyLoRaSettings(settings.lora.clone())).unwrap();
+        if let Err(e) = self.send(UplinkMessage::ApplyLoRaSettings(settings.lora.clone())) {
+            println!("Error trying to apply settings: {}", e);
+        }
     }
 
     fn link_quality(&self) -> Option<f32> {
@@ -269,7 +361,7 @@ pub async fn run_socket(
     downlink_tx: Sender<(Instant, DownlinkMessage)>,
     mut uplink_rx: Receiver<UplinkMessage>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let socket = tokio::net::UdpSocket::bind("0.0.0.0:18355").await.unwrap();
+    let socket = tokio::net::UdpSocket::bind("0.0.0.0:18355").await?;
     println!("socket bind");
 
     let mut buf = [0; 1024];
@@ -279,29 +371,31 @@ pub async fn run_socket(
         tokio::select! {
             // send uplink message via udp
             Some(msg) = uplink_rx.recv() => {
-                println!("{:?}", msg);
+                println!("Sending {:?} over UDP", msg);
                 if let Some(addr) = peer {
-                    let serialized = msg.serialize().unwrap();
-                    let _ = socket.send_to(&serialized, addr).await;
+                    match msg.serialize() {
+                        Ok(s) => {let _ = socket.send_to(&s, addr).await;},
+                        Err(e) => log::error!("Failed to serialize a UplinkMessage, it probably didn't  fit in the buffer."),
+                    }
+
+                } else {
+                    warn!("Can't send UplinkMessage via UDP because destination ip address is unknown, dropping");
                 }
             },
             // receive message via udp
             result = socket.recv_from(&mut buf) => {
-                // info!("Received udp message");
-                let (len, addr) = result.unwrap();
+                let Ok((len, addr)) = result else {
+                    log::warn!("Error whilst trying to read UDP packet: {}", result.unwrap_err());
+                    continue;
+                };
                 peer = Some(addr);
 
                 let Ok(msg) = postcard::from_bytes_cobs(&mut buf[..(len as usize)]) else {
-                    // info!("Postcard serialization of message failed");
+                    info!("Serialization of DownlinkMessage");
                     continue;
                 };
-                    // info!("Postcard serialization of message successful");
-
-                    // TODO: remove unwrap
-                // downlink_tx.send((Instant::now(), msg)).await.unwrap();
-                match downlink_tx.send((Instant::now(), msg)).await {
-                    Ok(..) => (),
-                    Err(e) => log::warn!("Could not send message between threads: {}", e),
+                if let Err(e) = downlink_tx.send((Instant::now(), msg)).await {
+                    log::warn!("Could not send message between threads: {}", e);
                 }
 
                 if let Some(ctx) = &ctx {

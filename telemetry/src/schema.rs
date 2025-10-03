@@ -3,8 +3,9 @@ use crate::*;
 #[derive(Clone, Debug, PartialEq)]
 pub struct MessageDefinition(pub &'static [(Metric, Representation)]);
 
+/// (MessageDefinition, period_duration, offset_in_period)
 #[derive(Clone, Debug, PartialEq)]
-pub struct TelemetrySchema(&'static [(MessageDefinition, u32, u32)]);
+pub struct TelemetrySchema(pub &'static [(MessageDefinition, u32, u32)]);
 
 impl MessageDefinition {
     pub fn collect<S: MetricSource, const N: usize>(
@@ -28,6 +29,13 @@ impl MessageDefinition {
             cb(*metric, *repr, &mut reader)
         }
     }
+
+    /// Returns the number of bits a message following this definition would have.
+    /// This works only, because we don't have any padding at the moment, since all reprs have 8 * N bytes.
+    pub fn number_of_bits(&self) -> usize {
+        self.0.iter().map(|(_, r)| r.bits()).sum()
+    }
+    pub fn read_with_iter() {}
 }
 
 impl TelemetrySchema {
@@ -45,7 +53,6 @@ impl TelemetrySchema {
 
         None
     }
-
     pub fn receive<const N: usize, F: FnMut(Metric, Representation, &mut TelemetryMessageReader<N>)>(
         &self,
         time: u32,
@@ -59,7 +66,6 @@ impl TelemetrySchema {
                 return Ok(());
             }
         }
-
-        todo!()
+        Err(())
     }
 }

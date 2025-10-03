@@ -250,8 +250,11 @@ pub fn spawn_downlink_monitor(
         .name("sam-serial".to_owned())
         .spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread().enable_io().enable_time().build().unwrap();
-            rt.block_on(downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx))
-                .unwrap()
+            if let Err(e) =
+                rt.block_on(downlink_monitor(ctx, serial_status_tx, serial_status_rx, downlink_tx, uplink_rx))
+            {
+                error!("USB-serial thread has ended because of a fatal error, please restart the app.");
+            }
         })
         .unwrap()
 }
@@ -364,6 +367,8 @@ impl BackendVariant for SerialBackend {
             self.serial_port = port;
 
             if self.serial_status == SerialStatus::Connected {
+                // NOTE: unwrap is okay for now, because send only returns an error on Tokio
+                // failure
                 self.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
             }
         }
@@ -432,6 +437,9 @@ impl BackendVariant for SerialBackend {
         self.message_receipt_times.truncate(0);
     }
 
+    // TODO: proper error
+    /// Tries to send an UplinkMessage via USB-serial.
+    /// An Ok() result does *not* indicate a successful send.
     #[cfg(not(any(target_arch = "wasm32", target_os = "android")))]
     fn send(&mut self, msg: UplinkMessage) -> Result<(), SendError<UplinkMessage>> {
         log::info!("Sending {:?}", msg);
@@ -448,6 +456,9 @@ impl BackendVariant for SerialBackend {
         Ok(())
     }
 
+    // TODO: proper error
+    /// Tries to send an UplinkMessage of type Command via USB-serial.
+    /// An Ok() result does *not* indicate a successful send.
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
         if let Some((t, last_cmd)) = self.last_command.as_ref() {
             if last_cmd == &cmd && t.elapsed() < Duration::from_millis(100) {
@@ -474,7 +485,7 @@ impl BackendVariant for SerialBackend {
 
         Some(x)
     }
-
+    /// TODO: this function name is highly misleading.
     fn apply_settings(&mut self, settings: &AppSettings) {
         self.lora_settings = settings.lora.clone();
         self.send(UplinkMessage::ApplyLoRaSettings(self.lora_settings.clone())).unwrap();
