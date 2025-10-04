@@ -685,11 +685,29 @@ impl PopupManager {
     ) -> <P::Kind as PopupKind>::Response {
         frontend.popup_manager.current_layer += 1;
         frontend.popup_manager.active_frame = egui::Frame::popup(ui.style());
+        let mut final_position =
+            *popup.position() - Vec2::new(0.0, frontend.popup_manager.active_frame.inner_margin.topf());
+        //TODO Hans: Workaround to ensure popups do go out of frame or appear at an unwanted position. Assumes that popups are positioned horizontally and may break in some edge cases
+        let screen_size = ui.ctx().screen_rect();
+        ui.ctx().memory(|mem| {
+            if let Some(previous_rect) = mem.area_rect(id) {
+                if final_position.x + previous_rect.width() > screen_size.width() {
+                    final_position.x -=
+                        frontend.popup_manager().get_active_frame_bounds(ui.min_rect()).width() + previous_rect.width();
+                }
+                if final_position.y + previous_rect.height() > screen_size.height() {
+                    final_position.y -= previous_rect.height()
+                        - frontend.popup_manager().get_active_frame_bounds(ui.min_rect()).height()
+                        + frontend.popup_manager.active_frame.inner_margin.topf();
+                }
+            }
+        });
         let popup_response = egui::Area::new(id)
             .sense(Sense::click_and_drag())
             .interactable(true)
-            .fixed_pos(*popup.position() - Vec2::new(0.0, frontend.popup_manager.active_frame.inner_margin.topf()))
+            .fixed_pos(final_position)
             .order(egui::Order::Foreground)
+            .constrain(false)
             .show(ui.ctx(), |ui| {
                 return frontend
                     .popup_manager

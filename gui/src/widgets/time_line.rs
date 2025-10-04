@@ -338,7 +338,16 @@ impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
     ) {
         //TODO Hans: We should avoid cloning here, but cannot move out of self because trait must be dyn compatible for iteration
         trigger.add_all(self.popups.clone(), position).show_active(ui, frontend, backend);
-        //TriggerBuilder::new(egui::Id::new(format!("TimelineState {}", self.label)), bounding_box)
+    }
+}
+
+fn text_color_for_bg(bg_color: &Color32) -> Color32 {
+    let [r, g, b, _a] = bg_color.to_srgba_unmultiplied();
+    let brightness = (r as f32 * 299.0 + g as f32 * 587.0 + b as f32 * 114.0) / 1000.0;
+    if brightness > 128.0 {
+        return Color32::BLACK;
+    } else {
+        return Color32::WHITE;
     }
 }
 
@@ -379,10 +388,11 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
         let absolute_height_anomalous_state = get_basis_y(transform).y;
 
         for (anomalous_state, p) in std::iter::zip(self.dyn_iter(), anomalous_state_positions) {
+            let fill_color = anomalous_state.fill(ThemeColors::new(ui.ctx()).background_weak);
             ui.painter().add(egui::Shape::Rect(RectShape::new(
                 Rect::from_min_size(p, Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state)),
                 CORNER_RADIUS,
-                anomalous_state.fill(ThemeColors::new(ui.ctx()).background_weak),
+                fill_color,
                 anomalous_state.stroke(),
                 egui::StrokeKind::Middle,
             )));
@@ -400,7 +410,7 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
                 Align2::CENTER_CENTER,
                 anomalous_state.name().to_string(),
                 FontId::default(),
-                ThemeColors::new(ui.ctx()).foreground_weak,
+                text_color_for_bg(&fill_color),
             );
         }
     }

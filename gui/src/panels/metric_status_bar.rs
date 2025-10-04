@@ -36,15 +36,9 @@ impl HasImage for ConstraintResult {
 fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, ui: &mut Ui, theme: &ThemeColors) {
     let val = backend.current_value_dynamic_as_string(&metric);
     let name = format!("{:?}", metric);
-    let unit = match metric {
-        Metric::Pressure(_) => "bar",
-        Metric::Temperature(_) => "°C",
-        _ => "??",
-    };
 
     ui.label(name);
     ui.label(val);
-    ui.label(unit);
 
     let worst_constraint_result =
         metric_monitor.constraint_results().get(metric).map(|res| res.iter().max()).unwrap_or_default();
@@ -59,8 +53,6 @@ fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, u
 
     if metric_monitor.is_pinned(&metric) {
         ui.label("📌");
-    } else {
-        ui.allocate_response(Vec2::ZERO, Sense::hover());
     }
 
     ui.end_row();
@@ -112,38 +104,11 @@ impl MetricStatusBar {
             ctx,
             num_metrics_to_display > 0 || has_open_popups,
             |ui| {
-                let mut dropdown_response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
                 ui.horizontal(|ui| {
-                    //ui.vertical_centered(|ui| {
-                    ui.heading("Monitored Metrics");
-                    //});
-                    dropdown_response =
-                        ui.add(Button::image(Image::new(IMG_FILTER).tint(theme.foreground_weak)).small())
+                    ui.vertical_centered(|ui| {
+                        ui.heading("Monitored Metrics");
+                    });
                 });
-                TriggerBuilder::new(METRIC_MONITOR_FILTER_BUTTON_ID.clone(), dropdown_response.interact_rect)
-                    // .add(
-                    //     dropdown_response.interact_rect.right_top(),
-                    //     PopupContentData::<DropdownMenu, _>::new(|ui, _frontend, _backend| {
-                    //         let mut i = 0;
-                    //         let mut response = ui.allocate_response(Vec2::ZERO, Sense::click_and_drag());
-                    //         for constraint_result in ConstraintResult::iter() {
-                    //             let active_position = active_constraint_mask
-                    //                 .iter()
-                    //                 .find_position(|e| **e == constraint_result)
-                    //                 .map(|(i, _c)| i);
-                    //             let mut is_active = active_position.is_some();
-                    //             response = response.union(ui.checkbox(&mut is_active, ConstraintResult::VARIANTS[i]));
-                    //             if is_active && !active_position.is_some() {
-                    //                 active_constraint_mask.push(constraint_result);
-                    //             } else if !is_active && active_position.is_some() {
-                    //                 active_position.map(|i| active_constraint_mask.swap_remove(i));
-                    //             }
-                    //             i += 1;
-                    //         }
-                    //         return response;
-                    //     }),
-                    // )
-                    .show_active(ui, frontend, backend);
                 ui.separator();
                 egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
                     for metric in frontend.metric_monitor().pinned_metrics() {

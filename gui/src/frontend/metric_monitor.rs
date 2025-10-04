@@ -81,8 +81,9 @@ impl MetricMonitor {
         return &mut self.active_constraint_mask;
     }
 
-    pub fn add_constraint(&mut self, constraint: Box<dyn Constraint>) {
+    pub fn add_constraint(&mut self, constraint: Box<dyn Constraint>) -> &mut Self {
         self.constraints.entry(constraint.metric()).or_default().push(EvaluatedConstraint::new(constraint));
+        return self;
     }
 
     pub fn strongest_constraint_result(&self, metric: &Metric) -> Option<&EvaluatedConstraint> {

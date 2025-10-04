@@ -1,7 +1,10 @@
 use core::f32;
 use std::sync::LazyLock;
 
-use crate::storage::static_metrics::MetricTrait;
+use crate::{
+    backend::storage::static_metrics::N2ReleaseValve, frontend::constraints::SomeConstraint,
+    storage::static_metrics::MetricTrait,
+};
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
 use nalgebra::{Point2, Rotation2, Scale2, Translation2};
@@ -199,14 +202,15 @@ impl SystemComponent for HyacinthComponent {
     }
 
     fn metrics(&self) -> Vec<Metric> {
-        return match COMPONENT_TO_RESERVOIR[*self] {
-            ReservoirAssoc::PartOf(res) => RESERVOIR_TO_METRICS[res].clone(),
-            ReservoirAssoc::ConnectionBetween(res1, res2) => {
-                let mut metrics = RESERVOIR_TO_METRICS[res1].clone();
-                metrics.append(&mut RESERVOIR_TO_METRICS[res2].clone());
-                return metrics;
-            }
-        };
+        return COMPONENT_TO_METRIC[*self].clone();
+        // return match COMPONENT_TO_RESERVOIR[*self] {
+        //     ReservoirAssoc::PartOf(res) => RESERVOIR_TO_METRICS[res].clone(),
+        //     ReservoirAssoc::ConnectionBetween(res1, res2) => {
+        //         let mut metrics = RESERVOIR_TO_METRICS[res1].clone();
+        //         metrics.append(&mut RESERVOIR_TO_METRICS[res2].clone());
+        //         return metrics;
+        //     }
+        // };
     }
 
     fn interactions(&self) -> Vec<ComponentInteraction> {
@@ -247,57 +251,57 @@ pub enum HyacinthComponent {
     CombustionChamber,
 }
 
-#[derive(Enum, Clone, Copy)]
-pub enum HyacinthReservoir {
-    N2Bottle,
-    N2Filling,
-    N2OBottle,
-    N2OFilling,
-    N2Tank,
-    N2OTank,
-    CombustionChamber,
-    Atmosphere,
-}
+// #[derive(Enum, Clone, Copy)]
+// pub enum HyacinthReservoir {
+//     N2Bottle,
+//     N2Filling,
+//     N2OBottle,
+//     N2OFilling,
+//     N2Tank,
+//     N2OTank,
+//     CombustionChamber,
+//     Atmosphere,
+// }
 
-enum ReservoirAssoc {
-    PartOf(HyacinthReservoir),
-    ConnectionBetween(HyacinthReservoir, HyacinthReservoir),
-}
+// enum ReservoirAssoc {
+//     PartOf(HyacinthReservoir),
+//     ConnectionBetween(HyacinthReservoir, HyacinthReservoir),
+// }
 
 //TODO Hans: Check Valve and QuickDisconnects
-static COMPONENT_TO_RESERVOIR: LazyLock<EnumMap<HyacinthComponent, ReservoirAssoc>> = LazyLock::new(|| {
-    enum_map![
-        HyacinthComponent::N2Bottle => ReservoirAssoc::PartOf(HyacinthReservoir::N2Bottle),
-        HyacinthComponent::N2OBottle => ReservoirAssoc::PartOf(HyacinthReservoir::N2OBottle),
-        HyacinthComponent::N2BottleValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Bottle, HyacinthReservoir::N2Filling),
-        HyacinthComponent::N2OBottleValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OBottle, HyacinthReservoir::N2OFilling),
-        HyacinthComponent::N2Manometer => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
-        HyacinthComponent::N2ReleaseValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Filling, HyacinthReservoir::Atmosphere),
-        HyacinthComponent::N2OReleaseValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OFilling, HyacinthReservoir::Atmosphere),
-        HyacinthComponent::N2FlexTube => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
-        HyacinthComponent::N2OFlexTube => ReservoirAssoc::PartOf(HyacinthReservoir::N2OFilling),
-        HyacinthComponent::N2QuickDisconnect => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
-        HyacinthComponent::N2OQuickDisconnect => ReservoirAssoc::PartOf(HyacinthReservoir::N2OFilling),
-        HyacinthComponent::N2FillingCheckValve => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
-        HyacinthComponent::N2Tank => ReservoirAssoc::PartOf(HyacinthReservoir::N2Tank),
-        HyacinthComponent::N2TankPressureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::N2Tank),
-        HyacinthComponent::N2PurgeValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Tank, HyacinthReservoir::Atmosphere),
-        HyacinthComponent::N2PressureRegulator => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Tank, HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2ToN2OCheckValve => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OTank => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OVentValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OTank, HyacinthReservoir::Atmosphere),
-        HyacinthComponent::N2OPressureSensorTop => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OBurstDiscOne => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OBurstDiscTwo => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OPressureSensorBottom => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OTemperatureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
-        HyacinthComponent::N2OFillAndDumpValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OFilling, HyacinthReservoir::N2OBottle),
-        HyacinthComponent::N2OMainValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OTank, HyacinthReservoir::CombustionChamber),
-        HyacinthComponent::Igniter => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
-        HyacinthComponent::CombustionChamberPressureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
-        HyacinthComponent::CombustionChamber => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
-    ]
-});
+// static COMPONENT_TO_RESERVOIR: LazyLock<EnumMap<HyacinthComponent, ReservoirAssoc>> = LazyLock::new(|| {
+//     enum_map![
+//         HyacinthComponent::N2Bottle => ReservoirAssoc::PartOf(HyacinthReservoir::N2Bottle),
+//         HyacinthComponent::N2OBottle => ReservoirAssoc::PartOf(HyacinthReservoir::N2OBottle),
+//         HyacinthComponent::N2BottleValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Bottle, HyacinthReservoir::N2Filling),
+//         HyacinthComponent::N2OBottleValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OBottle, HyacinthReservoir::N2OFilling),
+//         HyacinthComponent::N2Manometer => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
+//         HyacinthComponent::N2ReleaseValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Filling, HyacinthReservoir::Atmosphere),
+//         HyacinthComponent::N2OReleaseValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OFilling, HyacinthReservoir::Atmosphere),
+//         HyacinthComponent::N2FlexTube => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
+//         HyacinthComponent::N2OFlexTube => ReservoirAssoc::PartOf(HyacinthReservoir::N2OFilling),
+//         HyacinthComponent::N2QuickDisconnect => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
+//         HyacinthComponent::N2OQuickDisconnect => ReservoirAssoc::PartOf(HyacinthReservoir::N2OFilling),
+//         HyacinthComponent::N2FillingCheckValve => ReservoirAssoc::PartOf(HyacinthReservoir::N2Filling),
+//         HyacinthComponent::N2Tank => ReservoirAssoc::PartOf(HyacinthReservoir::N2Tank),
+//         HyacinthComponent::N2TankPressureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::N2Tank),
+//         HyacinthComponent::N2PurgeValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Tank, HyacinthReservoir::Atmosphere),
+//         HyacinthComponent::N2PressureRegulator => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2Tank, HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2ToN2OCheckValve => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OTank => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OVentValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OTank, HyacinthReservoir::Atmosphere),
+//         HyacinthComponent::N2OPressureSensorTop => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OBurstDiscOne => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OBurstDiscTwo => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OPressureSensorBottom => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OTemperatureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::N2OTank),
+//         HyacinthComponent::N2OFillAndDumpValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OFilling, HyacinthReservoir::N2OBottle),
+//         HyacinthComponent::N2OMainValve => ReservoirAssoc::ConnectionBetween(HyacinthReservoir::N2OTank, HyacinthReservoir::CombustionChamber),
+//         HyacinthComponent::Igniter => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
+//         HyacinthComponent::CombustionChamberPressureSensor => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
+//         HyacinthComponent::CombustionChamber => ReservoirAssoc::PartOf(HyacinthReservoir::CombustionChamber),
+//     ]
+// });
 
 static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<ComponentInteraction>>> =
     LazyLock::new(|| {
@@ -377,61 +381,66 @@ static COMPONENT_TO_INTERACTION: LazyLock<EnumMap<HyacinthComponent, Vec<Compone
         return interactions;
     });
 
-// static RESERVOIR_TO_COMPONENTS: LazyLock<EnumMap<HyacinthReservoir, Vec<HyacinthComponent>>> = LazyLock::new(|| {
-//     let mut map = enum_map![
-//         HyacinthReservoir::N2Bottle => vec![],
+static COMPONENT_TO_METRIC: LazyLock<EnumMap<HyacinthComponent, Vec<Metric>>> = LazyLock::new(|| {
+    let mut metrics: EnumMap<HyacinthComponent, Vec<Metric>> = Default::default();
+    //Valves
+    metrics[HyacinthComponent::N2BottleValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2BottleValve)]);
+    metrics[HyacinthComponent::N2OBottleValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OBottleValve)]);
+    metrics[HyacinthComponent::N2ReleaseValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2ReleaseValve)]);
+    metrics[HyacinthComponent::N2OReleaseValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OReleaseValve)]);
+    metrics[HyacinthComponent::N2QuickDisconnect]
+        .append(&mut vec![Metric::LocalMetric(LocalMetric::N2QuickDisconnect)]);
+    metrics[HyacinthComponent::N2OQuickDisconnect]
+        .append(&mut vec![Metric::LocalMetric(LocalMetric::N2OQuickDisconnect)]);
+    metrics[HyacinthComponent::N2PurgeValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2PurgeValve)]);
+    metrics[HyacinthComponent::N2PressureRegulator]
+        .append(&mut vec![Metric::LocalMetric(LocalMetric::N2PressureRegulator)]);
+    metrics[HyacinthComponent::N2OVentValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OVentValve)]);
+    metrics[HyacinthComponent::N2OBurstDiscOne].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OBurstDisc)]);
+    metrics[HyacinthComponent::N2OBurstDiscTwo].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OBurstDisc)]);
+    metrics[HyacinthComponent::N2OFillAndDumpValve]
+        .append(&mut vec![Metric::LocalMetric(LocalMetric::N2OFillAndDumpValve)]);
+    metrics[HyacinthComponent::N2OMainValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OMainValve)]);
+    //Tanks
+    metrics[HyacinthComponent::N2Tank].append(&mut vec![Metric::Pressure(telemetry::PressureSensorId::NitrogenTank)]);
+    metrics[HyacinthComponent::N2OTank].append(&mut vec![
+        Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
+        Metric::Temperature(telemetry::TemperatureSensorId::OxidizerTank),
+    ]);
+    metrics[HyacinthComponent::CombustionChamber]
+        .append(&mut vec![Metric::Pressure(telemetry::PressureSensorId::CombustionChamber)]);
+
+    return metrics;
+});
+// static RESERVOIR_TO_METRICS: LazyLock<EnumMap<HyacinthReservoir, Vec<Metric>>> = LazyLock::new(|| {
+//     enum_map![
+//         HyacinthReservoir::N2Bottle => vec![
+//             Metric::LocalMetric(telemetry::LocalMetric::N2ReleaseValve),
+//         ],
 //         HyacinthReservoir::N2Filling => vec![],
 //         HyacinthReservoir::N2OBottle => vec![],
-//         HyacinthReservoir::N2OFilling => vec![],
-//         HyacinthReservoir::N2Tank => vec![],
-//         HyacinthReservoir::N2OTank => vec![],
-//         HyacinthReservoir::CombustionChamber => vec![],
+//         HyacinthReservoir::N2OFilling => vec![
+//             Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
+//         ],
+//         HyacinthReservoir::N2Tank => vec![
+//             Metric::Pressure(telemetry::PressureSensorId::NitrogenTank),
+//             Metric::ValveState(telemetry::ValveId::PressureRegulator),
+//             Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank),
+//         ],
+//         HyacinthReservoir::N2OTank => vec![
+//             Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
+//             Metric::Temperature(telemetry::TemperatureSensorId::OxidizerTank),
+//             Metric::ValveState(telemetry::ValveId::MainValve),
+//             Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
+//             Metric::ValveState(telemetry::ValveId::PressureRegulator),
+//         ],
+//         HyacinthReservoir::CombustionChamber => vec![
+//             Metric::Pressure(telemetry::PressureSensorId::CombustionChamber),
+//             Metric::ValveState(telemetry::ValveId::MainValve),
+//         ],
 //         HyacinthReservoir::Atmosphere => vec![],
-//     ];
-//     for (component, assoc) in COMPONENT_TO_RESERVOIR.iter() {
-//         match assoc {
-//             ReservoirAssoc::PartOf(reservoir) => {
-//                 map[*reservoir].push(component);
-//             },
-//             ReservoirAssoc::ConnectionBetween(in_reservoir, out_reservoir) => {
-//                 map[*in_reservoir].push(component);
-//                 map[*out_reservoir].push(component);
-//             },
-//         }
-//     }
-//     map[HyacinthReservoir::Atmosphere] = vec![];
-//     return map;
+//     ]
 // });
-
-static RESERVOIR_TO_METRICS: LazyLock<EnumMap<HyacinthReservoir, Vec<Metric>>> = LazyLock::new(|| {
-    enum_map![
-        HyacinthReservoir::N2Bottle => vec![
-            Metric::LocalMetric(telemetry::LocalMetric::N2ReleaseValve),
-        ],
-        HyacinthReservoir::N2Filling => vec![],
-        HyacinthReservoir::N2OBottle => vec![],
-        HyacinthReservoir::N2OFilling => vec![
-            Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
-        ],
-        HyacinthReservoir::N2Tank => vec![
-            Metric::Pressure(telemetry::PressureSensorId::NitrogenTank),
-            Metric::ValveState(telemetry::ValveId::PressureRegulator),
-            Metric::LocalMetric(telemetry::LocalMetric::MaxPressureN2Tank),
-        ],
-        HyacinthReservoir::N2OTank => vec![
-            Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
-            Metric::Temperature(telemetry::TemperatureSensorId::OxidizerTank),
-            Metric::ValveState(telemetry::ValveId::MainValve),
-            Metric::ValveState(telemetry::ValveId::FillAndDumpValve),
-            Metric::ValveState(telemetry::ValveId::PressureRegulator),
-        ],
-        HyacinthReservoir::CombustionChamber => vec![
-            Metric::Pressure(telemetry::PressureSensorId::CombustionChamber),
-            Metric::ValveState(telemetry::ValveId::MainValve),
-        ],
-        HyacinthReservoir::Atmosphere => vec![],
-    ]
-});
 
 static COMPONENT_TO_SYMBOL: LazyLock<EnumMap<HyacinthComponent, Symbol>> = LazyLock::new(|| {
     enum_map![
@@ -677,10 +686,11 @@ pub fn create_diagram<'a>(
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
     if !backend.has_initialized_local_metrics() {
-        let _ = backend.set_value::<MaxPressureN2Tank>(2000f64);
+        let _ = backend.set_value::<MaxPressureN2Tank>(100f64);
         backend.initialize_local_metrics();
         frontend
             .metric_monitor_mut()
+            .add_constraint(Box::new(SomeConstraint::<N2ReleaseValve>::new(ConstraintResult::DANGER)))
             .add_constraint(Box::new(MaxConstraint::<RawBarometricAltitude<MS5611>, MaxPressureN2Tank>::new(
                 ConstraintResult::WARNING,
             )));

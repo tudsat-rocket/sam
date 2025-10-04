@@ -20,7 +20,7 @@ impl StorableValue for f64 {
     }
 
     fn to_string(&self) -> String {
-        return format!("{self}");
+        return format!("{:.2}", self);
     }
 
     fn to_float(&self) -> f64 {

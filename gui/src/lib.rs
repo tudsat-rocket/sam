@@ -49,8 +49,6 @@ impl Sam {
         let backends = vec![
             Backend::Noop(NoopBackend::default()),
             #[cfg(not(target_arch = "wasm32"))]
-            Backend::Serial(SerialBackend::new(ctx, settings.lora.clone())),
-            #[cfg(not(target_arch = "wasm32"))]
             Backend::Udp(UdpBackend::new(ctx)),
         ];
         let selected_backend_id = backends.len() - 1;

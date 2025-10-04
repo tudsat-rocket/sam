@@ -88,7 +88,6 @@ fn as_tooltip<Comp: SystemComponent>(
 
                         tooltip_response = tooltip_response.union(ui.label(name.clone()));
                         tooltip_response = tooltip_response.union(ui.label(val));
-                        //tooltip_response = tooltip_response.union(ui.label(unit));
 
                         let bounding_box = Rect::from_min_max(
                             Pos2::new(ui.min_rect().min.x, ui.available_rect_before_wrap().min.y),
@@ -103,14 +102,11 @@ fn as_tooltip<Comp: SystemComponent>(
                             .add(
                                 popup_pos,
                                 PopupContentData::<Tooltip, _>::new(|ui, frontend, backend| {
-                                    let inner_tooltip_response = ui.label(format!("Justification: Missing"));
                                     let config = super::plot::PlotConfig {
                                         lines: vec![(metric, Color32::RED)],
                                         ylimits: (None, None),
                                     };
-                                    return ui
-                                        .add(Plot::new(&config, frontend.shared_plot_mut(), backend))
-                                        .union(inner_tooltip_response);
+                                    return ui.add(Plot::new(&config, frontend.shared_plot_mut(), backend));
                                 }),
                             )
                             .add(
