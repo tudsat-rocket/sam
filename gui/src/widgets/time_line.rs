@@ -249,16 +249,12 @@ impl HyacinthNominalState {
                                         .map(|fm| fm != self.associated_flight_mode())
                                         .unwrap_or(true)
                                     {
-                                        if let Err(e) =
-                                            backend.send_command(Command::SetFlightMode(self.associated_flight_mode()))
-                                        {
-                                            println!("Error sending command via backend: {}", e);
-                                        }
-                                        if let Err(e) = backend
-                                            .send_command(Command::SetDisplayStep(self.associated_procedure_step()))
-                                        {
-                                            println!("Error sending command via backend: {}", e);
-                                        }
+                                        println!("Error sending command via backend: {}", e);
+                                    }
+                                    if let Err(e) =
+                                        backend.send_command(Command::SetDisplayStep(self.associated_procedure_step()))
+                                    {
+                                        println!("Error sending command via backend: {}", e);
                                     }
                                     captured_frontend.set_hyacinth_anomalous_state(None);
                                     captured_frontend.set_hyacinth_nominal_state(self);

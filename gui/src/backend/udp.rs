@@ -125,7 +125,6 @@ impl UdpBackend {
 
 // Schema reader
 fn interpret_buffer_with_schema(schema: &TelemetrySchema, buffer: &[u8], fc_time: u32) -> Result<(), ()> {
-    // let mut res = Vec::with_capacity(schema.0.iter().map(|(m, _, _)| m.0.len()).sum());
     let count: usize = 0;
     let mut bit_pointer: usize = 0;
 
@@ -288,12 +287,12 @@ impl BackendVariant for UdpBackend {
     /// Tries to send an UplinkMessage of type Command via UDP.
     /// An Ok() result does *not* indicate a successful send.
     fn send_command(&mut self, cmd: Command) -> Result<(), SendError<UplinkMessage>> {
-        println!("{:?}", cmd);
-        if let Some((t, last_cmd)) = self.last_command.as_ref() {
-            if last_cmd == &cmd && t.elapsed() < Duration::from_millis(100) {
-                return Ok(());
-            }
-        }
+        println!("send_command: {:?}", cmd);
+        // if let Some((t, last_cmd)) = self.last_command.as_ref() {
+        //     if last_cmd == &cmd && t.elapsed() < Duration::from_millis(100) {
+        //         return Ok(());
+        //     }
+        // }
 
         self.last_command = Some((Instant::now(), cmd.clone()));
         self.send(UplinkMessage::Command(cmd))
@@ -365,10 +364,12 @@ pub async fn run_socket(
         tokio::select! {
             // send uplink message via udp
             Some(msg) = uplink_rx.recv() => {
-                println!("Sending {:?} over UDP", msg);
+                println!("UDP_socket: Sending {:?} over UDP", msg);
                 if let Some(addr) = peer {
                     match msg.serialize() {
-                        Ok(s) => {let _ = socket.send_to(&s, addr).await;},
+                        Ok(s) => {if let Err(e) = socket.send_to(&s, addr).await {
+                            log::error!("Failed to send UplinkMessage to socket: {}", e);
+                        }},
                         Err(e) => log::error!("Failed to serialize a UplinkMessage, it probably didn't  fit in the buffer."),
                     }
 
