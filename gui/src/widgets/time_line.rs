@@ -7,7 +7,7 @@ use crate::{
     backend::Backend,
     frontend::{
         Frontend,
-        popup_manager::{ModalDialog, PopupContentData, PopupContentList, TriggerBuilder},
+        popup_manager::{ModalDialog, PopupContentData, PopupContentList, PopupPosition, TriggerBuilder},
     },
     system_diagram_components::{
         core::constants::{self, CORNER_RADIUS},
@@ -308,7 +308,6 @@ pub trait TimelineState {
         backend: &mut Backend,
         frontend: &mut Frontend,
         trigger: TriggerBuilder<()>,
-        position: Pos2,
     );
 }
 impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
@@ -334,10 +333,9 @@ impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
         backend: &mut Backend,
         frontend: &mut Frontend,
         trigger: TriggerBuilder<()>,
-        position: Pos2,
     ) {
         //TODO Hans: We should avoid cloning here, but cannot move out of self because trait must be dyn compatible for iteration
-        trigger.add_all(self.popups.clone(), position).show_active(ui, frontend, backend);
+        trigger.add_all(self.popups.clone(), PopupPosition::Centered).show_active(ui, frontend, backend);
     }
 }
 
@@ -401,9 +399,7 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
                 egui::Id::new(format!("FlightState {}", anomalous_state.name())),
                 Rect::from_min_size(p, Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state)),
             );
-            let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
-            let position = ui.ctx().screen_rect().center() - modal_dialog_size / 2f32;
-            anomalous_state.create_popups(ui, backend, frontend, trigger, position);
+            anomalous_state.create_popups(ui, backend, frontend, trigger);
 
             ui.painter().text(
                 p + Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state) / 2f32,

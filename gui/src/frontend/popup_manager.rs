@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use egui::{Color32, Id, Pos2, Rect, Response, Sense, Ui, Vec2};
+use egui::{Color32, Context, Frame, Id, Pos2, Rect, Response, Sense, Ui, Vec2};
 
 use crate::{
     backend::Backend,
@@ -173,7 +173,7 @@ impl TriggerBuilder<()> {
     pub fn add_all<Contents: PopupContentList>(
         self,
         popups: Contents,
-        position: Pos2,
+        position: PopupPosition,
     ) -> TriggerBuilder<Contents::AsPopupList> {
         return TriggerBuilder {
             id: self.id,
@@ -184,7 +184,7 @@ impl TriggerBuilder<()> {
 }
 
 impl<L: PopupList> TriggerBuilder<L> {
-    pub fn add<C /*, K, F*/>(self, position: Pos2, contents: C) -> TriggerBuilder<(PositionedPopup<C>, L)>
+    pub fn add<C /*, K, F*/>(self, position: PopupPosition, contents: C) -> TriggerBuilder<(PositionedPopup<C>, L)>
     where
         //K: PopupKind + NotInPopupList<L>,
         //F: FnOnce(&mut egui::Ui, &mut Frontend, &mut Backend) -> <K as PopupKind>::Response,
@@ -219,11 +219,11 @@ pub trait PopupContentList: Sized + Clone {
         return (self, contents);
     }
 
-    fn position(self, position: Pos2) -> Self::AsPopupList;
+    fn position(self, position: PopupPosition) -> Self::AsPopupList;
 }
 impl PopupContentList for () {
     type AsPopupList = ();
-    fn position(self, _position: Pos2) -> Self::AsPopupList {}
+    fn position(self, _position: PopupPosition) -> Self::AsPopupList {}
 }
 impl<H, T> PopupContentList for (H, T)
 where
@@ -231,7 +231,7 @@ where
     T: PopupContentList,
 {
     type AsPopupList = (PositionedPopup<H>, T::AsPopupList);
-    fn position(self, position: Pos2) -> Self::AsPopupList {
+    fn position(self, position: PopupPosition) -> Self::AsPopupList {
         return (PositionedPopup::new(position, self.0), self.1.position(position));
     }
 }
@@ -279,11 +279,11 @@ where
 }
 
 pub struct PositionedPopup<Contents: PopupContents> {
-    position: Pos2,
+    position: PopupPosition,
     contents: Contents,
 }
 impl<Contents: PopupContents> PositionedPopup<Contents> {
-    pub fn new(position: Pos2, contents: Contents) -> Self {
+    pub fn new(position: PopupPosition, contents: Contents) -> Self {
         Self { position, contents }
     }
 }
@@ -312,15 +312,21 @@ impl<R: PopupResponse> FlattenPopupResponse<R> for egui::InnerResponse<R> {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum PopupPosition {
+    Position(Pos2),
+    Centered,
+}
+
 pub trait DisplayablePopup {
     type Kind: PopupKind;
-    fn position(&self) -> &Pos2;
+    fn position(&self) -> &PopupPosition;
     fn show(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) -> <Self::Kind as PopupKind>::Response;
 }
 impl<Contents: PopupContents> DisplayablePopup for PositionedPopup<Contents> {
     type Kind = Contents::Kind;
 
-    fn position(&self) -> &Pos2 {
+    fn position(&self) -> &PopupPosition {
         return &self.position;
     }
 
@@ -675,6 +681,41 @@ impl PopupManager {
         return self.current_layer == self.active_popups.len() - 1;
     }
 
+    fn get_position_of_centered(ctx: &Context, area_id: egui::Id) -> Pos2 {
+        let screen_center = ctx.screen_rect().center();
+        return ctx.memory(|mem| {
+            if let Some(previous_rect) = mem.area_rect(area_id) {
+                screen_center - previous_rect.size() / 2f32
+            } else {
+                Pos2::new(0f32, 0f32)
+            }
+        });
+    }
+
+    fn get_position_of_horizontally_attached(
+        ui: &Ui,
+        area_id: egui::Id,
+        prefered_position: &Pos2,
+        trigger_frame: &Frame,
+    ) -> Pos2 {
+        let screen_size = ui.ctx().screen_rect();
+        let mut final_position = *prefered_position - Vec2::new(0.0, trigger_frame.inner_margin.topf());
+        let trigger_frame_bounds = trigger_frame.widget_rect(ui.min_rect());
+        ui.ctx().memory(|mem| {
+            return if let Some(previous_rect) = mem.area_rect(area_id) {
+                if final_position.x + previous_rect.width() > screen_size.width() {
+                    final_position.x -= trigger_frame_bounds.width() + previous_rect.width();
+                }
+                if final_position.y + previous_rect.height() > screen_size.height() {
+                    final_position.y -=
+                        previous_rect.height() - trigger_frame_bounds.height() + trigger_frame.inner_margin.topf();
+                }
+            } else {
+            };
+        });
+        return final_position;
+    }
+
     /// Show the popup in a new layer at the given positions
     fn show_popup<P: DisplayablePopup>(
         popup: P,
@@ -685,27 +726,19 @@ impl PopupManager {
     ) -> <P::Kind as PopupKind>::Response {
         frontend.popup_manager.current_layer += 1;
         frontend.popup_manager.active_frame = egui::Frame::popup(ui.style());
-        let mut final_position =
-            *popup.position() - Vec2::new(0.0, frontend.popup_manager.active_frame.inner_margin.topf());
-        //TODO Hans: Workaround to ensure popups do go out of frame or appear at an unwanted position. Assumes that popups are positioned horizontally and may break in some edge cases
-        let screen_size = ui.ctx().screen_rect();
-        ui.ctx().memory(|mem| {
-            if let Some(previous_rect) = mem.area_rect(id) {
-                if final_position.x + previous_rect.width() > screen_size.width() {
-                    final_position.x -=
-                        frontend.popup_manager().get_active_frame_bounds(ui.min_rect()).width() + previous_rect.width();
-                }
-                if final_position.y + previous_rect.height() > screen_size.height() {
-                    final_position.y -= previous_rect.height()
-                        - frontend.popup_manager().get_active_frame_bounds(ui.min_rect()).height()
-                        + frontend.popup_manager.active_frame.inner_margin.topf();
-                }
-            }
-        });
+        let position = match popup.position() {
+            PopupPosition::Position(prefered_position) => Self::get_position_of_horizontally_attached(
+                ui,
+                id,
+                prefered_position,
+                &frontend.popup_manager.active_frame,
+            ),
+            PopupPosition::Centered => Self::get_position_of_centered(ui.ctx(), id),
+        };
         let popup_response = egui::Area::new(id)
             .sense(Sense::click_and_drag())
             .interactable(true)
-            .fixed_pos(final_position)
+            .fixed_pos(position)
             .order(egui::Order::Foreground)
             .constrain(false)
             .show(ui.ctx(), |ui| {

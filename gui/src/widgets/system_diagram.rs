@@ -2,7 +2,7 @@ use crate::{
     backend::Backend,
     frontend::{
         Frontend,
-        popup_manager::{ContextMenu, PopupContentData, Tooltip, TriggerBuilder},
+        popup_manager::{ContextMenu, PopupContentData, PopupPosition, Tooltip, TriggerBuilder},
     },
     system_diagram_components::{
         core::flow_painter::Line1D, diagrams::hyacinth::SystemComponent, math::transform::Transform,
@@ -100,7 +100,7 @@ fn as_tooltip<Comp: SystemComponent>(
                         let tooltip_id = ui.make_persistent_id(format!("ID Metric {name}"));
                         TriggerBuilder::new(tooltip_id, bounding_box)
                             .add(
-                                popup_pos,
+                                PopupPosition::Position(popup_pos),
                                 PopupContentData::<Tooltip, _>::new(|ui, frontend, backend| {
                                     let config = super::plot::PlotConfig {
                                         lines: vec![(metric, Color32::RED)],
@@ -110,7 +110,7 @@ fn as_tooltip<Comp: SystemComponent>(
                                 }),
                             )
                             .add(
-                                popup_pos,
+                                PopupPosition::Position(popup_pos),
                                 PopupContentData::<ContextMenu, _>::new(|ui, frontend, _backend| {
                                     return if frontend.metric_monitor().is_pinned(&metric) {
                                         let unpin_response = ui.button("Unpin from Monitor");
@@ -185,7 +185,7 @@ impl<'a, Comp: SystemComponent> egui::Widget for SystemDiagram<'a, Comp> {
                     let popup_pos = bounding_box.min + bounding_box.size() * Vec2::new(1.0, 0.5);
                     TriggerBuilder::new(trigger_id, bounding_box)
                         .add(
-                            popup_pos,
+                            PopupPosition::Position(popup_pos),
                             PopupContentData::<Tooltip, _>::new(|ui, frontend, backend| {
                                 let mut tooltip_response =
                                     ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
@@ -199,7 +199,7 @@ impl<'a, Comp: SystemComponent> egui::Widget for SystemDiagram<'a, Comp> {
                             }),
                         )
                         .add(
-                            popup_pos,
+                            PopupPosition::Position(popup_pos),
                             PopupContentData::<ContextMenu, _>::new(|ui, _frontend, backend| {
                                 let mut tooltip_response =
                                     ui.allocate_response(egui::Vec2::ZERO, egui::Sense::click_and_drag());
