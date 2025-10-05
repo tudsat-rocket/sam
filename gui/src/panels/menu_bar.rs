@@ -16,8 +16,6 @@ impl MenuBarPanel {
         #[cfg(feature = "profiling")]
         puffin::profile_function!();
 
-        let backend = sam.backend();
-
         egui::TopBottomPanel::top("menubar").min_height(30.0).max_height(30.0).show(ctx, |ui| {
             if !enabled {
                 ui.disable();

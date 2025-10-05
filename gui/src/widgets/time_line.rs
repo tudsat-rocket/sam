@@ -1,4 +1,7 @@
-use egui::{Align2, Color32, FontId, Layout, Pos2, Rect, Vec2, epaint::RectShape};
+use egui::{
+    Align2, Color32, FontId, Key, Layout, Modifiers, Rect, RichText, TextFormat, Vec2, epaint::RectShape,
+    text::LayoutJob,
+};
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
 use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
@@ -155,20 +158,47 @@ impl HyacinthNominalState {
             self <= frontend.hyacinth_nominal_state(),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, captured_frontend, backend| {
-                    let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
                     let mut button_clicked = false;
+                    let theme = ThemeColors::new(ui.ctx());
                     let response = ui
-                        .allocate_ui_with_layout(modal_dialog_size, Layout::top_down(egui::Align::Center), |ui| {
+                        .vertical_centered(|ui| {
                             ui.heading("Confirm State Transition");
                             ui.separator();
                             ui.allocate_space(Vec2::new(0f32, 10f32));
-                            ui.label(format!(
-                                "Are you sure you want to enter the state {}? ",
-                                <Self as Into<&'static str>>::into(self)
-                            ));
-                            ui.horizontal(|ui| {
-                                ui.allocate_space(modal_dialog_size / 3f32);
-                                if ui.button("Proceed").clicked() {
+                            let mut text_layout = LayoutJob::default();
+                            text_layout.append(
+                                "Are you sure you want to enter the state \n",
+                                0f32,
+                                TextFormat {
+                                    color: theme.foreground,
+                                    ..Default::default()
+                                },
+                            );
+                            text_layout.append(
+                                <Self as Into<&'static str>>::into(self),
+                                0f32,
+                                TextFormat {
+                                    color: self.associated_color(),
+                                    ..Default::default()
+                                },
+                            );
+                            ui.label(text_layout);
+                            ui.horizontal_wrapped(|ui| {
+                                let mut proceed_layout = LayoutJob::default();
+                                proceed_layout.append(
+                                    "Proceed\n",
+                                    0f32,
+                                    TextFormat {
+                                        color: theme.foreground,
+                                        ..Default::default()
+                                    },
+                                );
+                                proceed_layout.append("[⏎]", 14f32, Default::default());
+                                let proceed_button =
+                                    egui::Button::new(proceed_layout).min_size(Vec2::new(200f32, 50f32));
+                                if ui.add(proceed_button).clicked()
+                                    || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
+                                {
                                     if backend
                                         .current_value::<crate::backend::storage::static_metrics::FlightMode>()
                                         .map(|fm| fm != self.associated_flight_mode())
@@ -189,11 +219,23 @@ impl HyacinthNominalState {
                                     captured_frontend.set_hyacinth_nominal_state(self);
                                     button_clicked = true
                                 };
-                                ui.allocate_space(Vec2::new(50f32, 0f32));
-                                if ui.button("Cancel").clicked() {
+
+                                let mut cancel_layout = LayoutJob::default();
+                                cancel_layout.append(
+                                    "Cancel\n",
+                                    0f32,
+                                    TextFormat {
+                                        color: theme.foreground,
+                                        ..Default::default()
+                                    },
+                                );
+                                cancel_layout.append("[ESC]", 4f32, Default::default());
+                                let cancel_button = egui::Button::new(cancel_layout).min_size(Vec2::new(200f32, 50f32));
+                                if ui.add(cancel_button).clicked()
+                                    || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+                                {
                                     button_clicked = true;
                                 };
-                                ui.allocate_space(modal_dialog_size / 3f32);
                             });
                         })
                         .flatten();
@@ -230,28 +272,67 @@ impl HyacinthAnomalousState {
             frontend.hyacinth_anomolous_state().map(|a| a == self).unwrap_or(false),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, frontend, _backend| {
-                    let modal_dialog_size = ui.ctx().screen_rect().size() * Vec2::new(0.3, 0.15);
+                    let theme = ThemeColors::new(ui.ctx());
                     let mut button_clicked = false;
                     let response = ui
-                        .allocate_ui_with_layout(modal_dialog_size, Layout::top_down(egui::Align::Center), |ui| {
+                        .vertical_centered(|ui| {
                             ui.heading("Confirm State Transition");
                             ui.separator();
                             ui.allocate_space(Vec2::new(0f32, 10f32));
-                            ui.label(format!(
-                                "Are you sure you want to enter the state {}? ",
-                                <Self as Into<&'static str>>::into(self)
-                            ));
-                            ui.horizontal(|ui| {
-                                ui.allocate_space(modal_dialog_size / 3f32);
-                                if ui.button("Proceed").clicked() {
+                            let mut text_layout = LayoutJob::default();
+                            text_layout.append(
+                                "Are you sure you want to enter the state \n",
+                                0f32,
+                                TextFormat {
+                                    color: theme.foreground,
+                                    ..Default::default()
+                                },
+                            );
+                            text_layout.append(
+                                <Self as Into<&'static str>>::into(self),
+                                0f32,
+                                TextFormat {
+                                    color: self.associated_color(),
+                                    ..Default::default()
+                                },
+                            );
+                            ui.label(text_layout);
+                            ui.horizontal_wrapped(|ui| {
+                                let mut proceed_layout = LayoutJob::default();
+                                proceed_layout.append(
+                                    "Proceed\n",
+                                    0f32,
+                                    TextFormat {
+                                        color: theme.foreground,
+                                        ..Default::default()
+                                    },
+                                );
+                                proceed_layout.append("[⏎]", 14f32, Default::default());
+                                let proceed_button =
+                                    egui::Button::new(proceed_layout).min_size(Vec2::new(200f32, 50f32));
+                                if ui.add(proceed_button).clicked()
+                                    || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
+                                {
                                     frontend.set_hyacinth_anomalous_state(Some(self));
                                     button_clicked = true
                                 };
-                                ui.allocate_space(Vec2::new(50f32, 0f32));
-                                if ui.button("Cancel").clicked() {
+
+                                let mut cancel_layout = LayoutJob::default();
+                                cancel_layout.append(
+                                    "Cancel\n",
+                                    0f32,
+                                    TextFormat {
+                                        color: theme.foreground,
+                                        ..Default::default()
+                                    },
+                                );
+                                cancel_layout.append("[ESC]", 4f32, Default::default());
+                                let cancel_button = egui::Button::new(cancel_layout).min_size(Vec2::new(200f32, 50f32));
+                                if ui.add(cancel_button).clicked()
+                                    || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+                                {
                                     button_clicked = true;
                                 };
-                                ui.allocate_space(modal_dialog_size / 3f32);
                             });
                         })
                         .flatten();

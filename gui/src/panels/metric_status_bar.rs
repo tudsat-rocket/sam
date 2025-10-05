@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
-use egui::{Button, Image, Sense, Ui, Vec2};
+use egui::{Image, Sense, Ui, Vec2};
 use itertools::Itertools;
 use strum::VariantNames;
 use telemetry::{Metric, MetricDiscriminants};
@@ -11,9 +11,8 @@ use crate::{
         Frontend,
         constraints::{ConstraintResult, EvaluatedConstraint},
         metric_monitor::MetricMonitor,
-        popup_manager::TriggerBuilder,
     },
-    system_diagram_components::core::constants::{IMG_DANGER, IMG_FILTER, IMG_NOMINAL, IMG_WARNING},
+    system_diagram_components::core::constants::{IMG_DANGER, IMG_NOMINAL, IMG_WARNING},
     utils::theme::ThemeColors,
 };
 

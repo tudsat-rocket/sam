@@ -681,13 +681,23 @@ impl PopupManager {
         return self.current_layer == self.active_popups.len() - 1;
     }
 
-    fn get_position_of_centered(ctx: &Context, area_id: egui::Id) -> Pos2 {
-        let screen_center = ctx.screen_rect().center();
+    fn get_position_of_centered(ctx: &Context, area_id: egui::Id) -> (Pos2, Option<f32>, Option<f32>) {
+        let screen_rect = ctx.screen_rect();
         return ctx.memory(|mem| {
             if let Some(previous_rect) = mem.area_rect(area_id) {
-                screen_center - previous_rect.size() / 2f32
+                let clamped_size = previous_rect.size().min(screen_rect.size());
+                let unclamped_position = screen_rect.center() - previous_rect.size() / 2f32;
+                if clamped_size.x < previous_rect.size().x && clamped_size.y < previous_rect.size().y {
+                    (Pos2::new(0f32, 0f32), Some(clamped_size.x), Some(clamped_size.y))
+                } else if clamped_size.x < previous_rect.size().x {
+                    (Pos2::new(0f32, unclamped_position.y), Some(clamped_size.x), None)
+                } else if clamped_size.y < previous_rect.size().y {
+                    (Pos2::new(unclamped_position.x, 0f32), None, Some(unclamped_position.y))
+                } else {
+                    (unclamped_position, None, None)
+                }
             } else {
-                Pos2::new(0f32, 0f32)
+                (Pos2::new(0f32, 0f32), None, None)
             }
         });
     }
@@ -697,7 +707,7 @@ impl PopupManager {
         area_id: egui::Id,
         prefered_position: &Pos2,
         trigger_frame: &Frame,
-    ) -> Pos2 {
+    ) -> (Pos2, Option<f32>, Option<f32>) {
         let screen_size = ui.ctx().screen_rect();
         let mut final_position = *prefered_position - Vec2::new(0.0, trigger_frame.inner_margin.topf());
         let trigger_frame_bounds = trigger_frame.widget_rect(ui.min_rect());
@@ -713,7 +723,7 @@ impl PopupManager {
             } else {
             };
         });
-        return final_position;
+        return (final_position, None, None);
     }
 
     /// Show the popup in a new layer at the given positions
@@ -726,6 +736,7 @@ impl PopupManager {
     ) -> <P::Kind as PopupKind>::Response {
         frontend.popup_manager.current_layer += 1;
         frontend.popup_manager.active_frame = egui::Frame::popup(ui.style());
+
         let position = match popup.position() {
             PopupPosition::Position(prefered_position) => Self::get_position_of_horizontally_attached(
                 ui,
@@ -735,13 +746,20 @@ impl PopupManager {
             ),
             PopupPosition::Centered => Self::get_position_of_centered(ui.ctx(), id),
         };
+
         let popup_response = egui::Area::new(id)
             .sense(Sense::click_and_drag())
             .interactable(true)
-            .fixed_pos(position)
+            .fixed_pos(position.0)
             .order(egui::Order::Foreground)
             .constrain(false)
             .show(ui.ctx(), |ui| {
+                if let Some(max_width) = position.1 {
+                    ui.set_max_width(max_width);
+                }
+                if let Some(max_height) = position.2 {
+                    ui.set_max_height(max_height);
+                }
                 return frontend
                     .popup_manager
                     .active_frame
