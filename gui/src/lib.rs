@@ -130,36 +130,6 @@ impl Sam {
             self.tab = GuiTab::Configure;
         }
 
-        let shortcut_mode = if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F4)) {
-            Some(FlightMode::Idle)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F5)) {
-            Some(FlightMode::HardwareArmed)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F6)) {
-            if false {
-                //TODO Hans //self.backend().flight_mode().unwrap_or_default() == FlightMode::Armed {
-                Some(FlightMode::ArmedLaunchImminent)
-            } else {
-                Some(FlightMode::Armed)
-            }
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F7)) {
-            Some(FlightMode::Burn)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F8)) {
-            Some(FlightMode::Coast)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F9)) {
-            Some(FlightMode::RecoveryDrogue)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F10)) {
-            Some(FlightMode::RecoveryMain)
-        } else if ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F11)) {
-            Some(FlightMode::Landed)
-        } else {
-            None
-        };
-
-        // Set new flight mode if keyboard shortcut was used
-        if let Some(fm) = shortcut_mode {
-            self.backend_mut().send_command(Command::SetFlightMode(fm)).unwrap();
-        }
-
         let alt = ctx.input(|i| i.modifiers) == Modifiers::ALT;
         let key_accel = ctx.input_mut(|i| i.key_down(Key::Plus));
         let key_decel = ctx.input_mut(|i| i.key_down(Key::Minus));

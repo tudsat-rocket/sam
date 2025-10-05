@@ -1,7 +1,4 @@
-use egui::{
-    Align2, Color32, FontId, Key, Layout, Modifiers, Rect, RichText, TextFormat, Vec2, epaint::RectShape,
-    text::LayoutJob,
-};
+use egui::{Align2, Color32, FontId, Key, Modifiers, Rect, TextFormat, Vec2, epaint::RectShape, text::LayoutJob};
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
 use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
@@ -37,6 +34,33 @@ pub enum HyacinthNominalState {
     LandedActive,
     Passivation,
     LandedPassivated,
+}
+
+trait ShortCutAsString {
+    fn as_string(&self) -> String;
+}
+
+impl ShortCutAsString for (Modifiers, Key) {
+    fn as_string(&self) -> String {
+        let modifiers = self.0;
+        let mut key_strings = vec![];
+        if modifiers.alt {
+            key_strings.push("ALT");
+        }
+        if modifiers.ctrl {
+            key_strings.push("CTRL");
+        }
+        if modifiers.shift {
+            key_strings.push("SHIFT");
+        }
+        key_strings.push(self.1.symbol_or_name());
+        return std::iter::once("[ ")
+            .chain(itertools::intersperse(key_strings, " + "))
+            .chain(std::iter::once(" ]"))
+            .map(|s| s.to_string())
+            .reduce(|acc, e| acc + &e)
+            .unwrap_or("".to_string());
+    }
 }
 
 impl HyacinthNominalState {
@@ -102,6 +126,26 @@ impl HyacinthNominalState {
         }
     }
 
+    fn hotkey(&self) -> Option<(Modifiers, Key)> {
+        match self {
+            HyacinthNominalState::Verification => None,
+            HyacinthNominalState::IdlePassivated => None,
+            HyacinthNominalState::N2Filling => None,
+            HyacinthNominalState::IdleActive => None,
+            HyacinthNominalState::HardwareArmed => Some((Modifiers::SHIFT, Key::F5)),
+            HyacinthNominalState::N2OFilling => Some((Modifiers::SHIFT, Key::F6)),
+            HyacinthNominalState::SoftwareArmed => Some((Modifiers::SHIFT, Key::F7)),
+            HyacinthNominalState::Ignition => Some((Modifiers::SHIFT, Key::F8)),
+            HyacinthNominalState::BurnPhase => Some((Modifiers::SHIFT, Key::F9)),
+            HyacinthNominalState::CoastPhase => Some((Modifiers::SHIFT, Key::F10)),
+            HyacinthNominalState::DroguePhase => Some((Modifiers::SHIFT, Key::F11)),
+            HyacinthNominalState::MainPhase => Some((Modifiers::SHIFT, Key::F12)),
+            HyacinthNominalState::LandedActive => None,
+            HyacinthNominalState::Passivation => None,
+            HyacinthNominalState::LandedPassivated => None,
+        }
+    }
+
     pub fn as_timeline(frontend: &Frontend) -> impl TimelineStateSequence + 'static {
         return (
             Self::Verification.as_timeline_state(frontend),
@@ -156,6 +200,7 @@ impl HyacinthNominalState {
             <Self as Into<&'static str>>::into(self),
             self.associated_color(),
             self <= frontend.hyacinth_nominal_state(),
+            self.hotkey(),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, captured_frontend, backend| {
                     let mut button_clicked = false;
@@ -265,11 +310,19 @@ impl HyacinthAnomalousState {
         return (Self::Hold.as_timeline_state(frontend), (Self::Abort.as_timeline_state(frontend), ()));
     }
 
+    fn hotkey(&self) -> Option<(Modifiers, Key)> {
+        match self {
+            HyacinthAnomalousState::Hold => None,
+            HyacinthAnomalousState::Abort => None,
+        }
+    }
+
     fn as_timeline_state(self, frontend: &Frontend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
             <Self as Into<&'static str>>::into(self),
             self.associated_color(),
             frontend.hyacinth_anomolous_state().map(|a| a == self).unwrap_or(false),
+            self.hotkey(),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, frontend, _backend| {
                     let theme = ThemeColors::new(ui.ctx());
@@ -383,6 +436,7 @@ pub trait TimelineState {
     fn name(&self) -> &'static str;
     fn stroke(&self) -> egui::Stroke;
     fn fill(&self, bg_color: Color32) -> Color32;
+    fn hotkey(&self) -> Option<(Modifiers, Key)>;
     fn create_popups(
         &self,
         ui: &mut egui::Ui,
@@ -416,7 +470,17 @@ impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
         trigger: TriggerBuilder<()>,
     ) {
         //TODO Hans: We should avoid cloning here, but cannot move out of self because trait must be dyn compatible for iteration
-        trigger.add_all(self.popups.clone(), PopupPosition::Centered).show_active(ui, frontend, backend);
+        let mut filled_trigger = trigger.add_all(self.popups.clone(), PopupPosition::Centered);
+        if let Some(hotkey) = self.hotkey {
+            if ui.ctx().input_mut(|i| i.consume_key(hotkey.0, hotkey.1)) {
+                filled_trigger.set_active();
+            }
+        }
+        filled_trigger.show_active(ui, frontend, backend);
+    }
+
+    fn hotkey(&self) -> Option<(Modifiers, Key)> {
+        return self.hotkey;
     }
 }
 
@@ -482,13 +546,23 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
             );
             anomalous_state.create_popups(ui, backend, frontend, trigger);
 
-            ui.painter().text(
+            let state_name_bounds = ui.painter().text(
                 p + Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state) / 2f32,
                 Align2::CENTER_CENTER,
                 anomalous_state.name().to_string(),
                 FontId::default(),
                 text_color_for_bg(&fill_color),
             );
+
+            if let Some(hotkey) = anomalous_state.hotkey() {
+                ui.painter().text(
+                    state_name_bounds.center() + Vec2::new(0f32, state_name_bounds.height()),
+                    Align2::CENTER_CENTER,
+                    hotkey.as_string(),
+                    FontId::default(),
+                    text_color_for_bg(&fill_color),
+                );
+            }
         }
     }
 }
@@ -527,15 +601,23 @@ pub struct TimelineStateData<PopupContents: PopupContentList> {
     label: &'static str,
     color: Color32,
     is_active: bool,
+    hotkey: Option<(Modifiers, Key)>,
     popups: PopupContents,
 }
 
 impl<PopupContents: PopupContentList> TimelineStateData<PopupContents> {
-    pub fn new(label: &'static str, color: Color32, is_active: bool, popups: PopupContents) -> Self {
+    pub fn new(
+        label: &'static str,
+        color: Color32,
+        is_active: bool,
+        hotkey: Option<(Modifiers, Key)>,
+        popups: PopupContents,
+    ) -> Self {
         Self {
             label,
             color,
             is_active,
+            hotkey,
             popups,
         }
     }

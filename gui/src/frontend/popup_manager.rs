@@ -97,6 +97,7 @@ pub trait PopupList: Sized {
         ui: &mut Ui,
         frontend: &mut Frontend,
         backend: &mut Backend,
+        activate_trigger: bool,
     );
     fn add<P: DisplayablePopup>(self, popup: P) -> (P, Self) {
         return (popup, self);
@@ -111,6 +112,7 @@ impl PopupList for () {
         _ui: &mut Ui,
         _frontend: &mut Frontend,
         _backend: &mut Backend,
+        _activate_trigger: bool,
     ) {
     }
 }
@@ -127,9 +129,10 @@ where
         ui: &mut Ui,
         frontend: &mut Frontend,
         backend: &mut Backend,
+        activate_trigger: bool,
     ) {
-        NewPopupTrigger::new(self.0, &response, &trigger_id).show_if_active(ui, frontend, backend);
-        self.1.show_if_active(response, trigger_id, ui, frontend, backend);
+        NewPopupTrigger::new(self.0, &response, &trigger_id, activate_trigger).show_if_active(ui, frontend, backend);
+        self.1.show_if_active(response, trigger_id, ui, frontend, backend, activate_trigger);
     }
 }
 
@@ -140,14 +143,20 @@ where
     popup: P,
     response: &'a Response,
     id: &'a Id,
+    is_active: bool, //TODO Hans: Doesn't make a whole lot of sense here...
 }
 
 impl<'a, P> NewPopupTrigger<'a, P>
 where
     P: DisplayablePopup,
 {
-    pub fn new(popup: P, response: &'a Response, id: &'a Id) -> Self {
-        Self { popup, response, id }
+    pub fn new(popup: P, response: &'a Response, id: &'a Id, is_active: bool) -> Self {
+        Self {
+            popup,
+            response,
+            id,
+            is_active,
+        }
     }
 
     fn show_if_active(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) {
@@ -159,6 +168,7 @@ pub struct TriggerBuilder<L: PopupList> {
     id: Id,
     bounding_box: Rect,
     popups: L,
+    activate_trigger: bool,
 }
 
 impl TriggerBuilder<()> {
@@ -167,6 +177,7 @@ impl TriggerBuilder<()> {
             id,
             bounding_box,
             popups: Default::default(),
+            activate_trigger: false,
         };
     }
 
@@ -179,6 +190,7 @@ impl TriggerBuilder<()> {
             id: self.id,
             bounding_box: self.bounding_box,
             popups: popups.position(position),
+            activate_trigger: self.activate_trigger,
         };
     }
 }
@@ -194,7 +206,12 @@ impl<L: PopupList> TriggerBuilder<L> {
             id: self.id,
             bounding_box: self.bounding_box,
             popups: self.popups.add(PositionedPopup::new(position, contents)),
+            activate_trigger: self.activate_trigger,
         };
+    }
+
+    pub fn set_active(&mut self) {
+        self.activate_trigger = true;
     }
 
     pub fn show_active(self, ui: &mut Ui, frontend: &mut Frontend, backend: &mut Backend) {
@@ -209,7 +226,7 @@ impl<L: PopupList> TriggerBuilder<L> {
             );
         }
         // Show active popups
-        self.popups.show_if_active(response, self.id, ui, frontend, backend);
+        self.popups.show_if_active(response, self.id, ui, frontend, backend, self.activate_trigger);
     }
 }
 
@@ -579,6 +596,7 @@ impl PopupManager {
 
         //If the dropdown menu should be drawn
         if is_trigger_left_clicked || is_dropdown_menu_still_open {
+            println!("Triggered ModalDialog!");
             // Highlight the trigger to indicate it is clicked
             ui.painter().rect_filled(
                 trigger.response.rect,
@@ -610,8 +628,8 @@ impl PopupManager {
         let is_trigger_left_clicked = trigger.response.clicked();
         let is_modal_dialog_still_open = frontend.popup_manager.is_popup_open_in_current_layer(&model_dialog.id);
 
-        //If the dropdown menu should be drawn
-        if is_trigger_left_clicked || is_modal_dialog_still_open {
+        //If the modal dialog should be drawn
+        if is_trigger_left_clicked || is_modal_dialog_still_open || trigger.is_active {
             // Highlight the trigger to indicate it is clicked
             ui.painter().rect_filled(
                 trigger.response.rect,
@@ -642,7 +660,7 @@ impl PopupManager {
                 Self::show_popup(trigger.popup, P::Kind::id(&trigger.id), ui, frontend, backend);
 
             //Perform (de)activations
-            if is_trigger_left_clicked && !is_modal_dialog_still_open {
+            if (is_trigger_left_clicked || trigger.is_active) && !is_modal_dialog_still_open {
                 frontend.popup_manager.activate_in_current_layer(model_dialog);
             } else if modal_dialog_response.inner == true {
                 frontend.popup_manager.deactivate_current_layer();
