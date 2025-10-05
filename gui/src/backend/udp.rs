@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::error;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -7,10 +6,7 @@ use std::time::Duration;
 
 use std::time::Instant;
 
-use serde::de::Expected;
 use telemetry::MessageDefinition;
-use telemetry::Metric;
-use telemetry::Representation;
 use telemetry::TelemetrySchema;
 use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -24,8 +20,6 @@ use telemetry::{LORA_SCHEMA, USB_SCHEMA};
 use crate::backend::BackendVariant;
 use crate::backend::storage::store::DataStore;
 use crate::settings::AppSettings;
-
-use super::storage::static_metrics::PressureSensorId;
 
 pub struct UdpBackend {
     downlink_rx: Receiver<(Instant, DownlinkMessage)>,

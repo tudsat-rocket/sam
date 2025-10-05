@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
-use egui::{Image, Sense, Ui, Vec2};
+use egui::{Sense, Ui, Vec2};
 use itertools::Itertools;
 use strum::VariantNames;
 use telemetry::{Metric, MetricDiscriminants};
@@ -12,27 +12,11 @@ use crate::{
         constraints::{ConstraintResult, EvaluatedConstraint},
         metric_monitor::MetricMonitor,
     },
-    system_diagram_components::core::constants::{IMG_DANGER, IMG_NOMINAL, IMG_WARNING},
-    utils::theme::ThemeColors,
 };
 
 pub struct MetricStatusBar {}
 
-trait HasImage {
-    fn image(&self) -> egui::ImageSource;
-}
-
-impl HasImage for ConstraintResult {
-    fn image(&self) -> egui::ImageSource {
-        match self {
-            ConstraintResult::NOMINAL => IMG_NOMINAL,
-            ConstraintResult::WARNING => IMG_WARNING,
-            ConstraintResult::DANGER => IMG_DANGER,
-        }
-    }
-}
-
-fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, ui: &mut Ui, theme: &ThemeColors) {
+fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, ui: &mut Ui) {
     let val = backend.current_value_dynamic_as_string(&metric);
     let name = format!("{:?}", metric);
 
@@ -44,7 +28,7 @@ fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, u
 
     worst_constraint_result
         .map(|constraint| {
-            ui.add(Image::new(constraint.result().image()).tint(theme.foreground_weak));
+            ui.label(constraint.result().symbol());
         })
         .unwrap_or_else(|| {
             ui.allocate_response(Vec2::ZERO, Sense::hover());
@@ -93,7 +77,6 @@ impl MetricStatusBar {
         frontend: &mut Frontend,
         active_constraint_mask: &mut Vec<ConstraintResult>,
     ) {
-        let theme = &ThemeColors::new(ctx);
         let num_metrics_to_display = frontend.metric_monitor().pinned_metrics().len()
             + Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask)
                 .keys()
@@ -111,7 +94,7 @@ impl MetricStatusBar {
                 ui.separator();
                 egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
                     for metric in frontend.metric_monitor().pinned_metrics() {
-                        display(metric, backend, frontend.metric_monitor(), ui, theme);
+                        display(metric, backend, frontend.metric_monitor(), ui);
                     }
                     for metric in
                         Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask)
@@ -119,7 +102,7 @@ impl MetricStatusBar {
                             .sorted_by(|m1, m2| Self::cmp_metric_for_display(m1, m2, frontend.metric_monitor()))
                     {
                         if !frontend.metric_monitor().is_pinned(metric) {
-                            display(metric, backend, frontend.metric_monitor(), ui, theme);
+                            display(metric, backend, frontend.metric_monitor(), ui);
                         }
                     }
                 })

@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use egui::{Color32, RichText};
 use strum::{EnumIter, VariantNames};
 use telemetry::Metric;
 
@@ -10,6 +11,16 @@ pub enum ConstraintResult {
     NOMINAL,
     WARNING,
     DANGER,
+}
+
+impl ConstraintResult {
+    pub fn symbol(&self) -> RichText {
+        match self {
+            ConstraintResult::NOMINAL => RichText::new("✔").strong().color(Color32::GREEN),
+            ConstraintResult::WARNING => RichText::new("❗").strong().color(Color32::ORANGE),
+            ConstraintResult::DANGER => RichText::new("❌").strong().color(Color32::RED),
+        }
+    }
 }
 
 pub struct EvaluatedConstraint {

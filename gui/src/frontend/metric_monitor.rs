@@ -37,7 +37,11 @@ pub struct MetricMonitor {
 impl Default for MetricMonitor {
     fn default() -> Self {
         Self {
-            active_constraint_mask: vec![ConstraintResult::WARNING, ConstraintResult::DANGER],
+            active_constraint_mask: vec![
+                ConstraintResult::NOMINAL,
+                ConstraintResult::WARNING,
+                ConstraintResult::DANGER,
+            ],
             flags: Default::default(),
             constraints: Default::default(),
         }

@@ -2,7 +2,8 @@ use core::f32;
 use std::sync::LazyLock;
 
 use crate::{
-    backend::storage::static_metrics::N2ReleaseValve, frontend::constraints::SomeConstraint,
+    backend::storage::static_metrics::{N2OBurstDisc, N2ReleaseValve},
+    frontend::constraints::SomeConstraint,
     storage::static_metrics::MetricTrait,
 };
 use enum_map::{Enum, EnumMap, enum_map};
@@ -690,7 +691,8 @@ pub fn create_diagram<'a>(
         backend.initialize_local_metrics();
         frontend
             .metric_monitor_mut()
-            .add_constraint(Box::new(SomeConstraint::<N2ReleaseValve>::new(ConstraintResult::DANGER)))
+            .add_constraint(Box::new(SomeConstraint::<N2OBurstDisc>::new(ConstraintResult::DANGER)))
+            .add_constraint(Box::new(SomeConstraint::<N2ReleaseValve>::new(ConstraintResult::WARNING)))
             .add_constraint(Box::new(MaxConstraint::<RawBarometricAltitude<MS5611>, MaxPressureN2Tank>::new(
                 ConstraintResult::WARNING,
             )));
