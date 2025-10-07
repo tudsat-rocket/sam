@@ -1,4 +1,11 @@
-use egui::{Align2, Color32, FontId, Key, Modifiers, Rect, TextFormat, Vec2, epaint::RectShape, text::LayoutJob};
+use std::iter::once;
+
+use chrono::offset;
+use egui::{
+    Align2, Color32, Context, FontFamily, FontId, Key, Modifiers, Rect, TextFormat, Vec2, epaint::RectShape,
+    text::LayoutJob,
+};
+use itertools::Itertools;
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
 use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
@@ -16,25 +23,6 @@ use crate::{
     utils::theme::ThemeColors,
     widgets::system_diagram::FlattenResponse,
 };
-
-#[derive(Clone, Copy, PartialEq, PartialOrd, IntoStaticStr)]
-pub enum HyacinthNominalState {
-    Verification,
-    IdlePassivated,
-    N2Filling,
-    IdleActive,
-    HardwareArmed,
-    N2OFilling,
-    SoftwareArmed,
-    Ignition,
-    BurnPhase,
-    CoastPhase,
-    DroguePhase,
-    MainPhase,
-    LandedActive,
-    Passivation,
-    LandedPassivated,
-}
 
 trait ShortCutAsString {
     fn as_string(&self) -> String;
@@ -54,16 +42,55 @@ impl ShortCutAsString for (Modifiers, Key) {
             key_strings.push("SHIFT");
         }
         key_strings.push(self.1.symbol_or_name());
-        return std::iter::once("[ ")
+        return std::iter::once("[")
             .chain(itertools::intersperse(key_strings, " + "))
-            .chain(std::iter::once(" ]"))
+            .chain(std::iter::once("]"))
             .map(|s| s.to_string())
             .reduce(|acc, e| acc + &e)
             .unwrap_or("".to_string());
     }
 }
 
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
+pub enum HyacinthNominalState {
+    Verification,
+    IdlePassivated,
+    N2Filling,
+    IdleActive,
+    HardwareArmed,
+    N2OFilling,
+    SoftwareArmed,
+    Ignition,
+    BurnPhase,
+    CoastPhase,
+    DroguePhase,
+    MainPhase,
+    LandedActive,
+    Passivation,
+    LandedPassivated,
+}
+
 impl HyacinthNominalState {
+    fn as_string(&self) -> &'static str {
+        match self {
+            HyacinthNominalState::Verification => "Verification",
+            HyacinthNominalState::IdlePassivated => "Idle Passivated",
+            HyacinthNominalState::N2Filling => "N₂ Filling",
+            HyacinthNominalState::IdleActive => "Idle Active",
+            HyacinthNominalState::HardwareArmed => "Hardware Armed",
+            HyacinthNominalState::N2OFilling => "N₂O Filling",
+            HyacinthNominalState::SoftwareArmed => "Software Armed",
+            HyacinthNominalState::Ignition => "Ignition",
+            HyacinthNominalState::BurnPhase => "Burn Phase",
+            HyacinthNominalState::CoastPhase => "Coast Phase",
+            HyacinthNominalState::DroguePhase => "Drogue Phase",
+            HyacinthNominalState::MainPhase => "Main Phase",
+            HyacinthNominalState::LandedActive => "Landed Active",
+            HyacinthNominalState::Passivation => "Passivation",
+            HyacinthNominalState::LandedPassivated => "Landed Passivated",
+        }
+    }
+
     fn associated_procedure_step(&self) -> ProcedureStep {
         use HyacinthNominalState as S;
         use ProcedureStep as P;
@@ -197,7 +224,7 @@ impl HyacinthNominalState {
 
     fn as_timeline_state(self, frontend: &Frontend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
-            <Self as Into<&'static str>>::into(self),
+            self.as_string(),
             self.associated_color(),
             self <= frontend.hyacinth_nominal_state(),
             self.hotkey(),
@@ -220,7 +247,7 @@ impl HyacinthNominalState {
                                 },
                             );
                             text_layout.append(
-                                <Self as Into<&'static str>>::into(self),
+                                self.as_string(),
                                 0f32,
                                 TextFormat {
                                     color: self.associated_color(),
@@ -369,8 +396,9 @@ impl HyacinthAnomalousState {
                                     },
                                 );
                                 cancel_layout.append("[ESC]", 4f32, Default::default());
-                                let cancel_button = egui::Button::new(cancel_layout).min_size(Vec2::new(200f32, 50f32));
-                                if ui.add(cancel_button).clicked()
+                                let cancel_response =
+                                    ui.add(egui::Button::new(cancel_layout).min_size(Vec2::new(200f32, 50f32)));
+                                if cancel_response.clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
                                 {
                                     button_clicked = true;
@@ -473,14 +501,59 @@ impl<L: PopupContentList> TimelineState for TimelineStateData<L> {
     }
 }
 
-fn text_color_for_bg(bg_color: &Color32) -> Color32 {
-    let [r, g, b, _a] = bg_color.to_srgba_unmultiplied();
-    let brightness = (r as f32 * 299.0 + g as f32 * 587.0 + b as f32 * 114.0) / 1000.0;
-    if brightness > 128.0 {
-        return Color32::BLACK;
+/// Convert an sRGB component (0–255) to linearized value for luminance.
+fn linearize(c: u8) -> f32 {
+    let cs = c as f32 / 255.0;
+    if cs <= 0.03928 {
+        cs / 12.92
     } else {
-        return Color32::WHITE;
+        ((cs + 0.055) / 1.055).powf(2.4)
     }
+}
+
+/// Compute relative luminance for an egui Color32.
+fn luminance(color: &Color32) -> f32 {
+    let [r, g, b, _] = color.to_array();
+    0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b)
+}
+
+/// Compute contrast ratio between two colors (always ≥ 1.0).
+fn contrast_ratio(a: &Color32, b: &Color32) -> f32 {
+    let l1 = luminance(a);
+    let l2 = luminance(b);
+    let (light, dark) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
+    (light + 0.05) / (dark + 0.05)
+}
+
+/// Return the color with better contrast against the background.
+pub fn better_contrast_color(background: &Color32, color1: Color32, color2: Color32) -> Color32 {
+    let contrast1 = contrast_ratio(background, &color1);
+    let contrast2 = contrast_ratio(background, &color2);
+    if contrast1 >= contrast2 { color1 } else { color2 }
+}
+
+enum ColorStrength {
+    VeryWeak,
+    Weak,
+    Normal,
+    Strong,
+}
+
+fn text_color_for_bg(bg_color: &Color32, ctx: &Context, strength: ColorStrength) -> Color32 {
+    let theme = ThemeColors::new(ctx);
+    let color_fg = match strength {
+        ColorStrength::VeryWeak => theme.foreground_very_weak,
+        ColorStrength::Weak => theme.foreground_weak,
+        ColorStrength::Normal => theme.foreground,
+        ColorStrength::Strong => theme.foreground_strong,
+    };
+    let color_bg = match strength {
+        ColorStrength::VeryWeak => theme.background_weak,
+        ColorStrength::Weak => theme.background,
+        ColorStrength::Normal => theme.background_strong,
+        ColorStrength::Strong => theme.background_very_strong,
+    };
+    return better_contrast_color(bg_color, color_bg, color_fg);
 }
 
 pub trait TimelineStateSequence: AsDynVec + Sized {
@@ -535,21 +608,31 @@ pub trait TimelineStateSequence: AsDynVec + Sized {
             );
             anomalous_state.create_popups(ui, backend, frontend, trigger);
 
-            let state_name_bounds = ui.painter().text(
-                p + Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state) / 2f32,
-                Align2::CENTER_CENTER,
-                anomalous_state.name().to_string(),
-                FontId::default(),
-                text_color_for_bg(&fill_color),
-            );
+            let string_height = 17f32;
+            let button_center = p + Vec2::new(absolute_width_anomalous_state, absolute_height_anomalous_state) / 2f32;
+            let state_name = anomalous_state.name().to_string();
+            let num_strings = state_name.chars().filter(|c| c.is_whitespace()).count();
+            //+ if anomalous_state.hotkey().is_some() { 1 } else { 0 };
+            let mut offset = -(num_strings as f32 * string_height) / 2f32;
+
+            for string in state_name.split_whitespace() {
+                ui.painter().text(
+                    button_center + Vec2::new(0f32, offset),
+                    Align2::CENTER_CENTER,
+                    string,
+                    FontId::new(14f32, FontFamily::Proportional),
+                    text_color_for_bg(&fill_color, ui.ctx(), ColorStrength::Weak),
+                );
+                offset += string_height;
+            }
 
             if let Some(hotkey) = anomalous_state.hotkey() {
                 ui.painter().text(
-                    state_name_bounds.center() + Vec2::new(0f32, state_name_bounds.height()),
+                    button_center + Vec2::new(0f32, offset),
                     Align2::CENTER_CENTER,
                     hotkey.as_string(),
-                    FontId::default(),
-                    text_color_for_bg(&fill_color),
+                    FontId::new(10f32, FontFamily::Proportional),
+                    text_color_for_bg(&fill_color, ui.ctx(), ColorStrength::VeryWeak),
                 );
             }
         }
