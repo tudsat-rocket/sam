@@ -1,11 +1,16 @@
 use core::marker::PhantomData;
+use std::fmt::Debug;
 
 use crate::backend::storage::{
     constant::Constant, event_series::EventSeries, sample_series::SampleSeries, store::DataType,
     storeable_value::StorableValue,
 };
 
-pub trait MetricTrait: Default {
+fn short_type_name<T>() -> &'static str {
+    std::any::type_name::<T>().rsplit("::").next().unwrap_or(std::any::type_name::<T>())
+}
+
+pub trait MetricTrait: Default + Debug {
     type Value: StorableValue + PartialOrd;
     type DataType: DataType;
     fn metric() -> telemetry::Metric;
@@ -13,7 +18,7 @@ pub trait MetricTrait: Default {
 
 macro_rules! make_static_metric_with_storage_type {
     ($name:ident, $value:ty, $datatype:ty) => {
-        #[derive(Default)]
+        #[derive(Default, Debug)]
         pub struct $name {}
         impl MetricTrait for $name {
             type Value = $value;
@@ -28,7 +33,7 @@ macro_rules! make_static_metric_with_storage_type {
 
 macro_rules! make_static_local_metric_with_storage_type {
     ($name:ident, $value:ty, $datatype:ty) => {
-        #[derive(Default)]
+        #[derive(Default, Debug)]
         pub struct $name {}
         impl MetricTrait for $name {
             type Value = $value;
@@ -175,12 +180,17 @@ make_static_local_metric_with_storage_type!(
 pub struct ValveState<Valve: ValveId> {
     valve_id: PhantomData<Valve>,
 }
-impl<Valve: ValveId + Default> MetricTrait for ValveState<Valve> {
+impl<Valve: ValveId + Default + Debug> MetricTrait for ValveState<Valve> {
     type Value = f64;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::ValveState(Valve::id())
+    }
+}
+impl<Valve: ValveId> std::fmt::Debug for ValveState<Valve> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ValveState<{}>", short_type_name::<Valve>())
     }
 }
 
@@ -197,12 +207,17 @@ where
         telemetry::Metric::Orientation(N)
     }
 }
+impl<const N: usize> std::fmt::Debug for Orientation<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Orientation<{}>", N)
+    }
+}
 
 #[derive(Default)]
 pub struct AccelerationWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for AccelerationWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for AccelerationWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -210,12 +225,17 @@ impl<D: Dim3 + Default> MetricTrait for AccelerationWorldSpace<D> {
         telemetry::Metric::AccelerationWorldSpace(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for AccelerationWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "AccelerationWorldSpace<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct VelocityWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for VelocityWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for VelocityWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -223,17 +243,27 @@ impl<D: Dim3 + Default> MetricTrait for VelocityWorldSpace<D> {
         telemetry::Metric::VelocityWorldSpace(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for VelocityWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VelocityWorldSpace<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct PositionWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for PositionWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for PositionWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::PositionWorldSpace(D::dim())
+    }
+}
+impl<D: Dim3> std::fmt::Debug for PositionWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PositionWorldSpace<{}>", short_type_name::<D>())
     }
 }
 
@@ -251,6 +281,11 @@ where
         telemetry::Metric::KalmanStateCovariance(N, M)
     }
 }
+impl<const N: usize, const M: usize> std::fmt::Debug for KalmanStateCovariance<N, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KalmanStateCovariance<{}, {}>", N, M)
+    }
+}
 
 #[derive(Default)]
 pub struct KalmanMeasurementCovariance<const N: usize, const M: usize> {} //TODO Hans: Limit Range of N and M
@@ -266,18 +301,30 @@ where
         telemetry::Metric::KalmanMeasurementCovariance(N, M)
     }
 }
+impl<const N: usize, const M: usize> std::fmt::Debug for KalmanMeasurementCovariance<N, M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "KalmanMeasurementCovariance<{}, {}>", N, M)
+    }
+}
 
 #[derive(Default)]
 pub struct RawAngularVelocity<Gyroscope: GyroscopeId, D: Dim3> {
     gyroscope_id: PhantomData<Gyroscope>,
     dim: PhantomData<D>,
 }
-impl<Gyroscope: GyroscopeId + Default, D: Dim3 + Default> MetricTrait for RawAngularVelocity<Gyroscope, D> {
+impl<Gyroscope: GyroscopeId + Default + Debug, D: Dim3 + Default + Debug> MetricTrait
+    for RawAngularVelocity<Gyroscope, D>
+{
     type Value = f64;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::RawAngularVelocity(Gyroscope::id(), D::dim())
+    }
+}
+impl<Gyroscope: GyroscopeId, D: Dim3> std::fmt::Debug for RawAngularVelocity<Gyroscope, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RawAngularVelocity<{}, {}>", short_type_name::<Gyroscope>(), short_type_name::<D>())
     }
 }
 
@@ -286,12 +333,19 @@ pub struct RawAcceleration<Accelerometer: AccelerometerId, D: Dim3> {
     accelerometer_id: PhantomData<Accelerometer>,
     dim: PhantomData<D>,
 }
-impl<Accelerometer: AccelerometerId + Default, D: Dim3 + Default> MetricTrait for RawAcceleration<Accelerometer, D> {
+impl<Accelerometer: AccelerometerId + Default + Debug, D: Dim3 + Default + Debug> MetricTrait
+    for RawAcceleration<Accelerometer, D>
+{
     type Value = f64;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::RawAcceleration(Accelerometer::id(), D::dim())
+    }
+}
+impl<Accelerometer: AccelerometerId, D: Dim3> std::fmt::Debug for RawAcceleration<Accelerometer, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RawAcceleration<{}, {}>", short_type_name::<Accelerometer>(), short_type_name::<D>())
     }
 }
 
@@ -300,7 +354,7 @@ pub struct RawMagneticFluxDensity<Magnetometer: MagnetometerId, D: Dim3> {
     magnetometer_id: PhantomData<Magnetometer>,
     dim: PhantomData<D>,
 }
-impl<Magnetometer: MagnetometerId + Default, D: Dim3 + Default> MetricTrait
+impl<Magnetometer: MagnetometerId + Default + Debug, D: Dim3 + Default + Debug> MetricTrait
     for RawMagneticFluxDensity<Magnetometer, D>
 {
     type Value = f64;
@@ -310,12 +364,17 @@ impl<Magnetometer: MagnetometerId + Default, D: Dim3 + Default> MetricTrait
         telemetry::Metric::RawMagneticFluxDensity(Magnetometer::id(), D::dim())
     }
 }
+impl<Magnetometer: MagnetometerId, D: Dim3> std::fmt::Debug for RawMagneticFluxDensity<Magnetometer, D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RawMagneticFluxDensity<{}, {}>", short_type_name::<Magnetometer>(), short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct RawBarometricAltitude<Barometer: BarometerId> {
     barometer_id: PhantomData<Barometer>,
 }
-impl<Barometer: BarometerId + Default> MetricTrait for RawBarometricAltitude<Barometer> {
+impl<Barometer: BarometerId + Default + Debug> MetricTrait for RawBarometricAltitude<Barometer> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -323,12 +382,17 @@ impl<Barometer: BarometerId + Default> MetricTrait for RawBarometricAltitude<Bar
         telemetry::Metric::RawBarometricAltitude(Barometer::id())
     }
 }
+impl<Barometer: BarometerId> std::fmt::Debug for RawBarometricAltitude<Barometer> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RawBarometricAltitude<{}>", short_type_name::<Barometer>())
+    }
+}
 
 #[derive(Default)]
 pub struct Pressure<Sensor: PressureSensorId> {
     dim: PhantomData<Sensor>,
 }
-impl<Sensor: PressureSensorId + Default> MetricTrait for Pressure<Sensor> {
+impl<Sensor: PressureSensorId + Default + Debug> MetricTrait for Pressure<Sensor> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -336,12 +400,17 @@ impl<Sensor: PressureSensorId + Default> MetricTrait for Pressure<Sensor> {
         telemetry::Metric::Pressure(Sensor::id())
     }
 }
+impl<Sensor: PressureSensorId> std::fmt::Debug for Pressure<Sensor> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Pressure<{}>", short_type_name::<Sensor>())
+    }
+}
 
 #[derive(Default)]
 pub struct Temperature<Sensor: TemperatureSensorId> {
     dim: PhantomData<Sensor>,
 }
-impl<Sensor: TemperatureSensorId + Default> MetricTrait for Temperature<Sensor> {
+impl<Sensor: TemperatureSensorId + Default + Debug> MetricTrait for Temperature<Sensor> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -349,12 +418,17 @@ impl<Sensor: TemperatureSensorId + Default> MetricTrait for Temperature<Sensor> 
         telemetry::Metric::Temperature(Sensor::id())
     }
 }
+impl<Sensor: TemperatureSensorId> std::fmt::Debug for Temperature<Sensor> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Temperature<{}>", short_type_name::<Sensor>())
+    }
+}
 
 #[derive(Default)]
 pub struct BatteryVoltage<Battery: BatteryId> {
     dim: PhantomData<Battery>,
 }
-impl<Battery: BatteryId + Default> MetricTrait for BatteryVoltage<Battery> {
+impl<Battery: BatteryId + Default + Debug> MetricTrait for BatteryVoltage<Battery> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -362,12 +436,17 @@ impl<Battery: BatteryId + Default> MetricTrait for BatteryVoltage<Battery> {
         telemetry::Metric::BatteryVoltage(Battery::id())
     }
 }
+impl<Battery: BatteryId> std::fmt::Debug for BatteryVoltage<Battery> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BatteryVoltage<{}>", short_type_name::<Battery>())
+    }
+}
 
 #[derive(Default)]
 pub struct BatteryCurrent<Battery: BatteryId> {
     dim: PhantomData<Battery>,
 }
-impl<Battery: BatteryId + Default> MetricTrait for BatteryCurrent<Battery> {
+impl<Battery: BatteryId + Default + Debug> MetricTrait for BatteryCurrent<Battery> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -375,17 +454,27 @@ impl<Battery: BatteryId + Default> MetricTrait for BatteryCurrent<Battery> {
         telemetry::Metric::BatteryCurrent(Battery::id())
     }
 }
+impl<Battery: BatteryId> std::fmt::Debug for BatteryCurrent<Battery> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BatteryCurrent<{}>", short_type_name::<Battery>())
+    }
+}
 
 #[derive(Default)]
 pub struct BatteryChargerState<Battery: BatteryId> {
     dim: PhantomData<Battery>,
 }
-impl<Battery: BatteryId + Default> MetricTrait for BatteryChargerState<Battery> {
+impl<Battery: BatteryId + Default + Debug> MetricTrait for BatteryChargerState<Battery> {
     type Value = shared_types::telemetry::BatteryChargerState;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::BatteryChargerState(Battery::id())
+    }
+}
+impl<Battery: BatteryId> std::fmt::Debug for BatteryChargerState<Battery> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "BatteryChargerState<{}>", short_type_name::<Battery>())
     }
 }
 
@@ -402,12 +491,17 @@ where
         telemetry::Metric::TrueOrientation(N)
     }
 }
+impl<const N: usize> std::fmt::Debug for TrueOrientation<N> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TrueOrientation<{}>", N)
+    }
+}
 
 #[derive(Default)]
 pub struct TrueAccelerationWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for TrueAccelerationWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for TrueAccelerationWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -415,12 +509,17 @@ impl<D: Dim3 + Default> MetricTrait for TrueAccelerationWorldSpace<D> {
         telemetry::Metric::TrueAccelerationWorldSpace(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for TrueAccelerationWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TrueAccelerationWorldSpace<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct TrueVelocityWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for TrueVelocityWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for TrueVelocityWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -428,12 +527,17 @@ impl<D: Dim3 + Default> MetricTrait for TrueVelocityWorldSpace<D> {
         telemetry::Metric::TrueVelocityWorldSpace(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for TrueVelocityWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TrueVelocityWorldSpace<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct TruePositionWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for TruePositionWorldSpace<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for TruePositionWorldSpace<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -441,12 +545,17 @@ impl<D: Dim3 + Default> MetricTrait for TruePositionWorldSpace<D> {
         telemetry::Metric::TruePositionWorldSpace(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for TruePositionWorldSpace<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TruePositionWorldSpace<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct TrueDrag<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for TrueDrag<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for TrueDrag<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
@@ -454,17 +563,27 @@ impl<D: Dim3 + Default> MetricTrait for TrueDrag<D> {
         telemetry::Metric::TrueDrag(D::dim())
     }
 }
+impl<D: Dim3> std::fmt::Debug for TrueDrag<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TrueDrag<{}>", short_type_name::<D>())
+    }
+}
 
 #[derive(Default)]
 pub struct TrueThrust<D: Dim3> {
     dim: PhantomData<D>,
 }
-impl<D: Dim3 + Default> MetricTrait for TrueThrust<D> {
+impl<D: Dim3 + Default + Debug> MetricTrait for TrueThrust<D> {
     type Value = f64;
     type DataType = SampleSeries;
 
     fn metric() -> telemetry::Metric {
         telemetry::Metric::TrueThrust(D::dim())
+    }
+}
+impl<D: Dim3> std::fmt::Debug for TrueThrust<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "TrueThrust<{}>", short_type_name::<D>())
     }
 }
 
@@ -486,11 +605,11 @@ impl InRange0To6Exclusive for Const<3> {}
 impl InRange0To6Exclusive for Const<4> {}
 impl InRange0To6Exclusive for Const<5> {}
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct X {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Y {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Z {}
 
 pub trait Dim3 {
@@ -512,11 +631,11 @@ impl Dim3 for Z {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LSM6DSR {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ICM42670P {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct ICM42688P {}
 
 pub trait GyroscopeId {
@@ -538,7 +657,7 @@ impl GyroscopeId for ICM42688P {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct H3LIS331 {}
 
 pub trait AccelerometerId {
@@ -565,7 +684,7 @@ impl AccelerometerId for H3LIS331 {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LIS3MDL {}
 
 pub trait MagnetometerId {
@@ -577,11 +696,11 @@ impl MagnetometerId for LIS3MDL {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MS5611 {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct LPS22 {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BMP580 {}
 
 pub trait BarometerId {
@@ -603,13 +722,13 @@ impl BarometerId for BMP580 {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BatteryAvionics {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BatteryAcs {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BatteryRecovery {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct BatteryPayload {}
 
 pub trait BatteryId {
@@ -636,29 +755,29 @@ impl BatteryId for BatteryPayload {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorFlightComputer<B: BarometerId> {
     barometer_id: PhantomData<B>,
 }
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorAcsTank {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorAcsPostRegulator {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorAcsValveAccel {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorAcsValveDecel {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorRecoveryChamberDrogue {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorRecoveryChamberMain {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorMainRelease {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorCombustionChamber {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorOxidizerTank {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureSensorNitrogenTank {}
 
 pub trait PressureSensorId {
@@ -720,21 +839,21 @@ impl PressureSensorId for PressureSensorNitrogenTank {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorBarometer<B: BarometerId> {
     barometer_id: PhantomData<B>,
 }
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorBattery<B: BatteryId> {
     barometer_id: PhantomData<B>,
 }
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorAcs {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorRecovery {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorPayload {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct TemperatureSensorOxidizerTank {}
 
 pub trait TemperatureSensorId {
@@ -771,13 +890,13 @@ impl TemperatureSensorId for TemperatureSensorOxidizerTank {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct PressureRegulator {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MainValve {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct VentValve {}
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FillAndDumpValve {}
 
 pub trait ValveId {
@@ -1195,4 +1314,12 @@ macro_rules! call_static_metric {
             _ => unreachable!()
         }
     }};
+}
+
+fn debug_name<M: MetricTrait>() -> String {
+    format!("{:?}", M::default())
+}
+
+pub fn debug_name_dyn(metric: &telemetry::Metric) -> String {
+    call_static_metric!(debug_name, <metric, >, )
 }

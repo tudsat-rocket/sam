@@ -5,7 +5,7 @@ use telemetry::Metric;
 
 use crate::{
     backend::Backend,
-    frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint, ValuedConstraint},
+    frontend::constraints::{ConstraintResult, EvaluatedConstraint, ValuedConstraint},
 };
 
 bitflags! {

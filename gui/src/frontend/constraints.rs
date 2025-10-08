@@ -4,7 +4,10 @@ use egui::{Color32, RichText};
 use strum::{EnumIter, VariantNames};
 use telemetry::Metric;
 
-use crate::backend::{Backend, storage::static_metrics::MetricTrait};
+use crate::backend::{
+    Backend,
+    storage::{static_metrics::MetricTrait, storeable_value::StorableValue},
+};
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumIter, VariantNames)]
 pub enum ConstraintResult {
@@ -16,9 +19,27 @@ pub enum ConstraintResult {
 impl ConstraintResult {
     pub fn symbol(&self) -> RichText {
         match self {
-            ConstraintResult::NOMINAL => RichText::new("✔").strong().color(Color32::GREEN),
-            ConstraintResult::WARNING => RichText::new("❗").strong().color(Color32::ORANGE),
-            ConstraintResult::DANGER => RichText::new("❌").strong().color(Color32::RED),
+            ConstraintResult::NOMINAL => RichText::new("✔"),
+            ConstraintResult::WARNING => RichText::new("❗"),
+            ConstraintResult::DANGER => RichText::new("❌"),
+        }
+        .strong()
+        .color(self.color())
+    }
+
+    pub fn string(&self) -> &'static str {
+        match self {
+            ConstraintResult::NOMINAL => "Nominal",
+            ConstraintResult::WARNING => "Warning",
+            ConstraintResult::DANGER => "Danger",
+        }
+    }
+
+    pub fn color(&self) -> Color32 {
+        match self {
+            ConstraintResult::NOMINAL => Color32::GREEN,
+            ConstraintResult::WARNING => Color32::ORANGE,
+            ConstraintResult::DANGER => Color32::RED,
         }
     }
 }
@@ -37,8 +58,13 @@ impl EvaluatedConstraint {
     }
 
     pub fn evaluate(&mut self, backend: &Backend) -> ConstraintResult {
-        self.result = self.constraint.check(backend);
+        self.constraint.evaluate(backend);
+        self.result = self.constraint.check();
         return self.result;
+    }
+
+    pub fn evaluation_as_string(&self) -> String {
+        return self.constraint.evaluation_as_string();
     }
 
     pub fn result(&self) -> &ConstraintResult {
@@ -67,8 +93,10 @@ impl PartialOrd for EvaluatedConstraint {
 }
 
 pub trait ValuedConstraint {
-    fn check(&self, backend: &Backend) -> ConstraintResult;
+    fn evaluate(&mut self, backend: &Backend);
+    fn check(&self) -> ConstraintResult;
     fn metric(&self) -> Metric;
+    fn evaluation_as_string(&self) -> String;
 }
 
 pub struct ValuedConstraintData<C: Constraint> {
@@ -77,12 +105,20 @@ pub struct ValuedConstraintData<C: Constraint> {
 }
 
 impl<C: Constraint> ValuedConstraint for ValuedConstraintData<C> {
-    fn check(&self, backend: &Backend) -> ConstraintResult {
-        return if self.constraint.check(backend) {
+    fn evaluate(&mut self, backend: &Backend) {
+        self.constraint.evaluate(backend);
+    }
+
+    fn check(&self) -> ConstraintResult {
+        return if self.constraint.check() {
             ConstraintResult::NOMINAL
         } else {
             self.violation_result
         };
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        return self.constraint.evaluation_as_string();
     }
 
     fn metric(&self) -> Metric {
@@ -90,36 +126,79 @@ impl<C: Constraint> ValuedConstraint for ValuedConstraintData<C> {
     }
 }
 
-pub trait ConstraintValue<V> {
-    fn get(&self, backend: &Backend) -> Option<V>;
+pub trait ConstraintValue: Sized {
+    type Type: StorableValue;
+
+    fn cached(self) -> CachedConstraintValue<Self>;
+    fn get(&self, backend: &Backend) -> Option<Self::Type>;
+    fn as_string(&self, backend: &Backend) -> String;
 }
 
-impl<V, M: MetricTrait<Value = V>> ConstraintValue<V> for M {
-    fn get(&self, backend: &Backend) -> Option<V> {
+impl<M: MetricTrait> ConstraintValue for M {
+    type Type = M::Value;
+
+    fn get(&self, backend: &Backend) -> Option<Self::Type> {
         return backend.current_value::<M>();
+    }
+
+    fn as_string(&self, backend: &Backend) -> String {
+        return backend.current_value_as_string::<M>();
+    }
+
+    fn cached(self) -> CachedConstraintValue<Self> {
+        CachedConstraintValue {
+            constraint_value: self,
+            cached_result: None,
+        }
     }
 }
 
-pub struct ConstValue<V: Clone> {
+pub struct ConstValue<V: Clone + StorableValue> {
     value: V,
 }
 
-impl<V: Clone> ConstValue<V> {
+impl<V: Clone + StorableValue> ConstValue<V> {
     pub fn new(value: V) -> Self {
         Self { value }
     }
 }
 
-impl<V: Clone> ConstraintValue<V> for ConstValue<V> {
-    fn get(&self, _backend: &Backend) -> Option<V> {
+impl<V: Clone + StorableValue> ConstraintValue for ConstValue<V> {
+    type Type = V;
+
+    fn get(&self, _backend: &Backend) -> Option<Self::Type> {
         return Some(self.value.clone());
+    }
+
+    fn as_string(&self, _backend: &Backend) -> String {
+        self.value.to_string()
+    }
+
+    fn cached(self) -> CachedConstraintValue<Self> {
+        CachedConstraintValue {
+            constraint_value: self,
+            cached_result: None,
+        }
+    }
+}
+
+pub struct CachedConstraintValue<V: ConstraintValue> {
+    constraint_value: V,
+    cached_result: Option<V::Type>,
+}
+
+impl<V: ConstraintValue> CachedConstraintValue<V> {
+    pub fn update(&mut self, backend: &Backend) {
+        self.cached_result = self.constraint_value.get(backend);
     }
 }
 
 pub trait Constraint {
     type Metric: MetricTrait;
 
-    fn check(&self, backend: &Backend) -> bool;
+    fn evaluate(&mut self, backend: &Backend);
+    fn check(&self) -> bool;
+
     fn on_violation(self, violation_result: ConstraintResult) -> ValuedConstraintData<Self>
     where
         Self: Sized,
@@ -133,6 +212,10 @@ pub trait Constraint {
         return <Self::Metric as MetricTrait>::metric();
     }
 
+    fn evaluation_as_string(&self) -> String;
+
+    // fn as_string(&self, _backend: &Backend) -> String;
+
     fn implies<C: Constraint>(self, rhs: C) -> ImpliesConstraint<Self, C>
     where
         Self: Sized,
@@ -145,31 +228,48 @@ pub trait ConstraintBuilder {
     type Metric: MetricTrait;
 
     fn is_some() -> SomeConstraint<Self::Metric> {
-        Default::default()
+        SomeConstraint {
+            cached_metric: Self::Metric::default().cached(),
+        }
     }
 
     fn eq_metric<M: MetricTrait<Value = <Self::Metric as MetricTrait>::Value>>() -> EqualsConstraint<Self::Metric, M> {
-        Default::default()
+        EqualsConstraint {
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: M::default().cached(),
+        }
     }
 
     fn leq_metric<M: MetricTrait<Value = <Self::Metric as MetricTrait>::Value>>()
     -> LessOrEqualConstraint<Self::Metric, M> {
-        Default::default()
+        LessOrEqualConstraint {
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: M::default().cached(),
+        }
     }
 
     fn lt_metric<M: MetricTrait<Value = <Self::Metric as MetricTrait>::Value>>() -> LessThanConstraint<Self::Metric, M>
     {
-        Default::default()
+        LessThanConstraint {
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: M::default().cached(),
+        }
     }
 
     fn geq_metric<M: MetricTrait<Value = <Self::Metric as MetricTrait>::Value>>()
     -> GreaterOrEqualConstraint<Self::Metric, M> {
-        Default::default()
+        GreaterOrEqualConstraint {
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: M::default().cached(),
+        }
     }
 
     fn gt_metric<M: MetricTrait<Value = <Self::Metric as MetricTrait>::Value>>()
     -> GreaterThanConstraint<Self::Metric, M> {
-        Default::default()
+        GreaterThanConstraint {
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: M::default().cached(),
+        }
     }
 
     fn eq_const(
@@ -179,8 +279,8 @@ pub trait ConstraintBuilder {
         <Self::Metric as MetricTrait>::Value: Clone,
     {
         EqualsConstraint {
-            metric: Default::default(),
-            value: ConstValue::new(value),
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: ConstValue::new(value).cached(),
         }
     }
 
@@ -191,8 +291,8 @@ pub trait ConstraintBuilder {
         <Self::Metric as MetricTrait>::Value: Clone,
     {
         LessOrEqualConstraint {
-            metric: Default::default(),
-            value: ConstValue::new(value),
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: ConstValue::new(value).cached(),
         }
     }
 
@@ -203,8 +303,8 @@ pub trait ConstraintBuilder {
         <Self::Metric as MetricTrait>::Value: Clone,
     {
         LessThanConstraint {
-            metric: Default::default(),
-            value: ConstValue::new(value),
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: ConstValue::new(value).cached(),
         }
     }
 
@@ -215,8 +315,8 @@ pub trait ConstraintBuilder {
         <Self::Metric as MetricTrait>::Value: Clone,
     {
         GreaterOrEqualConstraint {
-            metric: Default::default(),
-            value: ConstValue::new(value),
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: ConstValue::new(value).cached(),
         }
     }
 
@@ -227,8 +327,8 @@ pub trait ConstraintBuilder {
         <Self::Metric as MetricTrait>::Value: Clone,
     {
         GreaterThanConstraint {
-            metric: Default::default(),
-            value: ConstValue::new(value),
+            cached_metric: Self::Metric::default().cached(),
+            cached_constraint: ConstValue::new(value).cached(),
         }
     }
 }
@@ -246,9 +346,34 @@ pub struct ImpliesConstraint<C1: Constraint, C2: Constraint + ?Sized> {
 impl<C1: Constraint, C2: Constraint> Constraint for ImpliesConstraint<C1, C2> {
     type Metric = C2::Metric;
 
-    fn check(&self, backend: &Backend) -> bool {
-        return !self.lhs.check(backend) || self.rhs.check(backend);
+    fn evaluate(&mut self, backend: &Backend) {
+        self.lhs.evaluate(backend);
+        self.rhs.evaluate(backend);
     }
+
+    fn check(&self) -> bool {
+        return !self.lhs.check() || self.rhs.check();
+    }
+    fn evaluation_as_string(&self) -> String {
+        if self.check() {
+            format! {"({}) implies ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
+        } else {
+            format! {"not ({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
+        }
+        // if self.check() {
+        //     format! {"({}) => ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
+        // } else {
+        //     format! {"!({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
+        // }
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("({}) => ({})", self.lhs.as_string(backend), self.rhs.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("{} && Condition is true", self.rhs.violation_reason(backend))
+    // }
 }
 
 #[derive(Default)]
@@ -259,100 +384,275 @@ pub struct NotConstraint<C: Constraint> {
 impl<C: Constraint> Constraint for NotConstraint<C> {
     type Metric = C::Metric;
 
-    fn check(&self, backend: &Backend) -> bool {
-        return self.constraint.check(backend);
+    fn evaluate(&mut self, backend: &Backend) {
+        self.constraint.evaluate(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.constraint.check();
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        if self.check() {
+            format!("is not {}", self.constraint.evaluation_as_string())
+        } else {
+            format!("is {}", self.constraint.evaluation_as_string())
+        }
+        //format!("{}{}", if self.check() { "!" } else { "" }, self.constraint.evaluation_as_string())
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("!({})", self.constraint.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("!{}", self.constraint.violation_reason(backend))
+    // }
 }
 
-#[derive(Default)]
-pub struct GreaterOrEqualConstraint<M: MetricTrait, C: ConstraintValue<M::Value>> {
-    metric: PhantomData<M>,
-    value: C,
+pub struct GreaterOrEqualConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
+    cached_metric: CachedConstraintValue<M>,
+    cached_constraint: CachedConstraintValue<C>,
 }
 
-impl<M: MetricTrait, C: ConstraintValue<M::Value>> Constraint for GreaterOrEqualConstraint<M, C> {
+impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for GreaterOrEqualConstraint<M, C> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        let metric_val = backend.current_value::<M>();
-        let constraint_val = self.value.get(backend);
-        return metric_val >= constraint_val;
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
+        self.cached_constraint.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result >= self.cached_constraint.cached_result;
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        let constraint_str =
+            self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string());
+        if self.check() {
+            format!("at least {}", constraint_str)
+        } else {
+            format!("below {}", constraint_str)
+        }
+        // format!(
+        //     "{} {} {}",
+        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        //     if self.check() { ">=" } else { "<" },
+        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        // )
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("{:?} >= {}", M::metric(), self.value.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("< {}", self.value.as_string(backend))
+    // }
 }
 
-#[derive(Default)]
-pub struct GreaterThanConstraint<M: MetricTrait, C: ConstraintValue<M::Value>> {
-    metric: PhantomData<M>,
-    value: C,
+pub struct GreaterThanConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
+    cached_metric: CachedConstraintValue<M>,
+    cached_constraint: CachedConstraintValue<C>,
 }
 
-impl<M: MetricTrait, C: ConstraintValue<M::Value>> Constraint for GreaterThanConstraint<M, C> {
+impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for GreaterThanConstraint<M, C> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        let metric_val = backend.current_value::<M>();
-        let constraint_val = self.value.get(backend);
-        return metric_val > constraint_val;
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
+        self.cached_constraint.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result > self.cached_constraint.cached_result;
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        let constraint_str =
+            self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string());
+        if self.check() {
+            format!("above {}", constraint_str)
+        } else {
+            format!("below {}", constraint_str)
+        }
+        // format!(
+        //     "{} {} {}",
+        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        //     if self.check() { ">" } else { "<=" },
+        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        // )
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("{:?} > {}", M::metric(), self.value.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("<= {}", self.value.as_string(backend))
+    // }
 }
 
-#[derive(Default)]
-pub struct LessOrEqualConstraint<M: MetricTrait, C: ConstraintValue<M::Value>> {
-    metric: PhantomData<M>,
-    value: C,
+pub struct LessOrEqualConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
+    cached_metric: CachedConstraintValue<M>,
+    cached_constraint: CachedConstraintValue<C>,
 }
 
-impl<M: MetricTrait, C: ConstraintValue<M::Value>> Constraint for LessOrEqualConstraint<M, C> {
+impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for LessOrEqualConstraint<M, C> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        let metric_val = backend.current_value::<M>();
-        let constraint_val = self.value.get(backend);
-        return metric_val <= constraint_val;
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
+        self.cached_constraint.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result <= self.cached_constraint.cached_result;
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        let constraint_str =
+            self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string());
+        if self.check() {
+            format!("at most {}", constraint_str)
+        } else {
+            format!("exceeds {}", constraint_str)
+        }
+        // format!(
+        //     "{} {} {}",
+        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        //     if self.check() { "<=" } else { ">" },
+        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        // )
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("{:?} <= {}", M::metric(), self.value.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("> {}", self.value.as_string(backend))
+    // }
 }
 
-#[derive(Default)]
-pub struct LessThanConstraint<M: MetricTrait, C: ConstraintValue<M::Value>> {
-    metric: PhantomData<M>,
-    value: C,
+pub struct LessThanConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
+    cached_metric: CachedConstraintValue<M>,
+    cached_constraint: CachedConstraintValue<C>,
 }
 
-impl<M: MetricTrait, C: ConstraintValue<M::Value>> Constraint for LessThanConstraint<M, C> {
+impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for LessThanConstraint<M, C> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        let metric_val = backend.current_value::<M>();
-        let constraint_val = self.value.get(backend);
-        return metric_val < constraint_val;
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
+        self.cached_constraint.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result < self.cached_constraint.cached_result;
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        let constraint_str =
+            self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string());
+        if self.check() {
+            format!("below {}", constraint_str)
+        } else {
+            format!("exceeds {}", constraint_str)
+        }
+        // format!(
+        //     "{} {} {}",
+        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        //     if self.check() { "<" } else { ">=" },
+        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+        // )
+    }
+
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("{:?} < {}", M::metric(), self.value.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!(">= {}", self.value.as_string(backend))
+    // }
 }
 
-#[derive(Default)]
 pub struct SomeConstraint<M: MetricTrait> {
-    metric: PhantomData<M>,
+    cached_metric: CachedConstraintValue<M>,
 }
 
 impl<M: MetricTrait> Constraint for SomeConstraint<M> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        return backend.current_value::<M>().is_some();
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result.is_some();
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        if self.check() {
+            format!("is known")
+        } else {
+            format!("is N/A")
+        }
+        // format!(
+        //     "{} {} Some",
+        //     self.cached_metric.cached_result.as_ref().map(|_| "Some").unwrap_or("N/A"),
+        //     if self.check() { "==" } else { "!=" }
+        // )
+    }
+
+    // fn as_string(&self, _backend: &Backend) -> String {
+    //     format!("{:?} is Some", M::metric())
+    // }
+
+    // fn violation_reason(&self, _backend: &Backend) -> String {
+    //     "N/A".to_string()
+    // }
 }
 
-#[derive(Default)]
-pub struct EqualsConstraint<M: MetricTrait, C: ConstraintValue<M::Value>> {
-    metric: PhantomData<M>,
-    value: C,
+pub struct EqualsConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
+    cached_metric: CachedConstraintValue<M>,
+    cached_constraint: CachedConstraintValue<C>,
 }
 
-impl<M: MetricTrait, C: ConstraintValue<M::Value>> Constraint for EqualsConstraint<M, C> {
+impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for EqualsConstraint<M, C> {
     type Metric = M;
 
-    fn check(&self, backend: &Backend) -> bool {
-        let metric_val = backend.current_value::<M>();
-        let constraint_val = self.value.get(backend);
-        return metric_val == constraint_val;
+    fn evaluate(&mut self, backend: &Backend) {
+        self.cached_metric.update(backend);
+        self.cached_constraint.update(backend);
     }
+
+    fn check(&self) -> bool {
+        return self.cached_metric.cached_result == self.cached_constraint.cached_result;
+    }
+
+    fn evaluation_as_string(&self) -> String {
+        let constraint_str =
+            self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string());
+        if self.check() {
+            format!("is {}", constraint_str)
+        } else {
+            format!("is not {}", constraint_str)
+        }
+    }
+    //     format!(
+    //         "{} {} {}",
+    //         self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+    //         if self.check() { "==" } else { "!=" },
+    //         self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
+    //     )
+    // }
+    // fn as_string(&self, backend: &Backend) -> String {
+    //     format!("{:?} == {}", M::metric(), self.value.as_string(backend))
+    // }
+
+    // fn violation_reason(&self, backend: &Backend) -> String {
+    //     format!("!= {}", self.value.as_string(backend))
+    // }
 }

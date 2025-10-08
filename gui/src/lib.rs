@@ -56,10 +56,14 @@ impl Sam {
         let mut fonts = egui::FontDefinitions::default();
         let roboto = egui::FontData::from_static(include_bytes!("../assets/fonts/RobotoMono-Regular.ttf"));
         let lato = egui::FontData::from_static(include_bytes!("../assets/fonts/Overpass-Light.ttf"));
+        let noto = egui::FontData::from_static(include_bytes!("../assets/fonts/NotoSansMono_Condensed-Regular.ttf"));
+
         fonts.font_data.insert("RobotoMono".to_owned(), Arc::new(roboto));
         fonts.font_data.insert("Overpass".to_owned(), Arc::new(lato));
+        fonts.font_data.insert("NotoSansMono".to_owned(), Arc::new(noto));
         fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "RobotoMono".to_owned());
         fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "Overpass".to_owned());
+        fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "NotoSansMono".to_owned());
 
         ctx.set_fonts(fonts);
 

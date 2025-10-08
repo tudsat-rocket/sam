@@ -689,7 +689,8 @@ pub fn create_diagram<'a>(
         backend.initialize_local_metrics();
         frontend
             .metric_monitor_mut()
-            .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::DANGER)))
+            .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::WARNING)))
+            .add_constraint(Box::new(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER)))
             .add_constraint(Box::new(
                 crate::storage::static_metrics::HyacinthNominalState::eq_const(HyacinthNominalState::BurnPhase)
                     .implies(N2ReleaseValve::is_some())

@@ -1,44 +1,81 @@
 use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
-use egui::{Sense, Ui, Vec2};
+use egui::{Align, FontId, TextFormat, Ui, text::LayoutJob};
 use itertools::Itertools;
-use strum::VariantNames;
-use telemetry::{Metric, MetricDiscriminants};
+use telemetry::Metric;
 
 use crate::{
-    backend::Backend,
+    backend::{Backend, storage::static_metrics::debug_name_dyn},
     frontend::{
         Frontend,
         constraints::{ConstraintResult, EvaluatedConstraint},
         metric_monitor::MetricMonitor,
     },
+    utils::theme::ThemeColors,
 };
 
 pub struct MetricStatusBar {}
 
 fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, ui: &mut Ui) {
+    let theme = ThemeColors::new(ui.ctx());
     let val = backend.current_value_dynamic_as_string(&metric);
-    let name = format!("{:?}", metric);
+    let name = debug_name_dyn(metric);
 
     ui.label(name);
     ui.label(val);
 
-    let worst_constraint_result =
-        metric_monitor.constraint_results().get(metric).map(|res| res.iter().max()).unwrap_or_default();
-
-    worst_constraint_result
-        .map(|constraint| {
-            ui.label(constraint.result().symbol());
-        })
-        .unwrap_or_else(|| {
-            ui.allocate_response(Vec2::ZERO, Sense::hover());
-        });
+    //let worst_constraint_result =
+    //  metric_monitor.constraint_results().get(metric).map(|res| res.iter().max()).unwrap_or_default();
+    // worst_constraint_result
+    //     .map(|constraint| {
+    //         ui.label(constraint.result().symbol());
+    //     })
+    //     .unwrap_or_else(|| {
+    //         ui.allocate_response(Vec2::ZERO, Sense::hover());
+    //     });
 
     if metric_monitor.is_pinned(&metric) {
         ui.label("📌");
     }
 
     ui.end_row();
+
+    let empty_vec = vec![];
+    let constraints = metric_monitor.constraint_results().get(metric).unwrap_or(&empty_vec);
+    for (idx, result) in constraints.iter().sorted().rev().enumerate() {
+        let mut reason_layout: LayoutJob = LayoutJob::default();
+        result
+            .result()
+            .symbol()
+            .append_to(&mut reason_layout, &Default::default(), Default::default(), Align::LEFT);
+        reason_layout.append(
+            if idx == constraints.len() - 1 {
+                " └── "
+            } else {
+                " ├── "
+            },
+            0f32,
+            TextFormat {
+                color: theme.foreground_weak,
+                font_id: FontId {
+                    size: 12f32,
+                    family: egui::FontFamily::Monospace,
+                },
+                ..Default::default()
+            },
+        );
+        reason_layout.append(
+            &result.evaluation_as_string(),
+            0f32,
+            TextFormat {
+                color: theme.foreground_weak,
+                //color: result.result().color(),
+                ..Default::default()
+            },
+        );
+        ui.label(reason_layout);
+        ui.end_row();
+    }
 }
 
 const METRIC_MONITOR_FILTER_BUTTON_ID: LazyLock<egui::Id> =
@@ -63,12 +100,12 @@ impl MetricStatusBar {
         let r1 = metric_monitor.strongest_constraint_result(m1);
         let r2 = metric_monitor.strongest_constraint_result(m2);
         if r1 != r2 {
-            return r1.cmp(&r2);
+            return r1.cmp(&r2).reverse();
         }
-        // 2. Sort discriminants alphabetically TODO: Values with an identical discriminant have undefined ordering!
-        let d1: MetricDiscriminants = m1.into();
-        let d2: MetricDiscriminants = m2.into();
-        return Metric::VARIANTS[d1 as usize].cmp(Metric::VARIANTS[d2 as usize]);
+        // 2. Sort discriminants alphabetically
+        let name_m1 = debug_name_dyn(m1);
+        let name_m2 = debug_name_dyn(m2);
+        return name_m1.cmp(&name_m2);
     }
 
     pub fn show(
