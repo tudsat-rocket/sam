@@ -213,37 +213,37 @@ impl Vehicle {
         );
         // Switch to new mode if necessary
         // let arm_voltage = self.power.arm_voltage().unwrap_or(0);
-        let arm_voltage = 0;
-        if let Some(fm) = self.state_estimator.new_mode(arm_voltage) {
-            self.switch_mode(fm);
-        }
-
-        self.receive_uplink_message();
-        self.receive_can();
-
-        // TODO: check arm
-        unsafe {
-            self.load_outputs.lock_mut(|o| o.arm());
-        }
-        // self.outputs.load_output_arm.set_level((self.mode >= FlightMode::Armed).into());
-
-        // TODO: re-enable timing checks for recovery // recovery invocation moved to fn switch_mode
-        let _elapsed = self.state_estimator.time_in_mode();
-        let (r, y, g) = self.mode.led_state(self.time.0);
-        self.board_leds.0.set_level((!r).into());
-        self.board_leds.1.set_level((!y).into());
-        self.board_leds.2.set_level((!g).into());
-
-        //// Send valve commands via CAN bus
-        //self.transmit_output_commands();
-        self.transmit_and_store().await;
-
-        // Increase time for next iteration
+        // let arm_voltage = 0;
+        // if let Some(fm) = self.state_estimator.new_mode(arm_voltage) {
+        //     self.switch_mode(fm);
+        // }
+        //
+        // self.receive_uplink_message();
+        // self.receive_can();
+        //
+        // // TODO: check arm
+        // unsafe {
+        //     self.load_outputs.lock_mut(|o| o.arm());
+        // }
+        // // self.outputs.load_output_arm.set_level((self.mode >= FlightMode::Armed).into());
+        //
+        // // TODO: re-enable timing checks for recovery // recovery invocation moved to fn switch_mode
+        // let _elapsed = self.state_estimator.time_in_mode();
+        // let (r, y, g) = self.mode.led_state(self.time.0);
+        // self.board_leds.0.set_level((!r).into());
+        // self.board_leds.1.set_level((!y).into());
+        // self.board_leds.2.set_level((!g).into());
+        //
+        // //// Send valve commands via CAN bus
+        // //self.transmit_output_commands();
+        // self.transmit_and_store().await;
+        //
+        // // Increase time for next iteration
         self.time += 1_000 / MAIN_LOOP_FREQUENCY.0;
-
-        // get CPU usage
-        self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
-        // defmt::info!("loop_runtime: {}", self.loop_runtime);
+        //
+        // // get CPU usage
+        // self.loop_runtime = (start.elapsed().as_micros() as f32) / 1000.0;
+        // // defmt::info!("loop_runtime: {}", self.loop_runtime);
     }
 
     fn receive_uplink_message(&mut self) {
