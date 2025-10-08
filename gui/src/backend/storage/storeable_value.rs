@@ -122,6 +122,22 @@ impl StorableValue for shared_types::telemetry::FlightMode {
     }
 }
 
+impl StorableValue for shared_types::ProcedureStep {
+    fn to_bits(&self) -> u64 {
+        (*self as u8) as u64
+    }
+    fn from_bits(bits: u64) -> Self {
+        let byte = u8::try_from(bits).unwrap_or(0);
+        Self::try_from(byte).unwrap()
+    }
+    fn to_string(&self) -> String {
+        String::from("")
+    }
+    fn to_float(&self) -> f64 {
+        0.0
+    }
+}
+
 impl StorableValue for crate::widgets::time_line::HyacinthNominalState {
     fn to_bits(&self) -> u64 {
         match self {

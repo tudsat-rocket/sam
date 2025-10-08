@@ -95,6 +95,7 @@ make_static_metric_with_storage_type!(TrueThrusterPropellantMass, f64, SampleSer
 //TrueDrag(Dim) - see below
 //TrueThrust(Dim) - see below
 make_static_metric_with_storage_type!(ApogeeError, f64, SampleSeries);
+make_static_metric_with_storage_type!(ProcedureStep, shared_types::ProcedureStep, SampleSeries);
 
 // ------------- Local Nested Metrics -------------
 
@@ -1174,6 +1175,7 @@ macro_rules! call_static_metric {
                     telemetry::Dim::Z => $($func)::+::<$crate::storage::static_metrics::TrueThrust<$crate::storage::static_metrics::Z> $(, $generics)*>($($args),*),
                 }
             telemetry::Metric::ApogeeError => $($func)::+::<$crate::storage::static_metrics::ApogeeError $(, $generics)*>($($args),*),
+            telemetry::Metric::ProcedureStep => $($func)::+::<$crate::storage::static_metrics::ProcedureStep $(, $generics)*>($($args),*),
             telemetry::Metric::LocalMetric(local_metric) =>
             match local_metric {
                 telemetry::LocalMetric::HyacinthNominalState  => $($func)::+::<$crate::storage::static_metrics::HyacinthNominalState $(, $generics)*>($($args),*),

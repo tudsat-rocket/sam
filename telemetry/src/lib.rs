@@ -73,6 +73,8 @@ pub const TELEMETRY_DIAGNOSTICS: MessageDefinition = MessageDefinition(&[
 
 pub const TELEMETRY_MAIN: MessageDefinition = MessageDefinition(&[
     (Metric::FlightMode, Representation::Enum { bits: 8 }),
+    (Metric::ProcedureStep, Representation::Enum { bits: 8 }),
+    (Metric::AnomalousState, Representation::Enum { bits: 8 }),
     (Metric::Orientation(0), Representation::float(32)),
     (Metric::Orientation(1), Representation::float(32)),
     (Metric::Orientation(2), Representation::float(32)),

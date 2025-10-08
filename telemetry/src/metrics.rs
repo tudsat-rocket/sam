@@ -98,6 +98,9 @@ pub enum Dim {
 #[non_exhaustive]
 pub enum Metric {
     FlightMode,
+    ProcedureStep,
+    AnomalousState,
+
     TransmitPower,
     AcsMode,
     ThrusterValveState,
