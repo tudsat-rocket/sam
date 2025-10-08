@@ -224,13 +224,17 @@ impl BackendVariant for UdpBackend {
                     self.fc_settings = Some(settings);
                 }
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
-                    if interpret_buffer_with_schema(&LORA_SCHEMA, message.as_slice(), time).is_ok() {
-                        self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    // if interpret_buffer_with_schema(&LORA_SCHEMA, message.as_slice(), time).is_ok() {
+                    //     self.data_store.ingest_message(&LORA_SCHEMA, time, message);
                     // } else if interpret_buffer_with_schema(&USB_SCHEMA, message.as_slice(), time).is_ok() {
                     //     self.data_store.ingest_message(&USB_SCHEMA, time, message);
-                    } else {
-                        error!("Could not identify DownlinkMessage as LORA_SCHEMA nor as USB_SCHEMA, ignoring");
-                    }
+                    // } else {
+                    //     error!("Could not identify DownlinkMessage as LORA_SCHEMA nor as USB_SCHEMA, ignoring");
+                    // }
+
+                    // FIXME: choose one on the following lines before compiling
+                    self.data_store.ingest_message(&LORA_SCHEMA, time, message);
+                    // self.data_store.ingest_message(&USB_SCHEMA, time, message);
                 }
                 _ => {
                     // TODO: metrics via downlink message
