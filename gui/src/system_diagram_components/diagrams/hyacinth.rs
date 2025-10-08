@@ -687,6 +687,8 @@ pub fn create_diagram<'a>(
     if !backend.has_initialized_local_metrics() {
         let _ = backend.set_value::<MaxPressureN2Tank>(100f64);
         backend.initialize_local_metrics();
+    }
+    if !frontend.initialized() {
         frontend
             .metric_monitor_mut()
             .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::WARNING)))
@@ -700,7 +702,9 @@ pub fn create_diagram<'a>(
                 RawBarometricAltitude::<MS5611>::eq_metric::<MaxPressureN2Tank>()
                     .on_violation(ConstraintResult::WARNING),
             ));
+        frontend.initialize();
     }
+
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),
         system_definition.connections.iter().map(|c| Line1D::new(c.points.clone())).collect(),

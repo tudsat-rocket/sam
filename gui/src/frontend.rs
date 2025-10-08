@@ -13,16 +13,12 @@ pub mod popup_manager;
 //TODO Hans: Probably should not be here
 pub mod constraints;
 
-struct HyacinthState {
-    nominal: HyacinthNominalState,
-    anomalous: Option<HyacinthAnomalousState>,
-}
-
 pub struct Frontend {
     popup_manager: PopupManager,
     metric_monitor: MetricMonitor,
     map: MapState,
     shared_plot: SharedPlotState,
+    is_initialized: bool,
 }
 
 impl Frontend {
@@ -33,7 +29,16 @@ impl Frontend {
             metric_monitor: Default::default(),
             map: MapState::new(ctx, mapbox_token),
             shared_plot: SharedPlotState::new(),
+            is_initialized: false,
         };
+    }
+
+    pub fn initialized(&self) -> bool {
+        return self.is_initialized;
+    }
+
+    pub fn initialize(&mut self) {
+        self.is_initialized = true;
     }
 
     pub fn popup_manager(&self) -> &PopupManager {

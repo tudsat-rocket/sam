@@ -1,17 +1,12 @@
-use std::iter::once;
-
-use chrono::offset;
 use egui::{
     Align2, Color32, Context, FontFamily, FontId, Key, Modifiers, Rect, TextFormat, Vec2, epaint::RectShape,
     text::LayoutJob,
 };
-use itertools::Itertools;
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
 use shared_types::{Command, FlightMode, ProcedureStep};
-use strum::IntoStaticStr;
 
 use crate::{
-    backend::{self, Backend},
+    backend::Backend,
     frontend::{
         Frontend,
         popup_manager::{ModalDialog, PopupContentData, PopupContentList, PopupPosition, TriggerBuilder},
@@ -113,14 +108,14 @@ impl HyacinthNominalState {
         }
     }
 
-    fn associated_flight_mode(&self) -> FlightMode {
+    pub fn associated_flight_mode(&self) -> FlightMode {
         match self {
             HyacinthNominalState::Verification => FlightMode::Idle,
             HyacinthNominalState::IdlePassivated => FlightMode::Idle,
             HyacinthNominalState::N2Filling => FlightMode::Idle,
             HyacinthNominalState::IdleActive => FlightMode::Idle,
-            HyacinthNominalState::HardwareArmed => FlightMode::HardwareArmed,
-            HyacinthNominalState::N2OFilling => FlightMode::HardwareArmed,
+            HyacinthNominalState::HardwareArmed => FlightMode::Idle, //FlightMode::HardwareArmed,
+            HyacinthNominalState::N2OFilling => FlightMode::Idle,    //FlightMode::HardwareArmed,
             HyacinthNominalState::SoftwareArmed => FlightMode::Armed,
             HyacinthNominalState::Ignition => FlightMode::Armed,
             HyacinthNominalState::BurnPhase => FlightMode::Burn,
@@ -225,7 +220,7 @@ impl HyacinthNominalState {
             self.associated_color(),
             self <= backend
                 .current_value::<crate::storage::static_metrics::HyacinthNominalState>()
-                .unwrap_or(HyacinthNominalState::IdleActive), //TODO Hans: Think about this
+                .unwrap_or(HyacinthNominalState::Verification), //TODO Hans: Think about this
             self.hotkey(),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
@@ -275,8 +270,15 @@ impl HyacinthNominalState {
                                     {
                                         println!("Error sending command via backend: {}", e);
                                     }
-                                    backend.set_value::<crate::storage::static_metrics::HyacinthNominalState>(self);
-                                    backend.set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(None);
+                                    if let Err(e) =
+                                        backend.send_command(Command::SetFlightMode(self.associated_flight_mode()))
+                                    {
+                                        println!("Error sending command via backend: {}", e);
+                                    }
+                                    let _ =
+                                        backend.set_value::<crate::storage::static_metrics::HyacinthNominalState>(self);
+                                    let _ = backend
+                                        .set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(None);
 
                                     button_clicked = true
                                 };

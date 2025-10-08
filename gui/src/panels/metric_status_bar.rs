@@ -1,7 +1,8 @@
 use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
-use egui::{Align, FontId, TextFormat, Ui, text::LayoutJob};
+use egui::{Align, ComboBox, FontId, Layout, TextFormat, Ui, text::LayoutJob};
 use itertools::Itertools;
+use strum::IntoEnumIterator;
 use telemetry::Metric;
 
 use crate::{
@@ -42,7 +43,13 @@ fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, u
 
     let empty_vec = vec![];
     let constraints = metric_monitor.constraint_results().get(metric).unwrap_or(&empty_vec);
-    for (idx, result) in constraints.iter().sorted().rev().enumerate() {
+    for (idx, result) in constraints
+        .iter()
+        .filter(|c| metric_monitor.active_constraint_mask().contains(c.result()))
+        .sorted()
+        .rev()
+        .enumerate()
+    {
         let mut reason_layout: LayoutJob = LayoutJob::default();
         result
             .result()
@@ -123,11 +130,62 @@ impl MetricStatusBar {
             ctx,
             num_metrics_to_display > 0 || has_open_popups,
             |ui| {
-                ui.horizontal(|ui| {
-                    ui.vertical_centered(|ui| {
+                ui.scope(|ui| {
+                    ui.with_layout(Layout::left_to_right(egui::Align::TOP), |ui| {
                         ui.heading("Monitored Metrics");
+                        ui.add_space(50.0);
+                        let mut active_constraints = vec![];
+                        for result in ConstraintResult::iter() {
+                            if active_constraint_mask.contains(&result) {
+                                active_constraints.push(true);
+                            } else {
+                                active_constraints.push(false);
+                            }
+                        }
+                        egui::ComboBox::new(*METRIC_MONITOR_FILTER_BUTTON_ID, "").selected_text("Filter").show_ui(
+                            ui,
+                            |ui| {
+                                for (i, result) in ConstraintResult::iter().enumerate() {
+                                    ui.checkbox(&mut active_constraints[i], result.string());
+                                }
+                            },
+                        );
+                        active_constraint_mask.clear();
+                        for (i, result) in ConstraintResult::iter().enumerate() {
+                            if active_constraints[i] {
+                                active_constraint_mask.push(result);
+                            }
+                        }
                     });
                 });
+
+                // ui.horizontal(|ui| {
+                //     ui.vertical_centered(|ui| {
+                //         ui.heading("Monitored Metrics");
+                //     });
+                // });
+                // //ui.allocate_ui_with_layout(ui.min_size(), Layout::left_to_right(Align::RIGHT), |ui| {
+                // let mut active_constraints = vec![];
+                // for result in ConstraintResult::iter() {
+                //     if active_constraint_mask.contains(&result) {
+                //         active_constraints.push(true);
+                //     } else {
+                //         active_constraints.push(false);
+                //     }
+                // }
+                // egui::ComboBox::new(*METRIC_MONITOR_FILTER_BUTTON_ID, "").selected_text("Filter").show_ui(ui, |ui| {
+                //     for (i, result) in ConstraintResult::iter().enumerate() {
+                //         ui.checkbox(&mut active_constraints[i], result.string());
+                //     }
+                // });
+                // active_constraint_mask.clear();
+                // for (i, result) in ConstraintResult::iter().enumerate() {
+                //     if active_constraints[i] {
+                //         active_constraint_mask.push(result);
+                //     }
+                // }
+
+                //})
                 ui.separator();
                 egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
                     for metric in frontend.metric_monitor().pinned_metrics() {
