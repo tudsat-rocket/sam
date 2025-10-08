@@ -125,6 +125,7 @@ impl UdpBackend {
 
 // Schema reader
 fn interpret_buffer_with_schema(schema: &TelemetrySchema, buffer: &[u8], fc_time: u32) -> Result<(), ()> {
+    // info!("Interpreting as schema: {:?}", schema);
     let count: usize = 0;
     let mut bit_pointer: usize = 0;
 
@@ -135,16 +136,15 @@ fn interpret_buffer_with_schema(schema: &TelemetrySchema, buffer: &[u8], fc_time
         }
     }
     let Some(msg_def) = msg_def else {
-        // error!("Interpretation as schema: {:?} failed because of mismatched time offsets", schema);
+        error!("Interpretation as schema failed because of mismatched time offsets");
         return Err(());
     };
     let expected_size_bits: usize = msg_def.0.iter().map(|(_, repr)| repr.bits()).sum();
     let expected_size = expected_size_bits / 8;
-    // info!("expected_size: {} bytes ({} bits), buffer size: {}", expected_size, expected_size_bits, buffer.len());
-    // info!("detected MessageDefinition: {:?}", msg_def);
+    info!("detected MessageDefinition: {:?}", msg_def);
     if expected_size != buffer.len() {
-        // error!("MessageDefinition does not match buffer lenght");
-        return Err(());
+        warn!("MessageDefinition does not match buffer length");
+        warn!("expected_size: {} bytes ({} bits), buffer size: {}", expected_size, expected_size_bits, buffer.len());
     }
 
     for (metr, repr) in msg_def.0 {
@@ -156,13 +156,13 @@ fn interpret_buffer_with_schema(schema: &TelemetrySchema, buffer: &[u8], fc_time
 
         //Check if the representation is valid
         if repr.bits() % 8 != 0 || repr.bits() > 64 {
-            // error!("Interpretation as schema failed because some representation was (comp time) invalid");
+            error!("Interpretation as schema failed because some representation was (comp time) invalid");
             return Err(());
         }
 
         //Check that buffer contains a complete value
         if ((bit_pointer + repr.bits()) / 8) > buffer.len() {
-            // error!("Interpretation as schema failed because buffer was shorter than MessageDefinition required");
+            error!("Interpretation as schema failed because buffer was shorter than MessageDefinition required");
             return Err(());
         }
 
@@ -226,8 +226,8 @@ impl BackendVariant for UdpBackend {
                 DownlinkMessage::Telemetry(time, message) if message.len() != 0 => {
                     if interpret_buffer_with_schema(&LORA_SCHEMA, message.as_slice(), time).is_ok() {
                         self.data_store.ingest_message(&LORA_SCHEMA, time, message);
-                    } else if interpret_buffer_with_schema(&USB_SCHEMA, message.as_slice(), time).is_ok() {
-                        self.data_store.ingest_message(&USB_SCHEMA, time, message);
+                    // } else if interpret_buffer_with_schema(&USB_SCHEMA, message.as_slice(), time).is_ok() {
+                    //     self.data_store.ingest_message(&USB_SCHEMA, time, message);
                     } else {
                         error!("Could not identify DownlinkMessage as LORA_SCHEMA nor as USB_SCHEMA, ignoring");
                     }
