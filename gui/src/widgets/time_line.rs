@@ -244,13 +244,6 @@ impl HyacinthNominalState {
                                 if ui.add(proceed_button).clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
                                 {
-                                    if backend
-                                        .current_value::<crate::backend::storage::static_metrics::FlightMode>()
-                                        .map(|fm| fm != self.associated_flight_mode())
-                                        .unwrap_or(true)
-                                    {
-                                        println!("Error sending command via backend: {}", e);
-                                    }
                                     if let Err(e) =
                                         backend.send_command(Command::SetDisplayStep(self.associated_procedure_step()))
                                     {
