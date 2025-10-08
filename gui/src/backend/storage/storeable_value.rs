@@ -1,3 +1,5 @@
+use crate::{widgets::time_line::HyacinthAnomalousState, widgets::time_line::HyacinthNominalState};
+
 //TODO Hans: to_string/to_float should be encapsulated in a DisplayableValue trait and interact for plotting
 pub trait StorableValue {
     ///Convert the value to a 64bit representation. Must be the inverse of from_bits
@@ -117,6 +119,86 @@ impl StorableValue for shared_types::telemetry::FlightMode {
 
     fn to_float(&self) -> f64 {
         return (*self as u8) as f64;
+    }
+}
+
+impl StorableValue for crate::widgets::time_line::HyacinthNominalState {
+    fn to_bits(&self) -> u64 {
+        match self {
+            HyacinthNominalState::Verification => 0,
+            HyacinthNominalState::IdlePassivated => 1,
+            HyacinthNominalState::N2Filling => 2,
+            HyacinthNominalState::IdleActive => 3,
+            HyacinthNominalState::HardwareArmed => 4,
+            HyacinthNominalState::N2OFilling => 5,
+            HyacinthNominalState::SoftwareArmed => 6,
+            HyacinthNominalState::Ignition => 7,
+            HyacinthNominalState::BurnPhase => 8,
+            HyacinthNominalState::CoastPhase => 9,
+            HyacinthNominalState::DroguePhase => 10,
+            HyacinthNominalState::MainPhase => 11,
+            HyacinthNominalState::LandedActive => 12,
+            HyacinthNominalState::Passivation => 13,
+            HyacinthNominalState::LandedPassivated => 14,
+        }
+    }
+
+    fn from_bits(bits: u64) -> Self {
+        match bits {
+            0 => HyacinthNominalState::Verification,
+            1 => HyacinthNominalState::IdlePassivated,
+            2 => HyacinthNominalState::N2Filling,
+            3 => HyacinthNominalState::IdleActive,
+            4 => HyacinthNominalState::HardwareArmed,
+            5 => HyacinthNominalState::N2OFilling,
+            6 => HyacinthNominalState::SoftwareArmed,
+            7 => HyacinthNominalState::Ignition,
+            8 => HyacinthNominalState::BurnPhase,
+            9 => HyacinthNominalState::CoastPhase,
+            10 => HyacinthNominalState::DroguePhase,
+            11 => HyacinthNominalState::MainPhase,
+            12 => HyacinthNominalState::LandedActive,
+            13 => HyacinthNominalState::Passivation,
+            14 => HyacinthNominalState::LandedActive,
+            _ => panic!("Cannot convert {bits} to HyacinthNominalState!"),
+        }
+    }
+
+    fn to_string(&self) -> String {
+        self.as_string().to_string()
+    }
+
+    fn to_float(&self) -> f64 {
+        self.to_bits() as f64
+    }
+}
+
+impl StorableValue for Option<crate::widgets::time_line::HyacinthAnomalousState> {
+    fn to_bits(&self) -> u64 {
+        match self {
+            None => 0,
+            Some(state) => match state {
+                HyacinthAnomalousState::Hold => 1,
+                HyacinthAnomalousState::Abort => 2,
+            },
+        }
+    }
+
+    fn from_bits(bits: u64) -> Self {
+        match bits {
+            0 => None,
+            1 => Some(HyacinthAnomalousState::Hold),
+            2 => Some(HyacinthAnomalousState::Abort),
+            _ => panic!("Cannot convert {bits} to HyacinthAnomalousState!"),
+        }
+    }
+
+    fn to_string(&self) -> String {
+        self.map(|state| state.as_string()).unwrap_or("None").to_string()
+    }
+
+    fn to_float(&self) -> f64 {
+        self.to_bits() as f64
     }
 }
 

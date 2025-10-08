@@ -159,7 +159,16 @@ make_static_local_metric_with_storage_type!(
     EventSeries
 );
 make_static_local_metric_with_storage_type!(MaxPressureN2Tank, f64, Constant);
-
+make_static_local_metric_with_storage_type!(
+    HyacinthNominalState,
+    crate::widgets::time_line::HyacinthNominalState,
+    EventSeries
+);
+make_static_local_metric_with_storage_type!(
+    HyacinthAnomalousState,
+    Option<crate::widgets::time_line::HyacinthAnomalousState>,
+    EventSeries
+);
 // ------------- Other Nested Metrics (currently do not work via macro) -------------
 
 #[derive(Default)]
@@ -1167,6 +1176,8 @@ macro_rules! call_static_metric {
             telemetry::Metric::ApogeeError => $($func)::+::<$crate::storage::static_metrics::ApogeeError $(, $generics)*>($($args),*),
             telemetry::Metric::LocalMetric(local_metric) =>
             match local_metric {
+                telemetry::LocalMetric::HyacinthNominalState  => $($func)::+::<$crate::storage::static_metrics::HyacinthNominalState $(, $generics)*>($($args),*),
+                telemetry::LocalMetric::HyacinthAnomalousState  => $($func)::+::<$crate::storage::static_metrics::HyacinthAnomalousState $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::N2BottleValve => $($func)::+::<$crate::storage::static_metrics::N2BottleValve $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::N2OBottleValve => $($func)::+::<$crate::storage::static_metrics::N2OBottleValve $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::N2ReleaseValve => $($func)::+::<$crate::storage::static_metrics::N2ReleaseValve $(, $generics)*>($($args),*),

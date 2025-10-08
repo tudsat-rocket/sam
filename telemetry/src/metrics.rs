@@ -164,6 +164,8 @@ pub enum Metric {
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum LocalMetric {
+    HyacinthNominalState,
+    HyacinthAnomalousState,
     //Binary Valve States
     N2BottleValve,
     N2OBottleValve,

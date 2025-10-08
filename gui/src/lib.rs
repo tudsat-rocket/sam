@@ -196,8 +196,8 @@ impl Sam {
 
         egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
             ui.add(Timeline::new(
-                HyacinthNominalState::as_timeline(&self.frontend),
-                HyacinthAnomalousState::as_timeline(&self.frontend),
+                HyacinthNominalState::as_timeline(&self.backend()),
+                HyacinthAnomalousState::as_timeline(&self.backend()),
                 Rotation2::new(0f32), //f32::consts::PI / 2f32),
                 &mut self.frontend,
                 self.backends.last_mut().unwrap(),

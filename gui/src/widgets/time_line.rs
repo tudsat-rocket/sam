@@ -11,7 +11,7 @@ use shared_types::{Command, FlightMode, ProcedureStep};
 use strum::IntoStaticStr;
 
 use crate::{
-    backend::Backend,
+    backend::{self, Backend},
     frontend::{
         Frontend,
         popup_manager::{ModalDialog, PopupContentData, PopupContentList, PopupPosition, TriggerBuilder},
@@ -71,7 +71,7 @@ pub enum HyacinthNominalState {
 }
 
 impl HyacinthNominalState {
-    fn as_string(&self) -> &'static str {
+    pub fn as_string(&self) -> &'static str {
         match self {
             HyacinthNominalState::Verification => "Verification",
             HyacinthNominalState::IdlePassivated => "Idle Passivated",
@@ -173,39 +173,36 @@ impl HyacinthNominalState {
         }
     }
 
-    pub fn as_timeline(frontend: &Frontend) -> impl TimelineStateSequence + 'static {
+    pub fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
         return (
-            Self::Verification.as_timeline_state(frontend),
+            Self::Verification.as_timeline_state(backend),
             (
-                Self::IdlePassivated.as_timeline_state(frontend),
+                Self::IdlePassivated.as_timeline_state(backend),
                 (
-                    Self::N2Filling.as_timeline_state(frontend),
+                    Self::N2Filling.as_timeline_state(backend),
                     (
-                        Self::IdleActive.as_timeline_state(frontend),
+                        Self::IdleActive.as_timeline_state(backend),
                         (
-                            Self::HardwareArmed.as_timeline_state(frontend),
+                            Self::HardwareArmed.as_timeline_state(backend),
                             (
-                                Self::N2OFilling.as_timeline_state(frontend),
+                                Self::N2OFilling.as_timeline_state(backend),
                                 (
-                                    Self::SoftwareArmed.as_timeline_state(frontend),
+                                    Self::SoftwareArmed.as_timeline_state(backend),
                                     (
-                                        Self::Ignition.as_timeline_state(frontend),
+                                        Self::Ignition.as_timeline_state(backend),
                                         (
-                                            Self::BurnPhase.as_timeline_state(frontend),
+                                            Self::BurnPhase.as_timeline_state(backend),
                                             (
-                                                Self::CoastPhase.as_timeline_state(frontend),
+                                                Self::CoastPhase.as_timeline_state(backend),
                                                 (
-                                                    Self::DroguePhase.as_timeline_state(frontend),
+                                                    Self::DroguePhase.as_timeline_state(backend),
                                                     (
-                                                        Self::MainPhase.as_timeline_state(frontend),
+                                                        Self::MainPhase.as_timeline_state(backend),
                                                         (
-                                                            Self::LandedActive.as_timeline_state(frontend),
+                                                            Self::LandedActive.as_timeline_state(backend),
                                                             (
-                                                                Self::Passivation.as_timeline_state(frontend),
-                                                                (
-                                                                    Self::LandedPassivated.as_timeline_state(frontend),
-                                                                    (),
-                                                                ),
+                                                                Self::Passivation.as_timeline_state(backend),
+                                                                (Self::LandedPassivated.as_timeline_state(backend), ()),
                                                             ),
                                                         ),
                                                     ),
@@ -222,14 +219,16 @@ impl HyacinthNominalState {
         );
     }
 
-    fn as_timeline_state(self, frontend: &Frontend) -> impl TimelineState + 'static {
+    fn as_timeline_state(self, backend: &Backend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
             self.as_string(),
             self.associated_color(),
-            self <= frontend.hyacinth_nominal_state(),
+            self <= backend
+                .current_value::<crate::storage::static_metrics::HyacinthNominalState>()
+                .unwrap_or(HyacinthNominalState::IdleActive), //TODO Hans: Think about this
             self.hotkey(),
             (
-                PopupContentData::<ModalDialog, _>::new(move |ui, captured_frontend, backend| {
+                PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
                     let mut button_clicked = false;
                     let theme = ThemeColors::new(ui.ctx());
                     let response = ui
@@ -276,8 +275,9 @@ impl HyacinthNominalState {
                                     {
                                         println!("Error sending command via backend: {}", e);
                                     }
-                                    captured_frontend.set_hyacinth_anomalous_state(None);
-                                    captured_frontend.set_hyacinth_nominal_state(self);
+                                    backend.set_value::<crate::storage::static_metrics::HyacinthNominalState>(self);
+                                    backend.set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(None);
+
                                     button_clicked = true
                                 };
 
@@ -308,13 +308,19 @@ impl HyacinthNominalState {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, IntoStaticStr)]
+#[derive(Clone, Copy, PartialEq, PartialOrd)]
 pub enum HyacinthAnomalousState {
     Hold,
     Abort,
 }
 
 impl HyacinthAnomalousState {
+    pub fn as_string(&self) -> &'static str {
+        match self {
+            HyacinthAnomalousState::Hold => "Hold",
+            HyacinthAnomalousState::Abort => "Abort",
+        }
+    }
     fn associated_color(&self) -> Color32 {
         match self {
             HyacinthAnomalousState::Hold => COLOR_HOLD,
@@ -322,8 +328,8 @@ impl HyacinthAnomalousState {
         }
     }
 
-    pub fn as_timeline(frontend: &Frontend) -> impl TimelineStateSequence + 'static {
-        return (Self::Hold.as_timeline_state(frontend), (Self::Abort.as_timeline_state(frontend), ()));
+    pub fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
+        return (Self::Hold.as_timeline_state(backend), (Self::Abort.as_timeline_state(backend), ()));
     }
 
     fn hotkey(&self) -> Option<(Modifiers, Key)> {
@@ -333,14 +339,18 @@ impl HyacinthAnomalousState {
         }
     }
 
-    fn as_timeline_state(self, frontend: &Frontend) -> impl TimelineState + 'static {
+    fn as_timeline_state(self, backend: &Backend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
-            <Self as Into<&'static str>>::into(self),
+            self.as_string(),
             self.associated_color(),
-            frontend.hyacinth_anomolous_state().map(|a| a == self).unwrap_or(false),
+            backend
+                .current_value::<crate::storage::static_metrics::HyacinthAnomalousState>()
+                .flatten()
+                .map(|a| a == self)
+                .unwrap_or(false),
             self.hotkey(),
             (
-                PopupContentData::<ModalDialog, _>::new(move |ui, frontend, _backend| {
+                PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
                     let theme = ThemeColors::new(ui.ctx());
                     let mut button_clicked = false;
                     let response = ui
@@ -358,7 +368,7 @@ impl HyacinthAnomalousState {
                                 },
                             );
                             text_layout.append(
-                                <Self as Into<&'static str>>::into(self),
+                                self.as_string(),
                                 0f32,
                                 TextFormat {
                                     color: self.associated_color(),
@@ -382,7 +392,9 @@ impl HyacinthAnomalousState {
                                 if ui.add(proceed_button).clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
                                 {
-                                    frontend.set_hyacinth_anomalous_state(Some(self));
+                                    backend.set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(Some(
+                                        self,
+                                    ));
                                     button_clicked = true
                                 };
 

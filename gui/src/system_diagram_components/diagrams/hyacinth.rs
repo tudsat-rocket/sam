@@ -3,8 +3,9 @@ use std::sync::LazyLock;
 
 use crate::{
     backend::storage::static_metrics::{N2OBurstDisc, N2ReleaseValve},
-    frontend::constraints::SomeConstraint,
+    frontend::constraints::{Constraint, ConstraintBuilder},
     storage::static_metrics::MetricTrait,
+    widgets::time_line::HyacinthNominalState,
 };
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
@@ -20,10 +21,7 @@ use crate::{
             storeable_value::ValveState,
         },
     },
-    frontend::{
-        Frontend,
-        constraints::{ConstraintResult, MaxConstraint},
-    },
+    frontend::{Frontend, constraints::ConstraintResult},
     system_diagram_components::{
         core::{
             flow_painter::{BinaryValvePainter, Line1D, Painter, Symbol},
@@ -691,11 +689,16 @@ pub fn create_diagram<'a>(
         backend.initialize_local_metrics();
         frontend
             .metric_monitor_mut()
-            .add_constraint(Box::new(SomeConstraint::<N2OBurstDisc>::new(ConstraintResult::DANGER)))
-            .add_constraint(Box::new(SomeConstraint::<N2ReleaseValve>::new(ConstraintResult::WARNING)))
-            .add_constraint(Box::new(MaxConstraint::<RawBarometricAltitude<MS5611>, MaxPressureN2Tank>::new(
-                ConstraintResult::WARNING,
-            )));
+            .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::DANGER)))
+            .add_constraint(Box::new(
+                crate::storage::static_metrics::HyacinthNominalState::eq_const(HyacinthNominalState::BurnPhase)
+                    .implies(N2ReleaseValve::is_some())
+                    .on_violation(ConstraintResult::DANGER),
+            ))
+            .add_constraint(Box::new(
+                RawBarometricAltitude::<MS5611>::eq_metric::<MaxPressureN2Tank>()
+                    .on_violation(ConstraintResult::WARNING),
+            ));
     }
     SystemDiagram::new(
         HyacinthComponent::iter().collect_vec(),

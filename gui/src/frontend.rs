@@ -18,21 +18,11 @@ struct HyacinthState {
     anomalous: Option<HyacinthAnomalousState>,
 }
 
-impl Default for HyacinthState {
-    fn default() -> Self {
-        Self {
-            nominal: HyacinthNominalState::IdleActive,
-            anomalous: None,
-        }
-    }
-}
-
 pub struct Frontend {
     popup_manager: PopupManager,
     metric_monitor: MetricMonitor,
     map: MapState,
     shared_plot: SharedPlotState,
-    hyacinth_state: HyacinthState,
 }
 
 impl Frontend {
@@ -43,7 +33,6 @@ impl Frontend {
             metric_monitor: Default::default(),
             map: MapState::new(ctx, mapbox_token),
             shared_plot: SharedPlotState::new(),
-            hyacinth_state: Default::default(),
         };
     }
 
@@ -77,21 +66,5 @@ impl Frontend {
 
     pub fn shared_plot_mut(&mut self) -> &mut SharedPlotState {
         return &mut self.shared_plot;
-    }
-
-    pub fn hyacinth_nominal_state(&self) -> HyacinthNominalState {
-        return self.hyacinth_state.nominal;
-    }
-
-    pub fn hyacinth_anomolous_state(&self) -> Option<HyacinthAnomalousState> {
-        return self.hyacinth_state.anomalous;
-    }
-
-    pub fn set_hyacinth_nominal_state(&mut self, state: HyacinthNominalState) {
-        return self.hyacinth_state.nominal = state;
-    }
-
-    pub fn set_hyacinth_anomalous_state(&mut self, state: Option<HyacinthAnomalousState>) {
-        return self.hyacinth_state.anomalous = state;
     }
 }

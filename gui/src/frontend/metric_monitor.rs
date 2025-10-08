@@ -5,7 +5,7 @@ use telemetry::Metric;
 
 use crate::{
     backend::Backend,
-    frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint},
+    frontend::constraints::{Constraint, ConstraintResult, EvaluatedConstraint, ValuedConstraint},
 };
 
 bitflags! {
@@ -85,7 +85,7 @@ impl MetricMonitor {
         return &mut self.active_constraint_mask;
     }
 
-    pub fn add_constraint(&mut self, constraint: Box<dyn Constraint>) -> &mut Self {
+    pub fn add_constraint(&mut self, constraint: Box<dyn ValuedConstraint>) -> &mut Self {
         self.constraints.entry(constraint.metric()).or_default().push(EvaluatedConstraint::new(constraint));
         return self;
     }
