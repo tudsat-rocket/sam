@@ -1,5 +1,5 @@
 use crate::{
-    backend::Backend,
+    backend::{Backend, storage::static_metrics::debug_name_dyn},
     frontend::{
         Frontend,
         popup_manager::{ContextMenu, PopupContentData, PopupPosition, Tooltip, TriggerBuilder},
@@ -84,7 +84,7 @@ fn as_tooltip<Comp: SystemComponent>(
                 egui::Grid::new("tooltip_grid_metrics").striped(true).show(ui, |ui| {
                     for metric in comp.metrics() {
                         let val = backend.current_value_dynamic_as_string(&metric);
-                        let name = format!("{metric}");
+                        let name = debug_name_dyn(&metric);
 
                         tooltip_response = tooltip_response.union(ui.label(name.clone()));
                         tooltip_response = tooltip_response.union(ui.label(val));
