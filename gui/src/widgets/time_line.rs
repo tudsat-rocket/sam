@@ -212,7 +212,7 @@ impl TimelineStateFunctions for ProcedureStep {
                                 if ui.add(proceed_button).clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
                                 {
-                                    if let Err(e) = backend.send_command(Command::SetDisplayStep(self)) {
+                                    if let Err(e) = backend.send_command(Command::SetProcedureStep(self)) {
                                         println!("Error sending command via backend: {}", e);
                                     }
 

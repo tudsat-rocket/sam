@@ -94,7 +94,7 @@ pub struct Vehicle {
     //radio: RadioHandle,
     flash: FlashHandle,
     //can: CanHandle,
-    display_procedure_step: ProcedureStep,
+    procedure_step: ProcedureStep,
 }
 
 #[embassy_executor::task]
@@ -175,7 +175,7 @@ impl Vehicle {
             //power,
             flash,
             loop_runtime: 0.0,
-            display_procedure_step: ProcedureStep::default(),
+            procedure_step: ProcedureStep::default(),
         }
     }
 
@@ -302,7 +302,7 @@ impl Vehicle {
             Command::Reboot => cortex_m::peripheral::SCB::sys_reset(),
             Command::RebootToBootloader => {}
             Command::SetFlightMode(fm) => self.switch_mode(fm),
-            Command::SetDisplayStep(step) => self.switch_procedure_step(step),
+            Command::SetProcedureStep(step) => self.switch_procedure_step(step),
             //Command::SetTransmitPower(txp) => self.radio.set_transmit_power(txp),
             //Command::EraseFlash => {
             //    let _ = self.flash.erase();
@@ -371,7 +371,7 @@ impl Vehicle {
         self.can1.0.publish_immediate(CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode)));
         self.can1
             .0
-            .publish_immediate(CanMessage::Telem(TelemetryBroadcast::ProcedureStep(self.display_procedure_step)));
+            .publish_immediate(CanMessage::Telem(TelemetryBroadcast::ProcedureStep(self.procedure_step)));
         let msg = CanMessage::Telem(TelemetryBroadcast::FlightMode(self.mode));
         let id: u16 = Can2aFrame::from(msg).id.into();
         warn!("can telemetry with id: {} and payload...", id);
@@ -399,6 +399,20 @@ impl Vehicle {
         if new_mode == FlightMode::RecoveryMain {
             self.main_recovery_sig.signal(true);
         }
+        // ProcedureStep Code
+        //
+        let new_procedure = match new_mode {
+            FlightMode::Idle => ProcedureStep::IdlePassivated,
+            FlightMode::HardwareArmed => ProcedureStep::HardwareArmed,
+            FlightMode::Armed => ProcedureStep::SoftwareArmed,
+            FlightMode::ArmedLaunchImminent => ProcedureStep::SoftwareArmed,
+            FlightMode::Burn => ProcedureStep::BurnPhase,
+            FlightMode::Coast => ProcedureStep::CoastPhase,
+            FlightMode::RecoveryDrogue => ProcedureStep::DroguePhase,
+            FlightMode::RecoveryMain => ProcedureStep::MainPhase,
+            FlightMode::Landed => ProcedureStep::LandedActive,
+        };
+        self.procedure_step = new_procedure;
 
         self.mode = new_mode;
         crate::BUZZER_SIGNAL.signal(self.mode);
@@ -408,10 +422,33 @@ impl Vehicle {
     /// For now only broadcasts to fins.
     /// Later this should also control the rocket.
     fn switch_procedure_step(&mut self, new_step: ProcedureStep) {
-        if new_step != self.display_procedure_step {
-            self.broadcast_can_telemetry();
+        if self.procedure_step == new_step {
+            return;
         }
-        self.display_procedure_step = new_step;
+        self.broadcast_can_telemetry();
+
+        self.procedure_step = new_step;
+        // set flight mod
+        use ProcedureStep as S;
+        self.switch_mode(Self::procedure_step_to_fm(new_step));
+    }
+    fn procedure_step_to_fm(step: ProcedureStep) -> FlightMode {
+        use ProcedureStep as S;
+        match step {
+            S::Verification => FlightMode::Idle,
+            S::IdlePassivated => FlightMode::Idle,
+            S::N2Filling => FlightMode::Idle,
+            S::IdleActive => FlightMode::Idle,
+            S::HardwareArmed => FlightMode::HardwareArmed,
+            S::N2OFilling => FlightMode::HardwareArmed,
+            S::SoftwareArmed => FlightMode::Armed,
+            S::Ignition => FlightMode::Armed,
+            S::BurnPhase => FlightMode::Burn,
+            S::CoastPhase => FlightMode::Coast,
+            S::DroguePhase => FlightMode::RecoveryDrogue,
+            S::MainPhase => FlightMode::RecoveryMain,
+            S::LandedActive | S::Passivation | S::LandedPassivated => FlightMode::Landed,
+        }
     }
 }
 
@@ -429,6 +466,7 @@ impl ::telemetry::MetricSource for Vehicle {
 
         match metric {
             FlightMode => w.write_enum(repr, self.mode as u8),
+            ProcedureStep => w.write_enum(repr, self.procedure_step as u8),
             // State estimator
             Orientation(_)
             | Elevation

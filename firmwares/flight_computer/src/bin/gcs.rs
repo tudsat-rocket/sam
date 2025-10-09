@@ -132,14 +132,15 @@ async fn run_uplink(
                             }
                         }
                     },
-                    Command::SetDisplayStep(step) => match step {
+                    Command::SetProcedureStep(step) => match step {
                         S::IdlePassivated | S::N2Filling | S::IdleActive | S::HardwareArmed => (),
-                        _ => {
+                        S::N2OFilling | S::Ignition => {
                             if !IS_ARMED.load(Ordering::Relaxed) {
                                 uplink_rejected(cmd);
                                 continue 'outer;
                             }
                         }
+                        _ => (),
                     },
                 };
             }
