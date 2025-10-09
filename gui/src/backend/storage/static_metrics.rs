@@ -47,6 +47,7 @@ macro_rules! make_static_local_metric_with_storage_type {
 }
 
 make_static_metric_with_storage_type!(FlightMode, shared_types::telemetry::FlightMode, SampleSeries);
+make_static_metric_with_storage_type!(ProcedureStep, shared_types::telemetry::ProcedureStep, SampleSeries);
 make_static_metric_with_storage_type!(TransmitPower, shared_types::telemetry::TransmitPower, SampleSeries);
 make_static_metric_with_storage_type!(AcsMode, shared_types::telemetry::AcsMode, SampleSeries);
 make_static_metric_with_storage_type!(ThrusterValveState, shared_types::telemetry::ThrusterValveState, SampleSeries);
@@ -164,11 +165,6 @@ make_static_local_metric_with_storage_type!(
     EventSeries
 );
 make_static_local_metric_with_storage_type!(MaxPressureN2Tank, f64, Constant);
-make_static_local_metric_with_storage_type!(
-    HyacinthNominalState,
-    crate::widgets::time_line::HyacinthNominalState,
-    EventSeries
-);
 make_static_local_metric_with_storage_type!(
     HyacinthAnomalousState,
     Option<crate::widgets::time_line::HyacinthAnomalousState>,
@@ -936,6 +932,7 @@ macro_rules! call_static_metric {
     ($($func:ident)::+, < $metric:expr $(, $generics:ty)* , >, $($args:expr),*) => {{
         match $metric {
             telemetry::Metric::FlightMode => $($func)::+::<$crate::storage::static_metrics::FlightMode $(, $generics)*>($($args),*),
+            telemetry::Metric::ProcedureStep  => $($func)::+::<$crate::storage::static_metrics::ProcedureStep $(, $generics)*>($($args),*),
             telemetry::Metric::TransmitPower => $($func)::+::<$crate::storage::static_metrics::TransmitPower $(, $generics)*>($($args),*),
             telemetry::Metric::AcsMode => $($func)::+::<$crate::storage::static_metrics::AcsMode $(, $generics)*>($($args),*),
             telemetry::Metric::ThrusterValveState => $($func)::+::<$crate::storage::static_metrics::ThrusterValveState $(, $generics)*>($($args),*),
@@ -1295,7 +1292,6 @@ macro_rules! call_static_metric {
             telemetry::Metric::ApogeeError => $($func)::+::<$crate::storage::static_metrics::ApogeeError $(, $generics)*>($($args),*),
             telemetry::Metric::LocalMetric(local_metric) =>
             match local_metric {
-                telemetry::LocalMetric::HyacinthNominalState  => $($func)::+::<$crate::storage::static_metrics::HyacinthNominalState $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::HyacinthAnomalousState  => $($func)::+::<$crate::storage::static_metrics::HyacinthAnomalousState $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::N2BottleValve => $($func)::+::<$crate::storage::static_metrics::N2BottleValve $(, $generics)*>($($args),*),
                 telemetry::LocalMetric::N2OBottleValve => $($func)::+::<$crate::storage::static_metrics::N2OBottleValve $(, $generics)*>($($args),*),

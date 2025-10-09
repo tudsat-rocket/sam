@@ -1,11 +1,7 @@
 use crate::{
     frontend::{metric_monitor::MetricMonitor, popup_manager::PopupManager},
     settings::AppSettings,
-    widgets::{
-        map::MapState,
-        plot::SharedPlotState,
-        time_line::{HyacinthAnomalousState, HyacinthNominalState},
-    },
+    widgets::{map::MapState, plot::SharedPlotState},
 };
 
 pub mod metric_monitor;

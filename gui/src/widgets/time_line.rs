@@ -3,7 +3,7 @@ use egui::{
     text::LayoutJob,
 };
 use nalgebra::{Affine2, Point2, Rotation2, Scale2, Translation2, Vector2};
-use shared_types::{Command, FlightMode, ProcedureStep};
+use shared_types::{Command, ProcedureStep};
 
 use crate::{
     backend::Backend,
@@ -46,129 +46,76 @@ impl ShortCutAsString for (Modifiers, Key) {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, PartialOrd)]
-pub enum HyacinthNominalState {
-    Verification,
-    IdlePassivated,
-    N2Filling,
-    IdleActive,
-    HardwareArmed,
-    N2OFilling,
-    SoftwareArmed,
-    Ignition,
-    BurnPhase,
-    CoastPhase,
-    DroguePhase,
-    MainPhase,
-    LandedActive,
-    Passivation,
-    LandedPassivated,
+pub trait TimelineStateFunctions {
+    fn string(&self) -> &'static str;
+    fn color(&self) -> Color32;
+    fn hotkey(&self) -> Option<(Modifiers, Key)>;
+    fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static;
+    fn as_timeline_state(self, backend: &Backend) -> impl TimelineState + 'static;
 }
 
-impl HyacinthNominalState {
-    pub fn as_string(&self) -> &'static str {
+impl TimelineStateFunctions for ProcedureStep {
+    fn string(&self) -> &'static str {
         match self {
-            HyacinthNominalState::Verification => "Verification",
-            HyacinthNominalState::IdlePassivated => "Idle Passivated",
-            HyacinthNominalState::N2Filling => "N₂ Filling",
-            HyacinthNominalState::IdleActive => "Idle Active",
-            HyacinthNominalState::HardwareArmed => "Hardware Armed",
-            HyacinthNominalState::N2OFilling => "N₂O Filling",
-            HyacinthNominalState::SoftwareArmed => "Software Armed",
-            HyacinthNominalState::Ignition => "Ignition",
-            HyacinthNominalState::BurnPhase => "Burn Phase",
-            HyacinthNominalState::CoastPhase => "Coast Phase",
-            HyacinthNominalState::DroguePhase => "Drogue Phase",
-            HyacinthNominalState::MainPhase => "Main Phase",
-            HyacinthNominalState::LandedActive => "Landed Active",
-            HyacinthNominalState::Passivation => "Passivation",
-            HyacinthNominalState::LandedPassivated => "Landed Passivated",
+            ProcedureStep::Verification => "Verification",
+            ProcedureStep::IdlePassivated => "Idle Passivated",
+            ProcedureStep::N2Filling => "N₂ Filling",
+            ProcedureStep::IdleActive => "Idle Active",
+            ProcedureStep::HardwareArmed => "Hardware Armed",
+            ProcedureStep::N2OFilling => "N₂O Filling",
+            ProcedureStep::SoftwareArmed => "Software Armed",
+            ProcedureStep::Ignition => "Ignition",
+            ProcedureStep::BurnPhase => "Burn Phase",
+            ProcedureStep::CoastPhase => "Coast Phase",
+            ProcedureStep::DroguePhase => "Drogue Phase",
+            ProcedureStep::MainPhase => "Main Phase",
+            ProcedureStep::LandedActive => "Landed Active",
+            ProcedureStep::Passivation => "Passivation",
+            ProcedureStep::LandedPassivated => "Landed Passivated",
         }
     }
 
-    fn associated_procedure_step(&self) -> ProcedureStep {
-        use HyacinthNominalState as S;
-        use ProcedureStep as P;
+    fn color(&self) -> Color32 {
         match self {
-            S::Verification => P::Verification,
-            S::IdlePassivated => P::IdlePassivated,
-            S::N2Filling => P::N2Filling,
-            S::IdleActive => P::IdleActive,
-            S::HardwareArmed => P::HardwareArmed,
-            S::N2OFilling => P::N2OFilling,
-            S::SoftwareArmed => P::SoftwareArmed,
-            S::Ignition => P::Ignition,
-            S::BurnPhase => P::BurnPhase,
-            S::CoastPhase => P::CoastPhase,
-            S::DroguePhase => P::DroguePhase,
-            S::MainPhase => P::MainPhase,
-            S::LandedActive => P::LandedActive,
-            S::Passivation => P::Passivation,
-            S::LandedPassivated => P::LandedPassivated,
-        }
-    }
-
-    pub fn associated_flight_mode(&self) -> FlightMode {
-        match self {
-            HyacinthNominalState::Verification => FlightMode::Idle,
-            HyacinthNominalState::IdlePassivated => FlightMode::Idle,
-            HyacinthNominalState::N2Filling => FlightMode::Idle,
-            HyacinthNominalState::IdleActive => FlightMode::Idle,
-            HyacinthNominalState::HardwareArmed => FlightMode::Idle, //FlightMode::HardwareArmed,
-            HyacinthNominalState::N2OFilling => FlightMode::Idle,    //FlightMode::HardwareArmed,
-            HyacinthNominalState::SoftwareArmed => FlightMode::Armed,
-            HyacinthNominalState::Ignition => FlightMode::Armed,
-            HyacinthNominalState::BurnPhase => FlightMode::Burn,
-            HyacinthNominalState::CoastPhase => FlightMode::Coast,
-            HyacinthNominalState::DroguePhase => FlightMode::RecoveryDrogue,
-            HyacinthNominalState::MainPhase => FlightMode::RecoveryMain,
-            HyacinthNominalState::LandedActive => FlightMode::Landed,
-            HyacinthNominalState::Passivation => FlightMode::Landed,
-            HyacinthNominalState::LandedPassivated => FlightMode::Landed,
-        }
-    }
-
-    fn associated_color(&self) -> Color32 {
-        match self {
-            HyacinthNominalState::Verification => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::IdlePassivated => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::N2Filling => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::IdleActive => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::HardwareArmed => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::N2OFilling => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::SoftwareArmed => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::Ignition => COLOR_NOMINAL_IGNITION,
-            HyacinthNominalState::BurnPhase => COLOR_NOMINAL_IN_FLIGHT,
-            HyacinthNominalState::CoastPhase => COLOR_NOMINAL_IN_FLIGHT,
-            HyacinthNominalState::DroguePhase => COLOR_NOMINAL_IN_FLIGHT,
-            HyacinthNominalState::MainPhase => COLOR_NOMINAL_IN_FLIGHT,
-            HyacinthNominalState::LandedActive => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::Passivation => COLOR_NOMINAL_ON_GROUND,
-            HyacinthNominalState::LandedPassivated => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::Verification => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::IdlePassivated => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::N2Filling => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::IdleActive => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::HardwareArmed => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::N2OFilling => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::SoftwareArmed => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::Ignition => COLOR_NOMINAL_IGNITION,
+            ProcedureStep::BurnPhase => COLOR_NOMINAL_IN_FLIGHT,
+            ProcedureStep::CoastPhase => COLOR_NOMINAL_IN_FLIGHT,
+            ProcedureStep::DroguePhase => COLOR_NOMINAL_IN_FLIGHT,
+            ProcedureStep::MainPhase => COLOR_NOMINAL_IN_FLIGHT,
+            ProcedureStep::LandedActive => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::Passivation => COLOR_NOMINAL_ON_GROUND,
+            ProcedureStep::LandedPassivated => COLOR_NOMINAL_ON_GROUND,
         }
     }
 
     fn hotkey(&self) -> Option<(Modifiers, Key)> {
         match self {
-            HyacinthNominalState::Verification => None,
-            HyacinthNominalState::IdlePassivated => None,
-            HyacinthNominalState::N2Filling => None,
-            HyacinthNominalState::IdleActive => None,
-            HyacinthNominalState::HardwareArmed => Some((Modifiers::SHIFT, Key::F5)),
-            HyacinthNominalState::N2OFilling => Some((Modifiers::SHIFT, Key::F6)),
-            HyacinthNominalState::SoftwareArmed => Some((Modifiers::SHIFT, Key::F7)),
-            HyacinthNominalState::Ignition => Some((Modifiers::SHIFT, Key::F8)),
-            HyacinthNominalState::BurnPhase => Some((Modifiers::SHIFT, Key::F9)),
-            HyacinthNominalState::CoastPhase => Some((Modifiers::SHIFT, Key::F10)),
-            HyacinthNominalState::DroguePhase => Some((Modifiers::SHIFT, Key::F11)),
-            HyacinthNominalState::MainPhase => Some((Modifiers::SHIFT, Key::F12)),
-            HyacinthNominalState::LandedActive => None,
-            HyacinthNominalState::Passivation => None,
-            HyacinthNominalState::LandedPassivated => None,
+            ProcedureStep::Verification => None,
+            ProcedureStep::IdlePassivated => None,
+            ProcedureStep::N2Filling => None,
+            ProcedureStep::IdleActive => None,
+            ProcedureStep::HardwareArmed => Some((Modifiers::SHIFT, Key::F5)),
+            ProcedureStep::N2OFilling => Some((Modifiers::SHIFT, Key::F6)),
+            ProcedureStep::SoftwareArmed => Some((Modifiers::SHIFT, Key::F7)),
+            ProcedureStep::Ignition => Some((Modifiers::SHIFT, Key::F8)),
+            ProcedureStep::BurnPhase => Some((Modifiers::SHIFT, Key::F9)),
+            ProcedureStep::CoastPhase => Some((Modifiers::SHIFT, Key::F10)),
+            ProcedureStep::DroguePhase => Some((Modifiers::SHIFT, Key::F11)),
+            ProcedureStep::MainPhase => Some((Modifiers::SHIFT, Key::F12)),
+            ProcedureStep::LandedActive => None,
+            ProcedureStep::Passivation => None,
+            ProcedureStep::LandedPassivated => None,
         }
     }
 
-    pub fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
+    fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
         return (
             Self::Verification.as_timeline_state(backend),
             (
@@ -216,11 +163,11 @@ impl HyacinthNominalState {
 
     fn as_timeline_state(self, backend: &Backend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
-            self.as_string(),
-            self.associated_color(),
+            self.string(),
+            self.color(),
             self <= backend
-                .current_value::<crate::storage::static_metrics::HyacinthNominalState>()
-                .unwrap_or(HyacinthNominalState::Verification), //TODO Hans: Think about this
+                .current_value::<crate::storage::static_metrics::ProcedureStep>()
+                .unwrap_or(ProcedureStep::Verification), //TODO Hans: Think about this
             self.hotkey(),
             (
                 PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
@@ -241,10 +188,10 @@ impl HyacinthNominalState {
                                 },
                             );
                             text_layout.append(
-                                self.as_string(),
+                                self.string(),
                                 0f32,
                                 TextFormat {
-                                    color: self.associated_color(),
+                                    color: self.color(),
                                     ..Default::default()
                                 },
                             );
@@ -265,18 +212,10 @@ impl HyacinthNominalState {
                                 if ui.add(proceed_button).clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
                                 {
-                                    if let Err(e) =
-                                        backend.send_command(Command::SetDisplayStep(self.associated_procedure_step()))
-                                    {
+                                    if let Err(e) = backend.send_command(Command::SetDisplayStep(self)) {
                                         println!("Error sending command via backend: {}", e);
                                     }
-                                    if let Err(e) =
-                                        backend.send_command(Command::SetFlightMode(self.associated_flight_mode()))
-                                    {
-                                        println!("Error sending command via backend: {}", e);
-                                    }
-                                    let _ =
-                                        backend.set_value::<crate::storage::static_metrics::HyacinthNominalState>(self);
+
                                     let _ = backend
                                         .set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(None);
 
@@ -316,22 +255,19 @@ pub enum HyacinthAnomalousState {
     Abort,
 }
 
-impl HyacinthAnomalousState {
-    pub fn as_string(&self) -> &'static str {
+impl TimelineStateFunctions for HyacinthAnomalousState {
+    fn string(&self) -> &'static str {
         match self {
             HyacinthAnomalousState::Hold => "Hold",
             HyacinthAnomalousState::Abort => "Abort",
         }
     }
-    fn associated_color(&self) -> Color32 {
+
+    fn color(&self) -> Color32 {
         match self {
             HyacinthAnomalousState::Hold => COLOR_HOLD,
             HyacinthAnomalousState::Abort => COLOR_ABORT,
         }
-    }
-
-    pub fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
-        return (Self::Hold.as_timeline_state(backend), (Self::Abort.as_timeline_state(backend), ()));
     }
 
     fn hotkey(&self) -> Option<(Modifiers, Key)> {
@@ -341,10 +277,14 @@ impl HyacinthAnomalousState {
         }
     }
 
+    fn as_timeline(backend: &Backend) -> impl TimelineStateSequence + 'static {
+        return (Self::Hold.as_timeline_state(backend), (Self::Abort.as_timeline_state(backend), ()));
+    }
+
     fn as_timeline_state(self, backend: &Backend) -> impl TimelineState + 'static {
         return TimelineStateData::new(
-            self.as_string(),
-            self.associated_color(),
+            self.string(),
+            self.color(),
             backend
                 .current_value::<crate::storage::static_metrics::HyacinthAnomalousState>()
                 .flatten()
@@ -370,10 +310,10 @@ impl HyacinthAnomalousState {
                                 },
                             );
                             text_layout.append(
-                                self.as_string(),
+                                self.string(),
                                 0f32,
                                 TextFormat {
-                                    color: self.associated_color(),
+                                    color: self.color(),
                                     ..Default::default()
                                 },
                             );
@@ -394,9 +334,10 @@ impl HyacinthAnomalousState {
                                 if ui.add(proceed_button).clicked()
                                     || ui.ctx().input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter))
                                 {
-                                    backend.set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(Some(
-                                        self,
-                                    ));
+                                    let _ = backend
+                                        .set_value::<crate::storage::static_metrics::HyacinthAnomalousState>(Some(
+                                            self,
+                                        ));
                                     button_clicked = true
                                 };
 

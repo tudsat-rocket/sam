@@ -1,4 +1,6 @@
-use crate::{widgets::time_line::HyacinthAnomalousState, widgets::time_line::HyacinthNominalState};
+use shared_types::ProcedureStep;
+
+use crate::widgets::time_line::{HyacinthAnomalousState, TimelineStateFunctions};
 
 //TODO Hans: to_string/to_float should be encapsulated in a DisplayableValue trait and interact for plotting
 pub trait StorableValue {
@@ -122,50 +124,51 @@ impl StorableValue for shared_types::telemetry::FlightMode {
     }
 }
 
-impl StorableValue for crate::widgets::time_line::HyacinthNominalState {
+impl StorableValue for ProcedureStep {
     fn to_bits(&self) -> u64 {
         match self {
-            HyacinthNominalState::Verification => 0,
-            HyacinthNominalState::IdlePassivated => 1,
-            HyacinthNominalState::N2Filling => 2,
-            HyacinthNominalState::IdleActive => 3,
-            HyacinthNominalState::HardwareArmed => 4,
-            HyacinthNominalState::N2OFilling => 5,
-            HyacinthNominalState::SoftwareArmed => 6,
-            HyacinthNominalState::Ignition => 7,
-            HyacinthNominalState::BurnPhase => 8,
-            HyacinthNominalState::CoastPhase => 9,
-            HyacinthNominalState::DroguePhase => 10,
-            HyacinthNominalState::MainPhase => 11,
-            HyacinthNominalState::LandedActive => 12,
-            HyacinthNominalState::Passivation => 13,
-            HyacinthNominalState::LandedPassivated => 14,
+            ProcedureStep::Verification => 0,
+            ProcedureStep::IdlePassivated => 1,
+            ProcedureStep::N2Filling => 2,
+            ProcedureStep::IdleActive => 3,
+            ProcedureStep::HardwareArmed => 4,
+            ProcedureStep::N2OFilling => 5,
+            ProcedureStep::SoftwareArmed => 6,
+            ProcedureStep::Ignition => 7,
+            ProcedureStep::BurnPhase => 8,
+            ProcedureStep::CoastPhase => 9,
+            ProcedureStep::DroguePhase => 10,
+            ProcedureStep::MainPhase => 11,
+            ProcedureStep::LandedActive => 12,
+            ProcedureStep::Passivation => 13,
+            ProcedureStep::LandedPassivated => 14,
         }
     }
 
     fn from_bits(bits: u64) -> Self {
         match bits {
-            0 => HyacinthNominalState::Verification,
-            1 => HyacinthNominalState::IdlePassivated,
-            2 => HyacinthNominalState::N2Filling,
-            3 => HyacinthNominalState::IdleActive,
-            4 => HyacinthNominalState::HardwareArmed,
-            5 => HyacinthNominalState::N2OFilling,
-            6 => HyacinthNominalState::SoftwareArmed,
-            7 => HyacinthNominalState::Ignition,
-            8 => HyacinthNominalState::BurnPhase,
-            9 => HyacinthNominalState::CoastPhase,
-            10 => HyacinthNominalState::DroguePhase,
-            11 => HyacinthNominalState::MainPhase,
-            12 => HyacinthNominalState::LandedActive,
-            13 => HyacinthNominalState::Passivation,
-            14 => HyacinthNominalState::LandedActive,
-            _ => panic!("Cannot convert {bits} to HyacinthNominalState!"),
+            0 => ProcedureStep::Verification,
+            1 => ProcedureStep::IdlePassivated,
+            2 => ProcedureStep::N2Filling,
+            3 => ProcedureStep::IdleActive,
+            4 => ProcedureStep::HardwareArmed,
+            5 => ProcedureStep::N2OFilling,
+            6 => ProcedureStep::SoftwareArmed,
+            7 => ProcedureStep::Ignition,
+            8 => ProcedureStep::BurnPhase,
+            9 => ProcedureStep::CoastPhase,
+            10 => ProcedureStep::DroguePhase,
+            11 => ProcedureStep::MainPhase,
+            12 => ProcedureStep::LandedActive,
+            13 => ProcedureStep::Passivation,
+            14 => ProcedureStep::LandedPassivated,
+            _ => panic!("Cannot convert {bits} to ProcedureStep!"),
         }
     }
 
     fn to_string(&self) -> String {
-        self.as_string().to_string()
+        format!("{:?}", self)
+        //self.string().to_string()
     }
 
     fn to_float(&self) -> f64 {
@@ -194,7 +197,7 @@ impl StorableValue for Option<crate::widgets::time_line::HyacinthAnomalousState>
     }
 
     fn to_string(&self) -> String {
-        self.map(|state| state.as_string()).unwrap_or("None").to_string()
+        self.map(|state| state.string()).unwrap_or("None").to_string()
     }
 
     fn to_float(&self) -> f64 {

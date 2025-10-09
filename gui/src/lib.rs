@@ -27,7 +27,7 @@ use crate::panels::metric_status_bar::MetricStatusBar;
 use crate::panels::*;
 use crate::settings::AppSettings;
 use crate::tabs::*;
-use crate::widgets::time_line::{HyacinthAnomalousState, HyacinthNominalState, Timeline};
+use crate::widgets::time_line::{HyacinthAnomalousState, Timeline, TimelineStateFunctions};
 use crate::windows::*;
 
 /// Main state object of our GUI application
@@ -198,35 +198,11 @@ impl Sam {
         // Header containing text indicators and flight mode buttons
         HeaderPanel::show(ctx, self.backend_mut(), enabled);
 
-        //TODO Hans: Update Timeline here for now
-        if let Some(fm) = self.backend().current_value::<crate::backend::storage::static_metrics::FlightMode>() {
-            let local_mode = self
-                .backend()
-                .current_value::<crate::backend::storage::static_metrics::HyacinthNominalState>()
-                .map(|s| s.associated_flight_mode());
-            // println!("{:?} {:?}", fm, local_mode);
-            if local_mode.map(|lm| fm != lm).unwrap_or(true) {
-                let _ = self.backend_mut().set_value::<crate::backend::storage::static_metrics::HyacinthNominalState>(
-                    match fm {
-                        FlightMode::Idle => HyacinthNominalState::IdlePassivated,
-                        FlightMode::HardwareArmed => HyacinthNominalState::HardwareArmed,
-                        FlightMode::Armed => HyacinthNominalState::SoftwareArmed,
-                        FlightMode::ArmedLaunchImminent => HyacinthNominalState::SoftwareArmed,
-                        FlightMode::Burn => HyacinthNominalState::BurnPhase,
-                        FlightMode::Coast => HyacinthNominalState::CoastPhase,
-                        FlightMode::RecoveryDrogue => HyacinthNominalState::DroguePhase,
-                        FlightMode::RecoveryMain => HyacinthNominalState::MainPhase,
-                        FlightMode::Landed => HyacinthNominalState::LandedActive,
-                    },
-                );
-            }
-        }
-
         egui::TopBottomPanel::top("my_panel").show(ctx, |ui| {
             ui.add(Timeline::new(
-                HyacinthNominalState::as_timeline(&self.backend()),
+                ProcedureStep::as_timeline(&self.backend()),
                 HyacinthAnomalousState::as_timeline(&self.backend()),
-                Rotation2::new(0f32), //f32::consts::PI / 2f32),
+                Rotation2::new(0f32),
                 &mut self.frontend,
                 self.backends.last_mut().unwrap(),
             ));

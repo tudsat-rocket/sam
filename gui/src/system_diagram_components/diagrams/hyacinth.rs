@@ -3,9 +3,9 @@ use std::sync::LazyLock;
 
 use crate::{
     backend::storage::static_metrics::{
-        HyacinthNominalState, N2BottleValve, N2OBottleValve, N2OBurstDisc, N2OFillAndDumpValve, N2OMainValve,
-        N2OQuickDisconnect, N2OReleaseValve, N2OVentValve, N2PressureRegulator, N2PurgeValve, N2QuickDisconnect,
-        N2ReleaseValve, Pressure, PressureSensorNitrogenTank,
+        N2BottleValve, N2OBottleValve, N2OBurstDisc, N2OFillAndDumpValve, N2OMainValve, N2OQuickDisconnect,
+        N2OReleaseValve, N2OVentValve, N2PressureRegulator, N2PurgeValve, N2QuickDisconnect, N2ReleaseValve, Pressure,
+        PressureSensorNitrogenTank, ProcedureStep,
     },
     frontend::constraints::{Constraint, ConstraintBuilder},
     storage::static_metrics::MetricTrait,
@@ -19,10 +19,7 @@ use telemetry::{LocalMetric, Metric};
 use crate::{
     backend::{
         Backend,
-        storage::{
-            static_metrics::{MS5611, MaxPressureN2Tank, RawBarometricAltitude},
-            storeable_value::ValveState,
-        },
+        storage::{static_metrics::MaxPressureN2Tank, storeable_value::ValveState},
     },
     frontend::{Frontend, constraints::ConstraintResult},
     system_diagram_components::{
@@ -716,39 +713,28 @@ pub fn create_diagram<'a>(
                     .on_violation(ConstraintResult::DANGER),
             )
             .add_constraint(
-                HyacinthNominalState::eq_const(crate::widgets::time_line::HyacinthNominalState::N2Filling)
+                ProcedureStep::eq_const(shared_types::telemetry::ProcedureStep::N2Filling)
                     .invert()
                     .implies(N2BottleValve::eq_const(ValveState::Closed))
                     .on_violation(ConstraintResult::WARNING),
             )
             .add_constraint(
-                HyacinthNominalState::gt_const(crate::widgets::time_line::HyacinthNominalState::IdleActive)
+                ProcedureStep::gt_const(shared_types::telemetry::ProcedureStep::IdleActive)
                     .implies(N2QuickDisconnect::eq_const(ValveState::Open))
                     .on_violation(ConstraintResult::WARNING),
             )
             .add_constraint(
-                HyacinthNominalState::gt_const(crate::widgets::time_line::HyacinthNominalState::N2OFilling)
+                ProcedureStep::gt_const(shared_types::telemetry::ProcedureStep::N2OFilling)
                     .implies(N2OQuickDisconnect::eq_const(ValveState::Open))
                     .on_violation(ConstraintResult::WARNING),
             )
             .add_constraint(
-                HyacinthNominalState::eq_const(crate::widgets::time_line::HyacinthNominalState::N2OFilling)
+                ProcedureStep::eq_const(shared_types::telemetry::ProcedureStep::N2OFilling)
                     .invert()
                     .implies(N2OBottleValve::eq_const(ValveState::Closed))
                     .on_violation(ConstraintResult::WARNING),
             )
             .add_constraint(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER));
-        // .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::WARNING)))
-        // .add_constraint(Box::new(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER)))
-        // .add_constraint(Box::new(
-        //     crate::storage::static_metrics::HyacinthNominalState::eq_const(HyacinthNominalState::BurnPhase)
-        //         .implies(N2ReleaseValve::is_some())
-        //         .on_violation(ConstraintResult::DANGER),
-        // ))
-        // .add_constraint(Box::new(
-        //     RawBarometricAltitude::<MS5611>::eq_metric::<MaxPressureN2Tank>()
-        //         .on_violation(ConstraintResult::WARNING),
-        // ));
         frontend.initialize();
     }
 
