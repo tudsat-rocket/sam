@@ -261,9 +261,7 @@ impl Sam {
         };
         let backend = &mut self.backends[id];
         self.frontend.metric_monitor_mut().evaluate_constraints(backend);
-        let mut active_constraint_mask = self.frontend.metric_monitor().active_constraint_mask().clone();
-        MetricStatusBar::show(ctx, backend, &mut self.frontend, &mut active_constraint_mask);
-        *self.frontend.metric_monitor_mut().active_constraint_mask_mut() = active_constraint_mask;
+        MetricStatusBar::show(ctx, backend, &mut self.frontend);
         match tab {
             GuiTab::Launch => egui::CentralPanel::default().show(ctx, |_ui| {}).inner,
             GuiTab::Plot => self.plot_tab.main_ui(ctx, backend, &mut self.settings, &mut self.frontend, enabled),

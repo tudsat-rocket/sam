@@ -342,10 +342,6 @@ impl Backend {
         return self.data_store_mut().set_value::<M>(value, time);
     }
 
-    fn debug_name<M: MetricTrait>() -> String {
-        format!("{:?}", M::default())
-    }
-
     pub fn current_value<M: MetricTrait>(&self) -> Option<M::Value> {
         return self.data_store().current_value::<M>(self.fc_time());
     }

@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use egui::{Color32, RichText};
 use strum::{EnumIter, VariantNames};
 use telemetry::Metric;
@@ -214,8 +212,6 @@ pub trait Constraint {
 
     fn evaluation_as_string(&self) -> String;
 
-    // fn as_string(&self, _backend: &Backend) -> String;
-
     fn implies<C: Constraint>(self, rhs: C) -> ImpliesConstraint<Self, C>
     where
         Self: Sized,
@@ -362,25 +358,8 @@ impl<C1: Constraint, C2: Constraint> Constraint for ImpliesConstraint<C1, C2> {
         return !self.lhs.check() || self.rhs.check();
     }
     fn evaluation_as_string(&self) -> String {
-        // if self.check() {
-        //     format! {"({}) implies ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
-        // } else {
         format! {"({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
-        //}
-        // if self.check() {
-        //     format! {"({}) => ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
-        // } else {
-        //     format! {"!({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
-        // }
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("({}) => ({})", self.lhs.as_string(backend), self.rhs.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("{} && Condition is true", self.rhs.violation_reason(backend))
-    // }
 }
 
 #[derive(Default)]
@@ -400,22 +379,8 @@ impl<C: Constraint> Constraint for NotConstraint<C> {
     }
 
     fn evaluation_as_string(&self) -> String {
-        // if self.check() {
-        //     format!("is not {}", self.constraint.evaluation_as_string())
-        // } else {
-        //     format!("is {}", self.constraint.evaluation_as_string())
-        //}
         self.constraint.evaluation_as_string()
-        //format!("{}{}", if self.check() { "!" } else { "" }, self.constraint.evaluation_as_string())
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("!({})", self.constraint.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("!{}", self.constraint.violation_reason(backend))
-    // }
 }
 
 pub struct GreaterOrEqualConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
@@ -443,21 +408,7 @@ impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for Greater
         } else {
             format!("below {}", constraint_str)
         }
-        // format!(
-        //     "{} {} {}",
-        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        //     if self.check() { ">=" } else { "<" },
-        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        // )
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("{:?} >= {}", M::metric(), self.value.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("< {}", self.value.as_string(backend))
-    // }
 }
 
 pub struct GreaterThanConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
@@ -485,21 +436,7 @@ impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for Greater
         } else {
             format!("below {}", constraint_str)
         }
-        // format!(
-        //     "{} {} {}",
-        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        //     if self.check() { ">" } else { "<=" },
-        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        // )
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("{:?} > {}", M::metric(), self.value.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("<= {}", self.value.as_string(backend))
-    // }
 }
 
 pub struct LessOrEqualConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
@@ -527,21 +464,7 @@ impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for LessOrE
         } else {
             format!("exceeds {}", constraint_str)
         }
-        // format!(
-        //     "{} {} {}",
-        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        //     if self.check() { "<=" } else { ">" },
-        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        // )
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("{:?} <= {}", M::metric(), self.value.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("> {}", self.value.as_string(backend))
-    // }
 }
 
 pub struct LessThanConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
@@ -569,21 +492,7 @@ impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for LessTha
         } else {
             format!("exceeds {}", constraint_str)
         }
-        // format!(
-        //     "{} {} {}",
-        //     self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        //     if self.check() { "<" } else { ">=" },
-        //     self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-        // )
     }
-
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("{:?} < {}", M::metric(), self.value.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!(">= {}", self.value.as_string(backend))
-    // }
 }
 
 pub struct SomeConstraint<M: MetricTrait> {
@@ -607,20 +516,7 @@ impl<M: MetricTrait> Constraint for SomeConstraint<M> {
         } else {
             format!("is N/A")
         }
-        // format!(
-        //     "{} {} Some",
-        //     self.cached_metric.cached_result.as_ref().map(|_| "Some").unwrap_or("N/A"),
-        //     if self.check() { "==" } else { "!=" }
-        // )
     }
-
-    // fn as_string(&self, _backend: &Backend) -> String {
-    //     format!("{:?} is Some", M::metric())
-    // }
-
-    // fn violation_reason(&self, _backend: &Backend) -> String {
-    //     "N/A".to_string()
-    // }
 }
 
 pub struct EqualsConstraint<M: MetricTrait, C: ConstraintValue<Type = M::Value>> {
@@ -649,18 +545,4 @@ impl<M: MetricTrait, C: ConstraintValue<Type = M::Value>> Constraint for EqualsC
             format!("is not {}", constraint_str)
         }
     }
-    //     format!(
-    //         "{} {} {}",
-    //         self.cached_metric.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-    //         if self.check() { "==" } else { "!=" },
-    //         self.cached_constraint.cached_result.as_ref().map(|v| v.to_string()).unwrap_or("N/A".to_string()),
-    //     )
-    // }
-    // fn as_string(&self, backend: &Backend) -> String {
-    //     format!("{:?} == {}", M::metric(), self.value.as_string(backend))
-    // }
-
-    // fn violation_reason(&self, backend: &Backend) -> String {
-    //     format!("!= {}", self.value.as_string(backend))
-    // }
 }

@@ -1,6 +1,6 @@
 use std::{cmp::Ordering, collections::HashMap, sync::LazyLock};
 
-use egui::{Align, ComboBox, FontId, Layout, TextFormat, Ui, text::LayoutJob};
+use egui::{Align, FontId, Layout, TextFormat, Ui, text::LayoutJob};
 use itertools::Itertools;
 use strum::IntoEnumIterator;
 use telemetry::Metric;
@@ -24,16 +24,6 @@ fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, u
 
     ui.label(name);
     ui.label(val);
-
-    //let worst_constraint_result =
-    //  metric_monitor.constraint_results().get(metric).map(|res| res.iter().max()).unwrap_or_default();
-    // worst_constraint_result
-    //     .map(|constraint| {
-    //         ui.label(constraint.result().symbol());
-    //     })
-    //     .unwrap_or_else(|| {
-    //         ui.allocate_response(Vec2::ZERO, Sense::hover());
-    //     });
 
     if metric_monitor.is_pinned(&metric) {
         ui.label("📌");
@@ -76,7 +66,6 @@ fn display(metric: &Metric, backend: &Backend, metric_monitor: &MetricMonitor, u
             0f32,
             TextFormat {
                 color: theme.foreground_weak,
-                //color: result.result().color(),
                 ..Default::default()
             },
         );
@@ -115,16 +104,14 @@ impl MetricStatusBar {
         return name_m1.cmp(&name_m2);
     }
 
-    pub fn show(
-        ctx: &egui::Context,
-        backend: &mut Backend,
-        frontend: &mut Frontend,
-        active_constraint_mask: &mut Vec<ConstraintResult>,
-    ) {
+    pub fn show(ctx: &egui::Context, backend: &mut Backend, frontend: &mut Frontend) {
         let num_metrics_to_display = frontend.metric_monitor().pinned_metrics().len()
-            + Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask)
-                .keys()
-                .count();
+            + Self::filter_constraints(
+                frontend.metric_monitor().constraint_results(),
+                frontend.metric_monitor().active_constraint_mask(),
+            )
+            .keys()
+            .count();
         let has_open_popups = frontend.popup_manager().has_any_open_popup(&METRIC_MONITOR_FILTER_BUTTON_ID);
         egui::SidePanel::left("Monitor Panel").show_animated(
             ctx,
@@ -136,7 +123,7 @@ impl MetricStatusBar {
                         ui.add_space(50.0);
                         let mut active_constraints = vec![];
                         for result in ConstraintResult::iter() {
-                            if active_constraint_mask.contains(&result) {
+                            if frontend.metric_monitor().active_constraint_mask().contains(&result) {
                                 active_constraints.push(true);
                             } else {
                                 active_constraints.push(false);
@@ -150,51 +137,26 @@ impl MetricStatusBar {
                                 }
                             },
                         );
-                        active_constraint_mask.clear();
+                        frontend.metric_monitor_mut().active_constraint_mask_mut().clear();
                         for (i, result) in ConstraintResult::iter().enumerate() {
                             if active_constraints[i] {
-                                active_constraint_mask.push(result);
+                                frontend.metric_monitor_mut().active_constraint_mask_mut().push(result);
                             }
                         }
                     });
                 });
 
-                // ui.horizontal(|ui| {
-                //     ui.vertical_centered(|ui| {
-                //         ui.heading("Monitored Metrics");
-                //     });
-                // });
-                // //ui.allocate_ui_with_layout(ui.min_size(), Layout::left_to_right(Align::RIGHT), |ui| {
-                // let mut active_constraints = vec![];
-                // for result in ConstraintResult::iter() {
-                //     if active_constraint_mask.contains(&result) {
-                //         active_constraints.push(true);
-                //     } else {
-                //         active_constraints.push(false);
-                //     }
-                // }
-                // egui::ComboBox::new(*METRIC_MONITOR_FILTER_BUTTON_ID, "").selected_text("Filter").show_ui(ui, |ui| {
-                //     for (i, result) in ConstraintResult::iter().enumerate() {
-                //         ui.checkbox(&mut active_constraints[i], result.string());
-                //     }
-                // });
-                // active_constraint_mask.clear();
-                // for (i, result) in ConstraintResult::iter().enumerate() {
-                //     if active_constraints[i] {
-                //         active_constraint_mask.push(result);
-                //     }
-                // }
-
-                //})
                 ui.separator();
                 egui::Grid::new("monitor_panel_metrics").striped(true).show(ui, |ui| {
                     for metric in frontend.metric_monitor().pinned_metrics() {
                         display(metric, backend, frontend.metric_monitor(), ui);
                     }
-                    for metric in
-                        Self::filter_constraints(frontend.metric_monitor().constraint_results(), active_constraint_mask)
-                            .keys()
-                            .sorted_by(|m1, m2| Self::cmp_metric_for_display(m1, m2, frontend.metric_monitor()))
+                    for metric in Self::filter_constraints(
+                        frontend.metric_monitor().constraint_results(),
+                        frontend.metric_monitor().active_constraint_mask(),
+                    )
+                    .keys()
+                    .sorted_by(|m1, m2| Self::cmp_metric_for_display(m1, m2, frontend.metric_monitor()))
                     {
                         if !frontend.metric_monitor().is_pinned(metric) {
                             display(metric, backend, frontend.metric_monitor(), ui);

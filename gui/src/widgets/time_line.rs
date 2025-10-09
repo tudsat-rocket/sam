@@ -170,7 +170,7 @@ impl TimelineStateFunctions for ProcedureStep {
                 .unwrap_or(ProcedureStep::Verification), //TODO Hans: Think about this
             self.hotkey(),
             (
-                PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
+                PopupContentData::<ModalDialog, _>::new(move |ui, _frontend, backend| {
                     let mut button_clicked = false;
                     let theme = ThemeColors::new(ui.ctx());
                     let response = ui
@@ -292,7 +292,7 @@ impl TimelineStateFunctions for HyacinthAnomalousState {
                 .unwrap_or(false),
             self.hotkey(),
             (
-                PopupContentData::<ModalDialog, _>::new(move |ui, frontend, backend| {
+                PopupContentData::<ModalDialog, _>::new(move |ui, _frontend, backend| {
                     let theme = ThemeColors::new(ui.ctx());
                     let mut button_clicked = false;
                     let response = ui
