@@ -390,7 +390,7 @@ impl<Barometer: BarometerId> std::fmt::Debug for RawBarometricAltitude<Barometer
 
 #[derive(Default)]
 pub struct Pressure<Sensor: PressureSensorId> {
-    dim: PhantomData<Sensor>,
+    sensor: PhantomData<Sensor>,
 }
 impl<Sensor: PressureSensorId + Default + Debug> MetricTrait for Pressure<Sensor> {
     type Value = f64;

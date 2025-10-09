@@ -2,10 +2,13 @@ use core::f32;
 use std::sync::LazyLock;
 
 use crate::{
-    backend::storage::static_metrics::{N2OBurstDisc, N2ReleaseValve},
+    backend::storage::static_metrics::{
+        HyacinthNominalState, N2BottleValve, N2OBottleValve, N2OBurstDisc, N2OFillAndDumpValve, N2OMainValve,
+        N2OQuickDisconnect, N2OReleaseValve, N2OVentValve, N2PressureRegulator, N2PurgeValve, N2QuickDisconnect,
+        N2ReleaseValve, Pressure, PressureSensorNitrogenTank,
+    },
     frontend::constraints::{Constraint, ConstraintBuilder},
     storage::static_metrics::MetricTrait,
-    widgets::time_line::HyacinthNominalState,
 };
 use enum_map::{Enum, EnumMap, enum_map};
 use itertools::Itertools;
@@ -401,7 +404,10 @@ static COMPONENT_TO_METRIC: LazyLock<EnumMap<HyacinthComponent, Vec<Metric>>> = 
         .append(&mut vec![Metric::LocalMetric(LocalMetric::N2OFillAndDumpValve)]);
     metrics[HyacinthComponent::N2OMainValve].append(&mut vec![Metric::LocalMetric(LocalMetric::N2OMainValve)]);
     //Tanks
-    metrics[HyacinthComponent::N2Tank].append(&mut vec![Metric::Pressure(telemetry::PressureSensorId::NitrogenTank)]);
+    metrics[HyacinthComponent::N2Tank].append(&mut vec![
+        Metric::Pressure(telemetry::PressureSensorId::NitrogenTank),
+        Metric::LocalMetric(LocalMetric::MaxPressureN2Tank),
+    ]);
     metrics[HyacinthComponent::N2OTank].append(&mut vec![
         Metric::Pressure(telemetry::PressureSensorId::OxidizerTank),
         Metric::Temperature(telemetry::TemperatureSensorId::OxidizerTank),
@@ -685,23 +691,64 @@ pub fn create_diagram<'a>(
 ) -> SystemDiagram<'a, HyacinthComponent> {
     let system_definition = system_definition();
     if !backend.has_initialized_local_metrics() {
-        let _ = backend.set_value::<MaxPressureN2Tank>(100f64);
+        let _ = backend.set_value::<MaxPressureN2Tank>(280f64);
+        //TODO REMOVE: Initialize with norminal valve states for display
+        let _ = backend.set_value::<N2BottleValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2OBottleValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2ReleaseValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2OReleaseValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2QuickDisconnect>(ValveState::Closed);
+        let _ = backend.set_value::<N2OQuickDisconnect>(ValveState::Closed);
+        let _ = backend.set_value::<N2PurgeValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2PressureRegulator>(ValveState::Closed);
+        let _ = backend.set_value::<N2OVentValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2OBurstDisc>(ValveState::Closed);
+        let _ = backend.set_value::<N2OFillAndDumpValve>(ValveState::Closed);
+        let _ = backend.set_value::<N2OMainValve>(ValveState::Closed);
+
         backend.initialize_local_metrics();
     }
     if !frontend.initialized() {
         frontend
             .metric_monitor_mut()
-            .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::WARNING)))
-            .add_constraint(Box::new(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER)))
-            .add_constraint(Box::new(
-                crate::storage::static_metrics::HyacinthNominalState::eq_const(HyacinthNominalState::BurnPhase)
-                    .implies(N2ReleaseValve::is_some())
+            .add_constraint(
+                Pressure::<PressureSensorNitrogenTank>::leq_metric::<MaxPressureN2Tank>()
                     .on_violation(ConstraintResult::DANGER),
-            ))
-            .add_constraint(Box::new(
-                RawBarometricAltitude::<MS5611>::eq_metric::<MaxPressureN2Tank>()
+            )
+            .add_constraint(
+                HyacinthNominalState::eq_const(crate::widgets::time_line::HyacinthNominalState::N2Filling)
+                    .invert()
+                    .implies(N2BottleValve::eq_const(ValveState::Closed))
                     .on_violation(ConstraintResult::WARNING),
-            ));
+            )
+            .add_constraint(
+                HyacinthNominalState::gt_const(crate::widgets::time_line::HyacinthNominalState::IdleActive)
+                    .implies(N2QuickDisconnect::eq_const(ValveState::Open))
+                    .on_violation(ConstraintResult::WARNING),
+            )
+            .add_constraint(
+                HyacinthNominalState::gt_const(crate::widgets::time_line::HyacinthNominalState::N2OFilling)
+                    .implies(N2OQuickDisconnect::eq_const(ValveState::Open))
+                    .on_violation(ConstraintResult::WARNING),
+            )
+            .add_constraint(
+                HyacinthNominalState::eq_const(crate::widgets::time_line::HyacinthNominalState::N2OFilling)
+                    .invert()
+                    .implies(N2OBottleValve::eq_const(ValveState::Closed))
+                    .on_violation(ConstraintResult::WARNING),
+            )
+            .add_constraint(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER));
+        // .add_constraint(Box::new(N2OBurstDisc::is_some().on_violation(ConstraintResult::WARNING)))
+        // .add_constraint(Box::new(N2OBurstDisc::eq_const(ValveState::Closed).on_violation(ConstraintResult::DANGER)))
+        // .add_constraint(Box::new(
+        //     crate::storage::static_metrics::HyacinthNominalState::eq_const(HyacinthNominalState::BurnPhase)
+        //         .implies(N2ReleaseValve::is_some())
+        //         .on_violation(ConstraintResult::DANGER),
+        // ))
+        // .add_constraint(Box::new(
+        //     RawBarometricAltitude::<MS5611>::eq_metric::<MaxPressureN2Tank>()
+        //         .on_violation(ConstraintResult::WARNING),
+        // ));
         frontend.initialize();
     }
 

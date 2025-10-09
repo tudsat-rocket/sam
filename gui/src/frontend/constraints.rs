@@ -222,6 +222,13 @@ pub trait Constraint {
     {
         ImpliesConstraint { lhs: self, rhs }
     }
+
+    fn invert(self) -> NotConstraint<Self>
+    where
+        Self: Sized,
+    {
+        NotConstraint { constraint: self }
+    }
 }
 
 pub trait ConstraintBuilder {
@@ -355,11 +362,11 @@ impl<C1: Constraint, C2: Constraint> Constraint for ImpliesConstraint<C1, C2> {
         return !self.lhs.check() || self.rhs.check();
     }
     fn evaluation_as_string(&self) -> String {
-        if self.check() {
-            format! {"({}) implies ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
-        } else {
-            format! {"not ({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
-        }
+        // if self.check() {
+        //     format! {"({}) implies ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
+        // } else {
+        format! {"({}) while ({})", self.rhs.evaluation_as_string(), self.lhs.evaluation_as_string()}
+        //}
         // if self.check() {
         //     format! {"({}) => ({})", self.lhs.evaluation_as_string(), self.rhs.evaluation_as_string()}
         // } else {
@@ -389,15 +396,16 @@ impl<C: Constraint> Constraint for NotConstraint<C> {
     }
 
     fn check(&self) -> bool {
-        return self.constraint.check();
+        return !self.constraint.check();
     }
 
     fn evaluation_as_string(&self) -> String {
-        if self.check() {
-            format!("is not {}", self.constraint.evaluation_as_string())
-        } else {
-            format!("is {}", self.constraint.evaluation_as_string())
-        }
+        // if self.check() {
+        //     format!("is not {}", self.constraint.evaluation_as_string())
+        // } else {
+        //     format!("is {}", self.constraint.evaluation_as_string())
+        //}
+        self.constraint.evaluation_as_string()
         //format!("{}{}", if self.check() { "!" } else { "" }, self.constraint.evaluation_as_string())
     }
 

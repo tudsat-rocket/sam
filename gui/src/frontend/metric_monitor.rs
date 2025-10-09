@@ -38,7 +38,7 @@ impl Default for MetricMonitor {
     fn default() -> Self {
         Self {
             active_constraint_mask: vec![
-                ConstraintResult::NOMINAL,
+                //ConstraintResult::NOMINAL,
                 ConstraintResult::WARNING,
                 ConstraintResult::DANGER,
             ],
@@ -85,8 +85,11 @@ impl MetricMonitor {
         return &mut self.active_constraint_mask;
     }
 
-    pub fn add_constraint(&mut self, constraint: Box<dyn ValuedConstraint>) -> &mut Self {
-        self.constraints.entry(constraint.metric()).or_default().push(EvaluatedConstraint::new(constraint));
+    pub fn add_constraint<C: ValuedConstraint + 'static>(&mut self, constraint: C) -> &mut Self {
+        self.constraints
+            .entry(constraint.metric())
+            .or_default()
+            .push(EvaluatedConstraint::new(Box::new(constraint)));
         return self;
     }
 
