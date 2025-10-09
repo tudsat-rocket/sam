@@ -334,7 +334,7 @@ impl<'a> Widget for Map<'a> {
 
         let detached_pos = self.state.memory.detached();
 
-        let position = self.vehicle_position.map(|(pos, ..)| pos).unwrap_or(Position::new(8.68519, 49.861445));
+        let position = self.vehicle_position.map(|(pos, ..)| pos).unwrap_or(Position::new(-8.33690, 39.482667));
         let gradient_lookup = self.state.gradient_lookup.clone();
         let pos_source = self.state.position_source;
 

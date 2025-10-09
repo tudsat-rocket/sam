@@ -204,7 +204,7 @@ impl Sam {
                 .backend()
                 .current_value::<crate::backend::storage::static_metrics::HyacinthNominalState>()
                 .map(|s| s.associated_flight_mode());
-            println!("{:?} {:?}", fm, local_mode);
+            // println!("{:?} {:?}", fm, local_mode);
             if local_mode.map(|lm| fm != lm).unwrap_or(true) {
                 let _ = self.backend_mut().set_value::<crate::backend::storage::static_metrics::HyacinthNominalState>(
                     match fm {
