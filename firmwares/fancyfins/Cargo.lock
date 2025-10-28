@@ -508,6 +508,7 @@ dependencies = [
  "embedded-hal 1.0.0",
  "embedded-hal-async",
  "heapless 0.8.0",
+ "libm",
  "panic-probe",
  "shared_types",
  "smart-leds",

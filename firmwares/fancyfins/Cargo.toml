@@ -29,6 +29,7 @@ embassy-futures = "0.1"
 
 static_cell = "2"
 crc = "3"
+libm = "0.2"
 
 shared_types = { path = "../../shared_types" }
 w25q = "0.2.9"
