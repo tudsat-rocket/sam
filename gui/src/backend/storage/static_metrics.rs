@@ -100,7 +100,6 @@ make_static_metric_with_storage_type!(TrueMotorMass, f64, SampleSeries);
 make_static_metric_with_storage_type!(TrueThrusterPropellantMass, f64, SampleSeries);
 //TrueDrag(Dim) - see below
 //TrueThrust(Dim) - see below
-make_static_metric_with_storage_type!(ApogeeError, f64, SampleSeries);
 
 // ------------- Local Nested Metrics -------------
 
@@ -475,25 +474,6 @@ impl<Battery: BatteryId> std::fmt::Debug for BatteryChargerState<Battery> {
 }
 
 #[derive(Default)]
-pub struct TrueOrientation<const N: usize> {}
-impl<const N: usize> MetricTrait for TrueOrientation<N>
-where
-    Const<N>: InRange0To4Exclusive,
-{
-    type Value = f64;
-    type DataType = SampleSeries;
-
-    fn metric() -> telemetry::Metric {
-        telemetry::Metric::TrueOrientation(N)
-    }
-}
-impl<const N: usize> std::fmt::Debug for TrueOrientation<N> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TrueOrientation<{}>", N)
-    }
-}
-
-#[derive(Default)]
 pub struct TrueAccelerationWorldSpace<D: Dim3> {
     dim: PhantomData<D>,
 }
@@ -544,24 +524,6 @@ impl<D: Dim3 + Default + Debug> MetricTrait for TruePositionWorldSpace<D> {
 impl<D: Dim3> std::fmt::Debug for TruePositionWorldSpace<D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "TruePositionWorldSpace<{}>", short_type_name::<D>())
-    }
-}
-
-#[derive(Default)]
-pub struct TrueDrag<D: Dim3> {
-    dim: PhantomData<D>,
-}
-impl<D: Dim3 + Default + Debug> MetricTrait for TrueDrag<D> {
-    type Value = f64;
-    type DataType = SampleSeries;
-
-    fn metric() -> telemetry::Metric {
-        telemetry::Metric::TrueDrag(D::dim())
-    }
-}
-impl<D: Dim3> std::fmt::Debug for TrueDrag<D> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TrueDrag<{}>", short_type_name::<D>())
     }
 }
 

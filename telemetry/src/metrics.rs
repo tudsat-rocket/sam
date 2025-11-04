@@ -145,7 +145,6 @@ pub enum Metric {
 
     // Values describing the ground truth when we're in a simulation
     // TODO: actually implement sending these, maybe add a simulation "telemetry" schema?
-    TrueOrientation(usize),
     TrueElevation,
     TrueAzimuth,
     TrueAccelerationWorldSpace(Dim),
@@ -154,9 +153,7 @@ pub enum Metric {
     TrueVehicleMass,
     TrueMotorMass,
     TrueThrusterPropellantMass,
-    TrueDrag(Dim),
     TrueThrust(Dim),
-    ApogeeError,
 
     //These Metrics are only used by SAM, e.g., for visualization and constraint purposes
     LocalMetric(LocalMetric),
